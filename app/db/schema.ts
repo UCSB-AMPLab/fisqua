@@ -109,6 +109,7 @@ export const volumePages = sqliteTable(
     imageUrl: text("image_url").notNull(),
     width: integer("width").notNull(),
     height: integer("height").notNull(),
+    label: text("label"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [

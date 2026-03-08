@@ -15,6 +15,13 @@
       "when": 1772984523327,
       "tag": "0001_chief_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1773001162881,
+      "tag": "0002_broad_master_chief",
+      "breakpoints": true
     }
   ]
 }

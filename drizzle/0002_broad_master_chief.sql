@@ -1,0 +1,1 @@
+ALTER TABLE `volume_pages` ADD `label` text;

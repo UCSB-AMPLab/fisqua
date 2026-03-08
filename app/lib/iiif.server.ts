@@ -17,6 +17,7 @@ export interface ParsedManifest {
     width: number;
     height: number;
     imageUrl: string;
+    label: string;
   }>;
 }
 
@@ -104,11 +105,20 @@ export async function parseManifest(
     const service = body?.service?.[0];
     const imageUrl = service?.id || body?.id || "";
 
+    // Extract canvas label from v3 language map with fallback chain
+    const canvasLabel = canvas.label;
+    const pageLabel =
+      canvasLabel?.none?.[0] ||
+      canvasLabel?.es?.[0] ||
+      canvasLabel?.en?.[0] ||
+      String(index + 1);
+
     return {
       position: index + 1,
       width: canvas.width,
       height: canvas.height,
       imageUrl,
+      label: pageLabel,
     };
   });
 

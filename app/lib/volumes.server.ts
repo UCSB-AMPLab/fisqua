@@ -5,7 +5,7 @@ import type { ParsedManifest } from "./iiif.server";
 
 /**
  * Number of page rows per INSERT statement.
- * 7 columns per row * 12 rows = 84 bound params (under D1's 100 limit).
+ * 8 columns per row * 12 rows = 96 bound params (under D1's 100 limit).
  */
 const PAGE_CHUNK_SIZE = 12;
 
@@ -62,6 +62,7 @@ export async function createVolume(
           imageUrl: page.imageUrl,
           width: page.width,
           height: page.height,
+          label: page.label,
           createdAt: now,
         }))
       );
