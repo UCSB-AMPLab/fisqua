@@ -159,6 +159,45 @@ describe("IIIF manifest parser", () => {
       );
     });
 
+    it("extracts canvas labels from none language", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(sampleManifest), { status: 200 })
+        )
+      );
+
+      const result = await parseManifest(sampleManifestUrl);
+      // First canvas has { none: ["1"] }
+      expect(result.pages[0].label).toBe("1");
+    });
+
+    it("falls back to es language for canvas label when none is missing", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(sampleManifest), { status: 200 })
+        )
+      );
+
+      const result = await parseManifest(sampleManifestUrl);
+      // Second canvas has { es: ["f. 1r"] }
+      expect(result.pages[1].label).toBe("f. 1r");
+    });
+
+    it("falls back to sequential number when canvas has no label", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(sampleManifest), { status: 200 })
+        )
+      );
+
+      const result = await parseManifest(sampleManifestUrl);
+      // Third canvas has no label at all, should fall back to "3" (index + 1)
+      expect(result.pages[2].label).toBe("3");
+    });
+
     it("stores the original manifest URL", async () => {
       vi.stubGlobal(
         "fetch",

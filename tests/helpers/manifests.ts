@@ -60,7 +60,7 @@ export const sampleManifest = {
     {
       id: `${sampleManifestUrl.replace("/manifest.json", "")}/canvas/p2`,
       type: "Canvas",
-      label: { none: ["2"] },
+      label: { es: ["f. 1r"] },
       width: 3000,
       height: 3900,
       items: [
@@ -95,7 +95,6 @@ export const sampleManifest = {
     {
       id: `${sampleManifestUrl.replace("/manifest.json", "")}/canvas/p3`,
       type: "Canvas",
-      label: { none: ["3"] },
       width: 2900,
       height: 4100,
       items: [
