@@ -25,7 +25,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
 
   const volumes = await getProjectVolumes(db, params.id);
-  return { volumes };
+  return { volumes, projectId: params.id };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -105,7 +105,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
-  const { volumes } = loaderData;
+  const { volumes, projectId } = loaderData;
   const actionData = useActionData<typeof action>();
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -217,7 +217,7 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {volumes.map((volume) => (
-            <VolumeCard key={volume.id} volume={volume} projectId="" />
+            <VolumeCard key={volume.id} volume={volume} projectId={projectId} />
           ))}
         </div>
       )}

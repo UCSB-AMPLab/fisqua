@@ -1,4 +1,4 @@
-import { Form } from "react-router";
+import { Form, Link } from "react-router";
 
 type VolumeCardProps = {
   volume: {
@@ -35,49 +35,54 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
     : null;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-      {/* Thumbnail */}
-      <div className="flex h-40 items-center justify-center bg-stone-50">
-        {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
-            alt={`First page of ${volume.name}`}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <svg
-            className="h-12 w-12 text-stone-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1}
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+    <div className="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <Link
+        to={`/projects/${projectId}/volumes/${volume.id}`}
+        className="block"
+      >
+        {/* Thumbnail */}
+        <div className="flex h-40 items-center justify-center bg-stone-50">
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={`First page of ${volume.name}`}
+              className="h-full w-full object-cover"
             />
-          </svg>
-        )}
-      </div>
-
-      {/* Body */}
-      <div className="p-3">
-        <h3 className="truncate text-sm font-semibold text-stone-900">
-          {volume.name}
-        </h3>
-        <p className="mt-0.5 text-xs text-stone-500">{volume.referenceCode}</p>
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-stone-500">
-            {volume.pageCount} {volume.pageCount === 1 ? "page" : "pages"}
-          </span>
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeColors[volume.status] || "bg-stone-100 text-stone-600"}`}
-          >
-            {statusLabels[volume.status] || volume.status}
-          </span>
+          ) : (
+            <svg
+              className="h-12 w-12 text-stone-300"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1}
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+              />
+            </svg>
+          )}
         </div>
-      </div>
+
+        {/* Body */}
+        <div className="p-3">
+          <h3 className="truncate text-sm font-semibold text-stone-900">
+            {volume.name}
+          </h3>
+          <p className="mt-0.5 text-xs text-stone-500">{volume.referenceCode}</p>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-xs text-stone-500">
+              {volume.pageCount} {volume.pageCount === 1 ? "page" : "pages"}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeColors[volume.status] || "bg-stone-100 text-stone-600"}`}
+            >
+              {statusLabels[volume.status] || volume.status}
+            </span>
+          </div>
+        </div>
+      </Link>
 
       {/* Footer -- delete action */}
       {volume.status === "unstarted" && (
