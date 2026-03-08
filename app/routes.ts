@@ -27,7 +27,7 @@ export default [
 
     // Viewer route -- under _auth for auth, but outside project layout (full-page)
     route(
-      "projects/:id/volumes/:volumeId",
+      "projects/:projectId/volumes/:volumeId",
       "routes/_auth.viewer.$projectId.$volumeId.tsx"
     ),
 
