@@ -1,0 +1,123 @@
+import { Form, redirect, useActionData, Link } from "react-router";
+import { drizzle } from "drizzle-orm/d1";
+import { userContext } from "../context";
+import { requireAdmin } from "../lib/permissions.server";
+import {
+  validateProjectForm,
+  createProject,
+} from "../lib/projects.server";
+import type { Route } from "./+types/_auth.projects.new";
+
+export function meta() {
+  return [{ title: "New project" }];
+}
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const user = context.get(userContext);
+  requireAdmin(user);
+  return {};
+}
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const user = context.get(userContext);
+  requireAdmin(user);
+
+  const formData = await request.formData();
+  const raw = {
+    name: formData.get("name") as string || "",
+    description: formData.get("description") as string || "",
+  };
+
+  const result = validateProjectForm(raw);
+  if (!result.success) {
+    return { errors: result.errors, values: raw };
+  }
+
+  const env = context.cloudflare.env;
+  const db = drizzle(env.DB);
+
+  const project = await createProject(
+    db,
+    {
+      name: result.data.name,
+      description: result.data.description || null,
+    },
+    user.id
+  );
+
+  throw redirect(`/projects/${project.id}`);
+}
+
+export default function NewProject() {
+  const actionData = useActionData<typeof action>();
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mb-6">
+        <Link
+          to="/dashboard"
+          className="text-sm text-stone-500 hover:text-stone-700"
+        >
+          &larr; Back to dashboard
+        </Link>
+      </div>
+
+      <h1 className="text-xl font-semibold text-stone-900">
+        Create new project
+      </h1>
+
+      <Form method="post" className="mt-6 space-y-6">
+        {/* Project name */}
+        <div>
+          <label
+            htmlFor="name"
+            className="block text-sm font-medium text-stone-700"
+          >
+            Project name
+          </label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            required
+            maxLength={200}
+            defaultValue={actionData?.values?.name}
+            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+          />
+          {actionData?.errors?.name && (
+            <p className="mt-1 text-sm text-red-600">
+              {actionData.errors.name}
+            </p>
+          )}
+        </div>
+
+        {/* Description */}
+        <div>
+          <label
+            htmlFor="description"
+            className="block text-sm font-medium text-stone-700"
+          >
+            Description{" "}
+            <span className="text-stone-400">(optional)</span>
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            rows={3}
+            defaultValue={actionData?.values?.description}
+            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          >
+            Create project
+          </button>
+        </div>
+      </Form>
+    </div>
+  );
+}
