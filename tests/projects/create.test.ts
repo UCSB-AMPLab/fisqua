@@ -85,7 +85,7 @@ describe("project creation", () => {
         id: "pm-2",
         projectId: "proj-2",
         userId: user.id,
-        role: "member",
+        role: "cataloguer",
         createdAt: now,
       });
 

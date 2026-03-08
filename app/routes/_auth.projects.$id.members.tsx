@@ -107,7 +107,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
 
       // Validate roles
-      const validRoles = ["lead", "member", "reviewer"];
+      const validRoles = ["lead", "cataloguer", "reviewer"];
       const roles = roleValues.filter((r) => validRoles.includes(r));
       if (roles.length === 0) {
         return { ok: false, error: "Select at least one role." };
@@ -140,7 +140,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const targetUserId = formData.get("userId") as string;
       const roleValues = formData.getAll("roles") as string[];
 
-      const validRoles = ["lead", "member", "reviewer"];
+      const validRoles = ["lead", "cataloguer", "reviewer"];
       const newRoles = roleValues.filter((r) => validRoles.includes(r));
       if (newRoles.length === 0) {
         return { ok: false, error: "At least one role is required." };
@@ -219,7 +219,7 @@ function formatDate(timestamp: number) {
 
 const roleBadgeColors: Record<string, string> = {
   lead: "bg-amber-100 text-amber-800",
-  member: "bg-blue-100 text-blue-800",
+  cataloguer: "bg-blue-100 text-blue-800",
   reviewer: "bg-green-100 text-green-800",
 };
 
@@ -265,13 +265,13 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
               Roles
             </legend>
             <div className="mt-2 flex gap-4">
-              {["lead", "member", "reviewer"].map((role) => (
+              {["lead", "cataloguer", "reviewer"].map((role) => (
                 <label key={role} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     name="roles"
                     value={role}
-                    defaultChecked={role === "member"}
+                    defaultChecked={role === "cataloguer"}
                     className="rounded border-stone-300 text-stone-900 focus:ring-stone-500"
                   />
                   {role.charAt(0).toUpperCase() + role.slice(1)}

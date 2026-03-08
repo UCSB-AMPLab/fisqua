@@ -166,7 +166,7 @@ describe("project settings", () => {
         id: "pm-s5",
         projectId: "proj-s5",
         userId: user.id,
-        role: "member",
+        role: "cataloguer",
         createdAt: now,
       });
 

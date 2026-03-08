@@ -58,7 +58,7 @@ describe("member management and invite flow", () => {
         db,
         projectId,
         "member@example.com",
-        ["member", "reviewer"],
+        ["cataloguer", "reviewer"],
         lead,
         "http://localhost:5173",
         "fake-resend-key"
@@ -80,7 +80,7 @@ describe("member management and invite flow", () => {
 
       expect(memberships).toHaveLength(2);
       const roles = memberships.map((m) => m.role).sort();
-      expect(roles).toEqual(["member", "reviewer"]);
+      expect(roles).toEqual(["cataloguer", "reviewer"]);
     });
 
     it("invites an unregistered email and auto-creates user account", async () => {
@@ -92,7 +92,7 @@ describe("member management and invite flow", () => {
         db,
         projectId,
         "newuser@example.com",
-        ["member"],
+        ["cataloguer"],
         lead,
         "http://localhost:5173",
         "fake-resend-key"
@@ -120,7 +120,7 @@ describe("member management and invite flow", () => {
 
       expect(invites).toHaveLength(1);
       expect(invites[0].projectId).toBe(projectId);
-      expect(JSON.parse(invites[0].roles)).toEqual(["member"]);
+      expect(JSON.parse(invites[0].roles)).toEqual(["cataloguer"]);
     });
 
     it("adds new roles when inviting an existing member", async () => {
@@ -137,7 +137,7 @@ describe("member management and invite flow", () => {
         db,
         projectId,
         "member@example.com",
-        ["member"],
+        ["cataloguer"],
         lead,
         "http://localhost:5173",
         "fake-resend-key"
@@ -148,7 +148,7 @@ describe("member management and invite flow", () => {
         db,
         projectId,
         "member@example.com",
-        ["reviewer", "member"],
+        ["reviewer", "cataloguer"],
         lead,
         "http://localhost:5173",
         "fake-resend-key"
@@ -169,7 +169,7 @@ describe("member management and invite flow", () => {
         .all();
 
       const roles = memberships.map((m) => m.role).sort();
-      expect(roles).toEqual(["member", "reviewer"]);
+      expect(roles).toEqual(["cataloguer", "reviewer"]);
     });
   });
 
@@ -195,7 +195,7 @@ describe("member management and invite flow", () => {
         id: crypto.randomUUID(),
         projectId,
         email: "invited@example.com",
-        roles: JSON.stringify(["member", "reviewer"]),
+        roles: JSON.stringify(["cataloguer", "reviewer"]),
         invitedBy: lead.id,
         token,
         expiresAt: now + 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -222,7 +222,7 @@ describe("member management and invite flow", () => {
 
       expect(memberships).toHaveLength(2);
       const roles = memberships.map((m) => m.role).sort();
-      expect(roles).toEqual(["member", "reviewer"]);
+      expect(roles).toEqual(["cataloguer", "reviewer"]);
 
       // Verify invite marked as accepted
       const invite = await db
@@ -253,7 +253,7 @@ describe("member management and invite flow", () => {
         id: crypto.randomUUID(),
         projectId,
         email: "expired@example.com",
-        roles: JSON.stringify(["member"]),
+        roles: JSON.stringify(["cataloguer"]),
         invitedBy: lead.id,
         token,
         expiresAt: now - 1000, // Already expired
@@ -286,7 +286,7 @@ describe("member management and invite flow", () => {
         id: crypto.randomUUID(),
         projectId,
         email: "used@example.com",
-        roles: JSON.stringify(["member"]),
+        roles: JSON.stringify(["cataloguer"]),
         invitedBy: lead.id,
         token,
         expiresAt: now + 7 * 24 * 60 * 60 * 1000,

@@ -47,7 +47,7 @@ describe("dashboard", () => {
 
       await db.insert(schema.projectMembers).values([
         { id: "pm-a1", projectId: "proj-a", userId: user.id, role: "lead", createdAt: now },
-        { id: "pm-b1", projectId: "proj-b", userId: user.id, role: "member", createdAt: now },
+        { id: "pm-b1", projectId: "proj-b", userId: user.id, role: "cataloguer", createdAt: now },
       ]);
 
       const projects = await getUserProjects(db, user.id, false);
@@ -61,7 +61,7 @@ describe("dashboard", () => {
       expect(projA.roles).toContain("lead");
 
       const projB = projects.find((p) => p.name === "Project B")!;
-      expect(projB.roles).toContain("member");
+      expect(projB.roles).toContain("cataloguer");
     });
 
     it("returns empty array for user with no projects", async () => {

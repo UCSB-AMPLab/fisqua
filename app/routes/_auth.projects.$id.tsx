@@ -16,7 +16,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
 
   // Check membership (admin bypasses)
-  await requireProjectRole(db, user.id, params.id, ["lead", "member", "reviewer"], user.isAdmin);
+  await requireProjectRole(db, user.id, params.id, ["lead", "cataloguer", "reviewer"], user.isAdmin);
 
   return { project, user };
 }
