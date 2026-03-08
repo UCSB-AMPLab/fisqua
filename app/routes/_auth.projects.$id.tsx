@@ -1,8 +1,10 @@
 import { Outlet, NavLink } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
+import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
 import { getProject } from "../lib/projects.server";
 import { requireProjectRole } from "../lib/permissions.server";
+import { projectMembers } from "../db/schema";
 import type { Route } from "./+types/_auth.projects.$id";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -18,11 +20,24 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Check membership (admin bypasses)
   await requireProjectRole(db, user.id, params.id, ["lead", "cataloguer", "reviewer"], user.isAdmin);
 
-  return { project, user };
+  // Get user's specific role for conditional UI
+  const membership = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, params.id),
+        eq(projectMembers.userId, user.id)
+      )
+    )
+    .get();
+
+  return { project, user, userRole: membership?.role || null };
 }
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
-  const { project } = loaderData;
+  const { project, user, userRole } = loaderData;
+  const canSeeVolumes = userRole === "lead" || user.isAdmin;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
@@ -61,18 +76,20 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         >
           Members
         </NavLink>
-        <NavLink
-          to={`/projects/${project.id}/items`}
-          className={({ isActive }) =>
-            `border-b-2 px-1 pb-2 text-sm font-medium ${
-              isActive
-                ? "border-stone-900 text-stone-900"
-                : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
-            }`
-          }
-        >
-          Items
-        </NavLink>
+        {canSeeVolumes && (
+          <NavLink
+            to={`/projects/${project.id}/volumes`}
+            className={({ isActive }) =>
+              `border-b-2 px-1 pb-2 text-sm font-medium ${
+                isActive
+                  ? "border-stone-900 text-stone-900"
+                  : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
+              }`
+            }
+          >
+            Volumes
+          </NavLink>
+        )}
       </div>
 
       <Outlet />
