@@ -22,7 +22,7 @@ export default [
       route("projects/:id/settings", "routes/_auth.projects.$id.settings.tsx"),
       route("projects/:id/members", "routes/_auth.projects.$id.members.tsx"),
       // --- EXTENSION POINT --- add your domain-specific routes below
-      route("projects/:id/items", "routes/_auth.projects.$id.items.tsx"),
+      route("projects/:id/volumes", "routes/_auth.projects.$id.volumes.tsx"),
     ]),
 
     // Admin routes
