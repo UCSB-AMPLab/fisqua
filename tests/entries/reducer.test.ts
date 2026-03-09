@@ -5,12 +5,6 @@ import {
   createInitialState,
 } from "../../app/lib/boundary-reducer";
 
-let idCounter = 0;
-function testIdGen(): string {
-  idCounter++;
-  return `gen-${idCounter}`;
-}
-
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
     id: "entry-1",
@@ -18,7 +12,9 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     parentId: null,
     position: 0,
     startPage: 1,
+    startY: 0,
     endPage: null,
+    endY: null,
     type: null,
     title: null,
     createdAt: 1000,
@@ -74,7 +70,7 @@ describe("ADD_BOUNDARY", () => {
 
     const result = boundaryReducer(state, {
       type: "ADD_BOUNDARY",
-      afterPage: 5,
+      startPage: 5,
       id: "new-entry",
     });
 
@@ -82,6 +78,40 @@ describe("ADD_BOUNDARY", () => {
     const newEntry = result.entries.find((e) => e.id === "new-entry");
     expect(newEntry).toBeDefined();
     expect(newEntry!.startPage).toBe(5);
+    expect(newEntry!.startY).toBe(0);
+  });
+
+  it("creates a new entry with startY when provided", () => {
+    const state = makeState({
+      entries: [makeEntry({ id: "first", position: 0, startPage: 1 })],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "ADD_BOUNDARY",
+      startPage: 3,
+      startY: 0.5,
+      id: "mid-page",
+    });
+
+    const newEntry = result.entries.find((e) => e.id === "mid-page");
+    expect(newEntry).toBeDefined();
+    expect(newEntry!.startPage).toBe(3);
+    expect(newEntry!.startY).toBe(0.5);
+  });
+
+  it("defaults startY to 0 when not provided", () => {
+    const state = makeState({
+      entries: [makeEntry({ id: "first", position: 0, startPage: 1 })],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "ADD_BOUNDARY",
+      startPage: 5,
+      id: "new-entry",
+    });
+
+    const newEntry = result.entries.find((e) => e.id === "new-entry");
+    expect(newEntry!.startY).toBe(0);
   });
 
   it("marks state as dirty and increments version", () => {
@@ -91,7 +121,7 @@ describe("ADD_BOUNDARY", () => {
 
     const result = boundaryReducer(state, {
       type: "ADD_BOUNDARY",
-      afterPage: 5,
+      startPage: 5,
       id: "new-entry",
     });
 
@@ -110,7 +140,7 @@ describe("ADD_BOUNDARY", () => {
 
     const result = boundaryReducer(state, {
       type: "ADD_BOUNDARY",
-      afterPage: 5,
+      startPage: 5,
       id: "b",
     });
 
@@ -122,6 +152,48 @@ describe("ADD_BOUNDARY", () => {
     expect(sorted[1].position).toBe(1);
     expect(sorted[2].id).toBe("c");
     expect(sorted[2].position).toBe(2);
+  });
+
+  it("sorts two entries on same page by startY", () => {
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "a", position: 0, startPage: 1 }),
+        makeEntry({ id: "b", position: 1, startPage: 3, startY: 0.7 }),
+      ],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "ADD_BOUNDARY",
+      startPage: 3,
+      startY: 0.2,
+      id: "c",
+    });
+
+    // Page 3 entries: c(y=0.2) should be before b(y=0.7)
+    const sorted = [...result.entries].sort((a, b) => a.position - b.position);
+    expect(sorted[0].id).toBe("a"); // page 1
+    expect(sorted[1].id).toBe("c"); // page 3, y=0.2
+    expect(sorted[2].id).toBe("b"); // page 3, y=0.7
+  });
+
+  it("rejects ADD_BOUNDARY when too close to existing boundary (min gap)", () => {
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "a", position: 0, startPage: 1 }),
+        makeEntry({ id: "b", position: 1, startPage: 3, startY: 0.50 }),
+      ],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "ADD_BOUNDARY",
+      startPage: 3,
+      startY: 0.51,
+      id: "too-close",
+    });
+
+    // Should be no-op: gap is 0.01 < MIN_Y_GAP (0.02)
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries.find((e) => e.id === "too-close")).toBeUndefined();
   });
 });
 
@@ -139,7 +211,7 @@ describe("MOVE_BOUNDARY", () => {
     const result = boundaryReducer(state, {
       type: "MOVE_BOUNDARY",
       entryId: "b",
-      toPage: 12,
+      startPage: 12,
     });
 
     const moved = result.entries.find((e) => e.id === "b")!;
@@ -150,6 +222,25 @@ describe("MOVE_BOUNDARY", () => {
     expect(sorted[0].id).toBe("a");
     expect(sorted[1].id).toBe("c");
     expect(sorted[2].id).toBe("b");
+  });
+
+  it("updates startY when toY is provided", () => {
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "a", position: 0, startPage: 1 }),
+        makeEntry({ id: "b", position: 1, startPage: 5, startY: 0.3 }),
+      ],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "MOVE_BOUNDARY",
+      entryId: "b",
+      startPage: 5,
+      toY: 0.7,
+    });
+
+    const moved = result.entries.find((e) => e.id === "b")!;
+    expect(moved.startY).toBe(0.7);
   });
 
   it("increments version on move", () => {
@@ -163,7 +254,7 @@ describe("MOVE_BOUNDARY", () => {
     const result = boundaryReducer(state, {
       type: "MOVE_BOUNDARY",
       entryId: "b",
-      toPage: 3,
+      startPage: 3,
     });
 
     expect(result.version).toBe(1);
@@ -190,12 +281,64 @@ describe("MOVE_BOUNDARY", () => {
     const result = boundaryReducer(state, {
       type: "MOVE_BOUNDARY",
       entryId: "c",
-      toPage: 15,
+      startPage: 15,
     });
 
     // Should be a no-op -- child stays at page 3
     const child = result.entries.find((e) => e.id === "c")!;
     expect(child.startPage).toBe(3);
+  });
+
+  it("rejects move with y-aware containment -- child cannot move above parent on same page", () => {
+    // Parent at page 5, y=0.3. Child at page 5, y=0.8.
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "parent", position: 0, startPage: 5, startY: 0.3 }),
+        makeEntry({ id: "next-sibling", position: 1, startPage: 10 }),
+        makeEntry({
+          id: "child",
+          parentId: "parent",
+          position: 0,
+          startPage: 5,
+          startY: 0.8,
+          endPage: 6,
+        }),
+      ],
+    });
+
+    // Try to move child to page 5, y=0.1 (above parent's y=0.3)
+    const result = boundaryReducer(state, {
+      type: "MOVE_BOUNDARY",
+      entryId: "child",
+      startPage: 5,
+      toY: 0.1,
+    });
+
+    // Should be a no-op
+    const child = result.entries.find((e) => e.id === "child")!;
+    expect(child.startPage).toBe(5);
+    expect(child.startY).toBe(0.8);
+  });
+
+  it("rejects move when target is too close to existing boundary (min gap)", () => {
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "a", position: 0, startPage: 1 }),
+        makeEntry({ id: "b", position: 1, startPage: 3, startY: 0.5 }),
+        makeEntry({ id: "c", position: 2, startPage: 5 }),
+      ],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "MOVE_BOUNDARY",
+      entryId: "c",
+      startPage: 3,
+      toY: 0.51,
+    });
+
+    // Should be a no-op: gap 0.01 < MIN_Y_GAP
+    const moved = result.entries.find((e) => e.id === "c")!;
+    expect(moved.startPage).toBe(5);
   });
 });
 
@@ -225,10 +368,10 @@ describe("DELETE_BOUNDARY", () => {
     expect(sorted[1].position).toBe(1);
   });
 
-  it("first entry (startPage 1, position 0, top-level) cannot be deleted", () => {
+  it("first entry (page 1, y=0, position 0, top-level) cannot be deleted", () => {
     const state = makeState({
       entries: [
-        makeEntry({ id: "first", position: 0, startPage: 1 }),
+        makeEntry({ id: "first", position: 0, startPage: 1, startY: 0 }),
         makeEntry({ id: "second", position: 1, startPage: 5 }),
       ],
     });
@@ -528,6 +671,34 @@ describe("SET_END_PAGE", () => {
   });
 });
 
+describe("SET_END_Y", () => {
+  it("updates endY for entry", () => {
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "a", position: 0, startPage: 1 }),
+        makeEntry({
+          id: "child",
+          parentId: "a",
+          position: 0,
+          startPage: 1,
+          endPage: 3,
+          endY: null,
+        }),
+      ],
+    });
+
+    const result = boundaryReducer(state, {
+      type: "SET_END_Y",
+      entryId: "child",
+      endY: 0.75,
+    });
+
+    const entry = result.entries.find((e) => e.id === "child")!;
+    expect(entry.endY).toBe(0.75);
+    expect(result.isDirty).toBe(true);
+  });
+});
+
 describe("MARK_SAVED", () => {
   it("sets isDirty to false and saveStatus to saved", () => {
     const state = makeState({ isDirty: true, saveStatus: "saving" });
@@ -567,11 +738,11 @@ describe("version increments", () => {
     });
 
     // ADD increments
-    state = boundaryReducer(state, { type: "ADD_BOUNDARY", afterPage: 8, id: "c" });
+    state = boundaryReducer(state, { type: "ADD_BOUNDARY", startPage: 8, id: "c" });
     expect(state.version).toBe(1);
 
     // MOVE increments
-    state = boundaryReducer(state, { type: "MOVE_BOUNDARY", entryId: "c", toPage: 3 });
+    state = boundaryReducer(state, { type: "MOVE_BOUNDARY", entryId: "c", startPage: 3 });
     expect(state.version).toBe(2);
 
     // DELETE increments
@@ -601,5 +772,37 @@ describe("version increments", () => {
 
     result = boundaryReducer(result, { type: "SET_END_PAGE", entryId: "a", endPage: 5 });
     expect(result.version).toBe(0);
+  });
+});
+
+describe("getEffectiveEndPage handles y-positions", () => {
+  it("child containment respects parent y-position range", () => {
+    // Parent at page 5, y=0.3. Next sibling at page 10.
+    // Child should be movable to page 5 y=0.5 (within parent's range)
+    const state = makeState({
+      entries: [
+        makeEntry({ id: "parent", position: 0, startPage: 5, startY: 0.3 }),
+        makeEntry({ id: "next-sibling", position: 1, startPage: 10 }),
+        makeEntry({
+          id: "child",
+          parentId: "parent",
+          position: 0,
+          startPage: 6,
+          endPage: 7,
+        }),
+      ],
+    });
+
+    // Move child to page 5, y=0.5 (after parent's y=0.3 on same page)
+    const result = boundaryReducer(state, {
+      type: "MOVE_BOUNDARY",
+      entryId: "child",
+      startPage: 5,
+      toY: 0.5,
+    });
+
+    const child = result.entries.find((e) => e.id === "child")!;
+    expect(child.startPage).toBe(5);
+    expect(child.startY).toBe(0.5);
   });
 });
