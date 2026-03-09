@@ -7,10 +7,13 @@ import {
   forwardRef,
 } from "react";
 import type { PageData } from "../../routes/_auth.viewer.$projectId.$volumeId";
+import type { Entry } from "../../lib/boundary-types";
+import { BoundaryMarker } from "./boundary-marker";
+import { PageGap } from "./page-gap";
 
 // How many pages above/below the viewport to pre-render
 const BUFFER_PAGES = 2;
-const PAGE_GAP = 8; // px between pages
+const PAGE_GAP = 20; // px between pages (increased for boundary marker hit area)
 const DEFAULT_ZOOM = 0.5;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
@@ -19,6 +22,10 @@ const ZOOM_STEP = 0.25;
 type IIIFViewerProps = {
   pages: PageData[];
   onPageChange?: (pageIndex: number) => void;
+  boundaries?: Entry[];
+  onPlaceBoundary?: (afterPage: number) => void;
+  onMoveBoundary?: (entryId: string, toPage: number) => void;
+  onDeleteBoundary?: (entryId: string) => void;
 };
 
 export type IIIFViewerHandle = {
@@ -53,7 +60,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 }
 
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
-  function IIIFViewer({ pages, onPageChange }, ref) {
+  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onMoveBoundary, onDeleteBoundary }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
@@ -63,6 +70,68 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     const lastPageIndexRef = useRef(0);
     const onPageChangeRef = useRef(onPageChange);
     onPageChangeRef.current = onPageChange;
+
+    // Store boundary callbacks in refs to avoid recreating scroll handler
+    const onPlaceBoundaryRef = useRef(onPlaceBoundary);
+    onPlaceBoundaryRef.current = onPlaceBoundary;
+    const onMoveBoundaryRef = useRef(onMoveBoundary);
+    onMoveBoundaryRef.current = onMoveBoundary;
+    const onDeleteBoundaryRef = useRef(onDeleteBoundary);
+    onDeleteBoundaryRef.current = onDeleteBoundary;
+
+    // Build boundary lookup: startPage -> Entry for O(1) during render
+    const boundaryMap = useMemo(() => {
+      const map = new Map<number, Entry>();
+      if (!boundaries) return map;
+      for (const entry of boundaries) {
+        map.set(entry.startPage, entry);
+      }
+      return map;
+    }, [boundaries]);
+
+    // Build sorted sibling position labels (position + 1)
+    const sequenceLabels = useMemo(() => {
+      const labels = new Map<string, string>();
+      if (!boundaries) return labels;
+      // Group by parentId for sibling numbering
+      const groups = new Map<string | null, Entry[]>();
+      for (const entry of boundaries) {
+        const key = entry.parentId;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(entry);
+      }
+      for (const siblings of groups.values()) {
+        siblings.sort((a, b) => a.position - b.position);
+        for (const entry of siblings) {
+          labels.set(entry.id, String(entry.position + 1));
+        }
+      }
+      return labels;
+    }, [boundaries]);
+
+    // Valid gap positions: page numbers where a gap exists (pages 1..N, gaps after each page)
+    // A gap "after page P" means the gap between page P and page P+1
+    // Page numbers are 1-based (position field from volumePages)
+    const validGapPositions = useMemo(() => {
+      return pages.map((p) => p.position);
+    }, [pages]);
+
+    // Map from page number (afterPage) to the Y position of that gap center
+    const gapPositionMap = useMemo(() => {
+      const map = new Map<number, number>();
+      for (let i = 0; i < layouts.length; i++) {
+        const page = pages[i];
+        // The gap center after this page
+        const gapCenter = layouts[i].top + layouts[i].displayHeight + PAGE_GAP / 2;
+        map.set(page.position, gapCenter);
+      }
+      // Also add the position before the first page (page 1's start boundary)
+      if (layouts.length > 0) {
+        // The auto-boundary at page 1 sits at the top
+        map.set(pages[0].position, layouts[0].top);
+      }
+      return map;
+    }, [layouts, pages]);
 
     // Load OpenSeadragon script
     useEffect(() => {
@@ -230,48 +299,95 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
               const isVisible =
                 index >= visibleRange.start && index <= visibleRange.end;
               const page = pages[index];
+              // Check if a boundary starts at this page (1-based position)
+              const boundaryEntry = boundaryMap.get(page.position);
+              // The gap after this page (before next page)
+              const nextPage = pages[index + 1];
+              const hasGapBoundary = nextPage ? boundaryMap.has(nextPage.position) : false;
+              const gapCenterY = layout.top + layout.displayHeight + PAGE_GAP / 2;
 
               return (
-                <div
-                  key={page.position}
-                  style={{
-                    position: "absolute",
-                    top: layout.top,
-                    height: layout.displayHeight,
-                    width: "100%",
-                  }}
-                >
-                  <div className="flex h-full">
-                    {/* Label gutter */}
-                    <div className="flex w-16 shrink-0 items-start justify-end pr-3 pt-2">
-                      <span className="text-xs font-medium text-stone-500">
-                        {page.label || page.position}
-                      </span>
-                    </div>
-                    {/* Page image */}
-                    <div className="flex flex-1 justify-center">
-                      <div
-                        style={{
-                          width: page.width * layout.scale,
-                          height: layout.displayHeight,
-                        }}
-                      >
-                        {isVisible && osdReady ? (
-                          <OSDPage
-                            page={page}
-                            width={page.width * layout.scale}
-                            height={layout.displayHeight}
-                            instancesRef={osdInstancesRef}
-                            index={index}
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-stone-200 text-xs text-stone-400">
-                            {page.label || `Page ${page.position}`}
-                          </div>
-                        )}
+                <div key={page.position}>
+                  {/* Boundary marker before this page (if boundary starts here) */}
+                  {boundaryEntry && index > 0 && (
+                    <BoundaryMarker
+                      entry={boundaryEntry}
+                      sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "?"}
+                      top={layout.top - PAGE_GAP / 2}
+                      width={containerWidth}
+                      onMove={(entryId, toPage) => onMoveBoundaryRef.current?.(entryId, toPage)}
+                      onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
+                      isFirstEntry={boundaryEntry.position === 0 && boundaryEntry.parentId === null}
+                      validGapPositions={validGapPositions}
+                      gapPositionMap={gapPositionMap}
+                      scrollContainerRef={scrollRef}
+                    />
+                  )}
+                  {/* Boundary marker for the first page (auto-boundary, rendered at top) */}
+                  {boundaryEntry && index === 0 && (
+                    <BoundaryMarker
+                      entry={boundaryEntry}
+                      sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "1"}
+                      top={layout.top}
+                      width={containerWidth}
+                      onMove={(entryId, toPage) => onMoveBoundaryRef.current?.(entryId, toPage)}
+                      onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
+                      isFirstEntry={true}
+                      validGapPositions={validGapPositions}
+                      gapPositionMap={gapPositionMap}
+                      scrollContainerRef={scrollRef}
+                    />
+                  )}
+                  {/* Page slot */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: layout.top,
+                      height: layout.displayHeight,
+                      width: "100%",
+                    }}
+                  >
+                    <div className="flex h-full">
+                      {/* Label gutter */}
+                      <div className="flex w-16 shrink-0 items-start justify-end pr-3 pt-2">
+                        <span className="text-xs font-medium text-stone-500">
+                          {page.label || page.position}
+                        </span>
+                      </div>
+                      {/* Page image */}
+                      <div className="flex flex-1 justify-center">
+                        <div
+                          style={{
+                            width: page.width * layout.scale,
+                            height: layout.displayHeight,
+                          }}
+                        >
+                          {isVisible && osdReady ? (
+                            <OSDPage
+                              page={page}
+                              width={page.width * layout.scale}
+                              height={layout.displayHeight}
+                              instancesRef={osdInstancesRef}
+                              index={index}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-stone-200 text-xs text-stone-400">
+                              {page.label || `Page ${page.position}`}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
+                  {/* Gap between pages: PageGap (clickable) or nothing if boundary exists at next page */}
+                  {nextPage && !hasGapBoundary && onPlaceBoundaryRef.current && (
+                    <PageGap
+                      pageNumber={page.position}
+                      onPlace={(afterPage) => onPlaceBoundaryRef.current?.(afterPage)}
+                      top={gapCenterY}
+                      width={containerWidth}
+                    />
+                  )}
                 </div>
               );
             })}
