@@ -23,6 +23,7 @@ export default [
       route("projects/:id/members", "routes/_auth.projects.$id.members.tsx"),
       // --- EXTENSION POINT --- add your domain-specific routes below
       route("projects/:id/volumes", "routes/_auth.projects.$id.volumes.tsx"),
+      route("projects/:id/assignments", "routes/_auth.projects.$id.assignments.tsx"),
     ]),
 
     // Viewer route -- under _auth for auth, but outside project layout (full-page)
@@ -33,6 +34,7 @@ export default [
 
     // API routes
     route("api/entries/save", "routes/api.entries.save.tsx"),
+    route("api/workflow", "routes/api.workflow.tsx"),
 
     // Admin routes
     layout("routes/_auth.admin.tsx", [

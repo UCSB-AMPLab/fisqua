@@ -90,6 +90,20 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             Volumes
           </NavLink>
         )}
+        {canSeeVolumes && (
+          <NavLink
+            to={`/projects/${project.id}/assignments`}
+            className={({ isActive }) =>
+              `border-b-2 px-1 pb-2 text-sm font-medium ${
+                isActive
+                  ? "border-stone-900 text-stone-900"
+                  : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
+              }`
+            }
+          >
+            Assignments
+          </NavLink>
+        )}
       </div>
 
       <Outlet />
