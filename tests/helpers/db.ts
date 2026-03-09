@@ -38,6 +38,11 @@ export async function applyMigrations() {
   await db.exec("CREATE TABLE IF NOT EXISTS volume_pages (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, position INTEGER NOT NULL, image_url TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, label TEXT, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS vp_volume_idx ON volume_pages(volume_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS vp_volume_pos_idx ON volume_pages(volume_id, position)");
+
+  await db.exec("CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), parent_id TEXT, position INTEGER NOT NULL, start_page INTEGER NOT NULL, end_page INTEGER, type TEXT CHECK(type IN ('item', 'blank', 'front_matter', 'back_matter')), title TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_idx ON entries(volume_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS entry_parent_idx ON entries(parent_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_pos_idx ON entries(volume_id, position)");
 }
 
 /**
@@ -46,6 +51,7 @@ export async function applyMigrations() {
 export async function cleanDatabase() {
   const db = env.DB;
   const tables = [
+    "entries",
     "volume_pages",
     "volumes",
     "project_invites",

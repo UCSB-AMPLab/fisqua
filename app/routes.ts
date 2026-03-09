@@ -31,6 +31,9 @@ export default [
       "routes/_auth.viewer.$projectId.$volumeId.tsx"
     ),
 
+    // API routes
+    route("api/entries/save", "routes/api.entries.save.tsx"),
+
     // Admin routes
     layout("routes/_auth.admin.tsx", [
       route("admin/users", "routes/_auth.admin.users.tsx"),
