@@ -5,6 +5,8 @@ import {
   projects,
   projectMembers,
   projectInvites,
+  volumes,
+  entries,
 } from "./schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -32,4 +34,18 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
 export const projectInvitesRelations = relations(projectInvites, ({ one }) => ({
   project: one(projects, { fields: [projectInvites.projectId], references: [projects.id] }),
   inviter: one(users, { fields: [projectInvites.invitedBy], references: [users.id] }),
+}));
+
+export const volumesRelations = relations(volumes, ({ many }) => ({
+  entries: many(entries),
+}));
+
+export const entriesRelations = relations(entries, ({ one, many }) => ({
+  volume: one(volumes, { fields: [entries.volumeId], references: [volumes.id] }),
+  parent: one(entries, {
+    fields: [entries.parentId],
+    references: [entries.id],
+    relationName: "entryParent",
+  }),
+  children: many(entries, { relationName: "entryParent" }),
 }));

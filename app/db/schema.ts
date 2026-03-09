@@ -117,3 +117,28 @@ export const volumePages = sqliteTable(
     index("vp_volume_pos_idx").on(table.volumeId, table.position),
   ]
 );
+
+export const entries = sqliteTable(
+  "entries",
+  {
+    id: text("id").primaryKey(),
+    volumeId: text("volume_id")
+      .notNull()
+      .references(() => volumes.id),
+    parentId: text("parent_id"), // null = top-level entry
+    position: integer("position").notNull(), // 0-based sibling order
+    startPage: integer("start_page").notNull(), // 1-based page number
+    endPage: integer("end_page"), // explicit for children, null for top-level
+    type: text("type", {
+      enum: ["item", "blank", "front_matter", "back_matter"],
+    }), // nullable: unset by default
+    title: text("title"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("entry_volume_idx").on(table.volumeId),
+    index("entry_parent_idx").on(table.parentId),
+    index("entry_volume_pos_idx").on(table.volumeId, table.position),
+  ]
+);
