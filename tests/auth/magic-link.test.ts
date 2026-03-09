@@ -65,7 +65,7 @@ describe("magic link authentication", () => {
         "test-resend-key",
         "scholar@example.com",
         expect.stringContaining("/auth/verify?token="),
-        expect.objectContaining({ appName: "My App", senderEmail: "noreply@example.com" })
+        expect.objectContaining({ appName: "Zasqua: Cataloguing", senderEmail: "noreply@example.com" })
       );
     });
 
