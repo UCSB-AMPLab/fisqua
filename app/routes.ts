@@ -26,6 +26,12 @@ export default [
       route("projects/:id/assignments", "routes/_auth.projects.$id.assignments.tsx"),
     ]),
 
+    // User activity page -- under _auth, outside project layout
+    route(
+      "users/:userId/activity",
+      "routes/_auth.users.$userId.activity.tsx"
+    ),
+
     // Viewer route -- under _auth for auth, but outside project layout (full-page)
     route(
       "projects/:projectId/volumes/:volumeId",
