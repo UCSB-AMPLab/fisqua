@@ -5,6 +5,7 @@ import type { Entry, EntryType, BoundaryAction } from "../../lib/boundary-types"
 import { computeAllRefCodes } from "../../lib/reference-codes";
 import { OutlineEntry } from "./outline-entry";
 import { SubmitDialog } from "../workflow/submit-dialog";
+import { SendBackDialog } from "../workflow/send-back-dialog";
 
 type OutlinePanelProps = {
   entries: Entry[];
@@ -19,6 +20,7 @@ type OutlinePanelProps = {
   volumeId?: string;
   volumeName?: string;
   projectId?: string;
+  reviewComment?: string | null;
 };
 
 type TreeNode = {
@@ -210,10 +212,13 @@ export function OutlinePanel({
   volumeId,
   volumeName,
   projectId,
+  reviewComment,
 }: OutlinePanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [showSendBackDialog, setShowSendBackDialog] = useState(false);
   const workflowFetcher = useFetcher();
+  const acceptFetcher = useFetcher();
   const isUserScrollingRef = useRef(false);
   const userScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -403,6 +408,7 @@ export function OutlinePanel({
       {/* Footer actions */}
       {volumeId && projectId && (
         <div className="shrink-0 border-t border-stone-200 px-3 py-3">
+          {/* Cataloguer: submit for review */}
           {accessLevel === "edit" && volumeStatus === "in_progress" && (
             <button
               onClick={() => setShowSubmitDialog(true)}
@@ -411,11 +417,66 @@ export function OutlinePanel({
               Submit for review
             </button>
           )}
+
+          {/* Cataloguer: sent back -- show reviewer comment and accept corrections */}
+          {accessLevel === "edit" && volumeStatus === "sent_back" && (
+            <div className="space-y-3">
+              {reviewComment && (
+                <div className="rounded border-l-4 border-red-400 bg-red-50 p-3">
+                  <p className="text-xs font-medium text-red-700">Reviewer comment:</p>
+                  <p className="mt-1 text-sm text-red-800">{reviewComment}</p>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (volumeId) {
+                    acceptFetcher.submit(
+                      { volumeId, _action: "accept-corrections" },
+                      { method: "post", action: "/api/entries/save" }
+                    );
+                  }
+                }}
+                disabled={acceptFetcher.state !== "idle"}
+                className="w-full rounded bg-stone-800 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50"
+              >
+                {acceptFetcher.state !== "idle" ? "Accepting..." : "Accept corrections"}
+              </button>
+            </div>
+          )}
+
+          {/* Reviewer: approve and send back */}
+          {accessLevel === "review" && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  workflowFetcher.submit(
+                    { volumeId, projectId, targetStatus: "approved" },
+                    { method: "post", action: "/api/workflow" }
+                  );
+                }}
+                disabled={workflowFetcher.state !== "idle"}
+                className="flex-1 rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => setShowSendBackDialog(true)}
+                disabled={workflowFetcher.state !== "idle"}
+                className="flex-1 rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Send back
+              </button>
+            </div>
+          )}
+
+          {/* Read-only status message */}
           {accessLevel === "readonly" && (
             <p className="text-center text-xs text-stone-400">
               {volumeStatus === "segmented"
                 ? "Submitted for review -- awaiting reviewer"
-                : "Read-only -- you are not assigned to this volume"}
+                : volumeStatus === "approved"
+                  ? "This volume has been approved"
+                  : "Read-only -- you are not assigned to this volume"}
             </p>
           )}
         </div>
@@ -433,6 +494,27 @@ export function OutlinePanel({
                 volumeId,
                 projectId,
                 targetStatus: "segmented",
+              },
+              { method: "post", action: "/api/workflow" }
+            );
+          }
+        }}
+        volumeName={volumeName ?? ""}
+      />
+
+      {/* Send back dialog */}
+      <SendBackDialog
+        isOpen={showSendBackDialog}
+        onClose={() => setShowSendBackDialog(false)}
+        onConfirm={(comment) => {
+          setShowSendBackDialog(false);
+          if (volumeId && projectId) {
+            workflowFetcher.submit(
+              {
+                volumeId,
+                projectId,
+                targetStatus: "sent_back",
+                comment,
               },
               { method: "post", action: "/api/workflow" }
             );

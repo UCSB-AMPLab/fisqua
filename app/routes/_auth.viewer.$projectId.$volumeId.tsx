@@ -239,6 +239,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             volumeId={volume.id}
             volumeName={volume.name}
             projectId={projectId}
+            reviewComment={volume.reviewComment}
           />
         </div>
       </div>

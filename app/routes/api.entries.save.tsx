@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { userContext } from "../context";
 import {
   requireProjectRole,
@@ -7,7 +7,7 @@ import {
 } from "../lib/permissions.server";
 import { saveEntries } from "../lib/entries.server";
 import { logActivity } from "../lib/workflow.server";
-import { volumes } from "../db/schema";
+import { volumes, entries } from "../db/schema";
 import type { Route } from "./+types/api.entries.save";
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -19,7 +19,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   const db = drizzle(context.cloudflare.env.DB);
 
   const formData = await request.formData();
+  const actionType = formData.get("_action") as string | null;
   const volumeId = formData.get("volumeId") as string;
+
+  // --- Accept corrections action ---
+  if (actionType === "accept-corrections") {
+    if (!volumeId) {
+      return Response.json({ error: "volumeId is required" }, { status: 400 });
+    }
+    return handleAcceptCorrections(db, user.id, user.isAdmin, volumeId);
+  }
+
+  // --- Normal save flow ---
   const entriesJson = formData.get("entries") as string;
 
   if (!volumeId || !entriesJson) {
@@ -109,4 +120,81 @@ export async function action({ request, context }: Route.ActionArgs) {
     const message = err instanceof Error ? err.message : "Save failed";
     return Response.json({ error: message }, { status: 400 });
   }
+}
+
+/**
+ * Accept corrections: clear all modifiedBy values for a volume's entries
+ * and auto-transition from sent_back to in_progress.
+ */
+async function handleAcceptCorrections(
+  db: ReturnType<typeof drizzle>,
+  userId: string,
+  isAdmin: boolean,
+  volumeId: string
+) {
+  // Look up volume
+  const volume = await db
+    .select({
+      projectId: volumes.projectId,
+      status: volumes.status,
+      assignedTo: volumes.assignedTo,
+      assignedReviewer: volumes.assignedReviewer,
+    })
+    .from(volumes)
+    .where(eq(volumes.id, volumeId))
+    .get();
+
+  if (!volume) {
+    return Response.json({ error: "Volume not found" }, { status: 404 });
+  }
+
+  // Verify access: only the assigned cataloguer (or lead/admin) can accept corrections
+  const memberships = await requireProjectRole(
+    db,
+    userId,
+    volume.projectId,
+    ["lead", "cataloguer"],
+    isAdmin
+  );
+
+  const userRole = memberships[0]?.role ?? "cataloguer";
+  const accessLevel = requireVolumeAccess(userId, volume, userRole, isAdmin);
+
+  if (accessLevel !== "edit") {
+    return Response.json(
+      { error: "You do not have edit access to this volume" },
+      { status: 403 }
+    );
+  }
+
+  const now = Date.now();
+
+  // Clear modifiedBy on all entries for this volume
+  await db
+    .update(entries)
+    .set({ modifiedBy: null, updatedAt: now })
+    .where(
+      and(eq(entries.volumeId, volumeId), isNotNull(entries.modifiedBy))
+    );
+
+  // Auto-transition: sent_back -> in_progress
+  if (volume.status === "sent_back") {
+    await db
+      .update(volumes)
+      .set({ status: "in_progress", reviewComment: null, updatedAt: now })
+      .where(and(eq(volumes.id, volumeId), eq(volumes.status, "sent_back")));
+
+    await logActivity(db, userId, "status_changed", {
+      projectId: volume.projectId,
+      volumeId,
+      detail: JSON.stringify({
+        from: "sent_back",
+        to: "in_progress",
+        auto: true,
+        action: "accept-corrections",
+      }),
+    });
+  }
+
+  return Response.json({ success: true });
 }
