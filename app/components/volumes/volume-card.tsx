@@ -19,6 +19,7 @@ const statusBadgeColors: Record<string, string> = {
   segmented: "bg-amber-100 text-amber-800",
   reviewed: "bg-green-100 text-green-800",
   approved: "bg-emerald-100 text-emerald-800",
+  sent_back: "bg-red-100 text-red-700",
 };
 
 const statusLabels: Record<string, string> = {
@@ -27,6 +28,7 @@ const statusLabels: Record<string, string> = {
   segmented: "Segmented",
   reviewed: "Reviewed",
   approved: "Approved",
+  sent_back: "Needs revision",
 };
 
 export function VolumeCard({ volume, projectId }: VolumeCardProps) {
