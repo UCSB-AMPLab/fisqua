@@ -1,7 +1,35 @@
+/**
+ * Role-dependent dashboard route.
+ * Determines user's primary role (lead > reviewer > cataloguer) and
+ * renders the appropriate dashboard view with role-specific data.
+ */
+
 import { Link } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
+import { eq, sql, inArray } from "drizzle-orm";
 import { userContext } from "../context";
-import { getUserProjects } from "../lib/projects.server";
+import {
+  volumes,
+  projectMembers,
+  users,
+  projects,
+  entries,
+} from "../db/schema";
+import {
+  CataloguerDashboard,
+  type CataloguerGroups,
+} from "../components/dashboard/cataloguer-dashboard";
+import {
+  ReviewerDashboard,
+  type ReviewerGroups,
+} from "../components/dashboard/reviewer-dashboard";
+import {
+  LeadDashboard,
+  type ProjectOverview,
+  type AttentionItem,
+  type TeamMember,
+} from "../components/dashboard/lead-dashboard";
+import type { VolumeCardData } from "../components/dashboard/volume-status-card";
 import type { Route } from "./+types/_auth.dashboard";
 
 export function meta() {
@@ -11,31 +39,487 @@ export function meta() {
   ];
 }
 
+type DashboardRole = "lead" | "reviewer" | "cataloguer" | "none";
+
+/**
+ * Determine user's primary role across all projects.
+ * Priority: lead > reviewer > cataloguer (per RESEARCH.md)
+ */
+function determinePrimaryRole(
+  memberships: { role: string }[]
+): DashboardRole {
+  const roles = new Set(memberships.map((m) => m.role));
+  if (roles.has("lead")) return "lead";
+  if (roles.has("reviewer")) return "reviewer";
+  if (roles.has("cataloguer")) return "cataloguer";
+  return "none";
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  const projects = await getUserProjects(db, user.id, user.isAdmin);
+  // Get all memberships for role determination
+  const memberships = await db
+    .select({
+      projectId: projectMembers.projectId,
+      role: projectMembers.role,
+    })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, user.id))
+    .all();
 
-  return { user, projects };
+  const primaryRole = user.isAdmin ? "lead" : determinePrimaryRole(memberships);
+
+  if (primaryRole === "none") {
+    return { user, primaryRole, data: null };
+  }
+
+  if (primaryRole === "cataloguer") {
+    return {
+      user,
+      primaryRole,
+      data: await loadCataloguerData(db, user.id),
+    };
+  }
+
+  if (primaryRole === "reviewer") {
+    return {
+      user,
+      primaryRole,
+      data: await loadReviewerData(db, user.id),
+    };
+  }
+
+  // lead or admin
+  return {
+    user,
+    primaryRole,
+    data: await loadLeadData(db, user.id, user.isAdmin),
+  };
 }
 
-function formatDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+/**
+ * Load cataloguer dashboard data: all assigned volumes grouped by urgency.
+ */
+async function loadCataloguerData(
+  db: ReturnType<typeof drizzle>,
+  userId: string
+): Promise<{ groups: CataloguerGroups }> {
+  // All volumes assigned to this cataloguer with entry counts
+  const assignedVolumes = await db
+    .select({
+      id: volumes.id,
+      name: volumes.name,
+      pageCount: volumes.pageCount,
+      status: volumes.status,
+      projectId: volumes.projectId,
+      updatedAt: volumes.updatedAt,
+      reviewComment: volumes.reviewComment,
+    })
+    .from(volumes)
+    .where(eq(volumes.assignedTo, userId))
+    .all();
+
+  if (assignedVolumes.length === 0) {
+    return {
+      groups: {
+        needsAttention: [],
+        inProgress: [],
+        readyToStart: [],
+        completed: [],
+      },
+    };
+  }
+
+  // Get entry counts for these volumes in a single query
+  const volumeIds = assignedVolumes.map((v) => v.id);
+  const entryCounts = await db
+    .select({
+      volumeId: entries.volumeId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+    .from(entries)
+    .where(inArray(entries.volumeId, volumeIds))
+    .groupBy(entries.volumeId)
+    .all();
+
+  const entryCountMap = new Map(
+    entryCounts.map((e) => [e.volumeId, e.count])
+  );
+
+  // Get project names
+  const projectIds = [...new Set(assignedVolumes.map((v) => v.projectId))];
+  const projectRows = await db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(inArray(projects.id, projectIds))
+    .all();
+
+  const projectNameMap = new Map(projectRows.map((p) => [p.id, p.name]));
+
+  // Build card data and group
+  const groups: CataloguerGroups = {
+    needsAttention: [],
+    inProgress: [],
+    readyToStart: [],
+    completed: [],
+  };
+
+  for (const vol of assignedVolumes) {
+    const card: VolumeCardData = {
+      id: vol.id,
+      name: vol.name,
+      pageCount: vol.pageCount,
+      entryCount: entryCountMap.get(vol.id) ?? 0,
+      status: vol.status,
+      projectId: vol.projectId,
+      projectName: projectNameMap.get(vol.projectId) ?? "",
+      updatedAt: vol.updatedAt,
+      reviewComment: vol.reviewComment,
+    };
+
+    switch (vol.status) {
+      case "sent_back":
+        groups.needsAttention.push(card);
+        break;
+      case "in_progress":
+        groups.inProgress.push(card);
+        break;
+      case "unstarted":
+        groups.readyToStart.push(card);
+        break;
+      default:
+        groups.completed.push(card);
+        break;
+    }
+  }
+
+  // Sort each group by most recent activity (updatedAt desc)
+  const sortByRecent = (a: VolumeCardData, b: VolumeCardData) =>
+    b.updatedAt - a.updatedAt;
+
+  groups.needsAttention.sort(sortByRecent);
+  groups.inProgress.sort(sortByRecent);
+  groups.readyToStart.sort(sortByRecent);
+  groups.completed.sort(sortByRecent);
+
+  return { groups };
+}
+
+/**
+ * Load reviewer dashboard data: all volumes assigned for review grouped by status.
+ */
+async function loadReviewerData(
+  db: ReturnType<typeof drizzle>,
+  userId: string
+): Promise<{ groups: ReviewerGroups }> {
+  const reviewVolumes = await db
+    .select({
+      id: volumes.id,
+      name: volumes.name,
+      pageCount: volumes.pageCount,
+      status: volumes.status,
+      projectId: volumes.projectId,
+      updatedAt: volumes.updatedAt,
+      assignedTo: volumes.assignedTo,
+    })
+    .from(volumes)
+    .where(eq(volumes.assignedReviewer, userId))
+    .all();
+
+  if (reviewVolumes.length === 0) {
+    return {
+      groups: { awaitingReview: [], reviewed: [], approved: [] },
+    };
+  }
+
+  // Get entry counts
+  const volumeIds = reviewVolumes.map((v) => v.id);
+  const entryCounts = await db
+    .select({
+      volumeId: entries.volumeId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+    .from(entries)
+    .where(inArray(entries.volumeId, volumeIds))
+    .groupBy(entries.volumeId)
+    .all();
+
+  const entryCountMap = new Map(
+    entryCounts.map((e) => [e.volumeId, e.count])
+  );
+
+  // Get cataloguer names
+  const cataloguerIds = [
+    ...new Set(reviewVolumes.map((v) => v.assignedTo).filter(Boolean)),
+  ] as string[];
+
+  let cataloguerNameMap = new Map<string, string>();
+  if (cataloguerIds.length > 0) {
+    const cataloguers = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, cataloguerIds))
+      .all();
+    cataloguerNameMap = new Map(
+      cataloguers.map((u) => [u.id, u.name ?? "Unnamed"])
+    );
+  }
+
+  // Get project names
+  const projectIds = [...new Set(reviewVolumes.map((v) => v.projectId))];
+  const projectRows = await db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(inArray(projects.id, projectIds))
+    .all();
+
+  const projectNameMap = new Map(projectRows.map((p) => [p.id, p.name]));
+
+  const groups: ReviewerGroups = {
+    awaitingReview: [],
+    reviewed: [],
+    approved: [],
+  };
+
+  for (const vol of reviewVolumes) {
+    const card: VolumeCardData = {
+      id: vol.id,
+      name: vol.name,
+      pageCount: vol.pageCount,
+      entryCount: entryCountMap.get(vol.id) ?? 0,
+      status: vol.status,
+      projectId: vol.projectId,
+      projectName: projectNameMap.get(vol.projectId) ?? "",
+      updatedAt: vol.updatedAt,
+      cataloguerName: vol.assignedTo
+        ? cataloguerNameMap.get(vol.assignedTo) ?? null
+        : null,
+    };
+
+    switch (vol.status) {
+      case "segmented":
+        groups.awaitingReview.push(card);
+        break;
+      case "reviewed":
+        groups.reviewed.push(card);
+        break;
+      case "approved":
+        groups.approved.push(card);
+        break;
+      // Other statuses (in_progress, unstarted, sent_back) not shown for reviewers
+    }
+  }
+
+  const sortByRecent = (a: VolumeCardData, b: VolumeCardData) =>
+    b.updatedAt - a.updatedAt;
+
+  groups.awaitingReview.sort(sortByRecent);
+  groups.reviewed.sort(sortByRecent);
+  groups.approved.sort(sortByRecent);
+
+  return { groups };
+}
+
+/**
+ * Load lead dashboard data: cross-project overview with attention items.
+ */
+async function loadLeadData(
+  db: ReturnType<typeof drizzle>,
+  userId: string,
+  isAdmin: boolean
+): Promise<{ projects: ProjectOverview[]; attentionItems: AttentionItem[] }> {
+  // Get projects where user is lead (or all projects if admin)
+  let leadProjectIds: string[];
+
+  if (isAdmin) {
+    const allProjects = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .all();
+    leadProjectIds = allProjects.map((p) => p.id);
+  } else {
+    const leadMemberships = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId))
+      .all();
+    // Filter to lead role only for lead dashboard
+    const allMemberships = await db
+      .select({
+        projectId: projectMembers.projectId,
+        role: projectMembers.role,
+      })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId))
+      .all();
+    leadProjectIds = allMemberships
+      .filter((m) => m.role === "lead")
+      .map((m) => m.projectId);
+  }
+
+  if (leadProjectIds.length === 0) {
+    return { projects: [], attentionItems: [] };
+  }
+
+  // Fetch project details
+  const projectRows = await db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(inArray(projects.id, leadProjectIds))
+    .all();
+
+  // Fetch all volumes for these projects
+  const allVolumes = await db
+    .select({
+      id: volumes.id,
+      projectId: volumes.projectId,
+      name: volumes.name,
+      status: volumes.status,
+      assignedTo: volumes.assignedTo,
+      assignedReviewer: volumes.assignedReviewer,
+      updatedAt: volumes.updatedAt,
+    })
+    .from(volumes)
+    .where(inArray(volumes.projectId, leadProjectIds))
+    .all();
+
+  // Fetch all members for these projects
+  const allMembers = await db
+    .select({
+      projectId: projectMembers.projectId,
+      userId: projectMembers.userId,
+      role: projectMembers.role,
+    })
+    .from(projectMembers)
+    .where(inArray(projectMembers.projectId, leadProjectIds))
+    .all();
+
+  // Fetch user details for members
+  const memberUserIds = [...new Set(allMembers.map((m) => m.userId))];
+  let userMap = new Map<string, { name: string | null; lastActiveAt: number | null }>();
+  if (memberUserIds.length > 0) {
+    const memberUsers = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastActiveAt: users.lastActiveAt,
+      })
+      .from(users)
+      .where(inArray(users.id, memberUserIds))
+      .all();
+    userMap = new Map(
+      memberUsers.map((u) => [u.id, { name: u.name, lastActiveAt: u.lastActiveAt }])
+    );
+  }
+
+  const now = Date.now();
+  const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+  const attentionItems: AttentionItem[] = [];
+
+  // Build project overviews
+  const projectOverviews: ProjectOverview[] = projectRows.map((project) => {
+    const projectVolumes = allVolumes.filter(
+      (v) => v.projectId === project.id
+    );
+    const projectMemberRows = allMembers.filter(
+      (m) => m.projectId === project.id
+    );
+
+    // Status counts
+    const statusCounts: Record<string, number> = {};
+    for (const vol of projectVolumes) {
+      statusCounts[vol.status] = (statusCounts[vol.status] ?? 0) + 1;
+    }
+
+    // Attention: volumes waiting >3 days for review
+    for (const vol of projectVolumes) {
+      if (vol.status === "segmented" && now - vol.updatedAt > THREE_DAYS) {
+        attentionItems.push({
+          type: "waiting",
+          description: `"${vol.name}" has been waiting for review for ${Math.floor((now - vol.updatedAt) / (1000 * 60 * 60 * 24))} days`,
+          link: `/projects/${project.id}/assignments`,
+        });
+      }
+    }
+
+    // Attention: unassigned volumes
+    const unassigned = projectVolumes.filter((v) => !v.assignedTo);
+    if (unassigned.length > 0) {
+      attentionItems.push({
+        type: "unassigned",
+        description: `${unassigned.length} unassigned volume${unassigned.length > 1 ? "s" : ""} in "${project.name}"`,
+        link: `/projects/${project.id}/assignments`,
+      });
+    }
+
+    // Count volumes per member
+    const memberVolumeCounts = new Map<string, number>();
+    for (const vol of projectVolumes) {
+      if (vol.assignedTo) {
+        memberVolumeCounts.set(
+          vol.assignedTo,
+          (memberVolumeCounts.get(vol.assignedTo) ?? 0) + 1
+        );
+      }
+      if (vol.assignedReviewer) {
+        memberVolumeCounts.set(
+          vol.assignedReviewer,
+          (memberVolumeCounts.get(vol.assignedReviewer) ?? 0) + 1
+        );
+      }
+    }
+
+    // Build team member list
+    const teamMembers: TeamMember[] = projectMemberRows.map((m) => {
+      const userInfo = userMap.get(m.userId);
+
+      // Attention: inactive members (>7 days)
+      if (
+        userInfo?.lastActiveAt &&
+        now - userInfo.lastActiveAt > SEVEN_DAYS
+      ) {
+        attentionItems.push({
+          type: "inactive",
+          description: `${userInfo.name ?? "Unnamed"} has been inactive for ${Math.floor((now - userInfo.lastActiveAt) / (1000 * 60 * 60 * 24))} days`,
+          link: `/users/${m.userId}/activity`,
+        });
+      }
+
+      return {
+        id: m.userId,
+        name: userInfo?.name ?? null,
+        role: m.role,
+        lastActiveAt: userInfo?.lastActiveAt ?? null,
+        volumeCount: memberVolumeCounts.get(m.userId) ?? 0,
+      };
+    });
+
+    return {
+      id: project.id,
+      name: project.name,
+      statusCounts,
+      totalVolumes: projectVolumes.length,
+      teamMembers,
+    };
   });
+
+  return {
+    projects: projectOverviews,
+    attentionItems,
+  };
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { user, projects } = loaderData;
+  const { user, primaryRole, data } = loaderData;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-stone-900">Projects</h1>
+        <h1 className="text-xl font-semibold text-stone-900">Dashboard</h1>
         {user.isAdmin && (
           <Link
             to="/projects/new"
@@ -46,51 +530,34 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         )}
       </div>
 
-      {projects.length === 0 ? (
-        <div className="mt-12 text-center">
-          <p className="text-sm text-stone-500">No projects yet.</p>
-          {user.isAdmin && (
-            <Link
-              to="/projects/new"
-              className="mt-2 inline-block text-sm font-medium text-stone-700 underline hover:text-stone-900"
-            >
-              Create your first project
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <Link
-              key={project.id}
-              to={`/projects/${project.id}`}
-              className="block rounded-lg border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm"
-            >
-              <h2 className="font-medium text-stone-900">{project.name}</h2>
-              {project.description && (
-                <p className="mt-1 text-sm text-stone-500">
-                  {project.description}
-                </p>
-              )}
-              <div className="mt-3 flex items-center justify-between">
-                <div className="flex gap-1">
-                  {project.roles.map((role) => (
-                    <span
-                      key={role}
-                      className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600"
-                    >
-                      {role}
-                    </span>
-                  ))}
-                </div>
-                <span className="text-xs text-stone-400">
-                  {formatDate(project.updatedAt)}
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="mt-6">
+        {primaryRole === "none" || !data ? (
+          <div className="mt-12 text-center">
+            <p className="text-sm text-stone-500">
+              No projects yet. Ask a project lead to add you.
+            </p>
+          </div>
+        ) : primaryRole === "cataloguer" ? (
+          <CataloguerDashboard
+            groups={(data as { groups: CataloguerGroups }).groups}
+          />
+        ) : primaryRole === "reviewer" ? (
+          <ReviewerDashboard
+            groups={(data as { groups: ReviewerGroups }).groups}
+          />
+        ) : (
+          <LeadDashboard
+            projects={
+              (data as { projects: ProjectOverview[]; attentionItems: AttentionItem[] })
+                .projects
+            }
+            attentionItems={
+              (data as { projects: ProjectOverview[]; attentionItems: AttentionItem[] })
+                .attentionItems
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
