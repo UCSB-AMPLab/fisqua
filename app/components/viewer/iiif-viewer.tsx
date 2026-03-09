@@ -24,7 +24,6 @@ type IIIFViewerProps = {
   onPageChange?: (pageIndex: number) => void;
   boundaries?: Entry[];
   onPlaceBoundary?: (afterPage: number) => void;
-  onMoveBoundary?: (entryId: string, toPage: number) => void;
   onDeleteBoundary?: (entryId: string) => void;
 };
 
@@ -60,7 +59,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 }
 
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
-  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onMoveBoundary, onDeleteBoundary }, ref) {
+  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
@@ -74,8 +73,6 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     // Store boundary callbacks in refs to avoid recreating scroll handler
     const onPlaceBoundaryRef = useRef(onPlaceBoundary);
     onPlaceBoundaryRef.current = onPlaceBoundary;
-    const onMoveBoundaryRef = useRef(onMoveBoundary);
-    onMoveBoundaryRef.current = onMoveBoundary;
     const onDeleteBoundaryRef = useRef(onDeleteBoundary);
     onDeleteBoundaryRef.current = onDeleteBoundary;
 
@@ -109,29 +106,13 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       return labels;
     }, [boundaries]);
 
-    // Valid gap positions: page numbers where a gap exists (pages 1..N, gaps after each page)
-    // A gap "after page P" means the gap between page P and page P+1
-    // Page numbers are 1-based (position field from volumePages)
-    const validGapPositions = useMemo(() => {
-      return pages.map((p) => p.position);
-    }, [pages]);
+    // Memoize page layouts — only recalculates when pages, width, or zoom change
+    const layouts = useMemo(
+      () => computeLayouts(pages, containerWidth, zoom),
+      [pages, containerWidth, zoom]
+    );
 
-    // Map from page number (afterPage) to the Y position of that gap center
-    const gapPositionMap = useMemo(() => {
-      const map = new Map<number, number>();
-      for (let i = 0; i < layouts.length; i++) {
-        const page = pages[i];
-        // The gap center after this page
-        const gapCenter = layouts[i].top + layouts[i].displayHeight + PAGE_GAP / 2;
-        map.set(page.position, gapCenter);
-      }
-      // Also add the position before the first page (page 1's start boundary)
-      if (layouts.length > 0) {
-        // The auto-boundary at page 1 sits at the top
-        map.set(pages[0].position, layouts[0].top);
-      }
-      return map;
-    }, [layouts, pages]);
+    // (drag-related gap maps removed — drag-to-move deferred to Phase 4)
 
     // Load OpenSeadragon script
     useEffect(() => {
@@ -152,12 +133,6 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       observer.observe(el);
       return () => observer.disconnect();
     }, []);
-
-    // Memoize page layouts — only recalculates when pages, width, or zoom change
-    const layouts = useMemo(
-      () => computeLayouts(pages, containerWidth, zoom),
-      [pages, containerWidth, zoom]
-    );
 
     const totalHeight = useMemo(() => {
       if (layouts.length === 0) return 0;
@@ -315,12 +290,8 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                       sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "?"}
                       top={layout.top - PAGE_GAP / 2}
                       width={containerWidth}
-                      onMove={(entryId, toPage) => onMoveBoundaryRef.current?.(entryId, toPage)}
                       onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
                       isFirstEntry={boundaryEntry.position === 0 && boundaryEntry.parentId === null}
-                      validGapPositions={validGapPositions}
-                      gapPositionMap={gapPositionMap}
-                      scrollContainerRef={scrollRef}
                     />
                   )}
                   {/* Boundary marker for the first page (auto-boundary, rendered at top) */}
@@ -330,12 +301,8 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                       sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "1"}
                       top={layout.top}
                       width={containerWidth}
-                      onMove={(entryId, toPage) => onMoveBoundaryRef.current?.(entryId, toPage)}
                       onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
                       isFirstEntry={true}
-                      validGapPositions={validGapPositions}
-                      gapPositionMap={gapPositionMap}
-                      scrollContainerRef={scrollRef}
                     />
                   )}
                   {/* Page slot */}
@@ -382,7 +349,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                   {/* Gap between pages: PageGap (clickable) or nothing if boundary exists at next page */}
                   {nextPage && !hasGapBoundary && onPlaceBoundaryRef.current && (
                     <PageGap
-                      pageNumber={page.position}
+                      pageNumber={nextPage.position}
                       onPlace={(afterPage) => onPlaceBoundaryRef.current?.(afterPage)}
                       top={gapCenterY}
                       width={containerWidth}
