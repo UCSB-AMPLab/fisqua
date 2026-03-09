@@ -277,19 +277,6 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       },
     }));
 
-    // Expose scroll-to-page API on window for Phase 3 validation (VIEW-04)
-    useEffect(() => {
-      (window as any).__scrollToPage = (index: number) => {
-        const currentLayouts = layoutsRef.current;
-        if (index >= 0 && index < currentLayouts.length && scrollRef.current) {
-          scrollRef.current.scrollTo({ top: currentLayouts[index].top, behavior: "smooth" });
-        }
-      };
-      return () => {
-        delete (window as any).__scrollToPage;
-      };
-    }, []);
-
     // Cleanup OSD instances that are out of range
     useEffect(() => {
       const instances = osdInstancesRef.current;
