@@ -54,6 +54,7 @@ export function boundaryReducer(
         endY: null,
         type: null,
         title: null,
+        modifiedBy: action.modifiedBy ?? null,
         createdAt: now,
         updatedAt: now,
       };
@@ -99,7 +100,13 @@ export function boundaryReducer(
 
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, startPage: newStartPage, startY: newStartY, updatedAt: Date.now() }
+          ? {
+              ...e,
+              startPage: newStartPage,
+              startY: newStartY,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 
@@ -158,7 +165,12 @@ export function boundaryReducer(
       // Indent: set parentId to previous sibling
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, parentId: previousSibling.id, updatedAt: Date.now() }
+          ? {
+              ...e,
+              parentId: previousSibling.id,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 
@@ -185,6 +197,7 @@ export function boundaryReducer(
               parentId: parent.parentId,
               endPage: null, // clear endPage when becoming top-level
               endY: null, // clear endY when becoming top-level
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
               updatedAt: Date.now(),
             }
           : e
@@ -201,7 +214,12 @@ export function boundaryReducer(
     case "SET_TYPE": {
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, type: action.entryType, updatedAt: Date.now() }
+          ? {
+              ...e,
+              type: action.entryType,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 
@@ -216,7 +234,12 @@ export function boundaryReducer(
     case "SET_TITLE": {
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, title: action.title, updatedAt: Date.now() }
+          ? {
+              ...e,
+              title: action.title,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 
@@ -231,7 +254,12 @@ export function boundaryReducer(
     case "SET_END_PAGE": {
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, endPage: action.endPage, updatedAt: Date.now() }
+          ? {
+              ...e,
+              endPage: action.endPage,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 
@@ -246,7 +274,12 @@ export function boundaryReducer(
     case "SET_END_Y": {
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, endY: action.endY, updatedAt: Date.now() }
+          ? {
+              ...e,
+              endY: action.endY,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
           : e
       );
 

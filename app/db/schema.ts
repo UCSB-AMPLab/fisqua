@@ -11,6 +11,7 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   name: text("name"),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
+  lastActiveAt: integer("last_active_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -84,12 +85,13 @@ export const volumes = sqliteTable(
     manifestUrl: text("manifest_url").notNull(),
     pageCount: integer("page_count").notNull(),
     status: text("status", {
-      enum: ["unstarted", "in_progress", "segmented", "reviewed", "approved"],
+      enum: ["unstarted", "in_progress", "segmented", "sent_back", "reviewed", "approved"],
     })
       .notNull()
       .default("unstarted"),
     assignedTo: text("assigned_to").references(() => users.id),
     assignedReviewer: text("assigned_reviewer").references(() => users.id),
+    reviewComment: text("review_comment"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -136,6 +138,7 @@ export const entries = sqliteTable(
       enum: ["item", "blank", "front_matter", "back_matter"],
     }), // nullable: unset by default
     title: text("title"),
+    modifiedBy: text("modified_by").references(() => users.id),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -143,5 +146,33 @@ export const entries = sqliteTable(
     index("entry_volume_idx").on(table.volumeId),
     index("entry_parent_idx").on(table.parentId),
     index("entry_volume_pos_idx").on(table.volumeId, table.position),
+  ]
+);
+
+export const activityLog = sqliteTable(
+  "activity_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    projectId: text("project_id").references(() => projects.id),
+    volumeId: text("volume_id").references(() => volumes.id),
+    event: text("event", {
+      enum: [
+        "login",
+        "volume_opened",
+        "status_changed",
+        "review_submitted",
+        "assignment_changed",
+      ],
+    }).notNull(),
+    detail: text("detail"), // JSON blob for event-specific data
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("al_user_idx").on(table.userId),
+    index("al_project_idx").on(table.projectId),
+    index("al_created_idx").on(table.createdAt),
   ]
 );

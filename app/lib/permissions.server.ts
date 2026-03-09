@@ -63,3 +63,43 @@ export async function requireProjectRole(
 
   return memberships;
 }
+
+// --- EXTENSION POINT --- domain-specific access control below
+
+/**
+ * Determine the access level for a user on a specific volume.
+ * Pure function -- no DB query, takes pre-fetched volume data.
+ *
+ * Returns:
+ * - "edit": user can modify boundaries and metadata
+ * - "review": user can review and edit (reviewer role)
+ * - "readonly": user can view but not modify
+ */
+export function requireVolumeAccess(
+  userId: string,
+  volume: {
+    assignedTo: string | null;
+    assignedReviewer: string | null;
+    status: string;
+  },
+  userRole: string,
+  isAdmin: boolean
+): "edit" | "review" | "readonly" {
+  if (isAdmin || userRole === "lead") return "edit";
+
+  if (userRole === "cataloguer") {
+    if (volume.assignedTo !== userId) return "readonly";
+    if (["unstarted", "in_progress", "sent_back"].includes(volume.status)) {
+      return "edit";
+    }
+    return "readonly";
+  }
+
+  if (userRole === "reviewer") {
+    if (volume.assignedReviewer !== userId) return "readonly";
+    if (["segmented", "reviewed"].includes(volume.status)) return "review";
+    return "readonly";
+  }
+
+  return "readonly";
+}

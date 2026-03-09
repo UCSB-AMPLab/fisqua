@@ -11,6 +11,7 @@ export type Entry = {
   endY: number | null; // 0.0-1.0, null for top-level
   type: EntryType | null; // null = unset
   title: string | null;
+  modifiedBy: string | null; // userId of last modifier, null = original cataloguer
   createdAt: number;
   updatedAt: number;
 };
@@ -24,15 +25,15 @@ export type BoundaryState = {
 
 export type BoundaryAction =
   | { type: "INIT"; entries: Entry[] }
-  | { type: "ADD_BOUNDARY"; startPage: number; startY?: number; id?: string }
-  | { type: "MOVE_BOUNDARY"; entryId: string; startPage: number; toY?: number }
-  | { type: "DELETE_BOUNDARY"; entryId: string }
-  | { type: "INDENT"; entryId: string }
-  | { type: "OUTDENT"; entryId: string }
-  | { type: "SET_TYPE"; entryId: string; entryType: EntryType | null }
-  | { type: "SET_TITLE"; entryId: string; title: string }
-  | { type: "SET_END_PAGE"; entryId: string; endPage: number }
-  | { type: "SET_END_Y"; entryId: string; endY: number }
+  | { type: "ADD_BOUNDARY"; startPage: number; startY?: number; id?: string; modifiedBy?: string }
+  | { type: "MOVE_BOUNDARY"; entryId: string; startPage: number; toY?: number; modifiedBy?: string }
+  | { type: "DELETE_BOUNDARY"; entryId: string; modifiedBy?: string }
+  | { type: "INDENT"; entryId: string; modifiedBy?: string }
+  | { type: "OUTDENT"; entryId: string; modifiedBy?: string }
+  | { type: "SET_TYPE"; entryId: string; entryType: EntryType | null; modifiedBy?: string }
+  | { type: "SET_TITLE"; entryId: string; title: string; modifiedBy?: string }
+  | { type: "SET_END_PAGE"; entryId: string; endPage: number; modifiedBy?: string }
+  | { type: "SET_END_Y"; entryId: string; endY: number; modifiedBy?: string }
   | { type: "MARK_SAVED" }
   | { type: "MARK_SAVING" }
   | { type: "MARK_DIRTY" };

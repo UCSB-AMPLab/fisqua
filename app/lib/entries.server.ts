@@ -37,6 +37,7 @@ export async function loadEntries(
       endY: null,
       type: null,
       title: null,
+      modifiedBy: null,
       createdAt: now,
       updatedAt: now,
     },
@@ -74,6 +75,7 @@ export async function saveEntries(
     endY: e.endY,
     type: e.type,
     title: e.title,
+    modifiedBy: e.modifiedBy,
     createdAt: e.createdAt,
     updatedAt: now,
   }));
@@ -162,6 +164,7 @@ function rowToEntry(row: typeof entries.$inferSelect): Entry {
     endY: row.endY,
     type: row.type,
     title: row.title,
+    modifiedBy: row.modifiedBy,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
