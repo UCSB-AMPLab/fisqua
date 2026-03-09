@@ -142,7 +142,9 @@ export function LeadDashboard({
   if (projects.length === 0) {
     return (
       <div className="mt-12 text-center">
-        <p className="text-sm text-stone-500">No projects yet.</p>
+        <p className="text-sm text-stone-500">
+          No projects yet. Create a project and add volumes to get started.
+        </p>
       </div>
     );
   }

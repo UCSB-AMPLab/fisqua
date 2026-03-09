@@ -43,6 +43,7 @@ export const projects = sqliteTable("projects", {
     .references(() => users.id),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  archivedAt: integer("archived_at"),
 });
 
 export const projectMembers = sqliteTable(

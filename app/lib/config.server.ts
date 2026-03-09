@@ -25,7 +25,7 @@ export function getAppConfig(env: {
   SENDER_EMAIL?: string;
 }): AppConfig {
   return {
-    appName: env.APP_NAME || "My App",
+    appName: env.APP_NAME || "Zasqua: Cataloguing",
     senderEmail: env.SENDER_EMAIL || "noreply@example.com",
   };
 }

@@ -43,6 +43,13 @@
       "when": 1773032943972,
       "tag": "0005_tiresome_aqueduct",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1773068383299,
+      "tag": "0006_blue_salo",
+      "breakpoints": true
     }
   ]
 }

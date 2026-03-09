@@ -6,7 +6,7 @@
 
 import { Link } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, isNull } from "drizzle-orm";
 import { userContext } from "../context";
 import {
   volumes,
@@ -338,6 +338,7 @@ async function loadLeadData(
     const allProjects = await db
       .select({ id: projects.id })
       .from(projects)
+      .where(isNull(projects.archivedAt))
       .all();
     leadProjectIds = allProjects.map((p) => p.id);
   } else {
@@ -521,21 +522,57 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-stone-900">Dashboard</h1>
         {user.isAdmin && (
-          <Link
-            to="/projects/new"
-            className="rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-800"
-          >
-            New project
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/admin/users"
+              className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+            >
+              Admin
+            </Link>
+            <Link
+              to="/projects/new"
+              className="rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            >
+              New project
+            </Link>
+          </div>
         )}
       </div>
 
       <div className="mt-6">
         {primaryRole === "none" || !data ? (
           <div className="mt-12 text-center">
-            <p className="text-sm text-stone-500">
-              No projects yet. Ask a project lead to add you.
-            </p>
+            {user.isAdmin ? (
+              <div className="space-y-4">
+                <p className="text-sm text-stone-500">
+                  No projects yet. Get started by creating a project or managing users.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <Link
+                    to="/projects/new"
+                    className="rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                  >
+                    New project
+                  </Link>
+                  <Link
+                    to="/admin/users"
+                    className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                  >
+                    Manage users
+                  </Link>
+                  <Link
+                    to="/admin/projects"
+                    className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                  >
+                    Manage projects
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-stone-500">
+                No projects yet. Ask a project lead to add you.
+              </p>
+            )}
           </div>
         ) : primaryRole === "cataloguer" ? (
           <CataloguerDashboard

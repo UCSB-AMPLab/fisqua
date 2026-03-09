@@ -262,17 +262,17 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
 
           <fieldset>
             <legend className="text-sm font-medium text-stone-700">
-              Roles
+              Role
             </legend>
             <div className="mt-2 flex gap-4">
-              {["lead", "cataloguer", "reviewer"].map((role) => (
+              {["cataloguer", "reviewer", "lead"].map((role) => (
                 <label key={role} className="flex items-center gap-2 text-sm">
                   <input
-                    type="checkbox"
+                    type="radio"
                     name="roles"
                     value={role}
                     defaultChecked={role === "cataloguer"}
-                    className="rounded border-stone-300 text-stone-900 focus:ring-stone-500"
+                    className="border-stone-300 text-stone-900 focus:ring-stone-500"
                   />
                   {role.charAt(0).toUpperCase() + role.slice(1)}
                 </label>
