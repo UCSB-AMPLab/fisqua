@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
+import { requireProjectRole, requireVolumeAccess } from "../lib/permissions.server";
 import { loadEntries } from "../lib/entries.server";
 import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
@@ -11,16 +11,21 @@ import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
 import { OutlinePanel } from "../components/outline/outline-panel";
 import { ResizableDivider } from "../components/outline/resizable-divider";
 import { boundaryReducer, createInitialState } from "../lib/boundary-reducer";
-import { useUndoableReducer } from "../lib/use-undoable-reducer";
+import { useUndoableReducer, type UndoRedoAction } from "../lib/use-undoable-reducer";
 import { useAutosave } from "../lib/use-autosave";
+import type { BoundaryAction } from "../lib/boundary-types";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 
-  // Lead-only access (admins bypass)
-  await requireProjectRole(db, user.id, params.projectId, ["lead"], user.isAdmin);
+  // Any project member can access the viewer (access level determined by role + assignment)
+  const memberships = await requireProjectRole(
+    db, user.id, params.projectId,
+    ["lead", "cataloguer", "reviewer"],
+    user.isAdmin
+  );
 
   // Fetch volume, verify it belongs to this project
   const volume = await db
@@ -34,6 +39,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!volume) {
     throw new Response("Volume not found", { status: 404 });
   }
+
+  // Determine user's role on this project (highest privilege: lead > reviewer > cataloguer)
+  const roleOrder = ["lead", "reviewer", "cataloguer"] as const;
+  const userRole = memberships.length > 0
+    ? roleOrder.find((r) => memberships.some((m) => m.role === r)) ?? "cataloguer"
+    : "cataloguer";
+
+  // Determine access level (edit, review, readonly)
+  const accessLevel = requireVolumeAccess(user.id, volume, userRole, user.isAdmin);
 
   // Fetch pages with dimensions for virtualised viewer
   const pages = await db
@@ -52,7 +66,15 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Load entries for boundary state
   const entries = await loadEntries(db, params.volumeId);
 
-  return { volume, pages, entries, projectId: params.projectId };
+  return {
+    volume,
+    pages,
+    entries,
+    projectId: params.projectId,
+    accessLevel,
+    userRole,
+    userId: user.id,
+  };
 }
 
 export type PageData = {
@@ -64,16 +86,43 @@ export type PageData = {
 };
 
 export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
-  const { volume, pages, entries, projectId } = loaderData;
+  const { volume, pages, entries, projectId, accessLevel, userRole, userId } = loaderData;
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void; scrollToPosition: (pageIndex: number, yFraction: number) => void } | null>(null);
 
   // Boundary state management with undo/redo
-  const { state, dispatch, canUndo, canRedo } = useUndoableReducer(
+  const { state, dispatch: rawDispatch, canUndo, canRedo } = useUndoableReducer(
     boundaryReducer,
     createInitialState(entries)
   );
-  const { saveStatus } = useAutosave(state, dispatch, volume.id);
+
+  /** Actions that don't carry modifiedBy (meta/control actions). */
+  const META_ACTIONS = new Set(["INIT", "MARK_SAVED", "MARK_SAVING", "MARK_DIRTY", "UNDO", "REDO"]);
+
+  // Wrap dispatch to inject modifiedBy when the user is a reviewer
+  const dispatch = useCallback(
+    (action: BoundaryAction | UndoRedoAction) => {
+      if (accessLevel === "review" && !META_ACTIONS.has(action.type)) {
+        rawDispatch({ ...action, modifiedBy: userId } as BoundaryAction);
+      } else {
+        rawDispatch(action);
+      }
+    },
+    [rawDispatch, accessLevel, userId]
+  );
+
+  const { saveStatus } = useAutosave(state, rawDispatch, volume.id);
+
+  // Compute the set of reviewer-modified entry IDs
+  const reviewerModifiedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of state.entries) {
+      if (entry.modifiedBy !== null && entry.modifiedBy !== volume.assignedTo) {
+        ids.add(entry.id);
+      }
+    }
+    return ids;
+  }, [state.entries, volume.assignedTo]);
 
   // Undo/redo keyboard shortcuts
   useEffect(() => {
@@ -165,9 +214,10 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             onPageChange={handlePageChange}
             ref={viewerRef}
             boundaries={state.entries}
-            onPlaceBoundary={handlePlaceBoundary}
-            onDeleteBoundary={handleDeleteBoundary}
-            onMoveBoundary={handleMoveBoundary}
+            onPlaceBoundary={accessLevel !== "readonly" ? handlePlaceBoundary : undefined}
+            onDeleteBoundary={accessLevel !== "readonly" ? handleDeleteBoundary : undefined}
+            onMoveBoundary={accessLevel !== "readonly" ? handleMoveBoundary : undefined}
+            reviewerModifiedIds={reviewerModifiedIds}
           />
         </div>
 
@@ -183,6 +233,12 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             totalPages={pages.length}
             onScrollToEntry={(pageIndex, yFraction) => viewerRef.current?.scrollToPosition(pageIndex, yFraction)}
             dispatch={dispatch}
+            accessLevel={accessLevel}
+            assignedTo={volume.assignedTo}
+            volumeStatus={volume.status}
+            volumeId={volume.id}
+            volumeName={volume.name}
+            projectId={projectId}
           />
         </div>
       </div>

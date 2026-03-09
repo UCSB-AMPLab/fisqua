@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useFetcher } from "react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Entry, EntryType, BoundaryAction } from "../../lib/boundary-types";
 import { computeAllRefCodes } from "../../lib/reference-codes";
 import { OutlineEntry } from "./outline-entry";
+import { SubmitDialog } from "../workflow/submit-dialog";
 
 type OutlinePanelProps = {
   entries: Entry[];
@@ -11,6 +13,12 @@ type OutlinePanelProps = {
   totalPages: number;
   onScrollToEntry: (pageIndex: number, yFraction: number) => void;
   dispatch: React.Dispatch<BoundaryAction>;
+  accessLevel?: "edit" | "review" | "readonly";
+  assignedTo?: string | null;
+  volumeStatus?: string;
+  volumeId?: string;
+  volumeName?: string;
+  projectId?: string;
 };
 
 type TreeNode = {
@@ -196,8 +204,16 @@ export function OutlinePanel({
   totalPages,
   onScrollToEntry,
   dispatch,
+  accessLevel = "edit",
+  assignedTo = null,
+  volumeStatus,
+  volumeId,
+  volumeName,
+  projectId,
 }: OutlinePanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const workflowFetcher = useFetcher();
   const isUserScrollingRef = useRef(false);
   const userScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -263,6 +279,16 @@ export function OutlinePanel({
       virtualizer.scrollToIndex(index, { align: "auto", behavior: "smooth" });
     }
   }, [currentEntryId, flatNodes, virtualizer]);
+
+  const isReadonly = accessLevel === "readonly";
+
+  /** An entry is reviewer-modified when modifiedBy is set and differs from the cataloguer (assignedTo). */
+  const isReviewerModified = useCallback(
+    (entry: Entry): boolean => {
+      return entry.modifiedBy !== null && entry.modifiedBy !== assignedTo;
+    },
+    [assignedTo]
+  );
 
   const showHint = entries.length <= 1;
 
@@ -363,12 +389,57 @@ export function OutlinePanel({
                   }
                   onIndent={() => dispatch({ type: "INDENT", entryId: entry.id })}
                   onOutdent={() => dispatch({ type: "OUTDENT", entryId: entry.id })}
+                  isReviewerModified={isReviewerModified(entry)}
+                  isReadonly={isReadonly}
+                  isFirstEntry={entry.position === 0 && entry.parentId === null}
+                  onDelete={(entryId) => dispatch({ type: "DELETE_BOUNDARY", entryId })}
                 />
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Footer actions */}
+      {volumeId && projectId && (
+        <div className="shrink-0 border-t border-stone-200 px-3 py-3">
+          {accessLevel === "edit" && volumeStatus === "in_progress" && (
+            <button
+              onClick={() => setShowSubmitDialog(true)}
+              className="w-full rounded bg-stone-800 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700"
+            >
+              Submit for review
+            </button>
+          )}
+          {accessLevel === "readonly" && (
+            <p className="text-center text-xs text-stone-400">
+              {volumeStatus === "segmented"
+                ? "Submitted for review -- awaiting reviewer"
+                : "Read-only -- you are not assigned to this volume"}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Submit for review dialog */}
+      <SubmitDialog
+        isOpen={showSubmitDialog}
+        onClose={() => setShowSubmitDialog(false)}
+        onConfirm={() => {
+          setShowSubmitDialog(false);
+          if (volumeId && projectId) {
+            workflowFetcher.submit(
+              {
+                volumeId,
+                projectId,
+                targetStatus: "segmented",
+              },
+              { method: "post", action: "/api/workflow" }
+            );
+          }
+        }}
+        volumeName={volumeName ?? ""}
+      />
     </div>
   );
 }
