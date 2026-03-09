@@ -75,8 +75,12 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
     setCurrentPageIndex(pageIndex);
   }, []);
 
-  const handlePlaceBoundary = useCallback((afterPage: number) => {
-    dispatch({ type: "ADD_BOUNDARY", startPage: afterPage });
+  const handlePlaceBoundary = useCallback((startPage: number, startY: number) => {
+    dispatch({ type: "ADD_BOUNDARY", startPage, startY });
+  }, []);
+
+  const handleMoveBoundary = useCallback((entryId: string, startPage: number, startY: number) => {
+    dispatch({ type: "MOVE_BOUNDARY", entryId, startPage, toY: startY });
   }, []);
 
   const handleDeleteBoundary = useCallback((entryId: string) => {
@@ -116,6 +120,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             boundaries={state.entries}
             onPlaceBoundary={handlePlaceBoundary}
             onDeleteBoundary={handleDeleteBoundary}
+            onMoveBoundary={handleMoveBoundary}
           />
           <ViewerToolbar onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
         </div>

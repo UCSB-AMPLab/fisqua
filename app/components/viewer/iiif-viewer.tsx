@@ -4,10 +4,13 @@ import {
   useState,
   useMemo,
   useImperativeHandle,
+  useCallback,
   forwardRef,
 } from "react";
 import type { PageData } from "../../routes/_auth.viewer.$projectId.$volumeId";
 import type { Entry } from "../../lib/boundary-types";
+import { pointerToPagePosition } from "../../lib/drag-utils";
+import type { PagePosition } from "../../lib/drag-utils";
 import { BoundaryMarker } from "./boundary-marker";
 import { PageGap } from "./page-gap";
 
@@ -23,8 +26,9 @@ type IIIFViewerProps = {
   pages: PageData[];
   onPageChange?: (pageIndex: number) => void;
   boundaries?: Entry[];
-  onPlaceBoundary?: (afterPage: number) => void;
+  onPlaceBoundary?: (startPage: number, startY: number) => void;
   onDeleteBoundary?: (entryId: string) => void;
+  onMoveBoundary?: (entryId: string, startPage: number, startY: number) => void;
 };
 
 export type IIIFViewerHandle = {
@@ -59,7 +63,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 }
 
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
-  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary }, ref) {
+  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary, onMoveBoundary }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
@@ -70,18 +74,28 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     const onPageChangeRef = useRef(onPageChange);
     onPageChangeRef.current = onPageChange;
 
+    // Hover preview state: y-pixel position in absolute coordinates (null = not hovering)
+    const [hoverPreviewTop, setHoverPreviewTop] = useState<number | null>(null);
+
     // Store boundary callbacks in refs to avoid recreating scroll handler
     const onPlaceBoundaryRef = useRef(onPlaceBoundary);
     onPlaceBoundaryRef.current = onPlaceBoundary;
     const onDeleteBoundaryRef = useRef(onDeleteBoundary);
     onDeleteBoundaryRef.current = onDeleteBoundary;
+    const onMoveBoundaryRef = useRef(onMoveBoundary);
+    onMoveBoundaryRef.current = onMoveBoundary;
 
-    // Build boundary lookup: startPage -> Entry for O(1) during render
+    // Build boundary lookup: startPage -> Entry[] for multiple entries per page
     const boundaryMap = useMemo(() => {
-      const map = new Map<number, Entry>();
+      const map = new Map<number, Entry[]>();
       if (!boundaries) return map;
       for (const entry of boundaries) {
-        map.set(entry.startPage, entry);
+        if (!map.has(entry.startPage)) map.set(entry.startPage, []);
+        map.get(entry.startPage)!.push(entry);
+      }
+      // Sort entries within each page by startY
+      for (const entries of map.values()) {
+        entries.sort((a, b) => a.startY - b.startY);
       }
       return map;
     }, [boundaries]);
@@ -106,13 +120,11 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       return labels;
     }, [boundaries]);
 
-    // Memoize page layouts — only recalculates when pages, width, or zoom change
+    // Memoize page layouts -- only recalculates when pages, width, or zoom change
     const layouts = useMemo(
       () => computeLayouts(pages, containerWidth, zoom),
       [pages, containerWidth, zoom]
     );
-
-    // (drag-related gap maps removed — drag-to-move deferred to Phase 4)
 
     // Load OpenSeadragon script
     useEffect(() => {
@@ -144,7 +156,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     const layoutsRef = useRef(layouts);
     layoutsRef.current = layouts;
 
-    // Scroll handler — uses refs to avoid dependency changes
+    // Scroll handler -- uses refs to avoid dependency changes
     useEffect(() => {
       const el = scrollRef.current;
       if (!el) return;
@@ -181,7 +193,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
           return { start: bufferedStart, end: bufferedEnd };
         });
 
-        // Determine "current" page — the one most visible in viewport
+        // Determine "current" page -- the one most visible in viewport
         let bestIndex = start;
         let bestOverlap = 0;
         for (let i = start; i <= end && i < currentLayouts.length; i++) {
@@ -205,7 +217,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       // Initial calculation
       onScroll();
       return () => el.removeEventListener("scroll", onScroll);
-    }, []); // Stable — uses refs for all changing data
+    }, []); // Stable -- uses refs for all changing data
 
     // Re-trigger visible range calculation when layouts change (zoom/resize)
     useEffect(() => {
@@ -261,6 +273,44 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       };
     }, []);
 
+    // Click-to-place handler for page image overlays
+    const handlePageOverlayClick = useCallback(
+      (e: React.MouseEvent, pageIndex: number) => {
+        if (!onPlaceBoundaryRef.current || !scrollRef.current) return;
+        const layout = layoutsRef.current[pageIndex];
+        if (!layout) return;
+
+        const containerTop = scrollRef.current.getBoundingClientRect().top;
+        const result = pointerToPagePosition(
+          e.clientY,
+          scrollRef.current.scrollTop,
+          containerTop,
+          layoutsRef.current,
+          pages
+        );
+
+        if (result) {
+          onPlaceBoundaryRef.current(result.pageNumber, result.yFraction);
+        }
+      },
+      [pages]
+    );
+
+    // Hover preview handler for page image overlays
+    const handlePageOverlayMouseMove = useCallback(
+      (e: React.MouseEvent) => {
+        if (!scrollRef.current) return;
+        const containerTop = scrollRef.current.getBoundingClientRect().top;
+        const absoluteY = e.clientY - containerTop + scrollRef.current.scrollTop;
+        setHoverPreviewTop(absoluteY);
+      },
+      []
+    );
+
+    const handlePageOverlayMouseLeave = useCallback(() => {
+      setHoverPreviewTop(null);
+    }, []);
+
     return (
       <div className="flex h-full w-full">
         {/* Page label gutter */}
@@ -270,41 +320,65 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
           style={{ scrollbarGutter: "stable" }}
         >
           <div style={{ height: totalHeight, position: "relative" }}>
+            {/* Hover preview dashed line */}
+            {hoverPreviewTop !== null && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: hoverPreviewTop,
+                  left: 0,
+                  width: containerWidth,
+                  height: 0,
+                  zIndex: 15,
+                  pointerEvents: "none",
+                }}
+              >
+                <div className="absolute left-16 right-0 top-0 border-t-2 border-dashed border-teal-300 opacity-60" />
+              </div>
+            )}
             {layouts.map((layout, index) => {
               const isVisible =
                 index >= visibleRange.start && index <= visibleRange.end;
               const page = pages[index];
-              // Check if a boundary starts at this page (1-based position)
-              const boundaryEntry = boundaryMap.get(page.position);
+              // Get all entries starting on this page
+              const pageEntries = boundaryMap.get(page.position) || [];
               // The gap after this page (before next page)
               const nextPage = pages[index + 1];
-              const hasGapBoundary = nextPage ? boundaryMap.has(nextPage.position) : false;
+              // Check if any y=0 boundary exists at the next page (page-gap boundary)
+              const nextPageEntries = nextPage ? (boundaryMap.get(nextPage.position) || []) : [];
+              const hasGapBoundary = nextPageEntries.some(e => e.startY === 0);
               const gapCenterY = layout.top + layout.displayHeight + PAGE_GAP / 2;
 
               return (
                 <div key={page.position}>
-                  {/* Boundary marker before this page (if boundary starts here) */}
-                  {boundaryEntry && index > 0 && (
-                    <BoundaryMarker
-                      entry={boundaryEntry}
-                      sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "?"}
-                      top={layout.top - PAGE_GAP / 2}
-                      width={containerWidth}
-                      onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
-                      isFirstEntry={boundaryEntry.position === 0 && boundaryEntry.parentId === null}
-                    />
-                  )}
-                  {/* Boundary marker for the first page (auto-boundary, rendered at top) */}
-                  {boundaryEntry && index === 0 && (
-                    <BoundaryMarker
-                      entry={boundaryEntry}
-                      sequenceLabel={sequenceLabels.get(boundaryEntry.id) || "1"}
-                      top={layout.top}
-                      width={containerWidth}
-                      onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
-                      isFirstEntry={true}
-                    />
-                  )}
+                  {/* Boundary markers for all entries on this page */}
+                  {pageEntries.map((entry) => {
+                    const isFirstEntry = entry.position === 0 && entry.parentId === null;
+                    let markerTop: number;
+
+                    if (entry.startY === 0 && index > 0) {
+                      // y=0 entries on pages after the first: position in the gap
+                      markerTop = layout.top - PAGE_GAP / 2;
+                    } else if (entry.startY === 0 && index === 0) {
+                      // First page, y=0: position at top of page
+                      markerTop = layout.top;
+                    } else {
+                      // Within-page: position at the y-fraction of the page
+                      markerTop = layout.top + entry.startY * layout.displayHeight;
+                    }
+
+                    return (
+                      <BoundaryMarker
+                        key={entry.id}
+                        entry={entry}
+                        sequenceLabel={sequenceLabels.get(entry.id) || "?"}
+                        top={markerTop}
+                        width={containerWidth}
+                        onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
+                        isFirstEntry={isFirstEntry}
+                      />
+                    );
+                  })}
                   {/* Page slot */}
                   <div
                     style={{
@@ -322,7 +396,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                         </span>
                       </div>
                       {/* Page image */}
-                      <div className="flex flex-1 justify-center">
+                      <div className="relative flex flex-1 justify-center">
                         <div
                           style={{
                             width: page.width * layout.scale,
@@ -343,14 +417,31 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                             </div>
                           )}
                         </div>
+                        {/* Transparent click overlay for within-page boundary placement */}
+                        {onPlaceBoundaryRef.current && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              height: "100%",
+                              zIndex: 15,
+                              cursor: "crosshair",
+                            }}
+                            onClick={(e) => handlePageOverlayClick(e, index)}
+                            onMouseMove={handlePageOverlayMouseMove}
+                            onMouseLeave={handlePageOverlayMouseLeave}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
-                  {/* Gap between pages: PageGap (clickable) or nothing if boundary exists at next page */}
+                  {/* Gap between pages: PageGap (clickable) or nothing if y=0 boundary exists at next page */}
                   {nextPage && !hasGapBoundary && onPlaceBoundaryRef.current && (
                     <PageGap
                       pageNumber={nextPage.position}
-                      onPlace={(afterPage) => onPlaceBoundaryRef.current?.(afterPage)}
+                      onPlace={(startPage, startY) => onPlaceBoundaryRef.current?.(startPage, startY)}
                       top={gapCenterY}
                       width={containerWidth}
                     />
@@ -417,7 +508,7 @@ function OSDPage({
     instancesRef.current.set(index, viewer);
 
     return () => {
-      // Don't destroy here — let the parent manage lifecycle
+      // Don't destroy here -- let the parent manage lifecycle
     };
   }, [page.imageUrl, index, instancesRef]);
 

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 
 type PageGapProps = {
   pageNumber: number;
-  onPlace: (afterPage: number) => void;
+  onPlace: (startPage: number, startY: number) => void;
   top: number;
   width: number;
 };
@@ -11,12 +11,13 @@ type PageGapProps = {
  * Clickable gap area between pages where no boundary exists.
  * Shows a dashed line on hover to indicate "click to place boundary".
  * Hit area is 24px tall (larger than the visual gap) for comfortable clicking.
+ * Clicking places a y=0 boundary (page-gap boundary).
  */
 export function PageGap({ pageNumber, onPlace, top, width }: PageGapProps) {
   const handleClick = useCallback(
     (e: React.PointerEvent) => {
       e.stopPropagation();
-      onPlace(pageNumber);
+      onPlace(pageNumber, 0);
     },
     [pageNumber, onPlace]
   );
