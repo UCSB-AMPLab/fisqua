@@ -1,12 +1,14 @@
 import { Link } from "react-router";
+import { SaveStatus } from "./save-status";
 
 type ViewerTopBarProps = {
   volumeName: string;
   projectId: string;
   pageLabel?: string;
+  saveStatus?: "saved" | "saving" | "unsaved";
 };
 
-export function ViewerTopBar({ volumeName, projectId, pageLabel }: ViewerTopBarProps) {
+export function ViewerTopBar({ volumeName, projectId, pageLabel, saveStatus }: ViewerTopBarProps) {
   return (
     <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4">
       <Link
@@ -32,10 +34,13 @@ export function ViewerTopBar({ volumeName, projectId, pageLabel }: ViewerTopBarP
         {volumeName}
       </h1>
       {pageLabel && (
-        <span className="ml-auto text-xs text-stone-500">
+        <span className="text-xs text-stone-500">
           {pageLabel}
         </span>
       )}
+      <span className="ml-auto">
+        {saveStatus && <SaveStatus status={saveStatus} />}
+      </span>
     </div>
   );
 }

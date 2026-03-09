@@ -1,12 +1,15 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useReducer, useRef, useCallback } from "react";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
 import { requireProjectRole } from "../lib/permissions.server";
+import { loadEntries } from "../lib/entries.server";
 import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
 import { ViewerToolbar } from "../components/viewer/viewer-toolbar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
+import { boundaryReducer, createInitialState } from "../lib/boundary-reducer";
+import { useAutosave } from "../lib/use-autosave";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -43,7 +46,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .orderBy(volumePages.position)
     .all();
 
-  return { volume, pages, projectId: params.projectId };
+  // Load entries for boundary state
+  const entries = await loadEntries(db, params.volumeId);
+
+  return { volume, pages, entries, projectId: params.projectId };
 }
 
 export type PageData = {
@@ -55,9 +61,13 @@ export type PageData = {
 };
 
 export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
-  const { volume, pages, projectId } = loaderData;
+  const { volume, pages, entries, projectId } = loaderData;
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void } | null>(null);
+
+  // Boundary state management
+  const [state, dispatch] = useReducer(boundaryReducer, entries, createInitialState);
+  const { saveStatus } = useAutosave(state, dispatch, volume.id);
 
   const handlePageChange = useCallback((pageIndex: number) => {
     setCurrentPageIndex(pageIndex);
@@ -76,7 +86,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="flex h-screen flex-col">
-      <ViewerTopBar volumeName={volume.name} projectId={projectId} pageLabel={pageLabel} />
+      <ViewerTopBar volumeName={volume.name} projectId={projectId} pageLabel={pageLabel} saveStatus={saveStatus} />
       <div className="relative flex-1 overflow-hidden">
         <IIIFViewer
           pages={pages}
