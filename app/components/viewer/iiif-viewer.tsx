@@ -9,9 +9,11 @@ import {
 } from "react";
 import type { PageData } from "../../routes/_auth.viewer.$projectId.$volumeId";
 import type { Entry } from "../../lib/boundary-types";
-import { pointerToPagePosition } from "../../lib/drag-utils";
+import { pointerToPagePosition, useAutoScroll } from "../../lib/drag-utils";
 import type { PagePosition } from "../../lib/drag-utils";
+import { MIN_Y_GAP } from "../../lib/boundary-reducer";
 import { BoundaryMarker } from "./boundary-marker";
+import { DragOverlay } from "./drag-overlay";
 import { PageGap } from "./page-gap";
 
 // How many pages above/below the viewport to pre-render
@@ -76,6 +78,16 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
 
     // Hover preview state: y-pixel position in absolute coordinates (null = not hovering)
     const [hoverPreviewTop, setHoverPreviewTop] = useState<number | null>(null);
+
+    // Drag state for boundary drag-to-move
+    const [dragState, setDragState] = useState<{
+      entryId: string | null;
+      ghostTop: number | null;
+      isInvalid: boolean;
+    }>({ entryId: null, ghostTop: null, isInvalid: false });
+
+    // Auto-scroll during drag
+    const { startAutoScroll, stopAutoScroll } = useAutoScroll(scrollRef);
 
     // Store boundary callbacks in refs to avoid recreating scroll handler
     const onPlaceBoundaryRef = useRef(onPlaceBoundary);
@@ -311,6 +323,146 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       setHoverPreviewTop(null);
     }, []);
 
+    // --- Drag-to-move handlers ---
+
+    /**
+     * Resolve a clientY to a page position, including gap areas.
+     * If pointer is in a gap, targets the next page at y=0.
+     */
+    const resolveDropPosition = useCallback(
+      (clientY: number): PagePosition | null => {
+        if (!scrollRef.current) return null;
+        const containerTop = scrollRef.current.getBoundingClientRect().top;
+        const currentLayouts = layoutsRef.current;
+
+        // First try: is the pointer on a page?
+        const pagePos = pointerToPagePosition(
+          clientY,
+          scrollRef.current.scrollTop,
+          containerTop,
+          currentLayouts,
+          pages
+        );
+        if (pagePos) return pagePos;
+
+        // Pointer is in a gap -- find which gap
+        const absoluteY = clientY - containerTop + scrollRef.current.scrollTop;
+        for (let i = 0; i < currentLayouts.length - 1; i++) {
+          const gapStart = currentLayouts[i].top + currentLayouts[i].displayHeight;
+          const gapEnd = currentLayouts[i + 1].top;
+          if (absoluteY >= gapStart && absoluteY < gapEnd) {
+            return { pageNumber: pages[i + 1].position, yFraction: 0 };
+          }
+        }
+
+        return null;
+      },
+      [pages]
+    );
+
+    /**
+     * Validate whether a drag target position is valid for the given entry.
+     * Checks: min gap, parent containment, parent-outside-children.
+     */
+    const isDragPositionValid = useCallback(
+      (entryId: string, targetPage: number, targetY: number): boolean => {
+        if (!boundaries) return true;
+        const entry = boundaries.find(e => e.id === entryId);
+        if (!entry) return false;
+
+        // Min gap check: any other entry on the same page too close?
+        for (const e of boundaries) {
+          if (e.id === entryId) continue;
+          if (e.startPage === targetPage && Math.abs(e.startY - targetY) < MIN_Y_GAP) {
+            return false;
+          }
+        }
+
+        // Child containment: if entry has a parent, must stay within parent range
+        if (entry.parentId !== null) {
+          const parent = boundaries.find(e => e.id === entry.parentId);
+          if (parent) {
+            // Child must be >= parent's (page, y)
+            if (targetPage < parent.startPage) return false;
+            if (targetPage === parent.startPage && targetY < parent.startY) return false;
+          }
+        }
+
+        // Parent check: if entry has children, cannot move past its own children
+        const children = boundaries.filter(e => e.parentId === entryId);
+        if (children.length > 0) {
+          const firstChild = children.reduce((min, c) => {
+            if (c.startPage < min.startPage) return c;
+            if (c.startPage === min.startPage && c.startY < min.startY) return c;
+            return min;
+          });
+          // Parent must be <= first child's (page, y)
+          if (targetPage > firstChild.startPage) return false;
+          if (targetPage === firstChild.startPage && targetY > firstChild.startY) return false;
+        }
+
+        return true;
+      },
+      [boundaries]
+    );
+
+    const handleBoundaryDragStart = useCallback((entryId: string) => {
+      setDragState({ entryId, ghostTop: null, isInvalid: false });
+      setHoverPreviewTop(null); // hide hover preview during drag
+    }, []);
+
+    const handleBoundaryDragMove = useCallback(
+      (clientY: number) => {
+        if (!scrollRef.current) return;
+
+        // Auto-scroll near edges
+        startAutoScroll(clientY);
+
+        const target = resolveDropPosition(clientY);
+        if (!target) {
+          // Outside all pages and gaps
+          const containerTop = scrollRef.current.getBoundingClientRect().top;
+          const absoluteY = clientY - containerTop + scrollRef.current.scrollTop;
+          setDragState(prev => ({ ...prev, ghostTop: absoluteY, isInvalid: true }));
+          return;
+        }
+
+        // Compute ghost pixel position
+        const currentLayouts = layoutsRef.current;
+        const pageIndex = pages.findIndex(p => p.position === target.pageNumber);
+        if (pageIndex < 0) return;
+        const layout = currentLayouts[pageIndex];
+
+        let ghostTop: number;
+        if (target.yFraction === 0 && pageIndex > 0) {
+          ghostTop = layout.top - PAGE_GAP / 2;
+        } else {
+          ghostTop = layout.top + target.yFraction * layout.displayHeight;
+        }
+
+        const isInvalid = dragState.entryId
+          ? !isDragPositionValid(dragState.entryId, target.pageNumber, target.yFraction)
+          : true;
+
+        setDragState(prev => ({ ...prev, ghostTop, isInvalid }));
+      },
+      [pages, startAutoScroll, resolveDropPosition, isDragPositionValid, dragState.entryId]
+    );
+
+    const handleBoundaryDragEnd = useCallback(
+      (entryId: string, clientY: number) => {
+        stopAutoScroll();
+
+        const target = resolveDropPosition(clientY);
+        if (target && isDragPositionValid(entryId, target.pageNumber, target.yFraction)) {
+          onMoveBoundaryRef.current?.(entryId, target.pageNumber, target.yFraction);
+        }
+        // Reset drag state (snap back if invalid)
+        setDragState({ entryId: null, ghostTop: null, isInvalid: false });
+      },
+      [resolveDropPosition, isDragPositionValid, stopAutoScroll]
+    );
+
     return (
       <div className="flex h-full w-full">
         {/* Page label gutter */}
@@ -320,8 +472,17 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
           style={{ scrollbarGutter: "stable" }}
         >
           <div style={{ height: totalHeight, position: "relative" }}>
-            {/* Hover preview dashed line */}
-            {hoverPreviewTop !== null && (
+            {/* Drag ghost overlay */}
+            {dragState.entryId && dragState.ghostTop !== null && (
+              <DragOverlay
+                visible={true}
+                top={dragState.ghostTop}
+                width={containerWidth}
+                isInvalid={dragState.isInvalid}
+              />
+            )}
+            {/* Hover preview dashed line (hidden during drag) */}
+            {hoverPreviewTop !== null && !dragState.entryId && (
               <div
                 style={{
                   position: "absolute",
@@ -376,6 +537,10 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                         width={containerWidth}
                         onDelete={(entryId) => onDeleteBoundaryRef.current?.(entryId)}
                         isFirstEntry={isFirstEntry}
+                        onDragStart={handleBoundaryDragStart}
+                        onDragMove={handleBoundaryDragMove}
+                        onDragEnd={handleBoundaryDragEnd}
+                        isDragFaded={dragState.entryId === entry.id}
                       />
                     );
                   })}
