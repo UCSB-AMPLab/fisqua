@@ -33,6 +33,8 @@ type IIIFViewerProps = {
   onMoveBoundary?: (entryId: string, startPage: number, startY: number) => void;
   /** Set of entry IDs that were modified by a reviewer (rendered with red variant). */
   reviewerModifiedIds?: Set<string>;
+  /** Called with the viewport's Y-fraction (0-1) within the current page, debounced at 150ms. */
+  onYFractionChange?: (yFraction: number) => void;
 };
 
 export type IIIFViewerHandle = {
@@ -68,7 +70,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 }
 
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
-  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary, onMoveBoundary, reviewerModifiedIds }, ref) {
+  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary, onMoveBoundary, reviewerModifiedIds, onYFractionChange }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
@@ -78,6 +80,9 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     const lastPageIndexRef = useRef(0);
     const onPageChangeRef = useRef(onPageChange);
     onPageChangeRef.current = onPageChange;
+    const onYFractionChangeRef = useRef(onYFractionChange);
+    onYFractionChangeRef.current = onYFractionChange;
+    const yFractionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Hover preview state: y-pixel position in absolute coordinates (null = not hovering)
     const [hoverPreviewTop, setHoverPreviewTop] = useState<number | null>(null);
@@ -226,6 +231,16 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
           lastPageIndexRef.current = bestIndex;
           onPageChangeRef.current?.(bestIndex);
         }
+
+        // Report Y-fraction within the current page (debounced at 150ms)
+        const bestLayout = currentLayouts[bestIndex];
+        if (bestLayout && bestLayout.displayHeight > 0) {
+          const yFraction = Math.max(0, Math.min(1, (scrollTop - bestLayout.top) / bestLayout.displayHeight));
+          if (yFractionTimerRef.current) clearTimeout(yFractionTimerRef.current);
+          yFractionTimerRef.current = setTimeout(() => {
+            onYFractionChangeRef.current?.(yFraction);
+          }, 150);
+        }
       }
 
       el.addEventListener("scroll", onScroll, { passive: true });
@@ -286,13 +301,14 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
       }
     }, [visibleRange]);
 
-    // Cleanup all OSD instances on unmount
+    // Cleanup all OSD instances and timers on unmount
     useEffect(() => {
       return () => {
         for (const viewer of osdInstancesRef.current.values()) {
           viewer.destroy();
         }
         osdInstancesRef.current.clear();
+        if (yFractionTimerRef.current) clearTimeout(yFractionTimerRef.current);
       };
     }, []);
 

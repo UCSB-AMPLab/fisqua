@@ -21,6 +21,7 @@ type OutlinePanelProps = {
   volumeName?: string;
   projectId?: string;
   reviewComment?: string | null;
+  viewportYFraction?: number;
 };
 
 type TreeNode = {
@@ -213,6 +214,7 @@ export function OutlinePanel({
   volumeName,
   projectId,
   reviewComment,
+  viewportYFraction: viewportYFractionProp,
 }: OutlinePanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -224,8 +226,8 @@ export function OutlinePanel({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set(entries.map((e) => e.id)));
 
-  // Track viewport y-fraction for y-aware current entry detection
-  const [viewportYFraction, setViewportYFraction] = useState(0);
+  // Y-fraction for y-aware current entry detection (received from viewer)
+  const viewportYFraction = viewportYFractionProp ?? 0;
 
   // Auto-expand newly added entries
   useEffect(() => {

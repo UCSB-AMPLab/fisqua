@@ -88,6 +88,7 @@ export type PageData = {
 export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   const { volume, pages, entries, projectId, accessLevel, userRole, userId } = loaderData;
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [viewportYFraction, setViewportYFraction] = useState(0);
   const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void; scrollToPosition: (pageIndex: number, yFraction: number) => void } | null>(null);
 
   // Boundary state management with undo/redo
@@ -218,6 +219,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             onDeleteBoundary={accessLevel !== "readonly" ? handleDeleteBoundary : undefined}
             onMoveBoundary={accessLevel !== "readonly" ? handleMoveBoundary : undefined}
             reviewerModifiedIds={reviewerModifiedIds}
+            onYFractionChange={setViewportYFraction}
           />
         </div>
 
@@ -240,6 +242,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             volumeName={volume.name}
             projectId={projectId}
             reviewComment={volume.reviewComment}
+            viewportYFraction={viewportYFraction}
           />
         </div>
       </div>
