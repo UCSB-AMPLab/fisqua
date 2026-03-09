@@ -8,6 +8,8 @@ import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
 import { ViewerToolbar } from "../components/viewer/viewer-toolbar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
+import { OutlinePanel } from "../components/outline/outline-panel";
+import { ResizableDivider } from "../components/outline/resizable-divider";
 import { boundaryReducer, createInitialState } from "../lib/boundary-reducer";
 import { useAutosave } from "../lib/use-autosave";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
@@ -93,23 +95,50 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
     viewerRef.current?.zoomOut();
   }, []);
 
+  // Resizable panel width
+  const MIN_PANEL = 280;
+  const MAX_PANEL = 720;
+  const [panelWidth, setPanelWidth] = useState(480);
+
+  const handleResize = useCallback((deltaX: number) => {
+    setPanelWidth((w) => Math.min(MAX_PANEL, Math.max(MIN_PANEL, w + deltaX)));
+  }, []);
+
   const currentPage = pages[currentPageIndex];
   const pageLabel = currentPage?.label || String(currentPage?.position ?? 1);
 
   return (
     <div className="flex h-screen flex-col">
       <ViewerTopBar volumeName={volume.name} projectId={projectId} pageLabel={pageLabel} saveStatus={saveStatus} />
-      <div className="relative flex-1 overflow-hidden">
-        <IIIFViewer
-          pages={pages}
-          onPageChange={handlePageChange}
-          ref={viewerRef}
-          boundaries={state.entries}
-          onPlaceBoundary={handlePlaceBoundary}
-          onMoveBoundary={handleMoveBoundary}
-          onDeleteBoundary={handleDeleteBoundary}
-        />
-        <ViewerToolbar onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
+      <div className="flex flex-1 overflow-hidden">
+        {/* Viewer panel */}
+        <div className="relative flex-1 overflow-hidden">
+          <IIIFViewer
+            pages={pages}
+            onPageChange={handlePageChange}
+            ref={viewerRef}
+            boundaries={state.entries}
+            onPlaceBoundary={handlePlaceBoundary}
+            onMoveBoundary={handleMoveBoundary}
+            onDeleteBoundary={handleDeleteBoundary}
+          />
+          <ViewerToolbar onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
+        </div>
+
+        {/* Resizable divider */}
+        <ResizableDivider onResize={handleResize} />
+
+        {/* Outline panel */}
+        <div className="shrink-0" style={{ width: panelWidth }}>
+          <OutlinePanel
+            entries={state.entries}
+            volumeRefCode={volume.referenceCode}
+            currentPageIndex={currentPageIndex}
+            totalPages={pages.length}
+            onScrollToPage={(pageIndex) => viewerRef.current?.scrollToPage(pageIndex)}
+            dispatch={dispatch}
+          />
+        </div>
       </div>
     </div>
   );
