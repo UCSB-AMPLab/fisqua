@@ -11,7 +11,8 @@ import type { PageData } from "../../routes/_auth.viewer.$projectId.$volumeId";
 // How many pages above/below the viewport to pre-render
 const BUFFER_PAGES = 2;
 const PAGE_GAP = 8; // px between pages
-const MIN_ZOOM = 0.5;
+const DEFAULT_ZOOM = 0.5;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 
@@ -54,7 +55,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
   function IIIFViewer({ pages, onPageChange }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [zoom, setZoom] = useState(1);
+    const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
     const [containerWidth, setContainerWidth] = useState(800);
     const [osdReady, setOsdReady] = useState(false);
@@ -217,41 +218,64 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
     }, []);
 
     return (
-      <div ref={scrollRef} className="h-full w-full overflow-y-auto bg-stone-100">
-        <div style={{ height: totalHeight, position: "relative" }}>
-          {layouts.map((layout, index) => {
-            const isVisible =
-              index >= visibleRange.start && index <= visibleRange.end;
-            const page = pages[index];
+      <div className="flex h-full w-full">
+        {/* Page label gutter */}
+        <div
+          ref={scrollRef}
+          className="h-full flex-1 overflow-y-auto bg-stone-100"
+          style={{ scrollbarGutter: "stable" }}
+        >
+          <div style={{ height: totalHeight, position: "relative" }}>
+            {layouts.map((layout, index) => {
+              const isVisible =
+                index >= visibleRange.start && index <= visibleRange.end;
+              const page = pages[index];
 
-            return (
-              <div
-                key={page.position}
-                style={{
-                  position: "absolute",
-                  top: layout.top,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: page.width * layout.scale,
-                  height: layout.displayHeight,
-                }}
-              >
-                {isVisible && osdReady ? (
-                  <OSDPage
-                    page={page}
-                    width={page.width * layout.scale}
-                    height={layout.displayHeight}
-                    instancesRef={osdInstancesRef}
-                    index={index}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-stone-200 text-xs text-stone-400">
-                    {page.label || `Page ${page.position}`}
+              return (
+                <div
+                  key={page.position}
+                  style={{
+                    position: "absolute",
+                    top: layout.top,
+                    height: layout.displayHeight,
+                    width: "100%",
+                  }}
+                >
+                  <div className="flex h-full">
+                    {/* Label gutter */}
+                    <div className="flex w-16 shrink-0 items-start justify-end pr-3 pt-2">
+                      <span className="text-xs font-medium text-stone-500">
+                        {page.label || page.position}
+                      </span>
+                    </div>
+                    {/* Page image */}
+                    <div className="flex flex-1 justify-center">
+                      <div
+                        style={{
+                          width: page.width * layout.scale,
+                          height: layout.displayHeight,
+                        }}
+                      >
+                        {isVisible && osdReady ? (
+                          <OSDPage
+                            page={page}
+                            width={page.width * layout.scale}
+                            height={layout.displayHeight}
+                            instancesRef={osdInstancesRef}
+                            index={index}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-stone-200 text-xs text-stone-400">
+                            {page.label || `Page ${page.position}`}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -303,6 +327,9 @@ function OSDPage({
       },
       crossOriginPolicy: "Anonymous",
     });
+
+    // Disable OSD's inner scroll handler so page scroll works normally
+    viewer.innerTracker.scrollHandler = false;
 
     instancesRef.current.set(index, viewer);
 
