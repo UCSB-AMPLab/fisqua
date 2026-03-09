@@ -139,6 +139,24 @@ export function OutlinePanel({
   const userScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightedRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const knownIdsRef = useRef<Set<string>>(new Set(entries.map((e) => e.id)));
+
+  // Auto-expand newly added entries
+  useEffect(() => {
+    const currentIds = new Set(entries.map((e) => e.id));
+    const newIds: string[] = [];
+    for (const id of currentIds) {
+      if (!knownIdsRef.current.has(id)) newIds.push(id);
+    }
+    knownIdsRef.current = currentIds;
+    if (newIds.length > 0) {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of newIds) next.add(id);
+        return next;
+      });
+    }
+  }, [entries]);
 
   // Compute tree, ref codes, page ranges
   const tree = useMemo(() => buildTree(entries), [entries]);
