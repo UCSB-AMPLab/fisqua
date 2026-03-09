@@ -37,6 +37,7 @@ export type IIIFViewerHandle = {
   zoomIn: () => void;
   zoomOut: () => void;
   scrollToPage: (index: number) => void;
+  scrollToPosition: (pageIndex: number, yFraction: number) => void;
 };
 
 function loadScript(src: string): Promise<void> {
@@ -247,6 +248,14 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
         const currentLayouts = layoutsRef.current;
         if (index >= 0 && index < currentLayouts.length && scrollRef.current) {
           scrollRef.current.scrollTo({ top: currentLayouts[index].top, behavior: "smooth" });
+        }
+      },
+      scrollToPosition: (pageIndex: number, yFraction: number) => {
+        const currentLayouts = layoutsRef.current;
+        if (pageIndex >= 0 && pageIndex < currentLayouts.length && scrollRef.current) {
+          const layout = currentLayouts[pageIndex];
+          const targetTop = layout.top + yFraction * layout.displayHeight;
+          scrollRef.current.scrollTo({ top: targetTop, behavior: "smooth" });
         }
       },
     }));

@@ -4,16 +4,28 @@ import { SaveStatus } from "./save-status";
 type ViewerTopBarProps = {
   volumeName: string;
   projectId: string;
-  pageLabel?: string;
   saveStatus?: "saved" | "saving" | "unsaved";
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 };
 
-export function ViewerTopBar({ volumeName, projectId, pageLabel, saveStatus }: ViewerTopBarProps) {
+export function ViewerTopBar({
+  volumeName,
+  projectId,
+  saveStatus,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+}: ViewerTopBarProps) {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4">
+    <div className="flex h-10 shrink-0 items-center border-b border-stone-200 bg-white px-4">
+      {/* Left: back arrow */}
       <Link
         to={`/projects/${projectId}/volumes`}
-        className="flex items-center text-stone-500 hover:text-stone-700"
+        className="flex shrink-0 items-center text-stone-500 hover:text-stone-700"
         aria-label="Back to volumes"
       >
         <svg
@@ -30,17 +42,60 @@ export function ViewerTopBar({ volumeName, projectId, pageLabel, saveStatus }: V
           />
         </svg>
       </Link>
-      <h1 className="truncate text-sm font-medium text-stone-900">
+
+      {/* Centre: volume name */}
+      <h1 className="min-w-0 flex-1 truncate text-center text-sm font-medium text-stone-900">
         {volumeName}
       </h1>
-      {pageLabel && (
-        <span className="text-xs text-stone-500">
-          {pageLabel}
-        </span>
-      )}
-      <span className="ml-auto">
+
+      {/* Right: undo/redo + save status */}
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="flex h-6 w-6 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Undo"
+          title="Deshacer (Ctrl+Z)"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onRedo}
+          disabled={!canRedo}
+          className="flex h-6 w-6 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Redo"
+          title="Rehacer (Ctrl+Shift+Z)"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15 15l6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"
+            />
+          </svg>
+        </button>
         {saveStatus && <SaveStatus status={saveStatus} />}
-      </span>
+      </div>
     </div>
   );
 }

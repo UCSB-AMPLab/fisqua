@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Entry, EntryType, BoundaryAction } from "../../lib/boundary-types";
 import { computeAllRefCodes } from "../../lib/reference-codes";
 import { OutlineEntry } from "./outline-entry";
@@ -8,7 +9,7 @@ type OutlinePanelProps = {
   volumeRefCode: string;
   currentPageIndex: number;
   totalPages: number;
-  onScrollToPage: (pageIndex: number) => void;
+  onScrollToEntry: (pageIndex: number, yFraction: number) => void;
   dispatch: React.Dispatch<BoundaryAction>;
 };
 
@@ -39,6 +40,40 @@ function buildTree(entries: Entry[]): TreeNode[] {
   }
 
   return buildNodes(null);
+}
+
+type FlatNode = {
+  entry: Entry;
+  depth: number;
+  isLast: boolean;
+  hasChildren: boolean;
+};
+
+/**
+ * Flatten tree to a list, respecting expanded/collapsed state.
+ * Each node includes its depth for indentation.
+ */
+function flattenTree(
+  nodes: TreeNode[],
+  expandedIds: Set<string>,
+  depth: number
+): FlatNode[] {
+  const result: FlatNode[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const isLast = i === nodes.length - 1;
+    result.push({
+      entry: node.entry,
+      depth,
+      isLast,
+      hasChildren: node.children.length > 0,
+    });
+    // Only include children if expanded
+    if (expandedIds.has(node.entry.id) && node.children.length > 0) {
+      result.push(...flattenTree(node.children, expandedIds, depth + 1));
+    }
+  }
+  return result;
 }
 
 function computePageRanges(entries: Entry[], totalPages: number): Map<string, string> {
@@ -82,8 +117,18 @@ function computePageRanges(entries: Entry[], totalPages: number): Map<string, st
   return ranges;
 }
 
-/** Find the entry whose page range contains the given 1-based page number */
-function findCurrentEntry(entries: Entry[], pageNumber: number, totalPages: number): string | null {
+/**
+ * Find the deepest entry whose (startPage, startY) to (endPage/nextSibling) range
+ * contains the given page number and y-fraction.
+ *
+ * Y-aware: within a page, the y-fraction determines which entry is active.
+ */
+function findCurrentEntry(
+  entries: Entry[],
+  pageNumber: number,
+  yFraction: number,
+  totalPages: number
+): string | null {
   if (entries.length === 0) return null;
 
   // Group by parentId for sibling ranges
@@ -97,24 +142,42 @@ function findCurrentEntry(entries: Entry[], pageNumber: number, totalPages: numb
     children.sort((a, b) => a.position - b.position);
   }
 
-  // Walk tree to find deepest entry containing this page
+  function comparePageY(page1: number, y1: number, page2: number, y2: number): number {
+    if (page1 !== page2) return page1 - page2;
+    return y1 - y2;
+  }
+
+  // Walk tree to find deepest entry containing this position
   function findInGroup(parentId: string | null): string | null {
     const siblings = childrenByParent.get(parentId);
     if (!siblings) return null;
 
     for (let i = 0; i < siblings.length; i++) {
       const entry = siblings[i];
-      const start = entry.startPage;
-      let end: number;
+      const startPage = entry.startPage;
+      const startY = entry.startY;
+
+      // Determine the end position for this entry
+      let endPage: number;
+      let endY: number;
       if (entry.endPage != null) {
-        end = entry.endPage;
+        endPage = entry.endPage;
+        endY = entry.endY ?? 1;
       } else if (i + 1 < siblings.length) {
-        end = siblings[i + 1].startPage - 1;
+        // Extends to just before the next sibling
+        endPage = siblings[i + 1].startPage;
+        endY = siblings[i + 1].startY;
       } else {
-        end = totalPages;
+        // Last sibling: extends to end of volume
+        endPage = totalPages;
+        endY = 1;
       }
 
-      if (pageNumber >= start && pageNumber <= end) {
+      // Check if position is within this entry's range
+      const afterStart = comparePageY(pageNumber, yFraction, startPage, startY) >= 0;
+      const beforeEnd = comparePageY(pageNumber, yFraction, endPage, endY) < 0;
+
+      if (afterStart && beforeEnd) {
         // Check children for more specific match
         const childMatch = findInGroup(entry.id);
         return childMatch || entry.id;
@@ -131,15 +194,17 @@ export function OutlinePanel({
   volumeRefCode,
   currentPageIndex,
   totalPages,
-  onScrollToPage,
+  onScrollToEntry,
   dispatch,
 }: OutlinePanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const isUserScrollingRef = useRef(false);
   const userScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const highlightedRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set(entries.map((e) => e.id)));
+
+  // Track viewport y-fraction for y-aware current entry detection
+  const [viewportYFraction, setViewportYFraction] = useState(0);
 
   // Auto-expand newly added entries
   useEffect(() => {
@@ -163,12 +228,23 @@ export function OutlinePanel({
   const refCodes = useMemo(() => computeAllRefCodes(entries, volumeRefCode), [entries, volumeRefCode]);
   const pageRanges = useMemo(() => computePageRanges(entries, totalPages), [entries, totalPages]);
 
+  // Flatten tree for virtualisation
+  const flatNodes = useMemo(() => flattenTree(tree, expandedIds, 0), [tree, expandedIds]);
+
   // Current page is 1-based for matching
   const currentPage = currentPageIndex + 1;
   const currentEntryId = useMemo(
-    () => findCurrentEntry(entries, currentPage, totalPages),
-    [entries, currentPage, totalPages]
+    () => findCurrentEntry(entries, currentPage, viewportYFraction, totalPages),
+    [entries, currentPage, viewportYFraction, totalPages]
   );
+
+  // Virtualiser
+  const virtualizer = useVirtualizer({
+    count: flatNodes.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 36,
+    overscan: 5,
+  });
 
   // Track user interaction to suppress auto-scroll
   const handlePanelInteraction = useCallback(() => {
@@ -179,11 +255,14 @@ export function OutlinePanel({
     }, 2000);
   }, []);
 
-  // Auto-scroll to highlighted entry
+  // Auto-scroll to highlighted entry in the virtual list
   useEffect(() => {
     if (!currentEntryId || isUserScrollingRef.current) return;
-    highlightedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [currentEntryId]);
+    const index = flatNodes.findIndex((n) => n.entry.id === currentEntryId);
+    if (index >= 0) {
+      virtualizer.scrollToIndex(index, { align: "auto", behavior: "smooth" });
+    }
+  }, [currentEntryId, flatNodes, virtualizer]);
 
   const showHint = entries.length <= 1;
 
@@ -217,51 +296,9 @@ export function OutlinePanel({
     []
   );
 
-  function renderNode(node: TreeNode, depth: number, isLast: boolean): React.ReactNode {
-    const { entry } = node;
-    const isHighlighted = entry.id === currentEntryId;
-
-    return (
-      <div
-        key={entry.id}
-        ref={isHighlighted ? highlightedRef : undefined}
-      >
-        <OutlineEntry
-          entry={entry}
-          refCode={refCodes.get(entry.id) || ""}
-          pageRange={pageRanges.get(entry.id) || ""}
-          depth={depth}
-          isLast={isLast}
-          isHighlighted={isHighlighted}
-          isExpanded={expandedIds.has(entry.id)}
-          hasChildren={node.children.length > 0}
-          canIndent={canIndentEntry(entry)}
-          canOutdent={canOutdentEntry(entry)}
-          onToggle={() => toggleExpanded(entry.id)}
-          onScrollTo={() => onScrollToPage(entry.startPage - 1)}
-          onSetType={(type: EntryType | null) =>
-            dispatch({ type: "SET_TYPE", entryId: entry.id, entryType: type })
-          }
-          onSetTitle={(title: string) =>
-            dispatch({ type: "SET_TITLE", entryId: entry.id, title })
-          }
-          onIndent={() => dispatch({ type: "INDENT", entryId: entry.id })}
-          onOutdent={() => dispatch({ type: "OUTDENT", entryId: entry.id })}
-        >
-          {node.children.map((child, i) =>
-            renderNode(child, depth + 1, i === node.children.length - 1)
-          )}
-        </OutlineEntry>
-      </div>
-    );
-  }
-
   return (
     <div
-      ref={panelRef}
-      className="flex h-full flex-col overflow-y-auto border-l border-stone-200 bg-white"
-      onScroll={handlePanelInteraction}
-      onPointerDown={handlePanelInteraction}
+      className="flex h-full flex-col border-l border-stone-200 bg-white"
     >
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 px-3 py-2">
@@ -273,9 +310,64 @@ export function OutlinePanel({
         )}
       </div>
 
-      {/* Entry list */}
-      <div className="flex-1 overflow-y-auto">
-        {tree.map((node, i) => renderNode(node, 0, i === tree.length - 1))}
+      {/* Virtualised entry list */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto"
+        onScroll={handlePanelInteraction}
+        onPointerDown={handlePanelInteraction}
+      >
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const node = flatNodes[virtualItem.index];
+            const { entry, depth, isLast, hasChildren } = node;
+            const isHighlighted = entry.id === currentEntryId;
+
+            return (
+              <div
+                key={entry.id}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+                data-index={virtualItem.index}
+                ref={virtualizer.measureElement}
+              >
+                <OutlineEntry
+                  entry={entry}
+                  refCode={refCodes.get(entry.id) || ""}
+                  pageRange={pageRanges.get(entry.id) || ""}
+                  depth={depth}
+                  isLast={isLast}
+                  isHighlighted={isHighlighted}
+                  isExpanded={expandedIds.has(entry.id)}
+                  hasChildren={hasChildren}
+                  canIndent={canIndentEntry(entry)}
+                  canOutdent={canOutdentEntry(entry)}
+                  onToggle={() => toggleExpanded(entry.id)}
+                  onScrollTo={() => onScrollToEntry(entry.startPage - 1, entry.startY)}
+                  onSetType={(type: EntryType | null) =>
+                    dispatch({ type: "SET_TYPE", entryId: entry.id, entryType: type })
+                  }
+                  onSetTitle={(title: string) =>
+                    dispatch({ type: "SET_TITLE", entryId: entry.id, title })
+                  }
+                  onIndent={() => dispatch({ type: "INDENT", entryId: entry.id })}
+                  onOutdent={() => dispatch({ type: "OUTDENT", entryId: entry.id })}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

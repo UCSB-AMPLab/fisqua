@@ -1,4 +1,4 @@
-import { useState, useReducer, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
@@ -6,11 +6,12 @@ import { requireProjectRole } from "../lib/permissions.server";
 import { loadEntries } from "../lib/entries.server";
 import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
-import { ViewerToolbar } from "../components/viewer/viewer-toolbar";
+import { ViewerBar } from "../components/viewer/viewer-bar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
 import { OutlinePanel } from "../components/outline/outline-panel";
 import { ResizableDivider } from "../components/outline/resizable-divider";
 import { boundaryReducer, createInitialState } from "../lib/boundary-reducer";
+import { useUndoableReducer } from "../lib/use-undoable-reducer";
 import { useAutosave } from "../lib/use-autosave";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
 
@@ -65,11 +66,36 @@ export type PageData = {
 export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   const { volume, pages, entries, projectId } = loaderData;
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void } | null>(null);
+  const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void; scrollToPosition: (pageIndex: number, yFraction: number) => void } | null>(null);
 
-  // Boundary state management
-  const [state, dispatch] = useReducer(boundaryReducer, entries, createInitialState);
+  // Boundary state management with undo/redo
+  const { state, dispatch, canUndo, canRedo } = useUndoableReducer(
+    boundaryReducer,
+    createInitialState(entries)
+  );
   const { saveStatus } = useAutosave(state, dispatch, volume.id);
+
+  // Undo/redo keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: "UNDO" });
+      } else if (e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: "REDO" });
+      } else if (e.key === "y" && !e.metaKey) {
+        // Ctrl+Y only (not Cmd+Y on macOS)
+        e.preventDefault();
+        dispatch({ type: "REDO" });
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dispatch]);
 
   const handlePageChange = useCallback((pageIndex: number) => {
     setCurrentPageIndex(pageIndex);
@@ -95,6 +121,14 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
     viewerRef.current?.zoomOut();
   }, []);
 
+  const handleUndo = useCallback(() => {
+    dispatch({ type: "UNDO" });
+  }, [dispatch]);
+
+  const handleRedo = useCallback(() => {
+    dispatch({ type: "REDO" });
+  }, [dispatch]);
+
   // Resizable panel width
   const MIN_PANEL = 280;
   const MAX_PANEL = 720;
@@ -109,10 +143,23 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="flex h-screen flex-col">
-      <ViewerTopBar volumeName={volume.name} projectId={projectId} pageLabel={pageLabel} saveStatus={saveStatus} />
+      <ViewerTopBar
+        volumeName={volume.name}
+        projectId={projectId}
+        saveStatus={saveStatus}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+      />
       <div className="flex flex-1 overflow-hidden">
         {/* Viewer panel */}
-        <div className="relative flex-1 overflow-hidden">
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          <ViewerBar
+            pageLabel={pageLabel}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+          />
           <IIIFViewer
             pages={pages}
             onPageChange={handlePageChange}
@@ -122,7 +169,6 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             onDeleteBoundary={handleDeleteBoundary}
             onMoveBoundary={handleMoveBoundary}
           />
-          <ViewerToolbar onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
         </div>
 
         {/* Resizable divider */}
@@ -135,7 +181,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             volumeRefCode={volume.referenceCode}
             currentPageIndex={currentPageIndex}
             totalPages={pages.length}
-            onScrollToPage={(pageIndex) => viewerRef.current?.scrollToPage(pageIndex)}
+            onScrollToEntry={(pageIndex, yFraction) => viewerRef.current?.scrollToPosition(pageIndex, yFraction)}
             dispatch={dispatch}
           />
         </div>
