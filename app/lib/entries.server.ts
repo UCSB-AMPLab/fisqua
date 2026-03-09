@@ -32,7 +32,9 @@ export async function loadEntries(
       parentId: null,
       position: 0,
       startPage: 1,
+      startY: 0,
       endPage: null,
+      endY: null,
       type: null,
       title: null,
       createdAt: now,
@@ -67,7 +69,9 @@ export async function saveEntries(
     parentId: e.parentId,
     position: e.position,
     startPage: e.startPage,
+    startY: e.startY,
     endPage: e.endPage,
+    endY: e.endY,
     type: e.type,
     title: e.title,
     createdAt: e.createdAt,
@@ -129,6 +133,14 @@ function validateEntries(entriesToSave: Entry[], volumeId: string): void {
     if (typeof entry.startPage !== "number" || entry.startPage < 1) {
       throw new Error("each entry must have a positive startPage");
     }
+    if (typeof entry.startY !== "number" || entry.startY < 0 || entry.startY > 1) {
+      throw new Error("each entry must have a startY between 0 and 1");
+    }
+    if (entry.endY !== null && entry.endY !== undefined) {
+      if (typeof entry.endY !== "number" || entry.endY < 0 || entry.endY > 1) {
+        throw new Error("endY must be a number between 0 and 1, or null");
+      }
+    }
     if (entry.type !== null && !["item", "blank", "front_matter", "back_matter"].includes(entry.type)) {
       throw new Error(`invalid entry type: ${entry.type}`);
     }
@@ -145,7 +157,9 @@ function rowToEntry(row: typeof entries.$inferSelect): Entry {
     parentId: row.parentId,
     position: row.position,
     startPage: row.startPage,
+    startY: row.startY,
     endPage: row.endPage,
+    endY: row.endY,
     type: row.type,
     title: row.title,
     createdAt: row.createdAt,

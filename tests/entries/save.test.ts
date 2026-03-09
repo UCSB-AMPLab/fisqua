@@ -20,7 +20,9 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     parentId: null,
     position: 0,
     startPage: 1,
+    startY: 0,
     endPage: null,
+    endY: null,
     type: null,
     title: null,
     createdAt: 1000,
@@ -182,6 +184,50 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
         makeEntry({ id: "e1", volumeId, position: 0, startPage: 1, type: "invalid" as any }),
       ])
     ).rejects.toThrow("invalid entry type");
+  });
+
+  it("saves and loads entries with startY and endY (y-position roundtrip)", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    const entriesToSave: Entry[] = [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1, startY: 0 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 3, startY: 0.45 }),
+      makeEntry({
+        id: "e3",
+        volumeId,
+        parentId: "e2",
+        position: 0,
+        startPage: 3,
+        startY: 0.5,
+        endPage: 4,
+        endY: 0.75,
+        type: "item",
+      }),
+    ];
+
+    await saveEntries(db, volumeId, entriesToSave);
+    const loaded = await loadEntries(db, volumeId);
+
+    expect(loaded).toHaveLength(3);
+
+    const e1 = loaded.find((e) => e.id === "e1")!;
+    const e2 = loaded.find((e) => e.id === "e2")!;
+    const e3 = loaded.find((e) => e.id === "e3")!;
+
+    expect(e1.startY).toBe(0);
+    expect(e1.endY).toBeNull();
+    expect(e2.startY).toBe(0.45);
+    expect(e3.startY).toBe(0.5);
+    expect(e3.endY).toBe(0.75);
+  });
+
+  it("default auto-entry has startY=0 and endY=null", async () => {
+    const db = drizzle(env.DB, { schema });
+    const result = await loadEntries(db, volumeId);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].startY).toBe(0);
+    expect(result[0].endY).toBeNull();
   });
 
   it("rejects entries with startPage < 1", async () => {

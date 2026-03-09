@@ -39,7 +39,8 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS vp_volume_idx ON volume_pages(volume_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS vp_volume_pos_idx ON volume_pages(volume_id, position)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), parent_id TEXT, position INTEGER NOT NULL, start_page INTEGER NOT NULL, end_page INTEGER, type TEXT CHECK(type IN ('item', 'blank', 'front_matter', 'back_matter')), title TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("DROP TABLE IF EXISTS entries");
+  await db.exec("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), parent_id TEXT, position INTEGER NOT NULL, start_page INTEGER NOT NULL, start_y REAL NOT NULL DEFAULT 0, end_page INTEGER, end_y REAL, type TEXT CHECK(type IN ('item', 'blank', 'front_matter', 'back_matter')), title TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_idx ON entries(volume_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_parent_idx ON entries(parent_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_pos_idx ON entries(volume_id, position)");

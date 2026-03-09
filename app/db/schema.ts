@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   index,
 } from "drizzle-orm/sqlite-core";
 
@@ -128,7 +129,9 @@ export const entries = sqliteTable(
     parentId: text("parent_id"), // null = top-level entry
     position: integer("position").notNull(), // 0-based sibling order
     startPage: integer("start_page").notNull(), // 1-based page number
+    startY: real("start_y").notNull().default(0), // 0.0 = top of page
     endPage: integer("end_page"), // explicit for children, null for top-level
+    endY: real("end_y"), // fraction 0-1, null for top-level
     type: text("type", {
       enum: ["item", "blank", "front_matter", "back_matter"],
     }), // nullable: unset by default

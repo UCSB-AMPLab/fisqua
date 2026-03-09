@@ -76,7 +76,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   }, []);
 
   const handlePlaceBoundary = useCallback((afterPage: number) => {
-    dispatch({ type: "ADD_BOUNDARY", afterPage });
+    dispatch({ type: "ADD_BOUNDARY", startPage: afterPage });
   }, []);
 
   const handleDeleteBoundary = useCallback((entryId: string) => {

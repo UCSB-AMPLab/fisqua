@@ -1,5 +1,8 @@
 import type { Entry, BoundaryAction, BoundaryState } from "./boundary-types";
 
+/** Minimum gap between boundaries on the same page (2% of page height). */
+export const MIN_Y_GAP = 0.02;
+
 /**
  * Create the initial boundary state from a list of entries loaded from the server.
  */
@@ -32,14 +35,23 @@ export function boundaryReducer(
     }
 
     case "ADD_BOUNDARY": {
+      const startY = action.startY ?? 0;
+
+      // Minimum gap check: reject if any same-page entry is too close
+      if (hasTooCloseEntry(state.entries, action.startPage, startY, null)) {
+        return state;
+      }
+
       const now = Date.now();
       const newEntry: Entry = {
         id: action.id ?? crypto.randomUUID(),
         volumeId: state.entries[0]?.volumeId ?? "",
         parentId: null,
         position: 0, // will be renumbered
-        startPage: action.afterPage,
+        startPage: action.startPage,
+        startY,
         endPage: null,
+        endY: null,
         type: null,
         title: null,
         createdAt: now,
@@ -59,12 +71,27 @@ export function boundaryReducer(
       const entry = state.entries.find((e) => e.id === action.entryId);
       if (!entry) return state;
 
-      // Validate containment for child entries
+      const newStartPage = action.startPage;
+      const newStartY = action.toY ?? 0;
+
+      // Minimum gap check at target position (exclude the entry being moved)
+      if (hasTooCloseEntry(state.entries, newStartPage, newStartY, entry.id)) {
+        return state;
+      }
+
+      // Validate containment for child entries (y-aware)
       if (entry.parentId !== null) {
         const parent = state.entries.find((e) => e.id === entry.parentId);
         if (parent) {
           const parentEnd = getEffectiveEndPage(parent, state.entries);
-          if (action.toPage < parent.startPage || action.toPage > parentEnd) {
+
+          // Y-aware containment: child's (page, y) must be >= parent's (page, y)
+          if (comparePageY(newStartPage, newStartY, parent.startPage, parent.startY) < 0) {
+            return state; // no-op: would move above parent
+          }
+
+          // Also check page-level upper bound
+          if (newStartPage > parentEnd) {
             return state; // no-op: would violate containment
           }
         }
@@ -72,7 +99,7 @@ export function boundaryReducer(
 
       const entries = state.entries.map((e) =>
         e.id === action.entryId
-          ? { ...e, startPage: action.toPage, updatedAt: Date.now() }
+          ? { ...e, startPage: newStartPage, startY: newStartY, updatedAt: Date.now() }
           : e
       );
 
@@ -90,10 +117,10 @@ export function boundaryReducer(
 
       // First entry protection: cannot delete the first top-level entry
       if (entry.parentId === null && entry.position === 0) {
-        // Check if this is truly the first top-level entry by startPage
+        // Check if this is truly the first top-level entry by (startPage, startY)
         const topLevel = state.entries
           .filter((e) => e.parentId === null)
-          .sort((a, b) => a.startPage - b.startPage);
+          .sort((a, b) => comparePageY(a.startPage, a.startY, b.startPage, b.startY));
         if (topLevel.length > 0 && topLevel[0].id === entry.id) {
           return state; // no-op
         }
@@ -121,7 +148,7 @@ export function boundaryReducer(
       // Find the previous sibling at the same level
       const siblings = state.entries
         .filter((e) => e.parentId === entry.parentId)
-        .sort((a, b) => a.startPage - b.startPage);
+        .sort((a, b) => comparePageY(a.startPage, a.startY, b.startPage, b.startY));
 
       const siblingIndex = siblings.findIndex((s) => s.id === entry.id);
       if (siblingIndex <= 0) return state; // no-op: first sibling
@@ -157,6 +184,7 @@ export function boundaryReducer(
               ...e,
               parentId: parent.parentId,
               endPage: null, // clear endPage when becoming top-level
+              endY: null, // clear endY when becoming top-level
               updatedAt: Date.now(),
             }
           : e
@@ -215,6 +243,21 @@ export function boundaryReducer(
       };
     }
 
+    case "SET_END_Y": {
+      const entries = state.entries.map((e) =>
+        e.id === action.entryId
+          ? { ...e, endY: action.endY, updatedAt: Date.now() }
+          : e
+      );
+
+      return {
+        ...state,
+        entries,
+        isDirty: true,
+        saveStatus: "unsaved",
+      };
+    }
+
     case "MARK_SAVED":
       return { ...state, isDirty: false, saveStatus: "saved" };
 
@@ -232,8 +275,34 @@ export function boundaryReducer(
 // --- Helper functions ---
 
 /**
- * Renumber siblings by startPage within each parent group.
- * Assigns position values 0, 1, 2... based on startPage order.
+ * Compare two (page, y) tuples. Returns negative if a < b, 0 if equal, positive if a > b.
+ */
+function comparePageY(pageA: number, yA: number, pageB: number, yB: number): number {
+  if (pageA !== pageB) return pageA - pageB;
+  return yA - yB;
+}
+
+/**
+ * Check if any entry on the same page is too close to the given y-position.
+ * excludeId allows excluding a specific entry (e.g., the one being moved).
+ */
+function hasTooCloseEntry(
+  entries: Entry[],
+  page: number,
+  y: number,
+  excludeId: string | null
+): boolean {
+  return entries.some(
+    (e) =>
+      e.id !== excludeId &&
+      e.startPage === page &&
+      Math.abs(e.startY - y) < MIN_Y_GAP
+  );
+}
+
+/**
+ * Renumber siblings by (startPage, startY) within each parent group.
+ * Assigns position values 0, 1, 2... based on sort order.
  */
 function renumberSiblings(entries: Entry[]): Entry[] {
   // Group by parentId
@@ -246,10 +315,10 @@ function renumberSiblings(entries: Entry[]): Entry[] {
     groups.get(key)!.push(entry);
   }
 
-  // Sort each group by startPage and assign positions
+  // Sort each group by (startPage, startY) and assign positions
   const positionMap = new Map<string, number>();
   for (const children of groups.values()) {
-    children.sort((a, b) => a.startPage - b.startPage);
+    children.sort((a, b) => comparePageY(a.startPage, a.startY, b.startPage, b.startY));
     children.forEach((child, index) => {
       positionMap.set(child.id, index);
     });
@@ -287,9 +356,11 @@ function getEffectiveEndPage(entry: Entry, entries: Entry[]): number {
   // Find next sibling
   const siblings = entries
     .filter((e) => e.parentId === entry.parentId && e.id !== entry.id)
-    .sort((a, b) => a.startPage - b.startPage);
+    .sort((a, b) => comparePageY(a.startPage, a.startY, b.startPage, b.startY));
 
-  const nextSibling = siblings.find((s) => s.startPage > entry.startPage);
+  const nextSibling = siblings.find(
+    (s) => comparePageY(s.startPage, s.startY, entry.startPage, entry.startY) > 0
+  );
   if (nextSibling) return nextSibling.startPage - 1;
 
   // No next sibling -- return a very large number (effectively end of volume)
