@@ -2,6 +2,19 @@ import { useState, useCallback } from "react";
 import type { Entry } from "../../lib/boundary-types";
 import { useDragOrClick } from "../../lib/drag-utils";
 
+type BoundaryMarkerVariant = "cataloguer" | "reviewer";
+
+const VARIANT_STYLES: Record<BoundaryMarkerVariant, { badge: string; line: string }> = {
+  cataloguer: {
+    badge: "bg-teal-600",
+    line: "border-teal-500",
+  },
+  reviewer: {
+    badge: "bg-red-600",
+    line: "border-red-500",
+  },
+};
+
 type BoundaryMarkerProps = {
   entry: Entry;
   sequenceLabel: string;
@@ -13,6 +26,7 @@ type BoundaryMarkerProps = {
   onDragMove?: (clientY: number) => void;
   onDragEnd?: (entryId: string, clientY: number) => void;
   isDragFaded?: boolean;
+  variant?: BoundaryMarkerVariant;
 };
 
 /**
@@ -31,7 +45,9 @@ export function BoundaryMarker({
   onDragMove,
   onDragEnd,
   isDragFaded,
+  variant = "cataloguer",
 }: BoundaryMarkerProps) {
+  const styles = VARIANT_STYLES[variant];
   const [showPopover, setShowPopover] = useState(false);
 
   const handleClick = useCallback(
@@ -97,7 +113,7 @@ export function BoundaryMarker({
       onPointerUp={handlePointerUp}
     >
       {/* Sequence badge */}
-      <div className="absolute left-2 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center rounded-full bg-teal-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+      <div className={`absolute left-2 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center rounded-full ${styles.badge} px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm`}>
         {sequenceLabel}
         {/* Lock indicator for first entry */}
         {isFirstEntry && (
@@ -116,7 +132,7 @@ export function BoundaryMarker({
       </div>
 
       {/* Horizontal line */}
-      <div className="absolute left-16 right-0 top-1/2 -translate-y-1/2 border-t-[3px] border-teal-500" />
+      <div className={`absolute left-16 right-0 top-1/2 -translate-y-1/2 border-t-[3px] ${styles.line}`} />
 
       {/* Delete popover */}
       {showPopover && !isFirstEntry && (

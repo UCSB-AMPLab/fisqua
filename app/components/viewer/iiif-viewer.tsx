@@ -31,6 +31,8 @@ type IIIFViewerProps = {
   onPlaceBoundary?: (startPage: number, startY: number) => void;
   onDeleteBoundary?: (entryId: string) => void;
   onMoveBoundary?: (entryId: string, startPage: number, startY: number) => void;
+  /** Set of entry IDs that were modified by a reviewer (rendered with red variant). */
+  reviewerModifiedIds?: Set<string>;
 };
 
 export type IIIFViewerHandle = {
@@ -66,7 +68,7 @@ function computeLayouts(pages: PageData[], containerWidth: number, zoom: number)
 }
 
 export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
-  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary, onMoveBoundary }, ref) {
+  function IIIFViewer({ pages, onPageChange, boundaries, onPlaceBoundary, onDeleteBoundary, onMoveBoundary, reviewerModifiedIds }, ref) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [zoom, setZoom] = useState(DEFAULT_ZOOM);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 5 });
@@ -550,6 +552,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                         onDragMove={handleBoundaryDragMove}
                         onDragEnd={handleBoundaryDragEnd}
                         isDragFaded={dragState.entryId === entry.id}
+                        variant={reviewerModifiedIds?.has(entry.id) ? "reviewer" : "cataloguer"}
                       />
                     );
                   })}

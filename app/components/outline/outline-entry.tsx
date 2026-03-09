@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { EntryType } from "../../lib/boundary-types";
 import { TreeConnector } from "./tree-connector";
 
@@ -19,6 +19,10 @@ type OutlineEntryProps = {
   onSetTitle: (title: string) => void;
   onIndent: () => void;
   onOutdent: () => void;
+  isReviewerModified?: boolean;
+  isReadonly?: boolean;
+  isFirstEntry?: boolean;
+  onDelete?: (entryId: string) => void;
   children?: React.ReactNode;
 };
 
@@ -53,6 +57,10 @@ export function OutlineEntry({
   onSetTitle,
   onIndent,
   onOutdent,
+  isReviewerModified,
+  isReadonly,
+  isFirstEntry,
+  onDelete,
   children,
 }: OutlineEntryProps) {
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,13 +97,46 @@ export function OutlineEntry({
     [onSetTitle]
   );
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDeleteClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (confirmDelete) {
+        onDelete?.(entry.id);
+        setConfirmDelete(false);
+      } else {
+        setConfirmDelete(true);
+        // Auto-reset after 3 seconds
+        setTimeout(() => setConfirmDelete(false), 3000);
+      }
+    },
+    [confirmDelete, entry.id, onDelete]
+  );
+
+  // Determine border/background styles based on state
+  let borderClass: string;
+  let bgClass: string;
+  if (isReviewerModified) {
+    borderClass = "border-l-2 border-red-500";
+    bgClass = "bg-red-50";
+  } else if (isHighlighted) {
+    borderClass = "border-l-2 border-blue-500";
+    bgClass = "bg-blue-50";
+  } else {
+    borderClass = "border-l-2 border-transparent";
+    bgClass = "";
+  }
+
+  const titleColor = isReviewerModified
+    ? entry.title ? "text-red-700" : "italic text-red-400"
+    : entry.title ? "text-stone-800" : "italic text-stone-400";
+
   return (
     <div>
       {/* Summary line */}
       <div
-        className={`flex cursor-pointer items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-stone-50 ${
-          isHighlighted ? "border-l-2 border-blue-500 bg-blue-50" : "border-l-2 border-transparent"
-        }`}
+        className={`flex cursor-pointer items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-stone-50 ${borderClass} ${bgClass}`}
         onClick={handleClick}
       >
         <TreeConnector depth={depth} isLast={isLast} hasChildren={hasChildren} />
@@ -106,18 +147,34 @@ export function OutlineEntry({
         </span>
 
         {/* Page range */}
-        <span className="shrink-0 text-xs text-stone-500">{pageRange}</span>
+        <span className={`shrink-0 text-xs ${isReviewerModified ? "text-red-500" : "text-stone-500"}`}>{pageRange}</span>
 
         {/* Title */}
-        <span className={`min-w-0 truncate text-sm ${entry.title ? "text-stone-800" : "italic text-stone-400"}`}>
+        <span className={`min-w-0 truncate text-sm ${titleColor}`}>
           {entry.title || "Sin titulo"}
         </span>
 
         {/* Type badge */}
         {entry.type && (
-          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${TYPE_BADGE_COLORS[entry.type]}`}>
+          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isReviewerModified ? "bg-red-100 text-red-700" : TYPE_BADGE_COLORS[entry.type]}`}>
             {TYPE_LABELS[entry.type]}
           </span>
+        )}
+
+        {/* Delete button (hidden in readonly mode and for first entry) */}
+        {!isReadonly && !isFirstEntry && onDelete && (
+          <button
+            type="button"
+            className={`shrink-0 rounded px-1 py-0.5 text-xs ${
+              confirmDelete
+                ? "bg-red-100 text-red-700 hover:bg-red-200"
+                : "text-stone-400 hover:text-red-600"
+            }`}
+            onClick={handleDeleteClick}
+            title={confirmDelete ? "Confirmar eliminacion" : "Eliminar limite"}
+          >
+            {confirmDelete ? "Eliminar?" : "\u00D7"}
+          </button>
         )}
 
         {/* Expand indicator */}
