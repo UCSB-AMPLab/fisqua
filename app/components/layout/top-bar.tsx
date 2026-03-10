@@ -10,8 +10,12 @@ export function TopBar({ user, appName }: TopBarProps) {
   return (
     <header className="fixed top-0 right-0 left-0 z-50 border-b border-stone-200 bg-white">
       <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-semibold text-stone-900">{appName}</span>
+        <div className="flex items-center gap-2">
+          <img src="/pomegranate.svg" alt="" className="h-8 w-8" aria-hidden="true" />
+          <div className="flex flex-col leading-tight">
+            <span className="font-serif text-lg font-semibold text-burgundy">Zasqua</span>
+            <span className="text-xs text-stone-500">Catalogacion</span>
+          </div>
           {/* Breadcrumb area -- populated by child routes in future */}
         </div>
 

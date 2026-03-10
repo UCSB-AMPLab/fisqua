@@ -22,11 +22,11 @@ const STATUS_ORDER = [
 /** Map status -> Tailwind bg class for bar segments (darker than badge bg) */
 const SEGMENT_COLORS: Record<string, string> = {
   unstarted: "bg-stone-300",
-  in_progress: "bg-blue-400",
-  segmented: "bg-amber-400",
-  sent_back: "bg-red-400",
-  reviewed: "bg-purple-400",
-  approved: "bg-green-400",
+  in_progress: "bg-[#3B5A9A]",
+  segmented: "bg-[#8B6914]",
+  sent_back: "bg-[#8B2942]",
+  reviewed: "bg-[#7C3AED]",
+  approved: "bg-[#2F6B45]",
 };
 
 export function StackedProgressBar({ counts }: StackedProgressBarProps) {

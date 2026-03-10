@@ -10,7 +10,7 @@ const emailSchema = z.object({
 });
 
 export function meta() {
-  return [{ title: "Log in" }];
+  return [{ title: "Log in | Zasqua Catalogacion" }];
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -70,13 +70,12 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
   const urlError = searchParams.get("error");
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50">
+    <div className="flex min-h-screen items-center justify-center bg-white">
       <div className="w-full max-w-sm space-y-6 px-4">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-stone-900">Log in</h1>
-          <p className="mt-1 text-sm text-stone-500">
-            Sign in to your account
-          </p>
+          <img src="/pomegranate.svg" alt="Zasqua" className="mx-auto h-24 w-24" />
+          <h1 className="font-serif text-3xl font-semibold text-burgundy">Zasqua</h1>
+          <p className="mt-1 text-sm text-stone-500">Catalogacion</p>
         </div>
 
         {urlError && errorMessages[urlError] && (
@@ -111,14 +110,14 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                 required
                 autoComplete="email"
                 autoFocus
-                className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+                className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:outline-none focus:ring-1 focus:ring-burgundy-light"
                 placeholder="you@example.com"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:ring-offset-2"
+              className="w-full rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy focus:outline-none focus:ring-2 focus:ring-burgundy-light focus:ring-offset-2"
             >
               Send login link
             </button>
