@@ -1,0 +1,11 @@
+<!-- Placeholder: replace with actual pomegranate brand mark -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Fruit body -->
+  <circle cx="32" cy="36" r="24" fill="#8B2942" />
+  <!-- Crown/calyx -->
+  <path d="M26 14 L32 8 L38 14 L36 16 L32 12 L28 16 Z" fill="#8B2942" />
+  <!-- Stem -->
+  <rect x="30.5" y="8" width="3" height="6" rx="1.5" fill="#8B2942" />
+  <!-- Leaf -->
+  <path d="M34 10 Q42 4 44 12 Q38 10 34 10 Z" fill="#8B2942" opacity="0.7" />
+</svg>
