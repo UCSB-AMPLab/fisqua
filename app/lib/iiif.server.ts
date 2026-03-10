@@ -21,7 +21,19 @@ export interface ParsedManifest {
   }>;
 }
 
-const ALLOWED_MANIFEST_HOSTS = ["iiif.zasqua.org"];
+const DEFAULT_MANIFEST_HOSTS = ["iiif.zasqua.org"];
+
+/**
+ * Returns the list of allowed IIIF manifest hosts from the env var,
+ * falling back to the default host if not set.
+ */
+export function getAllowedManifestHosts(env: {
+  ALLOWED_MANIFEST_HOSTS?: string;
+}): string[] {
+  const raw = env.ALLOWED_MANIFEST_HOSTS?.trim();
+  if (!raw) return DEFAULT_MANIFEST_HOSTS;
+  return raw.split(",").map((h) => h.trim()).filter((h) => h.length > 0);
+}
 
 /**
  * Validates that a manifest URL is safe to fetch:
@@ -29,7 +41,10 @@ const ALLOWED_MANIFEST_HOSTS = ["iiif.zasqua.org"];
  * - Must be from an allowed host
  * - Must end with /manifest.json
  */
-export function validateManifestUrl(url: string): {
+export function validateManifestUrl(
+  url: string,
+  env: { ALLOWED_MANIFEST_HOSTS?: string }
+): {
   valid: boolean;
   error?: string;
 } {
@@ -38,10 +53,11 @@ export function validateManifestUrl(url: string): {
     if (parsed.protocol !== "https:") {
       return { valid: false, error: "Manifest URL must use HTTPS" };
     }
-    if (!ALLOWED_MANIFEST_HOSTS.includes(parsed.hostname)) {
+    const allowedHosts = getAllowedManifestHosts(env);
+    if (!allowedHosts.includes(parsed.hostname)) {
       return {
         valid: false,
-        error: `Manifest must be from ${ALLOWED_MANIFEST_HOSTS.join(" or ")}`,
+        error: `Manifest must be from ${allowedHosts.join(" or ")}`,
       };
     }
     if (!parsed.pathname.endsWith("/manifest.json")) {
@@ -71,7 +87,7 @@ export async function parseManifest(
     throw new Error(`Failed to fetch manifest: ${response.status}`);
   }
 
-  const manifest = await response.json();
+  const manifest = (await response.json()) as any;
 
   // Extract label from v3 language map
   const label = manifest.label;

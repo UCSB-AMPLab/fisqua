@@ -5,19 +5,56 @@ import { sampleManifest, sampleManifestUrl } from "../helpers/manifests";
 import {
   validateManifestUrl,
   parseManifest,
+  getAllowedManifestHosts,
 } from "../../app/lib/iiif.server";
 
+const defaultEnv = { ALLOWED_MANIFEST_HOSTS: "iiif.zasqua.org" };
+
 describe("IIIF manifest parser", () => {
+  describe("getAllowedManifestHosts", () => {
+    it("parses comma-separated hosts from env var", () => {
+      const hosts = getAllowedManifestHosts({
+        ALLOWED_MANIFEST_HOSTS: "a.example.com,b.example.com",
+      });
+      expect(hosts).toEqual(["a.example.com", "b.example.com"]);
+    });
+
+    it("trims whitespace from hosts", () => {
+      const hosts = getAllowedManifestHosts({
+        ALLOWED_MANIFEST_HOSTS: " a.example.com , b.example.com ",
+      });
+      expect(hosts).toEqual(["a.example.com", "b.example.com"]);
+    });
+
+    it("falls back to default host when env var is not set", () => {
+      const hosts = getAllowedManifestHosts({});
+      expect(hosts).toEqual(["iiif.zasqua.org"]);
+    });
+
+    it("falls back to default host when env var is undefined", () => {
+      const hosts = getAllowedManifestHosts({
+        ALLOWED_MANIFEST_HOSTS: undefined,
+      });
+      expect(hosts).toEqual(["iiif.zasqua.org"]);
+    });
+
+    it("falls back to default host when env var is empty string", () => {
+      const hosts = getAllowedManifestHosts({ ALLOWED_MANIFEST_HOSTS: "" });
+      expect(hosts).toEqual(["iiif.zasqua.org"]);
+    });
+  });
+
   describe("validateManifestUrl", () => {
     it("accepts a valid manifest URL", () => {
-      const result = validateManifestUrl(sampleManifestUrl);
+      const result = validateManifestUrl(sampleManifestUrl, defaultEnv);
       expect(result.valid).toBe(true);
       expect(result.error).toBeUndefined();
     });
 
     it("rejects non-HTTPS URLs", () => {
       const result = validateManifestUrl(
-        "http://iiif.zasqua.org/co-ahr-gob-caj259-car005/manifest.json"
+        "http://iiif.zasqua.org/co-ahr-gob-caj259-car005/manifest.json",
+        defaultEnv
       );
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/HTTPS/i);
@@ -25,7 +62,8 @@ describe("IIIF manifest parser", () => {
 
     it("rejects URLs from wrong host", () => {
       const result = validateManifestUrl(
-        "https://evil.example.com/co-ahr-gob-caj259-car005/manifest.json"
+        "https://evil.example.com/co-ahr-gob-caj259-car005/manifest.json",
+        defaultEnv
       );
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/iiif\.zasqua\.org/);
@@ -33,16 +71,38 @@ describe("IIIF manifest parser", () => {
 
     it("rejects URLs not ending in /manifest.json", () => {
       const result = validateManifestUrl(
-        "https://iiif.zasqua.org/co-ahr-gob-caj259-car005/info.json"
+        "https://iiif.zasqua.org/co-ahr-gob-caj259-car005/info.json",
+        defaultEnv
       );
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/manifest\.json/);
     });
 
     it("rejects invalid URL format", () => {
-      const result = validateManifestUrl("not a url");
+      const result = validateManifestUrl("not a url", defaultEnv);
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/Invalid URL/i);
+    });
+
+    it("uses hosts from env var", () => {
+      const customEnv = { ALLOWED_MANIFEST_HOSTS: "custom.example.com" };
+      const result = validateManifestUrl(
+        "https://custom.example.com/volume-001/manifest.json",
+        customEnv
+      );
+      expect(result.valid).toBe(true);
+
+      // Default host should be rejected when custom env is set
+      const defaultHostResult = validateManifestUrl(
+        "https://iiif.zasqua.org/co-ahr-gob-caj259-car005/manifest.json",
+        customEnv
+      );
+      expect(defaultHostResult.valid).toBe(false);
+    });
+
+    it("falls back to default host when env var is not set", () => {
+      const result = validateManifestUrl(sampleManifestUrl, {});
+      expect(result.valid).toBe(true);
     });
   });
 

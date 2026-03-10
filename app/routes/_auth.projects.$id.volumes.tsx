@@ -55,7 +55,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
       for (const url of urls) {
         // Validate URL format and host
-        const validation = validateManifestUrl(url);
+        const validation = validateManifestUrl(url, env);
         if (!validation.valid) {
           results.push({ url, success: false, error: validation.error });
           continue;

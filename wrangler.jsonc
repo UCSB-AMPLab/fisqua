@@ -1,25 +1,51 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "my-app",
+  "name": "zasqua-catalogacion",
   "compatibility_date": "2025-04-04",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
+  "routes": [{ "pattern": "catalogacion.zasqua.org", "custom_domain": true }],
   "vars": {
-    "APP_NAME": "",
-    "SENDER_EMAIL": ""
+    "APP_NAME": "Zasqua: Catalogacion",
+    "SENDER_EMAIL": "noreply@zasqua.org",
+    "ALLOWED_MANIFEST_HOSTS": "iiif.zasqua.org"
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "my-app-db",
-      "database_id": "LOCAL",
+      "database_name": "zasqua-catalogacion-db",
+      "database_id": "PLACEHOLDER_PRODUCTION_DB_ID",
       "migrations_dir": "drizzle"
     }
   ],
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "my-app-bucket"
+      "bucket_name": "zasqua-catalogacion-bucket"
     }
-  ]
+  ],
+  "env": {
+    "staging": {
+      "routes": [{ "pattern": "catalogacion-staging.zasqua.org", "custom_domain": true }],
+      "vars": {
+        "APP_NAME": "Zasqua: Catalogacion [Staging]",
+        "SENDER_EMAIL": "noreply@zasqua.org",
+        "ALLOWED_MANIFEST_HOSTS": "iiif.zasqua.org"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "zasqua-catalogacion-staging-db",
+          "database_id": "PLACEHOLDER_STAGING_DB_ID",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "BUCKET",
+          "bucket_name": "zasqua-catalogacion-bucket"
+        }
+      ]
+    }
+  }
 }
