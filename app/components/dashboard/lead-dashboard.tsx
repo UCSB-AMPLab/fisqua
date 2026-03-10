@@ -141,10 +141,18 @@ export function LeadDashboard({
 }: LeadDashboardProps) {
   if (projects.length === 0) {
     return (
-      <div className="mt-12 text-center">
-        <p className="text-sm text-stone-500">
-          No projects yet. Create a project and add volumes to get started.
-        </p>
+      <div className="mt-12 flex justify-center">
+        <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
+            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">No projects yet</h3>
+          <p className="mt-2 text-sm text-stone-500">
+            Create a project and add volumes to get started.
+          </p>
+        </div>
       </div>
     );
   }

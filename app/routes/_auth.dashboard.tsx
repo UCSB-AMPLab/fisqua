@@ -541,38 +541,40 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 
       <div className="mt-6">
         {primaryRole === "none" || !data ? (
-          <div className="mt-12 text-center">
-            {user.isAdmin ? (
-              <div className="space-y-4">
-                <p className="text-sm text-stone-500">
-                  No projects yet. Get started by creating a project or managing users.
-                </p>
-                <div className="flex items-center justify-center gap-3">
-                  <Link
-                    to="/projects/new"
-                    className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
-                  >
-                    New project
-                  </Link>
-                  <Link
-                    to="/admin/users"
-                    className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-                  >
-                    Manage users
-                  </Link>
-                  <Link
-                    to="/admin/projects"
-                    className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-                  >
-                    Manage projects
-                  </Link>
-                </div>
+          <div className="mt-12 flex justify-center">
+            <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
+                <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
               </div>
-            ) : (
-              <p className="text-sm text-stone-500">
-                No projects yet. Ask a project lead to add you.
-              </p>
-            )}
+              <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">No projects yet</h3>
+              {user.isAdmin ? (
+                <>
+                  <p className="mt-2 text-sm text-stone-500">
+                    Get started by creating a project or managing users.
+                  </p>
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <Link
+                      to="/projects/new"
+                      className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
+                    >
+                      New project
+                    </Link>
+                    <Link
+                      to="/admin/users"
+                      className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                    >
+                      Manage users
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-stone-500">
+                  Ask a project lead to add you.
+                </p>
+              )}
+            </div>
           </div>
         ) : primaryRole === "cataloguer" ? (
           <CataloguerDashboard
