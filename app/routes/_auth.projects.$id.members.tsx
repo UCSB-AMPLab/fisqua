@@ -256,7 +256,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
               name="email"
               required
               placeholder="colleague@example.com"
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
           </div>
 
@@ -272,7 +272,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                     name="roles"
                     value={role}
                     defaultChecked={role === "cataloguer"}
-                    className="border-stone-300 text-stone-900 focus:ring-stone-500"
+                    className="border-stone-300 text-burgundy-deep focus:ring-burgundy-light"
                   />
                   {role.charAt(0).toUpperCase() + role.slice(1)}
                 </label>
@@ -282,7 +282,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
 
           <button
             type="submit"
-            className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
             Invite
           </button>

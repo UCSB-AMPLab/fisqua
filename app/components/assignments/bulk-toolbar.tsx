@@ -80,7 +80,7 @@ export function BulkToolbar({
       <button
         onClick={handleApply}
         disabled={!bulkCataloguer && !bulkReviewer}
-        className="rounded bg-stone-800 px-3 py-1 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50"
+        className="rounded bg-burgundy-deep px-3 py-1 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
       >
         Apply
       </button>

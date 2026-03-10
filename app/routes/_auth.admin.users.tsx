@@ -131,12 +131,12 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
               name="email"
               required
               placeholder="user@example.com"
-              className="mt-1 block w-64 rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+              className="mt-1 block w-64 rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
             Create user
           </button>

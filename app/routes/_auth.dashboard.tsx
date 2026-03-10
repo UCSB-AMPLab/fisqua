@@ -531,7 +531,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
             </Link>
             <Link
               to="/projects/new"
-              className="rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-800"
+              className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
               New project
             </Link>
@@ -550,7 +550,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                 <div className="flex items-center justify-center gap-3">
                   <Link
                     to="/projects/new"
-                    className="rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                    className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
                   >
                     New project
                   </Link>

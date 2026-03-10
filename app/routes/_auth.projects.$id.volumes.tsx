@@ -132,7 +132,7 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800"
+          className="rounded-md bg-burgundy-deep px-3 py-1.5 text-sm font-medium text-white hover:bg-burgundy"
         >
           {showAddForm ? "Cancel" : "Add Volumes"}
         </button>
@@ -159,14 +159,14 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
               name="manifestUrls"
               rows={4}
               placeholder="Paste IIIF manifest URLs, one per line"
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
             {addError && (
               <p className="mt-2 text-sm text-red-600">{addError}</p>
             )}
             <button
               type="submit"
-              className="mt-3 rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+              className="mt-3 rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
               Add Volumes
             </button>

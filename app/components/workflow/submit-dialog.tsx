@@ -37,7 +37,7 @@ export function SubmitDialog({
           </button>
           <button
             onClick={onConfirm}
-            className="rounded bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+            className="rounded bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
             Submit for review
           </button>

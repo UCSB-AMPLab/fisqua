@@ -82,7 +82,7 @@ export default function NewProject() {
             required
             maxLength={200}
             defaultValue={actionData?.values?.name}
-            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
           />
           {actionData?.errors?.name && (
             <p className="mt-1 text-sm text-red-600">
@@ -105,14 +105,14 @@ export default function NewProject() {
             name="description"
             rows={3}
             defaultValue={actionData?.values?.description}
-            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-stone-500 focus:ring-1 focus:ring-stone-500 focus:outline-none"
+            className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
           />
         </div>
 
         <div className="flex justify-end">
           <button
             type="submit"
-            className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
             Create project
           </button>

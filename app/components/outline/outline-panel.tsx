@@ -414,7 +414,7 @@ export function OutlinePanel({
           {accessLevel === "edit" && volumeStatus === "in_progress" && (
             <button
               onClick={() => setShowSubmitDialog(true)}
-              className="w-full rounded bg-stone-800 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700"
+              className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
               Submit for review
             </button>
@@ -439,7 +439,7 @@ export function OutlinePanel({
                   }
                 }}
                 disabled={acceptFetcher.state !== "idle"}
-                className="w-full rounded bg-stone-800 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-50"
+                className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
               >
                 {acceptFetcher.state !== "idle" ? "Accepting..." : "Accept corrections"}
               </button>
