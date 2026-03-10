@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "zasqua-catalogacion-db",
-      "database_id": "PLACEHOLDER_PRODUCTION_DB_ID",
+      "database_id": "2b872de1-e119-41ee-8a95-f5a80cde2fe7",
       "migrations_dir": "drizzle"
     }
   ],
@@ -36,7 +36,7 @@
         {
           "binding": "DB",
           "database_name": "zasqua-catalogacion-staging-db",
-          "database_id": "PLACEHOLDER_STAGING_DB_ID",
+          "database_id": "d6a04c22-ec66-49b8-8aa9-c9aeb3ae21da",
           "migrations_dir": "drizzle"
         }
       ],
