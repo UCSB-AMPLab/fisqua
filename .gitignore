@@ -4,3 +4,4 @@ build/
 worker-configuration.d.ts
 .dev.vars
 .wrangler/
+.DS_Store
