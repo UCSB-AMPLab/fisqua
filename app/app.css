@@ -21,3 +21,15 @@ html,
 body {
   @apply bg-white;
 }
+
+.comments-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 150ms ease-out;
+}
+.comments-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.comments-collapse > div {
+  overflow: hidden;
+}

@@ -398,8 +398,15 @@ export function OutlinePanel({
                   }
                   onIndent={() => dispatch({ type: "INDENT", entryId: entry.id })}
                   onOutdent={() => dispatch({ type: "OUTDENT", entryId: entry.id })}
+                  onSetNote={(note) =>
+                    dispatch({ type: "SET_NOTE", entryId: entry.id, note })
+                  }
+                  onSetReviewerComment={(comment) =>
+                    dispatch({ type: "SET_REVIEWER_COMMENT", entryId: entry.id, reviewerComment: comment })
+                  }
+                  accessLevel={accessLevel}
+                  onHeightChange={() => virtualizer.measure()}
                   isReviewerModified={isReviewerModified(entry)}
-                  isReadonly={isReadonly}
                   isFirstEntry={entry.position === 0 && entry.parentId === null}
                   onDelete={(entryId) => dispatch({ type: "DELETE_BOUNDARY", entryId })}
                 />
