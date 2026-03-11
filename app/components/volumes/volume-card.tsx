@@ -1,4 +1,5 @@
 import { Form, Link } from "react-router";
+import { useTranslation } from "react-i18next";
 
 type VolumeCardProps = {
   volume: {
@@ -22,16 +23,8 @@ const statusBadgeColors: Record<string, string> = {
   sent_back: "bg-red-100 text-red-700",
 };
 
-const statusLabels: Record<string, string> = {
-  unstarted: "Unstarted",
-  in_progress: "In progress",
-  segmented: "Segmented",
-  reviewed: "Reviewed",
-  approved: "Approved",
-  sent_back: "Needs revision",
-};
-
 export function VolumeCard({ volume, projectId }: VolumeCardProps) {
+  const { t } = useTranslation(["project", "workflow", "common"]);
   const thumbnailUrl = volume.firstPageImageUrl
     ? `${volume.firstPageImageUrl}/full/200,/0/default.jpg`
     : null;
@@ -47,7 +40,7 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
           {thumbnailUrl ? (
             <img
               src={thumbnailUrl}
-              alt={`First page of ${volume.name}`}
+              alt={t("project:volume_card.first_page_alt", { name: volume.name })}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -75,12 +68,12 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
           <p className="mt-0.5 text-xs text-stone-500">{volume.referenceCode}</p>
           <div className="mt-2 flex items-center justify-between">
             <span className="text-xs text-stone-500">
-              {volume.pageCount} {volume.pageCount === 1 ? "page" : "pages"}
+              {t("common:domain.image_count", { count: volume.pageCount })}
             </span>
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeColors[volume.status] || "bg-stone-100 text-stone-600"}`}
             >
-              {statusLabels[volume.status] || volume.status}
+              {t(`workflow:status.${volume.status}`)}
             </span>
           </div>
         </div>
@@ -94,7 +87,7 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
             onSubmit={(e) => {
               if (
                 !window.confirm(
-                  "Delete this volume? This cannot be undone."
+                  t("project:volume_card.delete_confirm")
                 )
               ) {
                 e.preventDefault();
@@ -107,7 +100,7 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
               type="submit"
               className="text-xs text-red-500 hover:text-red-700"
             >
-              Delete
+              {t("common:button.delete")}
             </button>
           </Form>
         </div>

@@ -34,5 +34,13 @@ export default {
     confirm_unassign: "Unassign volume",
     confirm_approve: "Approve volume",
     confirm_send_back: "Send back volume",
+    submit_title: "Submit for review",
+    submit_body: "Submit <strong>{{volumeName}}</strong> for review? You will not be able to edit until the reviewer returns it.",
+    submit_confirm: "Submit for review",
+    send_back_title: "Send back for revision",
+    send_back_body: "Explain what needs to be corrected in <strong>{{volumeName}}</strong>:",
+    send_back_placeholder: "Describe the issues that need correction...",
+    send_back_min_chars: "Minimum {{min}} characters ({{current}}/{{min}})",
+    send_back_confirm: "Send back",
   },
 } as const;

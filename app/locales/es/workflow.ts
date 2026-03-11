@@ -34,5 +34,13 @@ export default {
     confirm_unassign: "Desasignar unidad compuesta",
     confirm_approve: "Aprobar unidad compuesta",
     confirm_send_back: "Rechazar unidad compuesta",
+    submit_title: "Enviar para revision",
+    submit_body: "Enviar <strong>{{volumeName}}</strong> para revision? No podras editar hasta que el revisor la devuelva.",
+    submit_confirm: "Enviar para revision",
+    send_back_title: "Rechazar",
+    send_back_body: "Indica que necesita correccion en <strong>{{volumeName}}</strong>:",
+    send_back_placeholder: "Describe los problemas que necesitan correccion...",
+    send_back_min_chars: "Minimo {{min}} caracteres ({{current}}/{{min}})",
+    send_back_confirm: "Rechazar",
   },
 } as const;

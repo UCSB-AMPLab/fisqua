@@ -3,6 +3,7 @@
  * Shows per-member volume counts by status and headline metrics.
  */
 
+import { useTranslation } from "react-i18next";
 import { StatusBadge } from "../workflow/status-badge";
 import { StackedProgressBar } from "../dashboard/progress-bar";
 
@@ -21,17 +22,19 @@ type TeamProgressProps = {
 };
 
 export function TeamProgress({ members }: TeamProgressProps) {
+  const { t } = useTranslation("project");
+
   if (members.length === 0) {
     return (
       <p className="py-4 text-sm text-stone-400">
-        No team members assigned yet.
+        {t("team.empty")}
       </p>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-stone-700">Team progress</h3>
+      <h3 className="text-sm font-semibold text-stone-700">{t("team.heading")}</h3>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {members.map((member) => (
           <TeamMemberCard key={member.id} member={member} />
@@ -42,6 +45,8 @@ export function TeamProgress({ members }: TeamProgressProps) {
 }
 
 function TeamMemberCard({ member }: { member: TeamMemberStats }) {
+  const { t } = useTranslation(["project", "workflow"]);
+
   const completed =
     (member.statusCounts["segmented"] ?? 0) +
     (member.statusCounts["reviewed"] ?? 0) +
@@ -54,7 +59,7 @@ function TeamMemberCard({ member }: { member: TeamMemberStats }) {
           {member.name ?? member.email}
         </span>
         <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
-          {member.role}
+          {t(`workflow:role.${member.role}`)}
         </span>
       </div>
 
@@ -66,12 +71,14 @@ function TeamMemberCard({ member }: { member: TeamMemberStats }) {
       {/* Metrics */}
       <div className="flex gap-4 text-xs text-stone-500">
         <span>
-          <strong className="text-stone-700">{completed}</strong> /{" "}
-          {member.totalVolumes} completed
+          {t("project:team.completed_of", {
+            completed,
+            total: member.totalVolumes,
+          })}
         </span>
         <span>
           <strong className="text-stone-700">{member.entryCount}</strong>{" "}
-          entries
+          {t("project:team.entries")}
         </span>
       </div>
     </div>

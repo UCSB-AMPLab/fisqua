@@ -1,4 +1,5 @@
 import { Form } from "react-router";
+import { useTranslation } from "react-i18next";
 import type { User } from "../../context";
 
 interface TopBarProps {
@@ -7,6 +8,8 @@ interface TopBarProps {
 }
 
 export function TopBar({ user, appName }: TopBarProps) {
+  const { t } = useTranslation("dashboard");
+
   return (
     <header className="fixed top-0 right-0 left-0 z-50 border-b border-stone-200 bg-white">
       <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
@@ -26,7 +29,7 @@ export function TopBar({ user, appName }: TopBarProps) {
               type="submit"
               className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-700"
             >
-              Log out
+              {t("nav.log_out")}
             </button>
           </Form>
         </div>

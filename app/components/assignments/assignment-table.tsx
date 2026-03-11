@@ -4,6 +4,7 @@
  */
 
 import { useFetcher } from "react-router";
+import { useTranslation } from "react-i18next";
 import { StatusBadge } from "../workflow/status-badge";
 
 export type VolumeRow = {
@@ -36,6 +37,7 @@ export function AssignmentTable({
   selectedIds,
   onSelectionChange,
 }: AssignmentTableProps) {
+  const { t } = useTranslation(["project", "workflow"]);
   const allSelected = volumes.length > 0 && selectedIds.size === volumes.length;
 
   function toggleAll() {
@@ -59,7 +61,7 @@ export function AssignmentTable({
   if (volumes.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-stone-400">
-        No volumes in this project yet.
+        {t("project:empty.no_volumes")}
       </p>
     );
   }
@@ -77,11 +79,11 @@ export function AssignmentTable({
                 className="rounded border-stone-300"
               />
             </th>
-            <th className="px-3 py-2">Volume</th>
-            <th className="px-3 py-2 text-right">Pages</th>
-            <th className="px-3 py-2">Cataloguer</th>
-            <th className="px-3 py-2">Reviewer</th>
-            <th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2">{t("project:table.volume")}</th>
+            <th className="px-3 py-2 text-right">{t("project:table.images")}</th>
+            <th className="px-3 py-2">{t("project:table.cataloguer")}</th>
+            <th className="px-3 py-2">{t("project:table.reviewer")}</th>
+            <th className="px-3 py-2">{t("project:table.status")}</th>
           </tr>
         </thead>
         <tbody>
@@ -114,6 +116,7 @@ function AssignmentRow({
   isSelected: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation("workflow");
   const fetcher = useFetcher();
 
   function handleAssign(field: "cataloguerId" | "reviewerId", value: string) {
@@ -145,7 +148,7 @@ function AssignmentRow({
           onChange={(e) => handleAssign("cataloguerId", e.target.value)}
           className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
         >
-          <option value="">Unassigned</option>
+          <option value="">{t("dropdown.unassigned")}</option>
           {cataloguers.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name ?? m.email}
@@ -159,7 +162,7 @@ function AssignmentRow({
           onChange={(e) => handleAssign("reviewerId", e.target.value)}
           className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
         >
-          <option value="">Unassigned</option>
+          <option value="">{t("dropdown.unassigned")}</option>
           {reviewers.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name ?? m.email}
