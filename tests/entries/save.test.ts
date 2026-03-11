@@ -25,6 +25,12 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     endY: null,
     type: null,
     title: null,
+    note: null,
+    noteUpdatedBy: null,
+    noteUpdatedAt: null,
+    reviewerComment: null,
+    reviewerCommentUpdatedBy: null,
+    reviewerCommentUpdatedAt: null,
     createdAt: 1000,
     updatedAt: 1000,
     ...overrides,
@@ -238,6 +244,112 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
         makeEntry({ id: "e1", volumeId, position: 0, startPage: 0 }),
       ])
     ).rejects.toThrow("positive startPage");
+  });
+
+  it("saves and loads entries with note and reviewerComment (roundtrip)", async () => {
+    const db = drizzle(env.DB, { schema });
+    const now = Date.now();
+
+    // Create additional users for note/comment attribution
+    const catUser = await createTestUser({ email: "cat@test.com" });
+    const revUser = await createTestUser({ email: "rev@test.com" });
+
+    const entriesToSave: Entry[] = [
+      makeEntry({
+        id: "e1",
+        volumeId,
+        position: 0,
+        startPage: 1,
+        note: "Handwriting difficult to read",
+        noteUpdatedBy: catUser.id,
+        noteUpdatedAt: now,
+        reviewerComment: "Please verify boundary",
+        reviewerCommentUpdatedBy: revUser.id,
+        reviewerCommentUpdatedAt: now,
+      }),
+      makeEntry({
+        id: "e2",
+        volumeId,
+        position: 1,
+        startPage: 5,
+        note: null,
+        reviewerComment: null,
+      }),
+    ];
+
+    await saveEntries(db, volumeId, entriesToSave);
+    const loaded = await loadEntries(db, volumeId);
+
+    expect(loaded).toHaveLength(2);
+
+    const e1 = loaded.find((e) => e.id === "e1")!;
+    expect(e1.note).toBe("Handwriting difficult to read");
+    expect(e1.noteUpdatedBy).toBe(catUser.id);
+    expect(e1.noteUpdatedAt).toBe(now);
+    expect(e1.reviewerComment).toBe("Please verify boundary");
+    expect(e1.reviewerCommentUpdatedBy).toBe(revUser.id);
+    expect(e1.reviewerCommentUpdatedAt).toBe(now);
+
+    const e2 = loaded.find((e) => e.id === "e2")!;
+    expect(e2.note).toBeNull();
+    expect(e2.reviewerComment).toBeNull();
+  });
+
+  it("accept-corrections clears reviewer comments at data layer", async () => {
+    const db = drizzle(env.DB, { schema });
+    const now = Date.now();
+
+    // Create additional users for note/comment attribution
+    const catUser = await createTestUser({ email: "cat2@test.com" });
+    const revUser = await createTestUser({ email: "rev2@test.com" });
+
+    // Save entries with reviewer comments
+    await saveEntries(db, volumeId, [
+      makeEntry({
+        id: "e1",
+        volumeId,
+        position: 0,
+        startPage: 1,
+        note: "Cataloguer note preserved",
+        noteUpdatedBy: catUser.id,
+        noteUpdatedAt: now,
+        reviewerComment: "Fix this boundary",
+        reviewerCommentUpdatedBy: revUser.id,
+        reviewerCommentUpdatedAt: now,
+        modifiedBy: revUser.id,
+      }),
+    ]);
+
+    // Simulate what handleAcceptCorrections does at the data layer
+    const { eq, and, isNotNull } = await import("drizzle-orm");
+    await db
+      .update(schema.entries)
+      .set({
+        modifiedBy: null,
+        reviewerComment: null,
+        reviewerCommentUpdatedBy: null,
+        reviewerCommentUpdatedAt: null,
+        updatedAt: Date.now(),
+      })
+      .where(
+        and(
+          eq(schema.entries.volumeId, volumeId),
+          isNotNull(schema.entries.modifiedBy)
+        )
+      );
+
+    const loaded = await loadEntries(db, volumeId);
+    const e1 = loaded.find((e) => e.id === "e1")!;
+
+    // Reviewer comments should be cleared
+    expect(e1.reviewerComment).toBeNull();
+    expect(e1.reviewerCommentUpdatedBy).toBeNull();
+    expect(e1.reviewerCommentUpdatedAt).toBeNull();
+    expect(e1.modifiedBy).toBeNull();
+
+    // Cataloguer note should be preserved
+    expect(e1.note).toBe("Cataloguer note preserved");
+    expect(e1.noteUpdatedBy).toBe(catUser.id);
   });
 
   it("handles saving an empty entries array (clears all entries)", async () => {

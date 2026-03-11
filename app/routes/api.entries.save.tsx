@@ -172,7 +172,13 @@ async function handleAcceptCorrections(
   // Clear modifiedBy on all entries for this volume
   await db
     .update(entries)
-    .set({ modifiedBy: null, updatedAt: now })
+    .set({
+      modifiedBy: null,
+      reviewerComment: null,
+      reviewerCommentUpdatedBy: null,
+      reviewerCommentUpdatedAt: null,
+      updatedAt: now,
+    })
     .where(
       and(eq(entries.volumeId, volumeId), isNotNull(entries.modifiedBy))
     );
