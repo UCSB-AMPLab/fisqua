@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useFetcher } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Entry, EntryType, BoundaryAction } from "../../lib/boundary-types";
 import { computeAllRefCodes } from "../../lib/reference-codes";
@@ -216,6 +217,7 @@ export function OutlinePanel({
   reviewComment,
   viewportYFraction: viewportYFractionProp,
 }: OutlinePanelProps) {
+  const { t } = useTranslation(["viewer", "workflow"]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [showSendBackDialog, setShowSendBackDialog] = useState(false);
@@ -335,10 +337,10 @@ export function OutlinePanel({
     >
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 px-3 py-2">
-        <h2 className="text-sm font-semibold text-stone-700">Estructura</h2>
+        <h2 className="text-sm font-semibold text-stone-700">{t("viewer:outline.title")}</h2>
         {showHint && (
           <p className="mt-0.5 text-xs text-stone-400">
-            Haz clic entre paginas para agregar limites
+            {t("viewer:outline.hint")}
           </p>
         )}
       </div>
@@ -416,7 +418,7 @@ export function OutlinePanel({
               onClick={() => setShowSubmitDialog(true)}
               className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
-              Submit for review
+              {t("workflow:action.submit_for_review")}
             </button>
           )}
 
@@ -425,7 +427,7 @@ export function OutlinePanel({
             <div className="space-y-3">
               {reviewComment && (
                 <div className="rounded border-l-4 border-red-400 bg-red-50 p-3">
-                  <p className="text-xs font-medium text-red-700">Reviewer comment:</p>
+                  <p className="text-xs font-medium text-red-700">{t("viewer:outline.reviewer_comment_label")}</p>
                   <p className="mt-1 text-sm text-red-800">{reviewComment}</p>
                 </div>
               )}
@@ -441,7 +443,7 @@ export function OutlinePanel({
                 disabled={acceptFetcher.state !== "idle"}
                 className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
               >
-                {acceptFetcher.state !== "idle" ? "Accepting..." : "Accept corrections"}
+                {acceptFetcher.state !== "idle" ? t("viewer:outline.accepting") : t("workflow:action.accept_corrections")}
               </button>
             </div>
           )}
@@ -459,14 +461,14 @@ export function OutlinePanel({
                 disabled={workflowFetcher.state !== "idle"}
                 className="flex-1 rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
-                Approve
+                {t("workflow:action.approve")}
               </button>
               <button
                 onClick={() => setShowSendBackDialog(true)}
                 disabled={workflowFetcher.state !== "idle"}
                 className="flex-1 rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
-                Send back
+                {t("workflow:action.send_back")}
               </button>
             </div>
           )}
@@ -475,10 +477,10 @@ export function OutlinePanel({
           {accessLevel === "readonly" && (
             <p className="text-center text-xs text-stone-400">
               {volumeStatus === "segmented"
-                ? "Submitted for review -- awaiting reviewer"
+                ? t("viewer:outline.readonly.segmented")
                 : volumeStatus === "approved"
-                  ? "This volume has been approved"
-                  : "Read-only -- you are not assigned to this volume"}
+                  ? t("viewer:outline.readonly.approved")
+                  : t("viewer:outline.readonly.not_assigned")}
             </p>
           )}
         </div>

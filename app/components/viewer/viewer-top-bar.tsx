@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { SaveStatus } from "./save-status";
 
 type ViewerTopBarProps = {
@@ -20,13 +21,15 @@ export function ViewerTopBar({
   onUndo,
   onRedo,
 }: ViewerTopBarProps) {
+  const { t } = useTranslation("viewer");
+
   return (
     <div className="flex h-10 shrink-0 items-center border-b border-stone-200 bg-white px-4">
       {/* Left: back arrow */}
       <Link
         to={`/projects/${projectId}/volumes`}
         className="flex shrink-0 items-center text-stone-500 hover:text-stone-700"
-        aria-label="Back to volumes"
+        aria-label={t("toolbar.back_to_volumes")}
       >
         <svg
           className="h-4 w-4"
@@ -55,8 +58,8 @@ export function ViewerTopBar({
           onClick={onUndo}
           disabled={!canUndo}
           className="flex h-6 w-6 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label="Undo"
-          title="Deshacer (Ctrl+Z)"
+          aria-label={t("toolbar.undo")}
+          title={t("toolbar.undo_shortcut")}
         >
           <svg
             className="h-4 w-4"
@@ -77,8 +80,8 @@ export function ViewerTopBar({
           onClick={onRedo}
           disabled={!canRedo}
           className="flex h-6 w-6 items-center justify-center rounded text-stone-500 hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label="Redo"
-          title="Rehacer (Ctrl+Shift+Z)"
+          aria-label={t("toolbar.redo")}
+          title={t("toolbar.redo_shortcut")}
         >
           <svg
             className="h-4 w-4"

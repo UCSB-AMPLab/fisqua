@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { Entry } from "../../lib/boundary-types";
 import { useDragOrClick } from "../../lib/drag-utils";
 
@@ -47,6 +48,7 @@ export function BoundaryMarker({
   isDragFaded,
   variant = "cataloguer",
 }: BoundaryMarkerProps) {
+  const { t } = useTranslation("viewer");
   const styles = VARIANT_STYLES[variant];
   const [showPopover, setShowPopover] = useState(false);
 
@@ -145,7 +147,7 @@ export function BoundaryMarker({
             className="whitespace-nowrap text-sm text-red-600 hover:text-red-800"
             onClick={handleDelete}
           >
-            Eliminar limite
+            {t("outline.delete_boundary")}
           </button>
         </div>
       )}

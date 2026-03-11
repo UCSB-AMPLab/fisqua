@@ -593,7 +593,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
                             />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center bg-stone-200 text-xs text-stone-400">
-                              {page.label || `Page ${page.position}`}
+                              {page.label || page.position}
                             </div>
                           )}
                         </div>

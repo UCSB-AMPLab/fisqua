@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { EntryType } from "../../lib/boundary-types";
 import { TreeConnector } from "./tree-connector";
 
@@ -24,13 +25,6 @@ type OutlineEntryProps = {
   isFirstEntry?: boolean;
   onDelete?: (entryId: string) => void;
   children?: React.ReactNode;
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  item: "Item",
-  blank: "En blanco",
-  front_matter: "Portada",
-  back_matter: "Contraportada",
 };
 
 const TYPE_BADGE_COLORS: Record<string, string> = {
@@ -63,6 +57,7 @@ export function OutlineEntry({
   onDelete,
   children,
 }: OutlineEntryProps) {
+  const { t } = useTranslation("viewer");
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleClick = useCallback(() => {
@@ -132,6 +127,8 @@ export function OutlineEntry({
     ? entry.title ? "text-red-700" : "italic text-red-400"
     : entry.title ? "text-stone-800" : "italic text-stone-400";
 
+  const typeLabel = entry.type ? t(`outline.type.${entry.type}`) : null;
+
   return (
     <div>
       {/* Summary line */}
@@ -151,13 +148,13 @@ export function OutlineEntry({
 
         {/* Title */}
         <span className={`min-w-0 truncate text-sm ${titleColor}`}>
-          {entry.title || "Sin titulo"}
+          {entry.title || t("outline.no_title")}
         </span>
 
         {/* Type badge */}
-        {entry.type && (
+        {entry.type && typeLabel && (
           <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isReviewerModified ? "bg-red-100 text-red-700" : TYPE_BADGE_COLORS[entry.type]}`}>
-            {TYPE_LABELS[entry.type]}
+            {typeLabel}
           </span>
         )}
 
@@ -171,9 +168,9 @@ export function OutlineEntry({
                 : "text-stone-400 hover:text-red-600"
             }`}
             onClick={handleDeleteClick}
-            title={confirmDelete ? "Confirmar eliminacion" : "Eliminar limite"}
+            title={confirmDelete ? t("outline.confirm_delete_tooltip") : t("outline.delete_boundary")}
           >
-            {confirmDelete ? "Eliminar?" : "\u00D7"}
+            {confirmDelete ? t("outline.confirm_delete") : "\u00D7"}
           </button>
         )}
 
@@ -194,7 +191,7 @@ export function OutlineEntry({
             {/* Type dropdown */}
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-stone-500" htmlFor={`type-${entry.id}`}>
-                Tipo
+                {t("outline.type_label")}
               </label>
               <select
                 id={`type-${entry.id}`}
@@ -202,24 +199,24 @@ export function OutlineEntry({
                 value={entry.type || ""}
                 onChange={handleTypeChange}
               >
-                <option value="">(sin definir)</option>
-                <option value="item">Item</option>
-                <option value="blank">En blanco</option>
-                <option value="front_matter">Portada</option>
-                <option value="back_matter">Contraportada</option>
+                <option value="">{t("outline.no_type")}</option>
+                <option value="item">{t("outline.type.item")}</option>
+                <option value="blank">{t("outline.type.blank")}</option>
+                <option value="front_matter">{t("outline.type.front_matter")}</option>
+                <option value="back_matter">{t("outline.type.back_matter")}</option>
               </select>
             </div>
 
             {/* Title input */}
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-stone-500" htmlFor={`title-${entry.id}`}>
-                Titulo
+                {t("outline.title_label")}
               </label>
               <input
                 id={`title-${entry.id}`}
                 type="text"
                 className="flex-1 rounded border border-stone-300 px-2 py-1 text-xs"
-                placeholder="Sin titulo"
+                placeholder={t("outline.no_title")}
                 defaultValue={entry.title || ""}
                 onChange={handleTitleChange}
                 onBlur={handleTitleBlur}
@@ -228,7 +225,7 @@ export function OutlineEntry({
 
             {/* Reference code */}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-stone-500">Ref.</span>
+              <span className="text-xs font-medium text-stone-500">{t("outline.ref_label")}</span>
               <span className="font-mono text-xs text-stone-600">{refCode}</span>
             </div>
 
@@ -239,7 +236,7 @@ export function OutlineEntry({
                 className="rounded border border-stone-300 px-2 py-0.5 text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
                 disabled={!canOutdent}
                 onClick={onOutdent}
-                title="Mover al nivel superior"
+                title={t("outline.outdent_tooltip")}
               >
                 &#8592;
               </button>
@@ -248,11 +245,11 @@ export function OutlineEntry({
                 className="rounded border border-stone-300 px-2 py-0.5 text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
                 disabled={!canIndent}
                 onClick={onIndent}
-                title="Anidar bajo el elemento anterior"
+                title={t("outline.indent_tooltip")}
               >
                 &#8594;
               </button>
-              <span className="ml-1 text-[10px] text-stone-400">Nivel</span>
+              <span className="ml-1 text-[10px] text-stone-400">{t("outline.level_label")}</span>
             </div>
           </div>
         </div>
