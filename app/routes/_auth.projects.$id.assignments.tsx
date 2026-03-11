@@ -5,6 +5,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { userContext } from "../context";
@@ -257,10 +258,11 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
   } = loaderData;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { t } = useTranslation("project");
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-stone-900">Assignments</h2>
+      <h2 className="text-lg font-semibold text-stone-900">{t("heading.assignments")}</h2>
 
       {/* Stacked progress bar */}
       <StackedProgressBar counts={statusCounts} />

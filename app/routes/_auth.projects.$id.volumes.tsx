@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Form, useActionData } from "react-router";
+import { useTranslation, Trans } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
 import { requireProjectRole } from "../lib/permissions.server";
@@ -48,7 +49,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         .filter((u) => u.length > 0);
 
       if (urls.length === 0) {
-        return { _action: "add-volumes" as const, results: [] as AddResult[], error: "Please enter at least one manifest URL." };
+        return { _action: "add-volumes" as const, results: [] as AddResult[], error: "Ingresa al menos una URL de manifiesto." };
       }
 
       const results: AddResult[] = [];
@@ -84,7 +85,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     case "delete-volume": {
       const volumeId = formData.get("volumeId") as string;
       if (!volumeId) {
-        return { _action: "delete-volume" as const, error: "Volume ID is required." };
+        return { _action: "delete-volume" as const, error: "Se requiere el ID de la unidad compuesta." };
       }
 
       try {
@@ -95,12 +96,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           const text = await err.text();
           return { _action: "delete-volume" as const, error: text };
         }
-        return { _action: "delete-volume" as const, error: "Failed to delete volume." };
+        return { _action: "delete-volume" as const, error: "No se pudo eliminar la unidad compuesta." };
       }
     }
 
     default:
-      return { error: "Unknown action." };
+      return { error: "Accion desconocida." };
   }
 }
 
@@ -108,6 +109,7 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
   const { volumes, projectId } = loaderData;
   const actionData = useActionData<typeof action>();
   const [showAddForm, setShowAddForm] = useState(false);
+  const { t } = useTranslation(["project", "common"]);
 
   const addResults =
     actionData && "_action" in actionData && actionData._action === "add-volumes" && "results" in actionData
@@ -128,13 +130,13 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-stone-900">Volumes</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("project:heading.volumes")}</h2>
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
           className="rounded-md bg-burgundy-deep px-3 py-1.5 text-sm font-medium text-white hover:bg-burgundy"
         >
-          {showAddForm ? "Cancel" : "Add Volumes"}
+          {showAddForm ? t("common:button.cancel") : t("project:volumes.add_volumes")}
         </button>
       </div>
 
@@ -152,13 +154,13 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
               htmlFor="manifestUrls"
               className="block text-sm font-medium text-stone-700"
             >
-              IIIF manifest URLs
+              {t("project:volumes.manifest_urls")}
             </label>
             <textarea
               id="manifestUrls"
               name="manifestUrls"
               rows={4}
-              placeholder="Paste IIIF manifest URLs, one per line"
+              placeholder={t("project:volumes.manifest_placeholder")}
               className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
             {addError && (
@@ -168,14 +170,14 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
               type="submit"
               className="mt-3 rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
-              Add Volumes
+              {t("project:volumes.add_volumes")}
             </button>
           </Form>
 
           {/* Results */}
           {addResults && addResults.length > 0 && (
             <div className="mt-4 space-y-2">
-              <h3 className="text-sm font-medium text-stone-700">Results</h3>
+              <h3 className="text-sm font-medium text-stone-700">{t("project:heading.results")}</h3>
               {addResults.map((result, i) => (
                 <div
                   key={i}
@@ -186,10 +188,11 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
                   }`}
                 >
                   {result.success ? (
-                    <span>
-                      Added <strong>{result.volumeName}</strong> ({result.pageCount}{" "}
-                      {result.pageCount === 1 ? "page" : "pages"})
-                    </span>
+                    <Trans
+                      i18nKey="project:volumes.added"
+                      values={{ name: result.volumeName, count: result.pageCount }}
+                      components={{ strong: <strong /> }}
+                    />
                   ) : (
                     <span>
                       <span className="break-all font-mono text-xs">
@@ -210,8 +213,7 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
       {volumes.length === 0 ? (
         <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-8 text-center">
           <p className="text-sm text-stone-600">
-            No volumes yet. Click "Add Volumes" to import volumes from IIIF
-            manifests.
+            {t("project:empty.no_volumes_add")}
           </p>
         </div>
       ) : (

@@ -8,10 +8,12 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, inArray, sql } from "drizzle-orm";
 import { userContext } from "../context";
 import { getActivityForUser } from "../lib/activity.server";
+import { relativeTime } from "~/lib/format";
 import {
   users,
   projectMembers,
@@ -23,10 +25,10 @@ import { StatusBadge } from "../components/workflow/status-badge";
 import type { Route } from "./+types/_auth.users.$userId.activity";
 
 export function meta({ data }: Route.MetaArgs) {
-  const name = data?.targetUser?.name ?? "User";
+  const name = data?.targetUser?.name ?? "Usuario";
   return [
-    { title: `${name} - Activity` },
-    { name: "description", content: `Activity page for ${name}` },
+    { title: `${name} - Actividad` },
+    { name: "description", content: `Actividad de ${name}` },
   ];
 }
 
@@ -215,54 +217,6 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   };
 }
 
-// --- Event descriptions ---
-const EVENT_LABELS: Record<string, string> = {
-  login: "Logged in",
-  volume_opened: "Opened volume",
-  status_changed: "Changed status",
-  review_submitted: "Submitted review",
-  assignment_changed: "Assignment changed",
-};
-
-function describeEvent(
-  event: string,
-  detail: string | null
-): string {
-  const base = EVENT_LABELS[event] ?? event;
-  if (!detail) return base;
-
-  try {
-    const d = JSON.parse(detail);
-    if (event === "status_changed" && d.to) {
-      return `${base} to ${d.to}`;
-    }
-    if (event === "volume_opened" && d.volumeName) {
-      return `${base}: ${d.volumeName}`;
-    }
-    if (event === "assignment_changed" && d.volumeName) {
-      return `${base}: ${d.volumeName}`;
-    }
-    return base;
-  } catch {
-    return base;
-  }
-}
-
-function relativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  if (days > 0) return rtf.format(-days, "day");
-  if (hours > 0) return rtf.format(-hours, "hour");
-  if (minutes > 0) return rtf.format(-minutes, "minute");
-  return "Just now";
-}
-
 const ROLE_BADGE_STYLES: Record<string, string> = {
   lead: "bg-indigo-100 text-indigo-700",
   cataloguer: "bg-blue-100 text-blue-700",
@@ -272,13 +226,14 @@ const ROLE_BADGE_STYLES: Record<string, string> = {
 export default function UserActivity({ loaderData }: Route.ComponentProps) {
   const { targetUser, activity, volumes } = loaderData;
   const [tab, setTab] = useState<"activity" | "volumes">("activity");
+  const { t } = useTranslation(["dashboard", "workflow", "project", "common"]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       {/* Header */}
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold text-stone-900">
-          {targetUser.name || "Unnamed user"}
+          {targetUser.name || t("dashboard:activity.unnamed_user")}
         </h1>
         {targetUser.roles.map((role) => (
           <span
@@ -287,13 +242,13 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
               ROLE_BADGE_STYLES[role] ?? "bg-stone-100 text-stone-600"
             }`}
           >
-            {role}
+            {t(`workflow:role.${role}`)}
           </span>
         ))}
       </div>
       {targetUser.lastActiveAt && (
         <p className="mt-1 text-sm text-stone-400">
-          Last active {relativeTime(targetUser.lastActiveAt)}
+          {t("dashboard:activity.last_active", { time: relativeTime(targetUser.lastActiveAt) })}
         </p>
       )}
 
@@ -309,7 +264,7 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
                 : "border-transparent text-stone-500 hover:text-stone-700"
             }`}
           >
-            Recent activity
+            {t("dashboard:activity.tab_activity")}
           </button>
           <button
             type="button"
@@ -320,7 +275,7 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
                 : "border-transparent text-stone-500 hover:text-stone-700"
             }`}
           >
-            Volumes ({volumes.length})
+            {t("dashboard:activity.tab_volumes", { count: volumes.length })}
           </button>
         </nav>
       </div>
@@ -348,9 +303,11 @@ function ActivityTab({
     createdAt: number;
   }[];
 }) {
+  const { t } = useTranslation("dashboard");
+
   if (activity.length === 0) {
     return (
-      <p className="text-sm text-stone-400">No activity recorded yet.</p>
+      <p className="text-sm text-stone-400">{t("activity.no_activity")}</p>
     );
   }
 
@@ -360,7 +317,7 @@ function ActivityTab({
         <div key={entry.id} className="flex items-start gap-3 py-3">
           <div className="flex-1">
             <p className="text-sm text-stone-700">
-              {describeEvent(entry.event, entry.detail)}
+              {describeEvent(t, entry.event, entry.detail)}
             </p>
             {entry.projectName && (
               <p className="mt-0.5 text-xs text-stone-400">
@@ -377,6 +334,33 @@ function ActivityTab({
   );
 }
 
+function describeEvent(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  event: string,
+  detail: string | null
+): string {
+  const baseKey = `activity.event.${event}`;
+  const base = t(baseKey);
+
+  if (!detail) return base;
+
+  try {
+    const d = JSON.parse(detail);
+    if (event === "status_changed" && d.to) {
+      return t("activity.event.status_changed_to", { to: d.to });
+    }
+    if (event === "volume_opened" && d.volumeName) {
+      return t("activity.event.volume_opened_detail", { name: d.volumeName });
+    }
+    if (event === "assignment_changed" && d.volumeName) {
+      return t("activity.event.assignment_changed_detail", { name: d.volumeName });
+    }
+    return base;
+  } catch {
+    return base;
+  }
+}
+
 function VolumesTab({
   volumes,
 }: {
@@ -391,9 +375,11 @@ function VolumesTab({
     updatedAt: number;
   }[];
 }) {
+  const { t } = useTranslation(["dashboard", "project"]);
+
   if (volumes.length === 0) {
     return (
-      <p className="text-sm text-stone-400">No volumes assigned yet.</p>
+      <p className="text-sm text-stone-400">{t("dashboard:activity.no_volumes")}</p>
     );
   }
 
@@ -402,12 +388,12 @@ function VolumesTab({
       <table className="w-full text-left text-sm">
         <thead className="border-b border-stone-200 text-xs font-medium uppercase text-stone-500">
           <tr>
-            <th className="pb-2 pr-4">Volume</th>
-            <th className="pb-2 pr-4">Project</th>
-            <th className="pb-2 pr-4">Status</th>
-            <th className="pb-2 pr-4 text-right">Pages</th>
-            <th className="pb-2 pr-4 text-right">Entries</th>
-            <th className="pb-2 text-right">Last worked</th>
+            <th className="pb-2 pr-4">{t("project:table.volume")}</th>
+            <th className="pb-2 pr-4">{t("project:table.project", { defaultValue: "Proyecto" })}</th>
+            <th className="pb-2 pr-4">{t("project:table.status")}</th>
+            <th className="pb-2 pr-4 text-right">{t("project:table.images")}</th>
+            <th className="pb-2 pr-4 text-right">{t("project:table.entries")}</th>
+            <th className="pb-2 text-right">{t("project:table.last_worked")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-100">

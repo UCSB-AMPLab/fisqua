@@ -1,8 +1,11 @@
 import { Form, useActionData } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, desc } from "drizzle-orm";
 import { userContext } from "../context";
 import { users } from "../db/schema";
+import { getInstance } from "~/middleware/i18next";
+import { formatDate } from "~/lib/format";
 import type { Route } from "./+types/_auth.admin.users";
 
 export async function loader({ context }: Route.LoaderArgs) {
@@ -22,6 +25,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+  const i18n = getInstance(context);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -32,7 +36,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
       // Prevent self-demotion
       if (targetUserId === user.id) {
-        return { ok: false, error: "You cannot change your own admin status." };
+        return { ok: false, error: i18n.t("admin:error.self_admin") };
       }
 
       const targetUser = await db
@@ -42,7 +46,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .get();
 
       if (!targetUser) {
-        return { ok: false, error: "User not found." };
+        return { ok: false, error: i18n.t("admin:error.user_not_found") };
       }
 
       await db
@@ -50,9 +54,12 @@ export async function action({ request, context }: Route.ActionArgs) {
         .set({ isAdmin: !targetUser.isAdmin, updatedAt: Date.now() })
         .where(eq(users.id, targetUserId));
 
+      const messageKey = targetUser.isAdmin
+        ? "admin:error.admin_toggled_off"
+        : "admin:error.admin_toggled_on";
       return {
         ok: true,
-        message: `${targetUser.email} is ${targetUser.isAdmin ? "no longer" : "now"} an admin.`,
+        message: i18n.t(messageKey, { email: targetUser.email }),
       };
     }
 
@@ -60,7 +67,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       const email = (formData.get("email") as string || "").trim().toLowerCase();
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return { ok: false, error: "Please enter a valid email address." };
+        return { ok: false, error: i18n.t("admin:error.invalid_email") };
       }
 
       // Check for duplicate
@@ -71,7 +78,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .get();
 
       if (existing) {
-        return { ok: false, error: "A user with this email already exists." };
+        return { ok: false, error: i18n.t("admin:error.duplicate_email") };
       }
 
       const now = Date.now();
@@ -83,31 +90,24 @@ export async function action({ request, context }: Route.ActionArgs) {
         updatedAt: now,
       });
 
-      return { ok: true, message: `User ${email} created.` };
+      return { ok: true, message: i18n.t("admin:error.user_created", { email }) };
     }
 
     default:
-      return { ok: false, error: "Unknown action." };
+      return { ok: false, error: i18n.t("admin:error.unknown_action") };
   }
-}
-
-function formatDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
   const { users: allUsers } = loaderData;
   const actionData = useActionData<typeof action>();
+  const { t } = useTranslation("admin");
 
   return (
     <div className="space-y-8">
       {/* Create user form */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">Create user</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("heading.create_user")}</h2>
 
         {actionData?.ok && actionData?.message && (
           <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
@@ -123,14 +123,14 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
               htmlFor="email"
               className="block text-sm font-medium text-stone-700"
             >
-              Email
+              {t("table.email")}
             </label>
             <input
               type="email"
               id="email"
               name="email"
               required
-              placeholder="user@example.com"
+              placeholder={t("placeholder.email")}
               className="mt-1 block w-64 rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
           </div>
@@ -138,33 +138,33 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
             type="submit"
             className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
-            Create user
+            {t("action.create_user")}
           </button>
         </Form>
       </section>
 
       {/* Users table */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">All users</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("heading.all_users")}</h2>
 
         {allUsers.length === 0 ? (
-          <p className="mt-2 text-sm text-stone-500">No users yet.</p>
+          <p className="mt-2 text-sm text-stone-500">{t("empty.no_users")}</p>
         ) : (
           <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
             <table className="min-w-full divide-y divide-stone-200">
               <thead className="bg-stone-50">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Email
+                    {t("table.email")}
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Name
+                    {t("table.name")}
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Admin
+                    {t("table.role")}
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Created
+                    {t("table.created")}
                   </th>
                 </tr>
               </thead>
@@ -193,7 +193,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
                               : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                           }`}
                         >
-                          {u.isAdmin ? "Admin" : "User"}
+                          {u.isAdmin ? t("table.admin") : t("table.user")}
                         </button>
                       </Form>
                     </td>

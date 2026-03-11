@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
@@ -38,13 +39,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { project, user, userRole } = loaderData;
   const canSeeVolumes = userRole === "lead" || user.isAdmin;
+  const { t } = useTranslation("project");
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       {/* Breadcrumb */}
       <nav className="mb-4 text-sm text-stone-500">
         <a href="/dashboard" className="hover:text-stone-700">
-          Dashboard
+          {t("dashboard:heading.dashboard", { defaultValue: "Inicio" })}
         </a>
         <span className="mx-2">/</span>
         <span className="text-stone-900">{project.name}</span>
@@ -62,7 +64,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             }`
           }
         >
-          Settings
+          {t("tab.settings")}
         </NavLink>
         <NavLink
           to={`/projects/${project.id}/members`}
@@ -74,7 +76,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
             }`
           }
         >
-          Members
+          {t("tab.members")}
         </NavLink>
         {canSeeVolumes && (
           <NavLink
@@ -87,7 +89,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               }`
             }
           >
-            Volumes
+            {t("tab.volumes")}
           </NavLink>
         )}
         {canSeeVolumes && (
@@ -101,7 +103,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               }`
             }
           >
-            Assignments
+            {t("tab.assignments")}
           </NavLink>
         )}
       </div>

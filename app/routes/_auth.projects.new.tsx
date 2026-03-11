@@ -1,4 +1,5 @@
 import { Form, redirect, useActionData, Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
 import { requireAdmin } from "../lib/permissions.server";
@@ -9,7 +10,7 @@ import {
 import type { Route } from "./+types/_auth.projects.new";
 
 export function meta() {
-  return [{ title: "New project" }];
+  return [{ title: "Nuevo proyecto" }];
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
@@ -50,6 +51,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function NewProject() {
   const actionData = useActionData<typeof action>();
+  const { t } = useTranslation(["project", "common"]);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -58,12 +60,12 @@ export default function NewProject() {
           to="/dashboard"
           className="text-sm text-stone-500 hover:text-stone-700"
         >
-          &larr; Back to dashboard
+          &larr; {t("project:heading.back_to_dashboard")}
         </Link>
       </div>
 
       <h1 className="text-xl font-semibold text-stone-900">
-        Create new project
+        {t("project:heading.create_project")}
       </h1>
 
       <Form method="post" className="mt-6 space-y-6">
@@ -73,7 +75,7 @@ export default function NewProject() {
             htmlFor="name"
             className="block text-sm font-medium text-stone-700"
           >
-            Project name
+            {t("project:settings.project_name")}
           </label>
           <input
             type="text"
@@ -97,8 +99,8 @@ export default function NewProject() {
             htmlFor="description"
             className="block text-sm font-medium text-stone-700"
           >
-            Description{" "}
-            <span className="text-stone-400">(optional)</span>
+            {t("project:settings.description")}{" "}
+            <span className="text-stone-400">{t("project:settings.description_optional")}</span>
           </label>
           <textarea
             id="description"
@@ -114,7 +116,7 @@ export default function NewProject() {
             type="submit"
             className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
-            Create project
+            {t("project:new.create")}
           </button>
         </div>
       </Form>

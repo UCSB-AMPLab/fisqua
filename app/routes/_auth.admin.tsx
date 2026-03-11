@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from "react-router";
+import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
 import { requireAdmin } from "../lib/permissions.server";
 import type { Route } from "./+types/_auth.admin";
@@ -9,15 +10,17 @@ export function loader({ context }: Route.LoaderArgs) {
   return { user };
 }
 
-const tabs = [
-  { to: "/admin/users", label: "Users" },
-  { to: "/admin/projects", label: "Projects" },
-];
-
 export default function AdminLayout() {
+  const { t } = useTranslation("admin");
+
+  const tabs = [
+    { to: "/admin/users", label: t("tab.users") },
+    { to: "/admin/projects", label: t("tab.projects") },
+  ];
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      <h1 className="text-xl font-semibold text-stone-900">Admin</h1>
+      <h1 className="text-xl font-semibold text-stone-900">{t("heading.admin")}</h1>
 
       <nav className="mt-4 flex gap-1 border-b border-stone-200">
         {tabs.map((tab) => (

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 type ViewerBarProps = {
   pageLabel: string;
   onZoomIn: () => void;
@@ -5,6 +7,8 @@ type ViewerBarProps = {
 };
 
 export function ViewerBar({ pageLabel, onZoomIn, onZoomOut }: ViewerBarProps) {
+  const { t } = useTranslation("viewer");
+
   return (
     <div className="flex h-8 shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50 px-3">
       {/* Left: page label */}
@@ -16,7 +20,7 @@ export function ViewerBar({ pageLabel, onZoomIn, onZoomOut }: ViewerBarProps) {
           type="button"
           onClick={onZoomOut}
           className="flex h-6 w-6 items-center justify-center rounded text-stone-600 hover:bg-stone-200"
-          aria-label="Zoom out"
+          aria-label={t("toolbar.zoom_out")}
         >
           <svg
             className="h-3.5 w-3.5"
@@ -32,7 +36,7 @@ export function ViewerBar({ pageLabel, onZoomIn, onZoomOut }: ViewerBarProps) {
           type="button"
           onClick={onZoomIn}
           className="flex h-6 w-6 items-center justify-center rounded text-stone-600 hover:bg-stone-200"
-          aria-label="Zoom in"
+          aria-label={t("toolbar.zoom_in")}
         >
           <svg
             className="h-3.5 w-3.5"

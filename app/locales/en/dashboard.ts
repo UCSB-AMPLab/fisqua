@@ -47,4 +47,23 @@ export default {
   by: "by {{name}}",
   unnamed: "Unnamed",
   vol_abbr: "vol.",
+  activity: {
+    unnamed_user: "Unnamed user",
+    last_active: "Last active {{time}}",
+    tab_activity: "Recent activity",
+    tab_volumes: "Volumes ({{count}})",
+    no_activity: "No activity recorded yet.",
+    no_volumes: "No volumes assigned yet.",
+    event: {
+      login: "Logged in",
+      volume_opened: "Opened volume",
+      status_changed: "Changed status",
+      review_submitted: "Submitted review",
+      assignment_changed: "Assignment changed",
+      status_changed_to: "Changed status to {{to}}",
+      volume_opened_detail: "Opened volume: {{name}}",
+      assignment_changed_detail: "Assignment changed: {{name}}",
+    },
+    just_now: "Just now",
+  },
 } as const;

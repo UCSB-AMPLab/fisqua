@@ -47,4 +47,23 @@ export default {
   by: "por {{name}}",
   unnamed: "Sin nombre",
   vol_abbr: "uds.",
+  activity: {
+    unnamed_user: "Usuario sin nombre",
+    last_active: "Ultima actividad {{time}}",
+    tab_activity: "Actividad reciente",
+    tab_volumes: "Unidades compuestas ({{count}})",
+    no_activity: "Aun no hay actividad registrada.",
+    no_volumes: "Aun no hay unidades compuestas asignadas.",
+    event: {
+      login: "Inicio de sesion",
+      volume_opened: "Abrio unidad compuesta",
+      status_changed: "Cambio de estado",
+      review_submitted: "Revision enviada",
+      assignment_changed: "Asignacion modificada",
+      status_changed_to: "Cambio de estado a {{to}}",
+      volume_opened_detail: "Abrio unidad compuesta: {{name}}",
+      assignment_changed_detail: "Asignacion modificada: {{name}}",
+    },
+    just_now: "Ahora",
+  },
 } as const;

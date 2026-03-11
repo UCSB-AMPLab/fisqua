@@ -1,10 +1,13 @@
 import { Form, useActionData } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { userContext } from "../context";
 import { requireProjectRole } from "../lib/permissions.server";
 import { getProject } from "../lib/projects.server";
 import { createInvite } from "../lib/invites.server";
+import { getInstance } from "~/middleware/i18next";
+import { formatDate } from "~/lib/format";
 import {
   users,
   projectMembers,
@@ -90,6 +93,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+  const i18n = getInstance(context);
 
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
 
@@ -103,14 +107,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
       // Validate email
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return { ok: false, error: "Please enter a valid email address." };
+        return { ok: false, error: i18n.t("project:error.invalid_email") };
       }
 
       // Validate roles
       const validRoles = ["lead", "cataloguer", "reviewer"];
       const roles = roleValues.filter((r) => validRoles.includes(r));
       if (roles.length === 0) {
-        return { ok: false, error: "Select at least one role." };
+        return { ok: false, error: i18n.t("project:error.select_role") };
       }
 
       const result = await createInvite(
@@ -130,8 +134,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
       const message =
         result.status === "invited"
-          ? `Invitation sent to ${email}.`
-          : `${email} has been added to the project.`;
+          ? i18n.t("project:error.invite_sent", { email })
+          : i18n.t("project:error.member_added", { email });
 
       return { ok: true, message };
     }
@@ -143,7 +147,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const validRoles = ["lead", "cataloguer", "reviewer"];
       const newRoles = roleValues.filter((r) => validRoles.includes(r));
       if (newRoles.length === 0) {
-        return { ok: false, error: "At least one role is required." };
+        return { ok: false, error: i18n.t("project:error.role_required") };
       }
 
       // Delete existing memberships for this user+project
@@ -168,7 +172,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         });
       }
 
-      return { ok: true, message: "Roles updated." };
+      return { ok: true, message: i18n.t("project:error.roles_updated") };
     }
 
     case "removeMember": {
@@ -188,7 +192,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
       const isLead = targetMemberships.some((m) => m.role === "lead");
       if (isLead) {
-        return { ok: false, error: "Cannot remove a project lead." };
+        return { ok: false, error: i18n.t("project:error.cannot_remove_lead") };
       }
 
       // Delete all memberships for this user+project
@@ -201,20 +205,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           )
         );
 
-      return { ok: true, message: "Member removed." };
+      return { ok: true, message: i18n.t("project:error.member_removed") };
     }
 
     default:
-      return { ok: false, error: "Unknown action." };
+      return { ok: false, error: i18n.t("project:error.unknown_action") };
   }
-}
-
-function formatDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 const roleBadgeColors: Record<string, string> = {
@@ -226,12 +222,13 @@ const roleBadgeColors: Record<string, string> = {
 export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
   const { project, members, pendingInvites, currentUserId } = loaderData;
   const actionData = useActionData<typeof action>();
+  const { t } = useTranslation(["project", "workflow", "common"]);
 
   return (
     <div className="space-y-10">
       {/* Invite form */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">Invite member</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("project:action.invite_member")}</h2>
 
         {actionData?.ok && actionData?.message && (
           <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
@@ -248,24 +245,24 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
               htmlFor="email"
               className="block text-sm font-medium text-stone-700"
             >
-              Email address
+              {t("project:settings.email")}
             </label>
             <input
               type="email"
               id="email"
               name="email"
               required
-              placeholder="colleague@example.com"
+              placeholder={t("project:invite.placeholder")}
               className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
             />
           </div>
 
           <fieldset>
             <legend className="text-sm font-medium text-stone-700">
-              Role
+              {t("project:settings.role")}
             </legend>
             <div className="mt-2 flex gap-4">
-              {["cataloguer", "reviewer", "lead"].map((role) => (
+              {(["cataloguer", "reviewer", "lead"] as const).map((role) => (
                 <label key={role} className="flex items-center gap-2 text-sm">
                   <input
                     type="radio"
@@ -274,7 +271,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                     defaultChecked={role === "cataloguer"}
                     className="border-stone-300 text-burgundy-deep focus:ring-burgundy-light"
                   />
-                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                  {t(`workflow:role.${role}`)}
                 </label>
               ))}
             </div>
@@ -284,30 +281,30 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
             type="submit"
             className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
-            Invite
+            {t("project:action.invite")}
           </button>
         </Form>
       </section>
 
       {/* Members list */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">Members</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("project:heading.members")}</h2>
 
         {members.length === 0 ? (
-          <p className="mt-2 text-sm text-stone-500">No members yet.</p>
+          <p className="mt-2 text-sm text-stone-500">{t("project:empty.no_members")}</p>
         ) : (
           <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
             <table className="min-w-full divide-y divide-stone-200">
               <thead className="bg-stone-50">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Member
+                    {t("project:table.member")}
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                    Roles
+                    {t("project:table.roles")}
                   </th>
                   <th className="px-4 py-2 text-right text-xs font-medium text-stone-500 uppercase">
-                    Actions
+                    {t("project:table.actions")}
                   </th>
                 </tr>
               </thead>
@@ -335,7 +332,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                               key={role}
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeColors[role] || "bg-stone-100 text-stone-600"}`}
                             >
-                              {role}
+                              {t(`workflow:role.${role}`)}
                             </span>
                           ))}
                         </div>
@@ -359,14 +356,16 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                               onClick={(e) => {
                                 if (
                                   !confirm(
-                                    `Remove ${member.name || member.email} from the project?`
+                                    t("project:action.remove_confirm", {
+                                      name: member.name || member.email,
+                                    })
                                   )
                                 ) {
                                   e.preventDefault();
                                 }
                               }}
                             >
-                              Remove
+                              {t("project:action.remove")}
                             </button>
                           </Form>
                         )}
@@ -384,7 +383,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
       {pendingInvites.length > 0 && (
         <section>
           <h2 className="text-lg font-medium text-stone-900">
-            Pending invitations
+            {t("project:heading.pending_invitations")}
           </h2>
           <div className="mt-4 space-y-2">
             {pendingInvites.map((invite) => {
@@ -403,12 +402,12 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                         key={role}
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeColors[role] || "bg-stone-100 text-stone-600"}`}
                       >
-                        {role}
+                        {t(`workflow:role.${role}`)}
                       </span>
                     ))}
                   </div>
                   <span className="text-xs text-stone-400">
-                    Expires {formatDate(invite.expiresAt)}
+                    {t("project:volumes.expires", { date: formatDate(invite.expiresAt) })}
                   </span>
                 </div>
               );

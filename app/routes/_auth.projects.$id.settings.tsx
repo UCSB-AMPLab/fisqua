@@ -1,9 +1,11 @@
 import { Form, useActionData } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { userContext } from "../context";
 import { requireProjectRole } from "../lib/permissions.server";
 import { getProject } from "../lib/projects.server";
+import { getInstance } from "~/middleware/i18next";
 import { projects } from "../db/schema";
 import type { Route } from "./+types/_auth.projects.$id.settings";
 
@@ -27,6 +29,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+  const i18n = getInstance(context);
 
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
 
@@ -41,9 +44,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const errors: Record<string, string> = {};
 
   if (!name || name.length === 0) {
-    errors.name = "Project name is required";
+    errors.name = i18n.t("project:error.name_required");
   } else if (name.length > 200) {
-    errors.name = "Project name must be 200 characters or less";
+    errors.name = i18n.t("project:error.name_too_long");
   }
 
   // Validate settings JSON if provided
@@ -51,7 +54,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     try {
       JSON.parse(settings);
     } catch {
-      errors.settings = "Settings must be valid JSON";
+      errors.settings = i18n.t("project:error.invalid_json");
     }
   }
 
@@ -70,17 +73,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     })
     .where(eq(projects.id, params.id));
 
-  return { ok: true, message: "Settings saved." };
+  return { ok: true, message: i18n.t("project:settings.saved") };
 }
 
 export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
   const { project } = loaderData;
   const actionData = useActionData<typeof action>();
+  const { t } = useTranslation(["project", "common"]);
 
   return (
     <div className="space-y-10">
       <section>
-        <h2 className="text-lg font-medium text-stone-900">General settings</h2>
+        <h2 className="text-lg font-medium text-stone-900">{t("project:settings.heading")}</h2>
 
         {actionData?.ok && actionData?.message && (
           <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
@@ -92,7 +96,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               htmlFor="name"
               className="block text-sm font-medium text-stone-700"
             >
-              Project name
+              {t("project:settings.project_name")}
             </label>
             <input
               type="text"
@@ -115,7 +119,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               htmlFor="description"
               className="block text-sm font-medium text-stone-700"
             >
-              Description
+              {t("project:settings.description")}
             </label>
             <textarea
               id="description"
@@ -131,10 +135,10 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               htmlFor="conventions"
               className="block text-sm font-medium text-stone-700"
             >
-              Conventions
+              {t("project:settings.conventions")}
             </label>
             <p className="text-xs text-stone-500">
-              Project guidelines and conventions (supports Markdown)
+              {t("project:settings.conventions_help")}
             </p>
             <textarea
               id="conventions"
@@ -150,10 +154,10 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               htmlFor="settings"
               className="block text-sm font-medium text-stone-700"
             >
-              Settings
+              {t("project:settings.settings_json")}
             </label>
             <p className="text-xs text-stone-500">
-              Application-specific configuration (JSON)
+              {t("project:settings.settings_json_help")}
             </p>
             <textarea
               id="settings"
@@ -173,7 +177,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
             type="submit"
             className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
-            Save settings
+            {t("project:settings.save")}
           </button>
         </Form>
       </section>

@@ -1,4 +1,5 @@
 import { Form, Link, useActionData, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, desc, isNull, isNotNull } from "drizzle-orm";
 import {
@@ -13,6 +14,8 @@ import {
 } from "../db/schema";
 import { requireAdmin } from "../lib/permissions.server";
 import { userContext } from "../context";
+import { getInstance } from "~/middleware/i18next";
+import { formatDate } from "~/lib/format";
 import type { Route } from "./+types/_auth.admin.projects";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -74,6 +77,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+  const i18n = getInstance(context);
 
   requireAdmin(user);
 
@@ -82,7 +86,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const projectId = formData.get("projectId") as string;
 
   if (!projectId) {
-    return { ok: false, error: "Missing project ID." };
+    return { ok: false, error: i18n.t("admin:error.missing_project_id") };
   }
 
   if (intent === "archiveProject") {
@@ -91,7 +95,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       .set({ archivedAt: Date.now() })
       .where(eq(projects.id, projectId));
 
-    return { ok: true, message: "Project archived." };
+    return { ok: true, message: i18n.t("admin:error.project_archived") };
   }
 
   if (intent === "unarchiveProject") {
@@ -100,7 +104,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       .set({ archivedAt: null })
       .where(eq(projects.id, projectId));
 
-    return { ok: true, message: "Project restored." };
+    return { ok: true, message: i18n.t("admin:error.project_restored") };
   }
 
   if (intent === "deleteProject") {
@@ -127,37 +131,30 @@ export async function action({ request, context }: Route.ActionArgs) {
       .where(eq(projectMembers.projectId, projectId));
     await db.delete(projects).where(eq(projects.id, projectId));
 
-    return { ok: true, message: "Project deleted." };
+    return { ok: true, message: i18n.t("admin:error.project_deleted") };
   }
 
-  return { ok: false, error: "Unknown action." };
-}
-
-function formatDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return { ok: false, error: i18n.t("admin:error.unknown_action") };
 }
 
 export default function AdminProjects({ loaderData }: Route.ComponentProps) {
   const { projects: allProjects, showArchived } = loaderData;
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
+  const { t } = useTranslation(["admin", "common"]);
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-medium text-stone-900">
-            {showArchived ? "Archived projects" : "All projects"}
+            {showArchived ? t("admin:heading.archived_projects") : t("admin:heading.all_projects")}
           </h2>
           <Link
             to={showArchived ? "/admin/projects" : "/admin/projects?archived=true"}
             className="text-xs text-stone-500 hover:text-stone-700"
           >
-            {showArchived ? "Show active" : "Show archived"}
+            {showArchived ? t("admin:action.show_active") : t("admin:action.show_archived")}
           </Link>
         </div>
         {!showArchived && (
@@ -165,7 +162,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
             to="/projects/new"
             className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
           >
-            New project
+            {t("admin:action.new_project")}
           </Link>
         )}
       </div>
@@ -184,8 +181,8 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
       {allProjects.length === 0 ? (
         <p className="mt-4 text-sm text-stone-500">
           {showArchived
-            ? "No archived projects."
-            : "No projects yet. Create one to get started."}
+            ? t("admin:empty.no_archived")
+            : t("admin:empty.no_projects")}
         </p>
       ) : (
         <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
@@ -193,19 +190,19 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
             <thead className="bg-stone-50">
               <tr>
                 <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                  Project
+                  {t("admin:table.project")}
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                  Lead(s)
+                  {t("admin:table.lead")}
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                  Members
+                  {t("admin:table.members")}
                 </th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
-                  {showArchived ? "Archived" : "Created"}
+                  {showArchived ? t("admin:table.archived") : t("admin:table.created")}
                 </th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-stone-500 uppercase">
-                  Actions
+                  {t("admin:table.actions")}
                 </th>
               </tr>
             </thead>
@@ -250,7 +247,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                             type="submit"
                             className="text-xs text-stone-500 hover:text-stone-700"
                           >
-                            Restore
+                            {t("admin:action.restore")}
                           </button>
                         </Form>
                         <Form method="post" className="inline">
@@ -262,14 +259,14 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                             onClick={(e) => {
                               if (
                                 !confirm(
-                                  `Permanently delete "${project.name}" and all its data? This cannot be undone.`
+                                  t("admin:error.delete_confirm", { name: project.name })
                                 )
                               ) {
                                 e.preventDefault();
                               }
                             }}
                           >
-                            Delete
+                            {t("common:button.delete")}
                           </button>
                         </Form>
                       </>
@@ -281,7 +278,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                           type="submit"
                           className="text-xs text-stone-500 hover:text-stone-700"
                         >
-                          Archive
+                          {t("admin:action.archive")}
                         </button>
                       </Form>
                     )}
