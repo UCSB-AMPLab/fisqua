@@ -6,6 +6,7 @@
  * 3. Approved
  */
 
+import { useTranslation } from "react-i18next";
 import {
   VolumeStatusCard,
   daysSince,
@@ -23,6 +24,7 @@ type ReviewerDashboardProps = {
 };
 
 function WaitingBadge({ days }: { days: number }) {
+  const { t } = useTranslation("dashboard");
   const urgent = days >= 3;
   return (
     <span
@@ -32,7 +34,7 @@ function WaitingBadge({ days }: { days: number }) {
           : "bg-amber-100 text-amber-700"
       }`}
     >
-      {days === 0 ? "Today" : `${days}d waiting`}
+      {days === 0 ? t("today") : t("days_waiting", { count: days })}
     </span>
   );
 }
@@ -71,6 +73,7 @@ function ReviewGroup({
 }
 
 export function ReviewerDashboard({ groups }: ReviewerDashboardProps) {
+  const { t } = useTranslation("dashboard");
   const totalVolumes =
     groups.awaitingReview.length +
     groups.reviewed.length +
@@ -86,9 +89,9 @@ export function ReviewerDashboard({ groups }: ReviewerDashboardProps) {
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">Nothing to review</h3>
+          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_review_title")}</h3>
           <p className="mt-2 text-sm text-stone-500">
-            No volumes are waiting for your review.
+            {t("empty.no_review_body")}
           </p>
         </div>
       </div>
@@ -98,12 +101,12 @@ export function ReviewerDashboard({ groups }: ReviewerDashboardProps) {
   return (
     <div className="space-y-8">
       <ReviewGroup
-        title="Awaiting review"
+        title={t("group.awaiting_review")}
         volumes={groups.awaitingReview}
         showWaiting
       />
-      <ReviewGroup title="Reviewed" volumes={groups.reviewed} />
-      <ReviewGroup title="Approved" volumes={groups.approved} />
+      <ReviewGroup title={t("group.reviewed")} volumes={groups.reviewed} />
+      <ReviewGroup title={t("group.approved")} volumes={groups.approved} />
     </div>
   );
 }

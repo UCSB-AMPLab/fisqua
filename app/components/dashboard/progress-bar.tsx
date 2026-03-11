@@ -4,7 +4,7 @@
  * Reusable across assignments page and lead dashboard.
  */
 
-import { STATUS_STYLES } from "../workflow/status-badge";
+import { useTranslation } from "react-i18next";
 
 type StackedProgressBarProps = {
   counts: Record<string, number>;
@@ -30,6 +30,7 @@ const SEGMENT_COLORS: Record<string, string> = {
 };
 
 export function StackedProgressBar({ counts }: StackedProgressBarProps) {
+  const { t } = useTranslation("workflow");
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
 
   if (total === 0) {
@@ -46,12 +47,13 @@ export function StackedProgressBar({ counts }: StackedProgressBarProps) {
           const count = counts[status] ?? 0;
           if (count === 0) return null;
           const pct = (count / total) * 100;
+          const label = t(`status.${status}`);
           return (
             <div
               key={status}
               className={`${SEGMENT_COLORS[status] ?? "bg-stone-300"} transition-all`}
               style={{ width: `${pct}%` }}
-              title={`${STATUS_STYLES[status]?.label ?? status}: ${count}`}
+              title={`${label}: ${count}`}
             />
           );
         })}
@@ -62,13 +64,13 @@ export function StackedProgressBar({ counts }: StackedProgressBarProps) {
         {STATUS_ORDER.map((status) => {
           const count = counts[status] ?? 0;
           if (count === 0) return null;
-          const style = STATUS_STYLES[status];
+          const label = t(`status.${status}`);
           return (
             <span key={status} className="flex items-center gap-1">
               <span
                 className={`inline-block h-2 w-2 rounded-full ${SEGMENT_COLORS[status] ?? "bg-stone-300"}`}
               />
-              {style?.label ?? status} ({count})
+              {label} ({count})
             </span>
           );
         })}

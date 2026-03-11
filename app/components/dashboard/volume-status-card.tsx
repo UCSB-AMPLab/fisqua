@@ -4,7 +4,9 @@
  */
 
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { StatusBadge } from "../workflow/status-badge";
+import { relativeTime } from "~/lib/format";
 
 export type VolumeCardData = {
   id: string;
@@ -20,27 +22,13 @@ export type VolumeCardData = {
   assignedReviewerName?: string | null;
 };
 
-function relativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-  if (days > 0) return rtf.format(-days, "day");
-  if (hours > 0) return rtf.format(-hours, "hour");
-  if (minutes > 0) return rtf.format(-minutes, "minute");
-  return rtf.format(-seconds, "second");
-}
-
 type VolumeStatusCardProps = {
   volume: VolumeCardData;
 };
 
 export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
+  const { t } = useTranslation(["common", "dashboard"]);
+
   return (
     <Link
       to={`/projects/${volume.projectId}/volumes/${volume.id}`}
@@ -59,10 +47,10 @@ export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
       </div>
 
       <div className="mt-2 flex items-center gap-3 text-xs text-stone-500">
-        <span>{volume.pageCount} pages</span>
-        <span>{volume.entryCount} entries</span>
+        <span>{t("common:domain.image_count", { count: volume.pageCount })}</span>
+        <span>{t("common:domain.document_count", { count: volume.entryCount })}</span>
         {volume.cataloguerName && (
-          <span className="truncate">by {volume.cataloguerName}</span>
+          <span className="truncate">{t("dashboard:by", { name: volume.cataloguerName })}</span>
         )}
       </div>
 

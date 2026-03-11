@@ -5,6 +5,7 @@
  */
 
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql, inArray, isNull } from "drizzle-orm";
 import { userContext } from "../context";
@@ -34,8 +35,8 @@ import type { Route } from "./+types/_auth.dashboard";
 
 export function meta() {
   return [
-    { title: "Dashboard" },
-    { name: "description", content: "Project dashboard" },
+    { title: "Inicio" },
+    { name: "description", content: "Inicio" },
   ];
 }
 
@@ -439,9 +440,11 @@ async function loadLeadData(
     // Attention: volumes waiting >3 days for review
     for (const vol of projectVolumes) {
       if (vol.status === "segmented" && now - vol.updatedAt > THREE_DAYS) {
+        const days = Math.floor((now - vol.updatedAt) / (1000 * 60 * 60 * 24));
         attentionItems.push({
           type: "waiting",
-          description: `"${vol.name}" has been waiting for review for ${Math.floor((now - vol.updatedAt) / (1000 * 60 * 60 * 24))} days`,
+          volumeName: vol.name,
+          days,
           link: `/projects/${project.id}/assignments`,
         });
       }
@@ -452,7 +455,8 @@ async function loadLeadData(
     if (unassigned.length > 0) {
       attentionItems.push({
         type: "unassigned",
-        description: `${unassigned.length} unassigned volume${unassigned.length > 1 ? "s" : ""} in "${project.name}"`,
+        count: unassigned.length,
+        projectName: project.name,
         link: `/projects/${project.id}/assignments`,
       });
     }
@@ -485,7 +489,8 @@ async function loadLeadData(
       ) {
         attentionItems.push({
           type: "inactive",
-          description: `${userInfo.name ?? "Unnamed"} has been inactive for ${Math.floor((now - userInfo.lastActiveAt) / (1000 * 60 * 60 * 24))} days`,
+          memberName: userInfo.name ?? null,
+          days: Math.floor((now - userInfo.lastActiveAt) / (1000 * 60 * 60 * 24)),
           link: `/users/${m.userId}/activity`,
         });
       }
@@ -516,24 +521,25 @@ async function loadLeadData(
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const { user, primaryRole, data } = loaderData;
+  const { t } = useTranslation("dashboard");
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-stone-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-stone-900">{t("heading.dashboard")}</h1>
         {user.isAdmin && (
           <div className="flex items-center gap-3">
             <Link
               to="/admin/users"
               className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
             >
-              Admin
+              {t("nav.admin")}
             </Link>
             <Link
               to="/projects/new"
               className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
             >
-              New project
+              {t("new_project")}
             </Link>
           </div>
         )}
@@ -548,30 +554,30 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
-              <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">No projects yet</h3>
+              <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_projects_title")}</h3>
               {user.isAdmin ? (
                 <>
                   <p className="mt-2 text-sm text-stone-500">
-                    Get started by creating a project or managing users.
+                    {t("empty.no_projects_admin_body")}
                   </p>
                   <div className="mt-5 flex items-center justify-center gap-3">
                     <Link
                       to="/projects/new"
                       className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
                     >
-                      New project
+                      {t("new_project")}
                     </Link>
                     <Link
                       to="/admin/users"
                       className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
                     >
-                      Manage users
+                      {t("manage_users")}
                     </Link>
                   </div>
                 </>
               ) : (
                 <p className="mt-2 text-sm text-stone-500">
-                  Ask a project lead to add you.
+                  {t("empty.no_projects_member_body")}
                 </p>
               )}
             </div>

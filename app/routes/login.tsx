@@ -1,16 +1,18 @@
 import { redirect, data } from "react-router";
+import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 import { createSessionStorage } from "../sessions.server";
 import { generateMagicLink } from "../lib/auth.server";
+import { getInstance } from "~/middleware/i18next";
 import type { Route } from "./+types/login";
 
 const emailSchema = z.object({
-  email: z.string().email("Please enter a valid email address."),
+  email: z.string().email(),
 });
 
 export function meta() {
-  return [{ title: "Log in | Zasqua Catalogacion" }];
+  return [{ title: "Iniciar sesion | Zasqua Catalogacion" }];
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -27,6 +29,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const env = context.cloudflare.env;
+  const i18n = getInstance(context);
   const formData = await request.formData();
 
   const parsed = emailSchema.safeParse({
@@ -35,7 +38,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   if (!parsed.success) {
     return data(
-      { error: parsed.error.issues[0].message, success: false },
+      { error: i18n.t("auth:error.invalid_email"), success: false },
       { status: 400 }
     );
   }
@@ -57,17 +60,18 @@ export async function action({ request, context }: Route.ActionArgs) {
   return data({ success: true, error: null });
 }
 
-const errorMessages: Record<string, string> = {
-  "expired-link": "This login link has expired. Please request a new one.",
-  "invalid-link": "This login link is invalid. Please request a new one.",
-};
-
 export default function LoginPage({ actionData }: Route.ComponentProps) {
+  const { t } = useTranslation("auth");
   const searchParams =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search)
       : new URLSearchParams();
   const urlError = searchParams.get("error");
+
+  const errorMessages: Record<string, string> = {
+    "expired-link": t("error.expired_link"),
+    "invalid-link": t("error.invalid_link"),
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-white">
@@ -86,7 +90,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
 
         {actionData?.success ? (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Check your email for a login link.
+            {t("success_message")}
           </div>
         ) : (
           <form method="post" className="space-y-4">
@@ -101,7 +105,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                 htmlFor="email"
                 className="block text-sm font-medium text-stone-700"
               >
-                Email address
+                {t("email_label")}
               </label>
               <input
                 id="email"
@@ -111,7 +115,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                 autoComplete="email"
                 autoFocus
                 className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:outline-none focus:ring-1 focus:ring-burgundy-light"
-                placeholder="you@example.com"
+                placeholder={t("placeholder")}
               />
             </div>
 
@@ -119,7 +123,7 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
               type="submit"
               className="w-full rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy focus:outline-none focus:ring-2 focus:ring-burgundy-light focus:ring-offset-2"
             >
-              Send login link
+              {t("login_button")}
             </button>
           </form>
         )}

@@ -7,6 +7,7 @@
  * 4. Completed (segmented, approved)
  */
 
+import { useTranslation } from "react-i18next";
 import { VolumeStatusCard, type VolumeCardData } from "./volume-status-card";
 
 export type CataloguerGroups = {
@@ -53,6 +54,7 @@ function VolumeGroup({
 }
 
 export function CataloguerDashboard({ groups }: CataloguerDashboardProps) {
+  const { t } = useTranslation("dashboard");
   const totalVolumes =
     groups.needsAttention.length +
     groups.inProgress.length +
@@ -69,9 +71,9 @@ export function CataloguerDashboard({ groups }: CataloguerDashboardProps) {
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">No assignments yet</h3>
+          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_assignments_title")}</h3>
           <p className="mt-2 text-sm text-stone-500">
-            You don't have any volumes assigned yet.
+            {t("empty.no_assignments_body")}
           </p>
         </div>
       </div>
@@ -80,10 +82,10 @@ export function CataloguerDashboard({ groups }: CataloguerDashboardProps) {
 
   return (
     <div className="space-y-8">
-      <VolumeGroup title="Needs attention" volumes={groups.needsAttention} />
-      <VolumeGroup title="In progress" volumes={groups.inProgress} />
-      <VolumeGroup title="Ready to start" volumes={groups.readyToStart} />
-      <VolumeGroup title="Completed" volumes={groups.completed} />
+      <VolumeGroup title={t("group.needs_attention")} volumes={groups.needsAttention} />
+      <VolumeGroup title={t("group.in_progress")} volumes={groups.inProgress} />
+      <VolumeGroup title={t("group.ready_to_start")} volumes={groups.readyToStart} />
+      <VolumeGroup title={t("group.completed")} volumes={groups.completed} />
     </div>
   );
 }

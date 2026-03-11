@@ -6,13 +6,21 @@
  */
 
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { StackedProgressBar } from "./progress-bar";
-import { StatusBadge } from "../workflow/status-badge";
+import { relativeTime } from "~/lib/format";
 
 export type AttentionItem = {
   type: "waiting" | "inactive" | "unassigned";
-  description: string;
   link: string;
+  // waiting
+  volumeName?: string;
+  days?: number;
+  // inactive
+  memberName?: string | null;
+  // unassigned
+  count?: number;
+  projectName?: string;
 };
 
 export type TeamMember = {
@@ -36,19 +44,6 @@ type LeadDashboardProps = {
   attentionItems: AttentionItem[];
 };
 
-function relativeTime(timestamp: number | null): string {
-  if (!timestamp) return "Never";
-  const now = Date.now();
-  const diff = now - timestamp;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  if (days > 0) return rtf.format(-days, "day");
-  if (hours > 0) return rtf.format(-hours, "hour");
-  return "Just now";
-}
-
 const ROLE_BADGE_STYLES: Record<string, string> = {
   lead: "bg-indigo-100 text-indigo-700",
   cataloguer: "bg-blue-100 text-blue-700",
@@ -56,12 +51,14 @@ const ROLE_BADGE_STYLES: Record<string, string> = {
 };
 
 function AttentionSection({ items }: { items: AttentionItem[] }) {
+  const { t } = useTranslation("dashboard");
+
   if (items.length === 0) return null;
 
   return (
     <section>
       <h2 className="text-sm font-semibold uppercase tracking-wide text-red-600">
-        Needs attention
+        {t("group.needs_attention")}
         <span className="ml-2 text-xs font-normal">({items.length})</span>
       </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -71,7 +68,9 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
             to={item.link}
             className="block rounded-lg border border-red-200 bg-red-50 p-4 hover:border-red-300 hover:shadow-sm"
           >
-            <p className="text-sm text-red-800">{item.description}</p>
+            <p className="text-sm text-red-800">
+              <AttentionItemDescription item={item} />
+            </p>
           </Link>
         ))}
       </div>
@@ -79,7 +78,33 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
   );
 }
 
+function AttentionItemDescription({ item }: { item: AttentionItem }) {
+  const { t } = useTranslation(["dashboard", "common"]);
+
+  if (item.type === "waiting") {
+    const daysText = item.days === 0
+      ? t("dashboard:today")
+      : t("dashboard:days_waiting", { count: item.days });
+    return <>{`"${item.volumeName}" \u2014 ${daysText}`}</>;
+  }
+
+  if (item.type === "unassigned") {
+    const volumeText = t("common:domain.volume_count_full", { count: item.count });
+    return <>{`${volumeText} sin asignar en "${item.projectName}"`}</>;
+  }
+
+  if (item.type === "inactive") {
+    const name = item.memberName ?? t("dashboard:unnamed");
+    const daysText = t("dashboard:days_waiting", { count: item.days });
+    return <>{`${name} \u2014 ${daysText} sin actividad`}</>;
+  }
+
+  return null;
+}
+
 function ProjectCard({ project }: { project: ProjectOverview }) {
+  const { t } = useTranslation(["dashboard", "common", "workflow"]);
+
   return (
     <div className="rounded-lg border border-stone-200 p-4">
       <div className="flex items-center justify-between">
@@ -90,7 +115,7 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
           {project.name}
         </Link>
         <span className="text-xs text-stone-400">
-          {project.totalVolumes} volumes
+          {t("common:domain.volume_count", { count: project.totalVolumes })}
         </span>
       </div>
 
@@ -100,7 +125,7 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
 
       {project.teamMembers.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-xs font-medium text-stone-500">Team</h3>
+          <h3 className="text-xs font-medium text-stone-500">{t("dashboard:group.team")}</h3>
           <div className="mt-2 divide-y divide-stone-100">
             {project.teamMembers.map((member) => (
               <div
@@ -112,18 +137,18 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
                     to={`/users/${member.id}/activity`}
                     className="text-sm text-stone-700 hover:underline"
                   >
-                    {member.name || "Unnamed"}
+                    {member.name || t("dashboard:unnamed")}
                   </Link>
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                       ROLE_BADGE_STYLES[member.role] ?? "bg-stone-100 text-stone-600"
                     }`}
                   >
-                    {member.role}
+                    {t(`workflow:role.${member.role}`)}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-stone-400">
-                  <span>{member.volumeCount} vol.</span>
+                  <span>{member.volumeCount} {t("dashboard:vol_abbr")}</span>
                   <span>{relativeTime(member.lastActiveAt)}</span>
                 </div>
               </div>
@@ -139,6 +164,8 @@ export function LeadDashboard({
   projects,
   attentionItems,
 }: LeadDashboardProps) {
+  const { t } = useTranslation("dashboard");
+
   if (projects.length === 0) {
     return (
       <div className="mt-12 flex justify-center">
@@ -148,9 +175,9 @@ export function LeadDashboard({
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">No projects yet</h3>
+          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_projects_title")}</h3>
           <p className="mt-2 text-sm text-stone-500">
-            Create a project and add volumes to get started.
+            {t("empty.no_lead_projects_body")}
           </p>
         </div>
       </div>
@@ -163,7 +190,7 @@ export function LeadDashboard({
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-          Projects
+          {t("group.projects")}
           <span className="ml-2 text-xs font-normal">({projects.length})</span>
         </h2>
         <div className="mt-3 grid gap-4 lg:grid-cols-2">
