@@ -7,4 +7,5 @@ worker-configuration.d.ts
 .DS_Store
 tsconfig.cloudflare.tsbuildinfo
 tsconfig.node.tsbuildinfo
-docs/figma-make-prompts.md
+.planning/
+docs/
