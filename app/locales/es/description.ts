@@ -60,6 +60,10 @@ export default {
     campo_requerido: "Este campo es obligatorio",
     formato_fecha_invalido: "Formato de fecha no valido",
   },
+  tabs: {
+    segmentacion: "Segmentacion",
+    descripcion: "Descripcion",
+  },
   assignment: {
     asignar_catalogador: "Asignar catalogador",
     asignar_revisor: "Asignar revisor",
@@ -68,6 +72,16 @@ export default {
     seleccionar_no_asignados: "Seleccionar no asignados",
     items_seleccionados: "{{count}} items seleccionados",
     asignar: "Asignar",
+    asignar_entradas: "Asignar entradas",
+    progreso_equipo: "Progreso del equipo",
+    entradas: "entradas",
+    paginas: "Paginas",
+    item: "Item",
+    posicion: "Pos.",
+    catalogador: "Catalogador",
+    revisor: "Revisor",
+    estado: "Estado",
+    alerta_resegmentacion: "Este volumen tiene reportes de re-segmentacion abiertos",
   },
   promote: {
     listos_para_descripcion: "Listos para descripcion",
