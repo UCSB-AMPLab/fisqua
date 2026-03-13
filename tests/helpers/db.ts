@@ -40,12 +40,21 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS vp_volume_pos_idx ON volume_pages(volume_id, position)");
 
   await db.exec("DROP TABLE IF EXISTS entries");
-  await db.exec("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), parent_id TEXT, position INTEGER NOT NULL, start_page INTEGER NOT NULL, start_y REAL NOT NULL DEFAULT 0, end_page INTEGER, end_y REAL, type TEXT CHECK(type IN ('item', 'blank', 'front_matter', 'back_matter')), title TEXT, modified_by TEXT REFERENCES users(id), note TEXT, note_updated_by TEXT REFERENCES users(id), note_updated_at INTEGER, reviewer_comment TEXT, reviewer_comment_updated_by TEXT REFERENCES users(id), reviewer_comment_updated_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE entries (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), parent_id TEXT, position INTEGER NOT NULL, start_page INTEGER NOT NULL, start_y REAL NOT NULL DEFAULT 0, end_page INTEGER, end_y REAL, type TEXT CHECK(type IN ('item', 'blank', 'front_matter', 'back_matter')), title TEXT, modified_by TEXT REFERENCES users(id), note TEXT, note_updated_by TEXT REFERENCES users(id), note_updated_at INTEGER, reviewer_comment TEXT, reviewer_comment_updated_by TEXT REFERENCES users(id), reviewer_comment_updated_at INTEGER, description_status TEXT DEFAULT 'unassigned' CHECK(description_status IN ('unassigned', 'assigned', 'in_progress', 'described', 'reviewed', 'approved', 'sent_back')), assigned_describer TEXT REFERENCES users(id), assigned_description_reviewer TEXT REFERENCES users(id), translated_title TEXT, resource_type TEXT CHECK(resource_type IN ('texto', 'imagen', 'cartografico', 'mixto')), date_expression TEXT, date_start TEXT, date_end TEXT, extent TEXT, scope_content TEXT, language TEXT, description_notes TEXT, internal_notes TEXT, description_level TEXT DEFAULT 'item', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_idx ON entries(volume_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_parent_idx ON entries(parent_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS entry_volume_pos_idx ON entries(volume_id, position)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS activity_log (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), project_id TEXT REFERENCES projects(id), volume_id TEXT REFERENCES volumes(id), event TEXT NOT NULL CHECK(event IN ('login', 'volume_opened', 'status_changed', 'review_submitted', 'assignment_changed')), detail TEXT, created_at INTEGER NOT NULL)");
+  await db.exec("DROP TABLE IF EXISTS comments");
+  await db.exec("CREATE TABLE comments (id TEXT PRIMARY KEY NOT NULL, entry_id TEXT NOT NULL REFERENCES entries(id), parent_id TEXT, author_id TEXT NOT NULL REFERENCES users(id), author_role TEXT NOT NULL CHECK(author_role IN ('cataloguer', 'reviewer', 'lead')), text TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE INDEX IF NOT EXISTS comment_entry_idx ON comments(entry_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS comment_parent_idx ON comments(parent_id)");
+
+  await db.exec("DROP TABLE IF EXISTS resegmentation_flags");
+  await db.exec("CREATE TABLE resegmentation_flags (id TEXT PRIMARY KEY NOT NULL, volume_id TEXT NOT NULL REFERENCES volumes(id), reported_by TEXT NOT NULL REFERENCES users(id), entry_id TEXT NOT NULL REFERENCES entries(id), problem_type TEXT NOT NULL CHECK(problem_type IN ('incorrect_boundaries', 'merged_documents', 'split_document', 'missing_pages', 'other')), affected_entry_ids TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'resolved')), resolved_by TEXT REFERENCES users(id), resolved_at INTEGER, created_at INTEGER NOT NULL)");
+  await db.exec("CREATE INDEX IF NOT EXISTS reseg_volume_idx ON resegmentation_flags(volume_id)");
+
+  await db.exec("CREATE TABLE IF NOT EXISTS activity_log (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), project_id TEXT REFERENCES projects(id), volume_id TEXT REFERENCES volumes(id), event TEXT NOT NULL CHECK(event IN ('login', 'volume_opened', 'status_changed', 'review_submitted', 'assignment_changed', 'description_status_changed', 'description_assignment_changed', 'resegmentation_flagged', 'comment_added')), detail TEXT, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS al_user_idx ON activity_log(user_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS al_project_idx ON activity_log(project_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS al_created_idx ON activity_log(created_at)");
@@ -58,6 +67,8 @@ export async function cleanDatabase() {
   const db = env.DB;
   const tables = [
     "activity_log",
+    "resegmentation_flags",
+    "comments",
     "entries",
     "volume_pages",
     "volumes",

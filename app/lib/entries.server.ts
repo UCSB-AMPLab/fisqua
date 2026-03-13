@@ -44,6 +44,20 @@ export async function loadEntries(
       reviewerCommentUpdatedBy: null,
       reviewerCommentUpdatedAt: null,
       modifiedBy: null,
+      translatedTitle: null,
+      resourceType: null,
+      dateExpression: null,
+      dateStart: null,
+      dateEnd: null,
+      extent: null,
+      scopeContent: null,
+      language: null,
+      descriptionNotes: null,
+      internalNotes: null,
+      descriptionLevel: null,
+      descriptionStatus: null,
+      assignedDescriber: null,
+      assignedDescriptionReviewer: null,
       createdAt: now,
       updatedAt: now,
     },
@@ -121,7 +135,7 @@ export async function saveEntries(
     );
   }
 
-  // INSERT statements for new entries
+  // INSERT statements for new entries (carries all fields including description)
   for (const e of toInsert) {
     stmts.push(
       db.insert(entries).values({
@@ -142,6 +156,20 @@ export async function saveEntries(
         reviewerCommentUpdatedBy: e.reviewerCommentUpdatedBy,
         reviewerCommentUpdatedAt: e.reviewerCommentUpdatedAt,
         modifiedBy: e.modifiedBy,
+        translatedTitle: e.translatedTitle,
+        resourceType: e.resourceType,
+        dateExpression: e.dateExpression,
+        dateStart: e.dateStart,
+        dateEnd: e.dateEnd,
+        extent: e.extent,
+        scopeContent: e.scopeContent,
+        language: e.language,
+        descriptionNotes: e.descriptionNotes,
+        internalNotes: e.internalNotes,
+        descriptionLevel: e.descriptionLevel,
+        descriptionStatus: e.descriptionStatus,
+        assignedDescriber: e.assignedDescriber,
+        assignedDescriptionReviewer: e.assignedDescriptionReviewer,
         createdAt: e.createdAt,
         updatedAt: now,
       })
@@ -223,6 +251,20 @@ function rowToEntry(row: typeof entries.$inferSelect): Entry {
     reviewerCommentUpdatedBy: row.reviewerCommentUpdatedBy,
     reviewerCommentUpdatedAt: row.reviewerCommentUpdatedAt,
     modifiedBy: row.modifiedBy,
+    translatedTitle: row.translatedTitle,
+    resourceType: row.resourceType,
+    dateExpression: row.dateExpression,
+    dateStart: row.dateStart,
+    dateEnd: row.dateEnd,
+    extent: row.extent,
+    scopeContent: row.scopeContent,
+    language: row.language,
+    descriptionNotes: row.descriptionNotes,
+    internalNotes: row.internalNotes,
+    descriptionLevel: row.descriptionLevel,
+    descriptionStatus: row.descriptionStatus,
+    assignedDescriber: row.assignedDescriber,
+    assignedDescriptionReviewer: row.assignedDescriptionReviewer,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

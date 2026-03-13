@@ -57,6 +57,13 @@
       "when": 1773240943760,
       "tag": "0007_remarkable_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1773364100652,
+      "tag": "0008_open_titanium_man",
+      "breakpoints": true
     }
   ]
 }

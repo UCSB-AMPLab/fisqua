@@ -18,6 +18,21 @@ export type Entry = {
   reviewerCommentUpdatedBy: string | null;
   reviewerCommentUpdatedAt: number | null;
   modifiedBy: string | null; // userId of last modifier, null = original cataloguer
+  // Description fields (all nullable -- populated during description workflow)
+  translatedTitle: string | null;
+  resourceType: string | null;
+  dateExpression: string | null;
+  dateStart: string | null;
+  dateEnd: string | null;
+  extent: string | null;
+  scopeContent: string | null;
+  language: string | null;
+  descriptionNotes: string | null;
+  internalNotes: string | null;
+  descriptionLevel: string | null;
+  descriptionStatus: string | null;
+  assignedDescriber: string | null;
+  assignedDescriptionReviewer: string | null;
   createdAt: number;
   updatedAt: number;
 };

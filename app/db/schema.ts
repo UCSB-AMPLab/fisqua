@@ -146,6 +146,26 @@ export const entries = sqliteTable(
     reviewerComment: text("reviewer_comment"),
     reviewerCommentUpdatedBy: text("reviewer_comment_updated_by").references(() => users.id),
     reviewerCommentUpdatedAt: integer("reviewer_comment_updated_at"),
+    // Description status and assignment
+    descriptionStatus: text("description_status", {
+      enum: ["unassigned", "assigned", "in_progress", "described", "reviewed", "approved", "sent_back"],
+    }).default("unassigned"),
+    assignedDescriber: text("assigned_describer").references(() => users.id),
+    assignedDescriptionReviewer: text("assigned_description_reviewer").references(() => users.id),
+    // Description metadata fields
+    translatedTitle: text("translated_title"),
+    resourceType: text("resource_type", {
+      enum: ["texto", "imagen", "cartografico", "mixto"],
+    }),
+    dateExpression: text("date_expression"),
+    dateStart: text("date_start"),
+    dateEnd: text("date_end"),
+    extent: text("extent"),
+    scopeContent: text("scope_content"),
+    language: text("language"),
+    descriptionNotes: text("description_notes"),
+    internalNotes: text("internal_notes"),
+    descriptionLevel: text("description_level").default("item"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -154,6 +174,46 @@ export const entries = sqliteTable(
     index("entry_parent_idx").on(table.parentId),
     index("entry_volume_pos_idx").on(table.volumeId, table.position),
   ]
+);
+
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    entryId: text("entry_id").notNull().references(() => entries.id),
+    parentId: text("parent_id"), // null = top-level, references comments.id for nesting
+    authorId: text("author_id").notNull().references(() => users.id),
+    authorRole: text("author_role", {
+      enum: ["cataloguer", "reviewer", "lead"],
+    }).notNull(),
+    text: text("text").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("comment_entry_idx").on(table.entryId),
+    index("comment_parent_idx").on(table.parentId),
+  ]
+);
+
+export const resegmentationFlags = sqliteTable(
+  "resegmentation_flags",
+  {
+    id: text("id").primaryKey(),
+    volumeId: text("volume_id").notNull().references(() => volumes.id),
+    reportedBy: text("reported_by").notNull().references(() => users.id),
+    entryId: text("entry_id").notNull().references(() => entries.id),
+    problemType: text("problem_type", {
+      enum: ["incorrect_boundaries", "merged_documents", "split_document", "missing_pages", "other"],
+    }).notNull(),
+    affectedEntryIds: text("affected_entry_ids").notNull(), // JSON array of entry IDs
+    description: text("description").notNull(),
+    status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
+    resolvedBy: text("resolved_by").references(() => users.id),
+    resolvedAt: integer("resolved_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("reseg_volume_idx").on(table.volumeId)]
 );
 
 export const activityLog = sqliteTable(
@@ -172,6 +232,10 @@ export const activityLog = sqliteTable(
         "status_changed",
         "review_submitted",
         "assignment_changed",
+        "description_status_changed",
+        "description_assignment_changed",
+        "resegmentation_flagged",
+        "comment_added",
       ],
     }).notNull(),
     detail: text("detail"), // JSON blob for event-specific data
