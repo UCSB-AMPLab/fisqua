@@ -24,6 +24,7 @@ export default [
       // --- EXTENSION POINT --- add your domain-specific routes below
       route("projects/:id/volumes", "routes/_auth.projects.$id.volumes.tsx"),
       route("projects/:id/assignments", "routes/_auth.projects.$id.assignments.tsx"),
+      route("projects/:id/assignments/description/:volumeId", "routes/_auth.projects.$id.assignments.description.$volumeId.tsx"),
     ]),
 
     // User activity page -- under _auth, outside project layout
