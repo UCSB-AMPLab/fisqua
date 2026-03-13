@@ -54,12 +54,6 @@ export function boundaryReducer(
         endY: null,
         type: null,
         title: null,
-        note: null,
-        noteUpdatedBy: null,
-        noteUpdatedAt: null,
-        reviewerComment: null,
-        reviewerCommentUpdatedBy: null,
-        reviewerCommentUpdatedAt: null,
         modifiedBy: action.modifiedBy ?? null,
         createdAt: now,
         updatedAt: now,
@@ -245,47 +239,6 @@ export function boundaryReducer(
               title: action.title,
               modifiedBy: action.modifiedBy ?? e.modifiedBy,
               updatedAt: Date.now(),
-            }
-          : e
-      );
-
-      return {
-        ...state,
-        entries,
-        isDirty: true,
-        saveStatus: "unsaved",
-      };
-    }
-
-    case "SET_NOTE": {
-      const entries = state.entries.map((e) =>
-        e.id === action.entryId
-          ? {
-              ...e,
-              note: action.note,
-              noteUpdatedBy: action.noteUpdatedBy ?? e.noteUpdatedBy,
-              noteUpdatedAt: Date.now(),
-            }
-          : e
-      );
-
-      return {
-        ...state,
-        entries,
-        isDirty: true,
-        saveStatus: "unsaved",
-      };
-    }
-
-    case "SET_REVIEWER_COMMENT": {
-      const entries = state.entries.map((e) =>
-        e.id === action.entryId
-          ? {
-              ...e,
-              reviewerComment: action.reviewerComment,
-              reviewerCommentUpdatedBy:
-                action.reviewerCommentUpdatedBy ?? e.reviewerCommentUpdatedBy,
-              reviewerCommentUpdatedAt: Date.now(),
             }
           : e
       );

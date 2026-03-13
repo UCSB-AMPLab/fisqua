@@ -17,12 +17,6 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     endY: null,
     type: null,
     title: null,
-    note: null,
-    noteUpdatedBy: null,
-    noteUpdatedAt: null,
-    reviewerComment: null,
-    reviewerCommentUpdatedBy: null,
-    reviewerCommentUpdatedAt: null,
     createdAt: 1000,
     updatedAt: 1000,
     ...overrides,
@@ -650,108 +644,6 @@ describe("SET_TITLE", () => {
   });
 });
 
-describe("SET_NOTE", () => {
-  it("updates entry note and marks dirty", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1 })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_NOTE",
-      entryId: "a",
-      note: "Handwriting difficult to read",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.note).toBe("Handwriting difficult to read");
-    expect(entry.noteUpdatedAt).toBeTypeOf("number");
-    expect(result.isDirty).toBe(true);
-    expect(result.saveStatus).toBe("unsaved");
-  });
-
-  it("preserves noteUpdatedBy from action if provided", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1 })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_NOTE",
-      entryId: "a",
-      note: "Test",
-      noteUpdatedBy: "user-123",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.noteUpdatedBy).toBe("user-123");
-  });
-
-  it("keeps existing noteUpdatedBy when not provided in action", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1, noteUpdatedBy: "user-existing" })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_NOTE",
-      entryId: "a",
-      note: "Updated note",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.noteUpdatedBy).toBe("user-existing");
-  });
-});
-
-describe("SET_REVIEWER_COMMENT", () => {
-  it("updates entry reviewerComment and marks dirty", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1 })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_REVIEWER_COMMENT",
-      entryId: "a",
-      reviewerComment: "Please check boundary placement",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.reviewerComment).toBe("Please check boundary placement");
-    expect(entry.reviewerCommentUpdatedAt).toBeTypeOf("number");
-    expect(result.isDirty).toBe(true);
-    expect(result.saveStatus).toBe("unsaved");
-  });
-
-  it("preserves reviewerCommentUpdatedBy from action if provided", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1 })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_REVIEWER_COMMENT",
-      entryId: "a",
-      reviewerComment: "Test",
-      reviewerCommentUpdatedBy: "reviewer-456",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.reviewerCommentUpdatedBy).toBe("reviewer-456");
-  });
-
-  it("keeps existing reviewerCommentUpdatedBy when not provided in action", () => {
-    const state = makeState({
-      entries: [makeEntry({ id: "a", position: 0, startPage: 1, reviewerCommentUpdatedBy: "reviewer-existing" })],
-    });
-
-    const result = boundaryReducer(state, {
-      type: "SET_REVIEWER_COMMENT",
-      entryId: "a",
-      reviewerComment: "Updated comment",
-    });
-
-    const entry = result.entries.find((e) => e.id === "a")!;
-    expect(entry.reviewerCommentUpdatedBy).toBe("reviewer-existing");
-  });
-});
-
 describe("SET_END_PAGE", () => {
   it("updates endPage for entry", () => {
     const state = makeState({
@@ -866,7 +758,7 @@ describe("version increments", () => {
     expect(state.version).toBe(5);
   });
 
-  it("metadata changes (SET_TYPE, SET_TITLE, SET_END_PAGE, SET_NOTE, SET_REVIEWER_COMMENT) do not increment version", () => {
+  it("metadata changes (SET_TYPE, SET_TITLE, SET_END_PAGE) do not increment version", () => {
     const state = makeState({
       entries: [makeEntry({ id: "a", position: 0, startPage: 1 })],
       version: 0,
@@ -879,12 +771,6 @@ describe("version increments", () => {
     expect(result.version).toBe(0);
 
     result = boundaryReducer(result, { type: "SET_END_PAGE", entryId: "a", endPage: 5 });
-    expect(result.version).toBe(0);
-
-    result = boundaryReducer(result, { type: "SET_NOTE", entryId: "a", note: "A note" });
-    expect(result.version).toBe(0);
-
-    result = boundaryReducer(result, { type: "SET_REVIEWER_COMMENT", entryId: "a", reviewerComment: "A comment" });
     expect(result.version).toBe(0);
   });
 });

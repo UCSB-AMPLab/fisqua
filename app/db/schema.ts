@@ -140,12 +140,6 @@ export const entries = sqliteTable(
     }), // nullable: unset by default
     title: text("title"),
     modifiedBy: text("modified_by").references(() => users.id),
-    note: text("note"),
-    noteUpdatedBy: text("note_updated_by").references(() => users.id),
-    noteUpdatedAt: integer("note_updated_at"),
-    reviewerComment: text("reviewer_comment"),
-    reviewerCommentUpdatedBy: text("reviewer_comment_updated_by").references(() => users.id),
-    reviewerCommentUpdatedAt: integer("reviewer_comment_updated_at"),
     // Description status and assignment
     descriptionStatus: text("description_status", {
       enum: ["unassigned", "assigned", "in_progress", "described", "reviewed", "approved", "sent_back"],

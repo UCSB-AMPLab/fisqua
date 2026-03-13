@@ -11,12 +11,6 @@ export type Entry = {
   endY: number | null; // 0.0-1.0, null for top-level
   type: EntryType | null; // null = unset
   title: string | null;
-  note: string | null;
-  noteUpdatedBy: string | null;
-  noteUpdatedAt: number | null;
-  reviewerComment: string | null;
-  reviewerCommentUpdatedBy: string | null;
-  reviewerCommentUpdatedAt: number | null;
   modifiedBy: string | null; // userId of last modifier, null = original cataloguer
   // Description fields (all nullable -- populated during description workflow)
   translatedTitle: string | null;
@@ -55,8 +49,6 @@ export type BoundaryAction =
   | { type: "SET_TITLE"; entryId: string; title: string; modifiedBy?: string }
   | { type: "SET_END_PAGE"; entryId: string; endPage: number; modifiedBy?: string }
   | { type: "SET_END_Y"; entryId: string; endY: number; modifiedBy?: string }
-  | { type: "SET_NOTE"; entryId: string; note: string; noteUpdatedBy?: string }
-  | { type: "SET_REVIEWER_COMMENT"; entryId: string; reviewerComment: string; reviewerCommentUpdatedBy?: string }
   | { type: "MARK_SAVED" }
   | { type: "MARK_SAVING" }
   | { type: "MARK_DIRTY" };

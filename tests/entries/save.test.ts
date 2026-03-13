@@ -25,12 +25,6 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
     endY: null,
     type: null,
     title: null,
-    note: null,
-    noteUpdatedBy: null,
-    noteUpdatedAt: null,
-    reviewerComment: null,
-    reviewerCommentUpdatedBy: null,
-    reviewerCommentUpdatedAt: null,
     createdAt: 1000,
     updatedAt: 1000,
     ...overrides,
@@ -246,76 +240,17 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
     ).rejects.toThrow("positive startPage");
   });
 
-  it("saves and loads entries with note and reviewerComment (roundtrip)", async () => {
+  it("accept-corrections clears modifiedBy at data layer", async () => {
     const db = drizzle(env.DB, { schema });
-    const now = Date.now();
-
-    // Create additional users for note/comment attribution
-    const catUser = await createTestUser({ email: "cat@test.com" });
-    const revUser = await createTestUser({ email: "rev@test.com" });
-
-    const entriesToSave: Entry[] = [
-      makeEntry({
-        id: "e1",
-        volumeId,
-        position: 0,
-        startPage: 1,
-        note: "Handwriting difficult to read",
-        noteUpdatedBy: catUser.id,
-        noteUpdatedAt: now,
-        reviewerComment: "Please verify boundary",
-        reviewerCommentUpdatedBy: revUser.id,
-        reviewerCommentUpdatedAt: now,
-      }),
-      makeEntry({
-        id: "e2",
-        volumeId,
-        position: 1,
-        startPage: 5,
-        note: null,
-        reviewerComment: null,
-      }),
-    ];
-
-    await saveEntries(db, volumeId, entriesToSave);
-    const loaded = await loadEntries(db, volumeId);
-
-    expect(loaded).toHaveLength(2);
-
-    const e1 = loaded.find((e) => e.id === "e1")!;
-    expect(e1.note).toBe("Handwriting difficult to read");
-    expect(e1.noteUpdatedBy).toBe(catUser.id);
-    expect(e1.noteUpdatedAt).toBe(now);
-    expect(e1.reviewerComment).toBe("Please verify boundary");
-    expect(e1.reviewerCommentUpdatedBy).toBe(revUser.id);
-    expect(e1.reviewerCommentUpdatedAt).toBe(now);
-
-    const e2 = loaded.find((e) => e.id === "e2")!;
-    expect(e2.note).toBeNull();
-    expect(e2.reviewerComment).toBeNull();
-  });
-
-  it("accept-corrections clears reviewer comments at data layer", async () => {
-    const db = drizzle(env.DB, { schema });
-    const now = Date.now();
-
-    // Create additional users for note/comment attribution
-    const catUser = await createTestUser({ email: "cat2@test.com" });
     const revUser = await createTestUser({ email: "rev2@test.com" });
 
-    // Save entries with reviewer comments
+    // Save entries with reviewer modifications
     await saveEntries(db, volumeId, [
       makeEntry({
         id: "e1",
         volumeId,
         position: 0,
         startPage: 1,
-        note: "Cataloguer note preserved",
-        noteUpdatedBy: catUser.id,
-        noteUpdatedAt: now,
-        reviewerComment: "Fix this boundary",
-        reviewerCommentUpdatedBy: revUser.id,
-        reviewerCommentUpdatedAt: now,
         modifiedBy: revUser.id,
       }),
     ]);
@@ -326,9 +261,6 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
       .update(schema.entries)
       .set({
         modifiedBy: null,
-        reviewerComment: null,
-        reviewerCommentUpdatedBy: null,
-        reviewerCommentUpdatedAt: null,
         updatedAt: Date.now(),
       })
       .where(
@@ -341,15 +273,8 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
     const loaded = await loadEntries(db, volumeId);
     const e1 = loaded.find((e) => e.id === "e1")!;
 
-    // Reviewer comments should be cleared
-    expect(e1.reviewerComment).toBeNull();
-    expect(e1.reviewerCommentUpdatedBy).toBeNull();
-    expect(e1.reviewerCommentUpdatedAt).toBeNull();
+    // modifiedBy should be cleared
     expect(e1.modifiedBy).toBeNull();
-
-    // Cataloguer note should be preserved
-    expect(e1.note).toBe("Cataloguer note preserved");
-    expect(e1.noteUpdatedBy).toBe(catUser.id);
   });
 
   // --- ID-preserving diff-based save tests ---
@@ -483,29 +408,20 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
 
   it("preserves description fields on entries when segmentation is re-saved", async () => {
     const db = drizzle(env.DB, { schema });
-    const catUser = await createTestUser({ email: "desc-cat@test.com" });
-    const revUser = await createTestUser({ email: "desc-rev@test.com" });
-    const now = Date.now();
 
-    // Initial save with notes and comments
+    // Initial save with title
     await saveEntries(db, volumeId, [
       makeEntry({
         id: "e1",
         volumeId,
         position: 0,
         startPage: 1,
-        note: "Important note",
-        noteUpdatedBy: catUser.id,
-        noteUpdatedAt: now,
-        reviewerComment: "Check boundary",
-        reviewerCommentUpdatedBy: revUser.id,
-        reviewerCommentUpdatedAt: now,
         title: "Original title",
       }),
     ]);
 
-    // Simulate segmentation re-save: boundary moved, but note/comment fields
-    // passed as null (as the segmentation UI doesn't manage them).
+    // Simulate segmentation re-save: boundary moved, but title
+    // passed as null (as the segmentation UI doesn't manage it).
     // With diff-based save, the DB values should be preserved via UPDATE.
     await saveEntries(db, volumeId, [
       makeEntry({
@@ -513,12 +429,6 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
         volumeId,
         position: 0,
         startPage: 2,  // Boundary moved
-        note: null,     // Segmentation layer doesn't carry notes
-        noteUpdatedBy: null,
-        noteUpdatedAt: null,
-        reviewerComment: null,
-        reviewerCommentUpdatedBy: null,
-        reviewerCommentUpdatedAt: null,
         title: null,
       }),
     ]);
@@ -527,11 +437,8 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].id).toBe("e1");
     expect(loaded[0].startPage).toBe(2);
-    // These fields should survive the re-save because UPDATE only touches
+    // Title should survive the re-save because UPDATE only touches
     // segmentation-relevant fields, not description fields
-    expect(loaded[0].note).toBe("Important note");
-    expect(loaded[0].noteUpdatedBy).toBe(catUser.id);
-    expect(loaded[0].reviewerComment).toBe("Check boundary");
     expect(loaded[0].title).toBe("Original title");
   });
 

@@ -174,9 +174,6 @@ async function handleAcceptCorrections(
     .update(entries)
     .set({
       modifiedBy: null,
-      reviewerComment: null,
-      reviewerCommentUpdatedBy: null,
-      reviewerCommentUpdatedAt: null,
       updatedAt: now,
     })
     .where(
