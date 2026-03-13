@@ -53,6 +53,10 @@ export default {
   by: "by {{name}}",
   unnamed: "Unnamed",
   vol_abbr: "vol.",
+  item_abbr: "items",
+  attention: {
+    reseg_flag: "Re-segmentation pending on \"{{volume}}\"",
+  },
   activity: {
     unnamed_user: "Unnamed user",
     last_active: "Last active {{time}}",

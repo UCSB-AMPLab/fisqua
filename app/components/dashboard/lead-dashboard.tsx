@@ -1,20 +1,24 @@
 /**
  * Lead dashboard view.
  * Shows cross-project overview with:
- * - Attention items at top (volumes waiting >3d, inactive members, unassigned)
- * - Project cards with stacked progress bars and team lists
+ * - Attention items at top (volumes waiting >3d, inactive members, unassigned,
+ *   description-review, resegmentation)
+ * - Project cards with stacked progress bars for segmentation and description
+ * - Team lists with avatar initials and role badges
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { StackedProgressBar } from "./progress-bar";
+import { DescriptionProgressBar } from "./description-progress-bar";
 import { relativeTime } from "~/lib/format";
 
 export type AttentionItem = {
-  type: "waiting" | "inactive" | "unassigned";
+  type: "waiting" | "inactive" | "unassigned" | "description-review" | "resegmentation";
   link: string;
-  // waiting
+  // waiting, description-review
   volumeName?: string;
+  entryTitle?: string;
   days?: number;
   // inactive
   memberName?: string | null;
@@ -29,13 +33,16 @@ export type TeamMember = {
   role: string;
   lastActiveAt: number | null;
   volumeCount: number;
+  entryCount?: number;
 };
 
 export type ProjectOverview = {
   id: string;
   name: string;
   statusCounts: Record<string, number>;
+  descriptionStatusCounts?: Record<string, number>;
   totalVolumes: number;
+  totalEntries?: number;
   teamMembers: TeamMember[];
 };
 
@@ -45,10 +52,30 @@ type LeadDashboardProps = {
 };
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
-  lead: "bg-indigo-100 text-indigo-700",
-  cataloguer: "bg-blue-100 text-blue-700",
-  reviewer: "bg-purple-100 text-purple-700",
+  lead: "bg-[#F9EDD4] text-[#8B6914]",
+  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
+  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
 };
+
+/** Get initials from a name (up to 2 letters) */
+function getInitials(name: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+/** Attention item background styles by type */
+function getAttentionStyles(type: AttentionItem["type"]): { border: string; bg: string; text: string } {
+  if (type === "resegmentation") {
+    return { border: "border-amber-200", bg: "bg-[#FEF3C7]", text: "text-amber-800" };
+  }
+  if (type === "description-review") {
+    return { border: "border-amber-200", bg: "bg-[#FEF3C7]", text: "text-amber-800" };
+  }
+  // Default pink for waiting, inactive, unassigned
+  return { border: "border-red-200", bg: "bg-[#F5E6EA]", text: "text-[#8B2942]" };
+}
 
 function AttentionSection({ items }: { items: AttentionItem[] }) {
   const { t } = useTranslation("dashboard");
@@ -62,20 +89,48 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
         <span className="ml-2 text-xs font-normal">({items.length})</span>
       </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item, i) => (
-          <Link
-            key={i}
-            to={item.link}
-            className="block rounded-lg border border-red-200 bg-red-50 p-4 hover:border-red-300 hover:shadow-sm"
-          >
-            <p className="text-sm text-red-800">
-              <AttentionItemDescription item={item} />
-            </p>
-          </Link>
-        ))}
+        {items.map((item, i) => {
+          const styles = getAttentionStyles(item.type);
+          return (
+            <Link
+              key={i}
+              to={item.link}
+              className={`block rounded-lg border ${styles.border} ${styles.bg} p-4 hover:shadow-sm`}
+            >
+              <div className="flex items-start gap-2">
+                <AttentionIcon type={item.type} />
+                <p className={`text-sm ${styles.text}`}>
+                  <AttentionItemDescription item={item} />
+                </p>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
+}
+
+function AttentionIcon({ type }: { type: AttentionItem["type"] }) {
+  if (type === "resegmentation") {
+    return (
+      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    );
+  }
+  if (type === "description-review") {
+    return (
+      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    );
+  }
+  return null;
 }
 
 function AttentionItemDescription({ item }: { item: AttentionItem }) {
@@ -99,11 +154,24 @@ function AttentionItemDescription({ item }: { item: AttentionItem }) {
     return <>{`${name} \u2014 ${daysText} sin actividad`}</>;
   }
 
+  if (item.type === "description-review") {
+    const daysText = item.days === 0
+      ? t("dashboard:today")
+      : t("dashboard:days_waiting", { count: item.days });
+    return <>{`"${item.entryTitle ?? item.volumeName}" \u2014 ${daysText}`}</>;
+  }
+
+  if (item.type === "resegmentation") {
+    return <>{t("dashboard:attention.reseg_flag", { volume: item.volumeName })}</>;
+  }
+
   return null;
 }
 
 function ProjectCard({ project }: { project: ProjectOverview }) {
-  const { t } = useTranslation(["dashboard", "common", "workflow"]);
+  const { t } = useTranslation(["dashboard", "common", "workflow", "description"]);
+  const hasDescription = project.descriptionStatusCounts &&
+    Object.values(project.descriptionStatusCounts).some((n) => n > 0);
 
   return (
     <div className="rounded-lg border border-stone-200 p-4">
@@ -119,8 +187,20 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
         </span>
       </div>
 
+      {/* Segmentation progress bar */}
       <div className="mt-3">
         <StackedProgressBar counts={project.statusCounts} />
+      </div>
+
+      {/* Description progress bar */}
+      <div className="mt-3">
+        {hasDescription ? (
+          <DescriptionProgressBar counts={project.descriptionStatusCounts!} />
+        ) : (
+          <div className="rounded bg-[#F5F5F4] px-3 py-2 text-xs text-[#A8A29E]">
+            {t("description:promote.descripcion_no_iniciada")}
+          </div>
+        )}
       </div>
 
       {project.teamMembers.length > 0 && (
@@ -133,6 +213,10 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
                 className="flex items-center justify-between py-1.5"
               >
                 <div className="flex items-center gap-2">
+                  {/* Avatar initials */}
+                  <div className="flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full bg-[#F5F5F4] text-[0.5625rem] font-medium text-stone-500">
+                    {getInitials(member.name)}
+                  </div>
                   <Link
                     to={`/users/${member.id}/activity`}
                     className="text-sm text-stone-700 hover:underline"
@@ -148,7 +232,11 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-stone-400">
-                  <span>{member.volumeCount} {t("dashboard:vol_abbr")}</span>
+                  <span>
+                    {hasDescription && member.entryCount != null
+                      ? `${member.entryCount} ${t("dashboard:item_abbr")}`
+                      : `${member.volumeCount} ${t("dashboard:vol_abbr")}`}
+                  </span>
                   <span>{relativeTime(member.lastActiveAt)}</span>
                 </div>
               </div>

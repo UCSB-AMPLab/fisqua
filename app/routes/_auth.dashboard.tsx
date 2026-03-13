@@ -398,6 +398,7 @@ async function loadLeadData(
       id: volumes.id,
       projectId: volumes.projectId,
       name: volumes.name,
+      referenceCode: volumes.referenceCode,
       status: volumes.status,
       assignedTo: volumes.assignedTo,
       assignedReviewer: volumes.assignedReviewer,
@@ -406,6 +407,69 @@ async function loadLeadData(
     .from(volumes)
     .where(inArray(volumes.projectId, leadProjectIds))
     .all();
+
+  // Fetch all entries for description status aggregation
+  const allVolumeIds = allVolumes.map((v) => v.id);
+  let entryDescStatusRows: { volumeId: string; descriptionStatus: string | null; count: number }[] = [];
+  if (allVolumeIds.length > 0) {
+    entryDescStatusRows = await db
+      .select({
+        volumeId: entries.volumeId,
+        descriptionStatus: entries.descriptionStatus,
+        count: sql<number>`count(*)`,
+      })
+      .from(entries)
+      .where(inArray(entries.volumeId, allVolumeIds))
+      .groupBy(entries.volumeId, entries.descriptionStatus)
+      .all();
+  }
+
+  // Build per-volume description status map
+  const volumeDescMap = new Map<string, Record<string, number>>();
+  for (const row of entryDescStatusRows) {
+    const vid = row.volumeId;
+    if (!volumeDescMap.has(vid)) volumeDescMap.set(vid, {});
+    const status = row.descriptionStatus ?? "unassigned";
+    volumeDescMap.get(vid)![status] = row.count;
+  }
+
+  // Fetch open reseg flags for these volumes
+  let openResegFlags: { id: string; volumeId: string }[] = [];
+  if (allVolumeIds.length > 0) {
+    openResegFlags = await db
+      .select({
+        id: resegmentationFlags.id,
+        volumeId: resegmentationFlags.volumeId,
+      })
+      .from(resegmentationFlags)
+      .where(
+        and(
+          inArray(resegmentationFlags.volumeId, allVolumeIds),
+          eq(resegmentationFlags.status, "open")
+        )
+      )
+      .all();
+  }
+
+  // Fetch entries waiting >3 days for description review
+  let descReviewEntries: { id: string; title: string | null; volumeId: string; updatedAt: number }[] = [];
+  if (allVolumeIds.length > 0) {
+    descReviewEntries = await db
+      .select({
+        id: entries.id,
+        title: entries.title,
+        volumeId: entries.volumeId,
+        updatedAt: entries.updatedAt,
+      })
+      .from(entries)
+      .where(
+        and(
+          inArray(entries.volumeId, allVolumeIds),
+          eq(entries.descriptionStatus, "described")
+        )
+      )
+      .all();
+  }
 
   // Fetch all members for these projects
   const allMembers = await db
@@ -441,6 +505,36 @@ async function loadLeadData(
   const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
   const attentionItems: AttentionItem[] = [];
 
+  // Volume lookup for reseg/desc review attention items
+  const volumeLookup = new Map(allVolumes.map((v) => [v.id, v]));
+
+  // Attention: open reseg flags
+  for (const flag of openResegFlags) {
+    const vol = volumeLookup.get(flag.volumeId);
+    if (vol) {
+      attentionItems.push({
+        type: "resegmentation",
+        volumeName: vol.name,
+        link: `/projects/${vol.projectId}/volumes/${vol.id}`,
+      });
+    }
+  }
+
+  // Attention: entries waiting >3 days for description review
+  for (const entry of descReviewEntries) {
+    if (now - entry.updatedAt > THREE_DAYS) {
+      const vol = volumeLookup.get(entry.volumeId);
+      const days = Math.floor((now - entry.updatedAt) / (1000 * 60 * 60 * 24));
+      attentionItems.push({
+        type: "description-review",
+        entryTitle: entry.title ?? undefined,
+        volumeName: vol?.name,
+        days,
+        link: vol ? `/projects/${vol.projectId}/describe/${entry.id}` : "#",
+      });
+    }
+  }
+
   // Build project overviews
   const projectOverviews: ProjectOverview[] = projectRows.map((project) => {
     const projectVolumes = allVolumes.filter(
@@ -450,10 +544,21 @@ async function loadLeadData(
       (m) => m.projectId === project.id
     );
 
-    // Status counts
+    // Status counts (segmentation)
     const statusCounts: Record<string, number> = {};
     for (const vol of projectVolumes) {
       statusCounts[vol.status] = (statusCounts[vol.status] ?? 0) + 1;
+    }
+
+    // Description status counts (aggregated across all entries in project volumes)
+    const descriptionStatusCounts: Record<string, number> = {};
+    for (const vol of projectVolumes) {
+      const volDesc = volumeDescMap.get(vol.id);
+      if (volDesc) {
+        for (const [status, count] of Object.entries(volDesc)) {
+          descriptionStatusCounts[status] = (descriptionStatusCounts[status] ?? 0) + count;
+        }
+      }
     }
 
     // Attention: volumes waiting >3 days for review
@@ -497,6 +602,9 @@ async function loadLeadData(
       }
     }
 
+    // Total entries for project
+    const totalEntries = Object.values(descriptionStatusCounts).reduce((sum, n) => sum + n, 0);
+
     // Build team member list
     const teamMembers: TeamMember[] = projectMemberRows.map((m) => {
       const userInfo = userMap.get(m.userId);
@@ -527,7 +635,9 @@ async function loadLeadData(
       id: project.id,
       name: project.name,
       statusCounts,
+      descriptionStatusCounts,
       totalVolumes: projectVolumes.length,
+      totalEntries,
       teamMembers,
     };
   });

@@ -53,6 +53,10 @@ export default {
   by: "por {{name}}",
   unnamed: "Sin nombre",
   vol_abbr: "uds.",
+  item_abbr: "items",
+  attention: {
+    reseg_flag: "Re-segmentacion pendiente en \"{{volume}}\"",
+  },
   activity: {
     unnamed_user: "Usuario sin nombre",
     last_active: "Ultima actividad {{time}}",
