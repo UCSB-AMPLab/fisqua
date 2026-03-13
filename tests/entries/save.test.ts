@@ -352,6 +352,189 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
     expect(e1.noteUpdatedBy).toBe(catUser.id);
   });
 
+  // --- ID-preserving diff-based save tests ---
+
+  it("preserves entry IDs when re-saving unchanged entries", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    const original: Entry[] = [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 5 }),
+    ];
+
+    await saveEntries(db, volumeId, original);
+
+    // Re-save the same entries
+    await saveEntries(db, volumeId, original);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0].id).toBe("e1");
+    expect(loaded[1].id).toBe("e2");
+  });
+
+  it("preserves existing IDs and inserts new entries on mixed save", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    // Initial save
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 5 }),
+    ]);
+
+    // Add a new entry while keeping the existing ones
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "new1", volumeId, position: 1, startPage: 3 }),
+      makeEntry({ id: "e2", volumeId, position: 2, startPage: 5 }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(3);
+    expect(loaded[0].id).toBe("e1");
+    expect(loaded[1].id).toBe("new1");
+    expect(loaded[2].id).toBe("e2");
+  });
+
+  it("deletes removed entries while preserving remaining IDs", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    // Initial save with 3 entries
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 5 }),
+      makeEntry({ id: "e3", volumeId, position: 2, startPage: 8 }),
+    ]);
+
+    // Remove e2
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e3", volumeId, position: 1, startPage: 8 }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0].id).toBe("e1");
+    expect(loaded[1].id).toBe("e3");
+  });
+
+  it("updates position when entry is moved without changing ID", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 5 }),
+    ]);
+
+    // Swap positions
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e2", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e1", volumeId, position: 1, startPage: 5 }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0].id).toBe("e2");
+    expect(loaded[0].position).toBe(0);
+    expect(loaded[1].id).toBe("e1");
+    expect(loaded[1].position).toBe(1);
+  });
+
+  it("updates boundary fields when entry is moved without changing ID", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1, startY: 0 }),
+    ]);
+
+    // Move boundary to different page/position
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 3, startY: 0.5 }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe("e1");
+    expect(loaded[0].startPage).toBe(3);
+    expect(loaded[0].startY).toBe(0.5);
+  });
+
+  it("handles mixed add + remove + update in a single save", async () => {
+    const db = drizzle(env.DB, { schema });
+
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1 }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 5 }),
+      makeEntry({ id: "e3", volumeId, position: 2, startPage: 8 }),
+    ]);
+
+    // Remove e2, update e1's position, add new entry
+    await saveEntries(db, volumeId, [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 2 }),
+      makeEntry({ id: "new1", volumeId, position: 1, startPage: 5 }),
+      makeEntry({ id: "e3", volumeId, position: 2, startPage: 8 }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(3);
+    expect(loaded.map((e) => e.id)).toEqual(["e1", "new1", "e3"]);
+    expect(loaded[0].startPage).toBe(2); // Updated
+  });
+
+  it("preserves description fields on entries when segmentation is re-saved", async () => {
+    const db = drizzle(env.DB, { schema });
+    const catUser = await createTestUser({ email: "desc-cat@test.com" });
+    const revUser = await createTestUser({ email: "desc-rev@test.com" });
+    const now = Date.now();
+
+    // Initial save with notes and comments
+    await saveEntries(db, volumeId, [
+      makeEntry({
+        id: "e1",
+        volumeId,
+        position: 0,
+        startPage: 1,
+        note: "Important note",
+        noteUpdatedBy: catUser.id,
+        noteUpdatedAt: now,
+        reviewerComment: "Check boundary",
+        reviewerCommentUpdatedBy: revUser.id,
+        reviewerCommentUpdatedAt: now,
+        title: "Original title",
+      }),
+    ]);
+
+    // Simulate segmentation re-save: boundary moved, but note/comment fields
+    // passed as null (as the segmentation UI doesn't manage them).
+    // With diff-based save, the DB values should be preserved via UPDATE.
+    await saveEntries(db, volumeId, [
+      makeEntry({
+        id: "e1",
+        volumeId,
+        position: 0,
+        startPage: 2,  // Boundary moved
+        note: null,     // Segmentation layer doesn't carry notes
+        noteUpdatedBy: null,
+        noteUpdatedAt: null,
+        reviewerComment: null,
+        reviewerCommentUpdatedBy: null,
+        reviewerCommentUpdatedAt: null,
+        title: null,
+      }),
+    ]);
+
+    const loaded = await loadEntries(db, volumeId);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe("e1");
+    expect(loaded[0].startPage).toBe(2);
+    // These fields should survive the re-save because UPDATE only touches
+    // segmentation-relevant fields, not description fields
+    expect(loaded[0].note).toBe("Important note");
+    expect(loaded[0].noteUpdatedBy).toBe(catUser.id);
+    expect(loaded[0].reviewerComment).toBe("Check boundary");
+    expect(loaded[0].title).toBe("Original title");
+  });
+
   it("handles saving an empty entries array (clears all entries)", async () => {
     const db = drizzle(env.DB, { schema });
 
