@@ -107,13 +107,19 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
     <div className="space-y-8">
       {/* Create user form */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">{t("heading.create_user")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          {t("heading.create_user")}
+        </h2>
 
         {actionData?.ok && actionData?.message && (
-          <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+            {actionData.message}
+          </div>
         )}
         {actionData && !actionData.ok && actionData?.error && (
-          <p className="mt-2 text-sm text-red-600">{actionData.error}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+            {actionData.error}
+          </div>
         )}
 
         <Form method="post" className="mt-4 flex items-end gap-3">
@@ -121,7 +127,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("table.email")}
             </label>
@@ -131,12 +137,12 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
               name="email"
               required
               placeholder={t("placeholder.email")}
-              className="mt-1 block w-64 rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-64 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
+            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
           >
             {t("action.create_user")}
           </button>
@@ -145,25 +151,27 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 
       {/* Users table */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">{t("heading.all_users")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          {t("heading.all_users")}
+        </h2>
 
         {allUsers.length === 0 ? (
-          <p className="mt-2 text-sm text-stone-500">{t("empty.no_users")}</p>
+          <p className="mt-2 font-sans text-sm text-[#A8A29E]">{t("empty.no_users")}</p>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
-            <table className="min-w-full divide-y divide-stone-200">
-              <thead className="bg-stone-50">
+          <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
+            <table className="min-w-full divide-y divide-[#E7E5E4]">
+              <thead className="bg-[#FAFAF9]">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("table.email")}
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("table.name")}
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("table.role")}
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("table.created")}
                   </th>
                 </tr>
@@ -171,10 +179,10 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
               <tbody className="divide-y divide-stone-100">
                 {allUsers.map((u) => (
                   <tr key={u.id}>
-                    <td className="px-4 py-3 text-sm text-stone-900">
+                    <td className="px-4 py-3 font-sans text-sm text-[#44403C]">
                       {u.email}
                     </td>
-                    <td className="px-4 py-3 text-sm text-stone-500">
+                    <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
                       {u.name || "\u2014"}
                     </td>
                     <td className="px-4 py-3">
@@ -187,17 +195,17 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
                         <input type="hidden" name="userId" value={u.id} />
                         <button
                           type="submit"
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${
                             u.isAdmin
-                              ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                              : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                              ? "bg-[#F9EDD4] text-[#8B6914] hover:bg-[#f3e3be]"
+                              : "bg-[#E7E5E4] text-[#78716C] hover:bg-stone-200"
                           }`}
                         >
                           {u.isAdmin ? t("table.admin") : t("table.user")}
                         </button>
                       </Form>
                     </td>
-                    <td className="px-4 py-3 text-xs text-stone-400">
+                    <td className="px-4 py-3 font-sans text-xs text-[#A8A29E]">
                       {formatDate(u.createdAt)}
                     </td>
                   </tr>

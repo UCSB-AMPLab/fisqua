@@ -218,9 +218,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
-  lead: "bg-indigo-100 text-indigo-700",
-  cataloguer: "bg-blue-100 text-blue-700",
-  reviewer: "bg-purple-100 text-purple-700",
+  lead: "bg-[#F9EDD4] text-[#8B6914]",
+  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
+  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
 };
 
 export default function UserActivity({ loaderData }: Route.ComponentProps) {
@@ -232,14 +232,14 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
     <div className="mx-auto max-w-5xl px-4 py-8">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-stone-900">
+        <h1 className="font-heading text-[2rem] font-semibold text-[#44403C]">
           {targetUser.name || t("dashboard:activity.unnamed_user")}
         </h1>
         {targetUser.roles.map((role) => (
           <span
             key={role}
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              ROLE_BADGE_STYLES[role] ?? "bg-stone-100 text-stone-600"
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-xs font-semibold ${
+              ROLE_BADGE_STYLES[role] ?? "bg-[#E7E5E4] text-[#78716C]"
             }`}
           >
             {t(`workflow:role.${role}`)}
@@ -247,21 +247,21 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
         ))}
       </div>
       {targetUser.lastActiveAt && (
-        <p className="mt-1 text-sm text-stone-400">
+        <p className="mt-1 font-sans text-sm text-[#A8A29E]">
           {t("dashboard:activity.last_active", { time: relativeTime(targetUser.lastActiveAt) })}
         </p>
       )}
 
       {/* Tabs */}
-      <div className="mt-6 border-b border-stone-200">
+      <div className="mt-6 border-b border-[#E7E5E4]">
         <nav className="-mb-px flex gap-6">
           <button
             type="button"
             onClick={() => setTab("activity")}
-            className={`border-b-2 pb-3 text-sm font-medium ${
+            className={`border-b-2 pb-3 font-sans text-sm font-medium ${
               tab === "activity"
-                ? "border-stone-900 text-stone-900"
-                : "border-transparent text-stone-500 hover:text-stone-700"
+                ? "border-[#8B2942] text-[#8B2942]"
+                : "border-transparent text-[#78716C] hover:text-[#44403C]"
             }`}
           >
             {t("dashboard:activity.tab_activity")}
@@ -269,10 +269,10 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
           <button
             type="button"
             onClick={() => setTab("volumes")}
-            className={`border-b-2 pb-3 text-sm font-medium ${
+            className={`border-b-2 pb-3 font-sans text-sm font-medium ${
               tab === "volumes"
-                ? "border-stone-900 text-stone-900"
-                : "border-transparent text-stone-500 hover:text-stone-700"
+                ? "border-[#8B2942] text-[#8B2942]"
+                : "border-transparent text-[#78716C] hover:text-[#44403C]"
             }`}
           >
             {t("dashboard:activity.tab_volumes", { count: volumes.length })}
@@ -307,7 +307,7 @@ function ActivityTab({
 
   if (activity.length === 0) {
     return (
-      <p className="text-sm text-stone-400">{t("activity.no_activity")}</p>
+      <p className="font-sans text-sm text-[#A8A29E]">{t("activity.no_activity")}</p>
     );
   }
 
@@ -316,16 +316,16 @@ function ActivityTab({
       {activity.map((entry) => (
         <div key={entry.id} className="flex items-start gap-3 py-3">
           <div className="flex-1">
-            <p className="text-sm text-stone-700">
+            <p className="font-sans text-sm text-[#44403C]">
               {describeEvent(t, entry.event, entry.detail)}
             </p>
             {entry.projectName && (
-              <p className="mt-0.5 text-xs text-stone-400">
+              <p className="mt-0.5 font-sans text-xs text-[#A8A29E]">
                 {entry.projectName}
               </p>
             )}
           </div>
-          <span className="shrink-0 text-xs text-stone-400">
+          <span className="shrink-0 font-sans text-xs text-[#A8A29E]">
             {relativeTime(entry.createdAt)}
           </span>
         </div>
@@ -355,6 +355,18 @@ function describeEvent(
     if (event === "assignment_changed" && d.volumeName) {
       return t("activity.event.assignment_changed_detail", { name: d.volumeName });
     }
+    if (event === "description_status_changed" && d.to) {
+      return t("activity.event.description_status_changed_to", { to: d.to });
+    }
+    if (event === "description_assignment_changed" && d.entryTitle) {
+      return t("activity.event.description_assignment_changed_detail", { title: d.entryTitle });
+    }
+    if (event === "resegmentation_flagged" && d.volumeName) {
+      return t("activity.event.resegmentation_flagged_detail", { name: d.volumeName });
+    }
+    if (event === "comment_added" && d.entryTitle) {
+      return t("activity.event.comment_added_detail", { title: d.entryTitle });
+    }
     return base;
   } catch {
     return base;
@@ -379,21 +391,33 @@ function VolumesTab({
 
   if (volumes.length === 0) {
     return (
-      <p className="text-sm text-stone-400">{t("dashboard:activity.no_volumes")}</p>
+      <p className="font-sans text-sm text-[#A8A29E]">{t("dashboard:activity.no_volumes")}</p>
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-stone-200 text-xs font-medium uppercase text-stone-500">
+      <table className="w-full text-left">
+        <thead className="border-b border-[#E7E5E4]">
           <tr>
-            <th className="pb-2 pr-4">{t("project:table.volume")}</th>
-            <th className="pb-2 pr-4">{t("project:table.project", { defaultValue: "Proyecto" })}</th>
-            <th className="pb-2 pr-4">{t("project:table.status")}</th>
-            <th className="pb-2 pr-4 text-right">{t("project:table.images")}</th>
-            <th className="pb-2 pr-4 text-right">{t("project:table.entries")}</th>
-            <th className="pb-2 text-right">{t("project:table.last_worked")}</th>
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.volume")}
+            </th>
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.project", { defaultValue: "Proyecto" })}
+            </th>
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.status")}
+            </th>
+            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.images")}
+            </th>
+            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.entries")}
+            </th>
+            <th className="pb-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+              {t("project:table.last_worked")}
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-100">
@@ -402,22 +426,22 @@ function VolumesTab({
               <td className="py-2.5 pr-4">
                 <a
                   href={`/projects/${vol.projectId}/volumes/${vol.id}`}
-                  className="font-medium text-stone-700 hover:underline"
+                  className="font-serif text-sm font-semibold text-[#44403C] hover:underline"
                 >
                   {vol.name}
                 </a>
               </td>
-              <td className="py-2.5 pr-4 text-stone-500">{vol.projectName}</td>
+              <td className="py-2.5 pr-4 font-sans text-sm text-[#78716C]">{vol.projectName}</td>
               <td className="py-2.5 pr-4">
                 <StatusBadge status={vol.status} />
               </td>
-              <td className="py-2.5 pr-4 text-right text-stone-500">
+              <td className="py-2.5 pr-4 text-right font-sans text-sm text-[#78716C]">
                 {vol.pageCount}
               </td>
-              <td className="py-2.5 pr-4 text-right text-stone-500">
+              <td className="py-2.5 pr-4 text-right font-sans text-sm text-[#78716C]">
                 {vol.entryCount}
               </td>
-              <td className="py-2.5 text-right text-stone-400">
+              <td className="py-2.5 text-right font-sans text-xs text-[#A8A29E]">
                 {relativeTime(vol.updatedAt)}
               </td>
             </tr>

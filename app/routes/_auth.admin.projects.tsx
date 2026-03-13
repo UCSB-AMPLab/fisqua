@@ -147,12 +147,12 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h2 className="text-lg font-medium text-stone-900">
+          <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
             {showArchived ? t("admin:heading.archived_projects") : t("admin:heading.all_projects")}
           </h2>
           <Link
             to={showArchived ? "/admin/projects" : "/admin/projects?archived=true"}
-            className="text-xs text-stone-500 hover:text-stone-700"
+            className="font-sans text-xs text-[#78716C] hover:text-[#44403C]"
           >
             {showArchived ? t("admin:action.show_active") : t("admin:action.show_archived")}
           </Link>
@@ -160,7 +160,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
         {!showArchived && (
           <Link
             to="/projects/new"
-            className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
+            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
           >
             {t("admin:action.new_project")}
           </Link>
@@ -168,40 +168,42 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
       </div>
 
       {actionData?.message && (
-        <p
-          className={`mt-2 text-sm ${actionData.ok ? "text-green-600" : "text-red-600"}`}
+        <div
+          className={`mt-3 rounded-lg border px-4 py-3 font-sans text-sm ${actionData.ok ? "border-[#2F6B45] bg-[#D6E8DB] text-[#44403C]" : "border-[#8B2942] bg-[#F5E6EA] text-[#44403C]"}`}
         >
           {actionData.message}
-        </p>
+        </div>
       )}
       {actionData && !actionData.ok && actionData.error && (
-        <p className="mt-2 text-sm text-red-600">{actionData.error}</p>
+        <div className="mt-3 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+          {actionData.error}
+        </div>
       )}
 
       {allProjects.length === 0 ? (
-        <p className="mt-4 text-sm text-stone-500">
+        <p className="mt-4 font-sans text-sm text-[#A8A29E]">
           {showArchived
             ? t("admin:empty.no_archived")
             : t("admin:empty.no_projects")}
         </p>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
-          <table className="min-w-full divide-y divide-stone-200">
-            <thead className="bg-stone-50">
+        <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
+          <table className="min-w-full divide-y divide-[#E7E5E4]">
+            <thead className="bg-[#FAFAF9]">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                   {t("admin:table.project")}
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                   {t("admin:table.lead")}
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                   {t("admin:table.members")}
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                   {showArchived ? t("admin:table.archived") : t("admin:table.created")}
                 </th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-stone-500 uppercase">
+                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
                   {t("admin:table.actions")}
                 </th>
               </tr>
@@ -212,32 +214,32 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                   <td className="px-4 py-3">
                     <Link
                       to={`/projects/${project.id}`}
-                      className="text-sm font-medium text-stone-900 hover:underline"
+                      className="font-serif text-sm font-semibold text-[#44403C] hover:underline"
                     >
                       {project.name}
                     </Link>
                     {project.description && (
-                      <p className="mt-0.5 text-xs text-stone-400 truncate max-w-xs">
+                      <p className="mt-0.5 max-w-xs truncate font-sans text-xs text-[#A8A29E]">
                         {project.description}
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm text-stone-500">
+                  <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
                     {project.leads.length > 0
                       ? project.leads.join(", ")
                       : "\u2014"}
                   </td>
-                  <td className="px-4 py-3 text-sm text-stone-500">
+                  <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
                     {project.memberCount}
                   </td>
-                  <td className="px-4 py-3 text-xs text-stone-400">
+                  <td className="px-4 py-3 font-sans text-xs text-[#A8A29E]">
                     {formatDate(
                       showArchived && project.archivedAt
                         ? project.archivedAt
                         : project.createdAt
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right space-x-3">
+                  <td className="px-4 py-3 space-x-3 text-right">
                     {showArchived ? (
                       <>
                         <Form method="post" className="inline">
@@ -245,7 +247,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                           <input type="hidden" name="projectId" value={project.id} />
                           <button
                             type="submit"
-                            className="text-xs text-stone-500 hover:text-stone-700"
+                            className="font-sans text-xs text-[#78716C] hover:text-[#44403C]"
                           >
                             {t("admin:action.restore")}
                           </button>
@@ -255,7 +257,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                           <input type="hidden" name="projectId" value={project.id} />
                           <button
                             type="submit"
-                            className="text-xs text-red-500 hover:text-red-700"
+                            className="font-sans text-xs text-[#8B2942] hover:underline"
                             onClick={(e) => {
                               if (
                                 !confirm(
@@ -276,7 +278,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
                         <input type="hidden" name="projectId" value={project.id} />
                         <button
                           type="submit"
-                          className="text-xs text-stone-500 hover:text-stone-700"
+                          className="font-sans text-xs text-[#78716C] hover:text-[#44403C]"
                         >
                           {t("admin:action.archive")}
                         </button>
