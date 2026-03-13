@@ -9,4 +9,6 @@ export default {
   },
   placeholder: "tu@ejemplo.com",
   page_title: "Iniciar sesion | Zasqua Catalogacion",
+  footer_note:
+    "Inicia sesion con tu correo institucional de Neogranadina o una cuenta invitada por un administrador del proyecto.",
 } as const;

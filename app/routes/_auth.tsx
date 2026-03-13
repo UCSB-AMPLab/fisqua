@@ -18,14 +18,18 @@ export function loader({ context }: Route.LoaderArgs) {
 export default function AuthLayout({ loaderData }: Route.ComponentProps) {
   const location = useLocation();
   const isViewer = location.pathname.includes("/viewer/");
+  const isDescriptionEditor = location.pathname.includes("/describe/");
+  const showChrome = !isViewer && !isDescriptionEditor;
 
   return (
-    <div className={isViewer ? "" : "flex min-h-screen flex-col"}>
-      <TopBar user={loaderData.user} appName={loaderData.appName} />
-      <main className="pt-12 flex-1">
+    <div className={showChrome ? "flex min-h-screen flex-col" : ""}>
+      {showChrome && (
+        <TopBar user={loaderData.user} appName={loaderData.appName} />
+      )}
+      <main className={showChrome ? "flex-1 pt-12" : ""}>
         <Outlet />
       </main>
-      {!isViewer && <Footer />}
+      {showChrome && <Footer />}
     </div>
   );
 }

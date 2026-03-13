@@ -9,4 +9,6 @@ export default {
   },
   placeholder: "you@example.com",
   page_title: "Log in | Zasqua Catalogacion",
+  footer_note:
+    "Log in with your Neogranadina institutional email or a project-admin-invited account.",
 } as const;

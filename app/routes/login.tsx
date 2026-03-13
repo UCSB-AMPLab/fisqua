@@ -75,35 +75,48 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-white">
-      <div className="w-full max-w-sm space-y-6 px-4">
+      <div className="mx-auto w-full max-w-md space-y-6 px-4">
         <div className="text-center">
           <img src="/pomegranate.svg" alt="Zasqua" className="mx-auto h-24 w-24" />
-          <h1 className="font-serif text-3xl font-semibold text-burgundy">Zasqua</h1>
-          <p className="mt-1 text-sm text-stone-500">Catalogacion</p>
+          <h1 className="mt-4 font-serif text-[2.5rem] font-bold text-[#44403C]">
+            Zasqua
+          </h1>
+          <p className="mt-1 font-heading text-[1.25rem] font-medium text-[#78716C]">
+            Catalogacion
+          </p>
         </div>
 
         {urlError && errorMessages[urlError] && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            {errorMessages[urlError]}
+          <div className="flex items-start gap-3 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+            <svg className="mt-0.5 h-5 w-5 shrink-0 text-[#8B2942]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <span>{errorMessages[urlError]}</span>
           </div>
         )}
 
         {actionData?.success ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {t("success_message")}
+          <div className="flex items-start gap-3 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+            <svg className="mt-0.5 h-5 w-5 shrink-0 text-[#2F6B45]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            <span>{t("success_message")}</span>
           </div>
         ) : (
           <form method="post" className="space-y-4">
             {actionData?.error && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                {actionData.error}
+              <div className="flex items-start gap-3 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+                <svg className="mt-0.5 h-5 w-5 shrink-0 text-[#8B2942]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                <span>{actionData.error}</span>
               </div>
             )}
 
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-stone-700"
+                className="block font-sans text-sm font-medium text-stone-700"
               >
                 {t("email_label")}
               </label>
@@ -114,19 +127,26 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
                 required
                 autoComplete="email"
                 autoFocus
-                className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:outline-none focus:ring-1 focus:ring-burgundy-light"
+                className="mt-1 block h-12 w-full rounded-lg border border-stone-300 px-3 text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
                 placeholder={t("placeholder")}
               />
             </div>
 
             <button
               type="submit"
-              className="w-full rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy focus:outline-none focus:ring-2 focus:ring-burgundy-light focus:ring-offset-2"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#8B2942] font-sans text-[0.9375rem] font-semibold text-white hover:bg-[#7a2439] focus:outline-none focus:ring-2 focus:ring-[#8B2942] focus:ring-offset-2"
             >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+              </svg>
               {t("login_button")}
             </button>
           </form>
         )}
+
+        <p className="text-center font-sans text-xs text-[#A8A29E]">
+          {t("footer_note")}
+        </p>
       </div>
     </div>
   );
