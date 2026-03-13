@@ -213,10 +213,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 }
 
-const roleBadgeColors: Record<string, string> = {
-  lead: "bg-amber-100 text-amber-800",
-  cataloguer: "bg-blue-100 text-blue-800",
-  reviewer: "bg-green-100 text-green-800",
+const ROLE_BADGE_COLORS: Record<string, string> = {
+  lead: "bg-[#F9EDD4] text-[#8B6914]",
+  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
+  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
 };
 
 export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
@@ -228,22 +228,28 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
     <div className="space-y-10">
       {/* Invite form */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">{t("project:action.invite_member")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          {t("project:action.invite_member")}
+        </h2>
 
         {actionData?.ok && actionData?.message && (
-          <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+            {actionData.message}
+          </div>
         )}
         {actionData && !actionData.ok && actionData?.error && (
-          <p className="mt-2 text-sm text-red-600">{actionData.error}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+            {actionData.error}
+          </div>
         )}
 
-        <Form method="post" className="mt-4 max-w-xl space-y-4">
+        <Form method="post" className="mt-4 flex max-w-xl flex-wrap items-end gap-4">
           <input type="hidden" name="_action" value="invite" />
 
-          <div>
+          <div className="flex-1">
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("project:settings.email")}
             </label>
@@ -253,23 +259,23 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
               name="email"
               required
               placeholder={t("project:invite.placeholder")}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
           </div>
 
           <fieldset>
-            <legend className="text-sm font-medium text-stone-700">
+            <legend className="font-sans text-[0.875rem] font-medium text-[#78716C]">
               {t("project:settings.role")}
             </legend>
-            <div className="mt-2 flex gap-4">
+            <div className="mt-1 flex gap-4">
               {(["cataloguer", "reviewer", "lead"] as const).map((role) => (
-                <label key={role} className="flex items-center gap-2 text-sm">
+                <label key={role} className="flex items-center gap-2 font-sans text-sm text-[#44403C]">
                   <input
                     type="radio"
                     name="roles"
                     value={role}
                     defaultChecked={role === "cataloguer"}
-                    className="border-stone-300 text-burgundy-deep focus:ring-burgundy-light"
+                    className="border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
                   />
                   {t(`workflow:role.${role}`)}
                 </label>
@@ -279,8 +285,11 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
 
           <button
             type="submit"
-            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
+            className="flex items-center gap-2 rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
           >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
             {t("project:action.invite")}
           </button>
         </Form>
@@ -288,22 +297,24 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
 
       {/* Members list */}
       <section>
-        <h2 className="text-lg font-medium text-stone-900">{t("project:heading.members")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          {t("project:heading.members")}
+        </h2>
 
         {members.length === 0 ? (
-          <p className="mt-2 text-sm text-stone-500">{t("project:empty.no_members")}</p>
+          <p className="mt-2 font-sans text-sm text-[#A8A29E]">{t("project:empty.no_members")}</p>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
-            <table className="min-w-full divide-y divide-stone-200">
-              <thead className="bg-stone-50">
+          <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
+            <table className="min-w-full divide-y divide-[#E7E5E4]">
+              <thead className="bg-[#FAFAF9]">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("project:table.member")}
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("project:table.roles")}
                   </th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-stone-500 uppercase">
+                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
                     {t("project:table.actions")}
                   </th>
                 </tr>
@@ -316,21 +327,21 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                   return (
                     <tr key={member.userId}>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-stone-900">
+                        <div className="font-sans text-sm font-medium text-[#44403C]">
                           {member.name || member.email}
                         </div>
                         {member.name && (
-                          <div className="text-xs text-stone-500">
+                          <div className="font-sans text-xs text-[#A8A29E]">
                             {member.email}
                           </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                           {member.roles.map((role) => (
                             <span
                               key={role}
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeColors[role] || "bg-stone-100 text-stone-600"}`}
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_COLORS[role] || "bg-stone-100 text-stone-600"}`}
                             >
                               {t(`workflow:role.${role}`)}
                             </span>
@@ -352,7 +363,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
                             />
                             <button
                               type="submit"
-                              className="text-xs text-red-500 hover:text-red-700"
+                              className="font-sans text-xs font-medium text-[#8B2942] hover:underline"
                               onClick={(e) => {
                                 if (
                                   !confirm(
@@ -382,7 +393,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
       {/* Pending invites */}
       {pendingInvites.length > 0 && (
         <section>
-          <h2 className="text-lg font-medium text-stone-900">
+          <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
             {t("project:heading.pending_invitations")}
           </h2>
           <div className="mt-4 space-y-2">
@@ -391,22 +402,22 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
               return (
                 <div
                   key={invite.id}
-                  className="flex items-center gap-3 rounded border border-stone-200 px-3 py-2"
+                  className="flex items-center gap-3 rounded-lg border border-[#E7E5E4] bg-white px-4 py-3"
                 >
-                  <span className="min-w-0 flex-1 text-sm text-stone-700">
+                  <span className="min-w-0 flex-1 font-sans text-sm text-[#44403C]">
                     {invite.email}
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     {roles.map((role) => (
                       <span
                         key={role}
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeColors[role] || "bg-stone-100 text-stone-600"}`}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_COLORS[role] || "bg-stone-100 text-stone-600"}`}
                       >
                         {t(`workflow:role.${role}`)}
                       </span>
                     ))}
                   </div>
-                  <span className="text-xs text-stone-400">
+                  <span className="font-sans text-xs text-[#A8A29E]">
                     {t("project:volumes.expires", { date: formatDate(invite.expiresAt) })}
                   </span>
                 </div>

@@ -130,11 +130,11 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-medium text-stone-900">{t("project:heading.volumes")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">{t("project:heading.volumes")}</h2>
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="rounded-md bg-burgundy-deep px-3 py-1.5 text-sm font-medium text-white hover:bg-burgundy"
+          className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
         >
           {showAddForm ? t("common:button.cancel") : t("project:volumes.add_volumes")}
         </button>
@@ -147,12 +147,12 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
 
       {/* Add form panel */}
       {showAddForm && (
-        <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
+        <div className="mt-4 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-4">
           <Form method="post">
             <input type="hidden" name="_action" value="add-volumes" />
             <label
               htmlFor="manifestUrls"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-sm font-medium text-[#78716C]"
             >
               {t("project:volumes.manifest_urls")}
             </label>
@@ -161,14 +161,14 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
               name="manifestUrls"
               rows={4}
               placeholder={t("project:volumes.manifest_placeholder")}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
             {addError && (
-              <p className="mt-2 text-sm text-red-600">{addError}</p>
+              <p className="mt-2 font-sans text-sm text-red-600">{addError}</p>
             )}
             <button
               type="submit"
-              className="mt-3 rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
+              className="mt-3 rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
             >
               {t("project:volumes.add_volumes")}
             </button>
@@ -211,13 +211,13 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
 
       {/* Volume grid */}
       {volumes.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-8 text-center">
-          <p className="text-sm text-stone-600">
+        <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-8 text-center">
+          <p className="font-sans text-sm text-[#A8A29E]">
             {t("project:empty.no_volumes_add")}
           </p>
         </div>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {volumes.map((volume) => (
             <VolumeCard key={volume.id} volume={volume} projectId={projectId} />
           ))}

@@ -84,17 +84,24 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
   return (
     <div className="space-y-10">
       <section>
-        <h2 className="text-lg font-medium text-stone-900">{t("project:settings.heading")}</h2>
+        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          {t("project:settings.heading")}
+        </h2>
 
         {actionData?.ok && actionData?.message && (
-          <p className="mt-2 text-sm text-green-600">{actionData.message}</p>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+            <svg className="h-5 w-5 shrink-0 text-[#2F6B45]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            {actionData.message}
+          </div>
         )}
 
-        <Form method="post" className="mt-4 max-w-xl space-y-4">
+        <Form method="post" className="mt-6 max-w-xl space-y-5">
           <div>
             <label
               htmlFor="name"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("project:settings.project_name")}
             </label>
@@ -105,7 +112,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               required
               maxLength={200}
               defaultValue={project.name}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-serif text-[1rem] text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
             {actionData?.errors?.name && (
               <p className="mt-1 text-sm text-red-600">
@@ -117,7 +124,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
           <div>
             <label
               htmlFor="description"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("project:settings.description")}
             </label>
@@ -126,18 +133,18 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="description"
               rows={3}
               defaultValue={project.description || ""}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
           </div>
 
           <div>
             <label
               htmlFor="conventions"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("project:settings.conventions")}
             </label>
-            <p className="text-xs text-stone-500">
+            <p className="font-sans text-xs text-[#A8A29E]">
               {t("project:settings.conventions_help")}
             </p>
             <textarea
@@ -145,18 +152,18 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="conventions"
               rows={6}
               defaultValue={project.conventions || ""}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-mono shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-mono text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
           </div>
 
           <div>
             <label
               htmlFor="settings"
-              className="block text-sm font-medium text-stone-700"
+              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
             >
               {t("project:settings.settings_json")}
             </label>
-            <p className="text-xs text-stone-500">
+            <p className="font-sans text-xs text-[#A8A29E]">
               {t("project:settings.settings_json_help")}
             </p>
             <textarea
@@ -164,7 +171,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="settings"
               rows={4}
               defaultValue={project.settings || ""}
-              className="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm font-mono shadow-sm focus:border-burgundy-light focus:ring-1 focus:ring-burgundy-light focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-mono text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
             />
             {actionData?.errors?.settings && (
               <p className="mt-1 text-sm text-red-600">
@@ -175,7 +182,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
 
           <button
             type="submit"
-            className="rounded-md bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy"
+            className="rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
           >
             {t("project:settings.save")}
           </button>
