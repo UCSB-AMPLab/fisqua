@@ -45,6 +45,13 @@ export type Comment = {
 };
 
 /**
+ * Comment with author email for display in UI.
+ */
+export type CommentWithAuthor = Comment & {
+  authorEmail: string;
+};
+
+/**
  * Resegmentation flag matching the resegmentation_flags table structure.
  */
 export type ResegmentationFlag = {
