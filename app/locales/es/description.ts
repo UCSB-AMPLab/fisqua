@@ -64,6 +64,16 @@ export default {
     segmentacion: "Segmentacion",
     descripcion: "Descripcion",
   },
+  dashboard: {
+    reviewer_feedback_label: "Comentarios del revisor:",
+    problem_type: {
+      incorrect_boundaries: "Limites incorrectos",
+      merged_documents: "Documentos fusionados",
+      split_document: "Documento dividido",
+      missing_pages: "Paginas faltantes",
+      other: "Otro",
+    },
+  },
   assignment: {
     asignar_catalogador: "Asignar catalogador",
     asignar_revisor: "Asignar revisor",

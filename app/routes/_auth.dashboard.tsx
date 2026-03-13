@@ -4,10 +4,11 @@
  * renders the appropriate dashboard view with role-specific data.
  */
 
+import { useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, inArray, isNull } from "drizzle-orm";
+import { eq, sql, inArray, isNull, and, desc } from "drizzle-orm";
 import { userContext } from "../context";
 import {
   volumes,
@@ -15,6 +16,8 @@ import {
   users,
   projects,
   entries,
+  comments,
+  resegmentationFlags,
 } from "../db/schema";
 import {
   CataloguerDashboard,
@@ -30,6 +33,14 @@ import {
   type AttentionItem,
   type TeamMember,
 } from "../components/dashboard/lead-dashboard";
+import {
+  CataloguerDescriptionTab,
+  type DescriptionEntryCardData,
+} from "../components/dashboard/cataloguer-description-tab";
+import {
+  ReviewerDescriptionTab,
+  type ReviewerDescriptionData,
+} from "../components/dashboard/reviewer-description-tab";
 import type { VolumeCardData } from "../components/dashboard/volume-status-card";
 import type { Route } from "./+types/_auth.dashboard";
 
@@ -78,18 +89,26 @@ export async function loader({ context }: Route.LoaderArgs) {
   }
 
   if (primaryRole === "cataloguer") {
+    const [segData, descData] = await Promise.all([
+      loadCataloguerData(db, user.id),
+      loadCataloguerDescriptionData(db, user.id),
+    ]);
     return {
       user,
       primaryRole,
-      data: await loadCataloguerData(db, user.id),
+      data: { ...segData, descriptionEntries: descData },
     };
   }
 
   if (primaryRole === "reviewer") {
+    const [segData, descData] = await Promise.all([
+      loadReviewerData(db, user.id),
+      loadReviewerDescriptionData(db, user.id),
+    ]);
     return {
       user,
       primaryRole,
-      data: await loadReviewerData(db, user.id),
+      data: { ...segData, descriptionData: descData },
     };
   }
 
@@ -519,14 +538,387 @@ async function loadLeadData(
   };
 }
 
+/**
+ * Load description entries assigned to this cataloguer for the description tab.
+ */
+async function loadCataloguerDescriptionData(
+  db: ReturnType<typeof drizzle>,
+  userId: string
+): Promise<DescriptionEntryCardData[]> {
+  const assignedEntries = await db
+    .select({
+      id: entries.id,
+      title: entries.title,
+      translatedTitle: entries.translatedTitle,
+      startPage: entries.startPage,
+      endPage: entries.endPage,
+      descriptionStatus: entries.descriptionStatus,
+      volumeId: entries.volumeId,
+      resourceType: entries.resourceType,
+      dateExpression: entries.dateExpression,
+      extent: entries.extent,
+      scopeContent: entries.scopeContent,
+      language: entries.language,
+      descriptionNotes: entries.descriptionNotes,
+    })
+    .from(entries)
+    .where(eq(entries.assignedDescriber, userId))
+    .all();
+
+  if (assignedEntries.length === 0) return [];
+
+  // Get volume info
+  const volumeIds = [...new Set(assignedEntries.map((e) => e.volumeId))];
+  const volumeRows = await db
+    .select({
+      id: volumes.id,
+      name: volumes.name,
+      referenceCode: volumes.referenceCode,
+      projectId: volumes.projectId,
+    })
+    .from(volumes)
+    .where(inArray(volumes.id, volumeIds))
+    .all();
+
+  const volumeMap = new Map(volumeRows.map((v) => [v.id, v]));
+
+  // Get latest reviewer comment for sent_back entries
+  const sentBackIds = assignedEntries
+    .filter((e) => e.descriptionStatus === "sent_back")
+    .map((e) => e.id);
+
+  let feedbackMap = new Map<string, string>();
+  if (sentBackIds.length > 0) {
+    // Get the most recent comment per entry
+    const latestComments = await db
+      .select({
+        entryId: comments.entryId,
+        text: comments.text,
+        createdAt: comments.createdAt,
+      })
+      .from(comments)
+      .where(inArray(comments.entryId, sentBackIds))
+      .orderBy(desc(comments.createdAt))
+      .all();
+
+    // Keep only the latest per entry
+    for (const c of latestComments) {
+      if (!feedbackMap.has(c.entryId)) {
+        feedbackMap.set(c.entryId, c.text);
+      }
+    }
+  }
+
+  return assignedEntries.map((e) => {
+    const vol = volumeMap.get(e.volumeId);
+    return {
+      id: e.id,
+      title: e.title,
+      translatedTitle: e.translatedTitle,
+      referenceCode: vol?.referenceCode ?? "",
+      volumeTitle: vol?.name ?? "",
+      volumeId: e.volumeId,
+      projectId: vol?.projectId ?? "",
+      startPage: e.startPage,
+      endPage: e.endPage,
+      descriptionStatus: e.descriptionStatus ?? "unassigned",
+      reviewerFeedback: feedbackMap.get(e.id) ?? null,
+      hasIdentificacion: !!(e.title || e.translatedTitle) && !!e.resourceType && !!e.dateExpression,
+      hasFisica: !!e.extent,
+      hasContenido: !!e.scopeContent && !!e.language,
+      hasNotas: !!e.descriptionNotes,
+    };
+  });
+}
+
+/**
+ * Load description data for reviewer's description tab:
+ * reseg flags and entries assigned for description review.
+ */
+async function loadReviewerDescriptionData(
+  db: ReturnType<typeof drizzle>,
+  userId: string
+): Promise<ReviewerDescriptionData> {
+  // Entries assigned to this reviewer for description review
+  const reviewEntries = await db
+    .select({
+      id: entries.id,
+      title: entries.title,
+      translatedTitle: entries.translatedTitle,
+      startPage: entries.startPage,
+      endPage: entries.endPage,
+      descriptionStatus: entries.descriptionStatus,
+      volumeId: entries.volumeId,
+      updatedAt: entries.updatedAt,
+    })
+    .from(entries)
+    .where(eq(entries.assignedDescriptionReviewer, userId))
+    .all();
+
+  // Get volume info
+  const volumeIds = [...new Set(reviewEntries.map((e) => e.volumeId))];
+  let volumeMap = new Map<string, { name: string; referenceCode: string; projectId: string }>();
+  if (volumeIds.length > 0) {
+    const volumeRows = await db
+      .select({
+        id: volumes.id,
+        name: volumes.name,
+        referenceCode: volumes.referenceCode,
+        projectId: volumes.projectId,
+      })
+      .from(volumes)
+      .where(inArray(volumes.id, volumeIds))
+      .all();
+    volumeMap = new Map(volumeRows.map((v) => [v.id, v]));
+  }
+
+  // Open resegmentation flags for volumes this reviewer handles
+  const reviewerVolumes = await db
+    .select({ id: volumes.id })
+    .from(volumes)
+    .where(eq(volumes.assignedReviewer, userId))
+    .all();
+
+  const reviewerVolumeIds = reviewerVolumes.map((v) => v.id);
+  let resegFlags: ReviewerDescriptionData["resegFlags"] = [];
+  if (reviewerVolumeIds.length > 0) {
+    const flags = await db
+      .select({
+        id: resegmentationFlags.id,
+        volumeId: resegmentationFlags.volumeId,
+        problemType: resegmentationFlags.problemType,
+        description: resegmentationFlags.description,
+        createdAt: resegmentationFlags.createdAt,
+      })
+      .from(resegmentationFlags)
+      .where(
+        and(
+          inArray(resegmentationFlags.volumeId, reviewerVolumeIds),
+          eq(resegmentationFlags.status, "open")
+        )
+      )
+      .all();
+
+    // Get volume info for flags
+    let flagVolumeMap = volumeMap;
+    const missingVolumeIds = flags
+      .map((f) => f.volumeId)
+      .filter((vid) => !flagVolumeMap.has(vid));
+
+    if (missingVolumeIds.length > 0) {
+      const extraVolumes = await db
+        .select({
+          id: volumes.id,
+          name: volumes.name,
+          referenceCode: volumes.referenceCode,
+          projectId: volumes.projectId,
+        })
+        .from(volumes)
+        .where(inArray(volumes.id, missingVolumeIds))
+        .all();
+      for (const v of extraVolumes) {
+        flagVolumeMap.set(v.id, v);
+      }
+    }
+
+    resegFlags = flags.map((f) => {
+      const vol = flagVolumeMap.get(f.volumeId);
+      return {
+        id: f.id,
+        volumeId: f.volumeId,
+        volumeTitle: vol?.name ?? "",
+        referenceCode: vol?.referenceCode ?? "",
+        projectId: vol?.projectId ?? "",
+        problemType: f.problemType,
+        description: f.description,
+      };
+    });
+  }
+
+  const entryCards = reviewEntries.map((e) => {
+    const vol = volumeMap.get(e.volumeId);
+    return {
+      id: e.id,
+      title: e.title,
+      translatedTitle: e.translatedTitle,
+      referenceCode: vol?.referenceCode ?? "",
+      volumeTitle: vol?.name ?? "",
+      volumeId: e.volumeId,
+      projectId: vol?.projectId ?? "",
+      startPage: e.startPage,
+      endPage: e.endPage,
+      descriptionStatus: e.descriptionStatus ?? "unassigned",
+      updatedAt: e.updatedAt,
+    };
+  });
+
+  return {
+    resegFlags,
+    awaitingReview: entryCards.filter((e) => e.descriptionStatus === "described"),
+    reviewed: entryCards.filter((e) => e.descriptionStatus === "reviewed"),
+    approved: entryCards.filter((e) => e.descriptionStatus === "approved"),
+  };
+}
+
+/** Underline tabs for cataloguer dashboard */
+function CataloguerTabs({
+  activeTab,
+  onTabChange,
+  segCount,
+  descCount,
+}: {
+  activeTab: "segmentation" | "description";
+  onTabChange: (tab: "segmentation" | "description") => void;
+  segCount: number;
+  descCount: number;
+}) {
+  const { t } = useTranslation(["description", "dashboard"]);
+
+  return (
+    <div className="flex gap-6 border-b border-stone-200">
+      <button
+        onClick={() => onTabChange("segmentation")}
+        className={`relative pb-3 text-sm font-medium transition-colors ${
+          activeTab === "segmentation"
+            ? "text-[#8B2942]"
+            : "text-stone-500 hover:text-stone-700"
+        }`}
+      >
+        {t("description:tabs.segmentacion")}
+        {segCount > 0 && (
+          <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            activeTab === "segmentation"
+              ? "bg-[#F5E6EA] text-[#8B2942]"
+              : "bg-stone-100 text-stone-500"
+          }`}>
+            {segCount}
+          </span>
+        )}
+        {activeTab === "segmentation" && (
+          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8B2942]" />
+        )}
+      </button>
+      <button
+        onClick={() => onTabChange("description")}
+        className={`relative pb-3 text-sm font-medium transition-colors ${
+          activeTab === "description"
+            ? "text-[#8B2942]"
+            : "text-stone-500 hover:text-stone-700"
+        }`}
+      >
+        {t("description:tabs.descripcion")}
+        {descCount > 0 && (
+          <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            activeTab === "description"
+              ? "bg-[#F5E6EA] text-[#8B2942]"
+              : "bg-stone-100 text-stone-500"
+          }`}>
+            {descCount}
+          </span>
+        )}
+        {activeTab === "description" && (
+          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8B2942]" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** Pill tabs for reviewer dashboard */
+function ReviewerTabs({
+  activeTab,
+  onTabChange,
+  segCount,
+  descCount,
+}: {
+  activeTab: "segmentation" | "description";
+  onTabChange: (tab: "segmentation" | "description") => void;
+  segCount: number;
+  descCount: number;
+}) {
+  const { t } = useTranslation("description");
+
+  return (
+    <div className="flex gap-2">
+      <button
+        onClick={() => onTabChange("segmentation")}
+        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          activeTab === "segmentation"
+            ? "bg-[#C9D5FF] text-[#3B5A9A]"
+            : "bg-[#F5F5F4] text-[#78716C] hover:bg-stone-200"
+        }`}
+      >
+        {t("tabs.segmentacion")}
+        {segCount > 0 && (
+          <span className="ml-1.5 text-xs">({segCount})</span>
+        )}
+      </button>
+      <button
+        onClick={() => onTabChange("description")}
+        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          activeTab === "description"
+            ? "bg-[#C9D5FF] text-[#3B5A9A]"
+            : "bg-[#F5F5F4] text-[#78716C] hover:bg-stone-200"
+        }`}
+      >
+        {t("tabs.descripcion")}
+        {descCount > 0 && (
+          <span className="ml-1.5 text-xs">({descCount})</span>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   const { user, primaryRole, data } = loaderData;
   const { t } = useTranslation("dashboard");
+  const [activeTab, setActiveTab] = useState<"segmentation" | "description">("segmentation");
+
+  // Compute tab counts for cataloguer
+  const cataloguerData = primaryRole === "cataloguer" && data
+    ? (data as { groups: CataloguerGroups; descriptionEntries: DescriptionEntryCardData[] })
+    : null;
+
+  const cataloguerSegCount = cataloguerData
+    ? cataloguerData.groups.needsAttention.length +
+      cataloguerData.groups.inProgress.length +
+      cataloguerData.groups.readyToStart.length
+    : 0;
+
+  const cataloguerDescCount = cataloguerData
+    ? cataloguerData.descriptionEntries.filter(
+        (e) => e.descriptionStatus !== "described" &&
+               e.descriptionStatus !== "reviewed" &&
+               e.descriptionStatus !== "approved"
+      ).length
+    : 0;
+
+  // Compute tab counts for reviewer
+  const reviewerData = primaryRole === "reviewer" && data
+    ? (data as { groups: ReviewerGroups; descriptionData: ReviewerDescriptionData })
+    : null;
+
+  const reviewerSegCount = reviewerData
+    ? reviewerData.groups.awaitingReview.length +
+      reviewerData.groups.reviewed.length
+    : 0;
+
+  const reviewerDescCount = reviewerData
+    ? reviewerData.descriptionData.resegFlags.length +
+      reviewerData.descriptionData.awaitingReview.length
+    : 0;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-stone-900">{t("heading.dashboard")}</h1>
+        <h1 className="font-display text-[2.5rem] font-semibold text-stone-900">
+          {primaryRole === "cataloguer"
+            ? t("heading.my_work")
+            : primaryRole === "reviewer"
+              ? t("heading.my_reviews")
+              : t("heading.dashboard")}
+        </h1>
         {user.isAdmin && (
           <div className="flex items-center gap-3">
             <Link
@@ -583,13 +975,33 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
             </div>
           </div>
         ) : primaryRole === "cataloguer" ? (
-          <CataloguerDashboard
-            groups={(data as { groups: CataloguerGroups }).groups}
-          />
+          <div className="space-y-6">
+            <CataloguerTabs
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              segCount={cataloguerSegCount}
+              descCount={cataloguerDescCount}
+            />
+            {activeTab === "segmentation" ? (
+              <CataloguerDashboard groups={cataloguerData!.groups} />
+            ) : (
+              <CataloguerDescriptionTab entries={cataloguerData!.descriptionEntries} />
+            )}
+          </div>
         ) : primaryRole === "reviewer" ? (
-          <ReviewerDashboard
-            groups={(data as { groups: ReviewerGroups }).groups}
-          />
+          <div className="space-y-6">
+            <ReviewerTabs
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              segCount={reviewerSegCount}
+              descCount={reviewerDescCount}
+            />
+            {activeTab === "segmentation" ? (
+              <ReviewerDashboard groups={reviewerData!.groups} />
+            ) : (
+              <ReviewerDescriptionTab data={reviewerData!.descriptionData} />
+            )}
+          </div>
         ) : (
           <LeadDashboard
             projects={

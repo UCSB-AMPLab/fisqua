@@ -69,6 +69,16 @@ export default {
     items_seleccionados: "{{count}} items selected",
     asignar: "Assign",
   },
+  dashboard: {
+    reviewer_feedback_label: "Reviewer feedback:",
+    problem_type: {
+      incorrect_boundaries: "Incorrect boundaries",
+      merged_documents: "Merged documents",
+      split_document: "Split document",
+      missing_pages: "Missing pages",
+      other: "Other",
+    },
+  },
   promote: {
     listos_para_descripcion: "Ready for description",
     entradas_aprobadas: "{{count}} approved entries",

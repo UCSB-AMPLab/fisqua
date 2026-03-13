@@ -13,6 +13,7 @@ export default {
     dashboard: "Home",
     recent_activity: "Recent activity",
     my_work: "My work",
+    my_reviews: "My reviews",
   },
   group: {
     needs_attention: "Needs attention",
@@ -25,6 +26,7 @@ export default {
     approved: "Approved",
     projects: "Projects",
     team: "Team",
+    reseg_pending: "Re-segmentation pending",
   },
   empty: {
     no_projects_title: "No projects yet",
@@ -38,6 +40,10 @@ export default {
     no_review_title: "Nothing to review",
     no_review_body: "No volumes are waiting for your review.",
     no_lead_projects_body: "Create a project and add volumes to get started.",
+    no_description_entries_title: "No entries assigned for description",
+    no_description_entries_body: "Wait for entries to be assigned to you for description.",
+    no_description_review_title: "Nothing to review",
+    no_description_review_body: "No entries are waiting for description review.",
   },
   today: "Today",
   days_waiting_one: "{{count}} day waiting",

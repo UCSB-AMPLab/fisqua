@@ -13,6 +13,7 @@ export default {
     dashboard: "Inicio",
     recent_activity: "Actividad reciente",
     my_work: "Mi trabajo",
+    my_reviews: "Mis revisiones",
   },
   group: {
     needs_attention: "Necesitan atencion",
@@ -25,6 +26,7 @@ export default {
     approved: "Aprobadas",
     projects: "Proyectos",
     team: "Equipo",
+    reseg_pending: "Re-segmentacion pendiente",
   },
   empty: {
     no_projects_title: "Aun no hay proyectos",
@@ -38,6 +40,10 @@ export default {
     no_review_title: "Nada que revisar",
     no_review_body: "No hay unidades compuestas pendientes de revision.",
     no_lead_projects_body: "Crea un proyecto y agrega unidades compuestas para empezar.",
+    no_description_entries_title: "No tienes entradas asignadas para descripcion",
+    no_description_entries_body: "Espera a que te asignen entradas para describir.",
+    no_description_review_title: "Nada que revisar",
+    no_description_review_body: "No hay entradas pendientes de revision de descripcion.",
   },
   today: "Hoy",
   days_waiting_one: "{{count}} dia en espera",
