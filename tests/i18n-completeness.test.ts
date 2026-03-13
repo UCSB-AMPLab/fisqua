@@ -5,6 +5,6 @@ describe("translation completeness", () => {
   it.todo("every key in en namespace files has a corresponding es key");
   it.todo("no translation value is an empty string");
   it.todo(
-    "all 7 namespaces are present in both locales: common, auth, dashboard, viewer, workflow, admin, project"
+    "all 9 namespaces are present in both locales: common, auth, dashboard, viewer, workflow, admin, project, description, comments"
   );
 });

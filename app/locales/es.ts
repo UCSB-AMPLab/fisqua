@@ -6,6 +6,8 @@ import viewer from "./es/viewer";
 import workflow from "./es/workflow";
 import admin from "./es/admin";
 import project from "./es/project";
+import description from "./es/description";
+import comments from "./es/comments";
 
 export default {
   common,
@@ -15,4 +17,6 @@ export default {
   workflow,
   admin,
   project,
+  description,
+  comments,
 } satisfies ResourceLanguage;
