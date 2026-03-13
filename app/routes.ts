@@ -41,6 +41,9 @@ export default [
     // API routes
     route("api/entries/save", "routes/api.entries.save.tsx"),
     route("api/workflow", "routes/api.workflow.tsx"),
+    route("api/description/save", "routes/api.description.save.tsx"),
+    route("api/comments", "routes/api.comments.tsx"),
+    route("api/resegmentation", "routes/api.resegmentation.tsx"),
 
     // Admin routes
     layout("routes/_auth.admin.tsx", [
