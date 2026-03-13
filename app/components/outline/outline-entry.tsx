@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { Entry, EntryType } from "../../lib/boundary-types";
+import type { CommentWithAuthor } from "../../lib/description-types";
 import { TreeConnector } from "./tree-connector";
+import { CommentThread } from "../comments/comment-thread";
 
 type OutlineEntryProps = {
   entry: Entry;
@@ -20,8 +22,8 @@ type OutlineEntryProps = {
   onSetTitle: (title: string) => void;
   onIndent: () => void;
   onOutdent: () => void;
-  onSetNote: (note: string) => void;
-  onSetReviewerComment: (comment: string) => void;
+  comments: CommentWithAuthor[];
+  onCommentAdded?: () => void;
   accessLevel: "edit" | "review" | "readonly";
   onHeightChange?: () => void;
   isReviewerModified?: boolean;
@@ -37,22 +39,6 @@ const TYPE_BADGE_COLORS: Record<string, string> = {
   front_matter: "bg-amber-100 text-amber-700",
   back_matter: "bg-amber-100 text-amber-700",
 };
-
-function formatRelativeTime(timestamp: number): string {
-  const rtf = new Intl.RelativeTimeFormat("es-CO", { numeric: "auto" });
-  const diffMs = timestamp - Date.now();
-  const diffSec = Math.round(diffMs / 1000);
-  const diffMin = Math.round(diffSec / 60);
-  const diffHr = Math.round(diffMin / 60);
-  const diffDay = Math.round(diffHr / 24);
-
-  if (Math.abs(diffSec) < 60) return rtf.format(diffSec, "second");
-  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
-  if (Math.abs(diffHr) < 24) return rtf.format(diffHr, "hour");
-  return rtf.format(diffDay, "day");
-}
-
-const NOTE_MAX_LENGTH = 500;
 
 export function OutlineEntry({
   entry,
@@ -71,8 +57,8 @@ export function OutlineEntry({
   onSetTitle,
   onIndent,
   onOutdent,
-  onSetNote,
-  onSetReviewerComment,
+  comments,
+  onCommentAdded,
   accessLevel,
   onHeightChange,
   isReviewerModified,
@@ -82,20 +68,15 @@ export function OutlineEntry({
 }: OutlineEntryProps) {
   const { t } = useTranslation("viewer");
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const commentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isReadonly = accessLevel === "readonly";
 
-  const [commentsOpen, setCommentsOpen] = useState(
-    Boolean(entry.note || entry.reviewerComment)
-  );
+  const [commentsOpen, setCommentsOpen] = useState(comments.length > 0);
 
   const handleToggleComments = useCallback(() => {
     setCommentsOpen((prev) => !prev);
     // Notify virtualiser of height change
     if (onHeightChange) {
-      // Use requestAnimationFrame to let the DOM update first
       requestAnimationFrame(() => onHeightChange());
     }
   }, [onHeightChange]);
@@ -132,44 +113,6 @@ export function OutlineEntry({
     [onSetTitle]
   );
 
-  const handleNoteChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      if (noteTimeoutRef.current) clearTimeout(noteTimeoutRef.current);
-      noteTimeoutRef.current = setTimeout(() => {
-        onSetNote(value);
-      }, 400);
-    },
-    [onSetNote]
-  );
-
-  const handleNoteBlur = useCallback(
-    (e: React.FocusEvent<HTMLTextAreaElement>) => {
-      if (noteTimeoutRef.current) clearTimeout(noteTimeoutRef.current);
-      onSetNote(e.target.value);
-    },
-    [onSetNote]
-  );
-
-  const handleCommentChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      if (commentTimeoutRef.current) clearTimeout(commentTimeoutRef.current);
-      commentTimeoutRef.current = setTimeout(() => {
-        onSetReviewerComment(value);
-      }, 400);
-    },
-    [onSetReviewerComment]
-  );
-
-  const handleCommentBlur = useCallback(
-    (e: React.FocusEvent<HTMLTextAreaElement>) => {
-      if (commentTimeoutRef.current) clearTimeout(commentTimeoutRef.current);
-      onSetReviewerComment(e.target.value);
-    },
-    [onSetReviewerComment]
-  );
-
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleDeleteClick = useCallback(
@@ -185,26 +128,6 @@ export function OutlineEntry({
       }
     },
     [confirmDelete, entry.id, onDelete]
-  );
-
-  // Track note/comment character counts via refs to avoid re-renders
-  const [noteLength, setNoteLength] = useState(entry.note?.length || 0);
-  const [commentLength, setCommentLength] = useState(entry.reviewerComment?.length || 0);
-
-  const handleNoteInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setNoteLength(e.target.value.length);
-      handleNoteChange(e);
-    },
-    [handleNoteChange]
-  );
-
-  const handleCommentInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setCommentLength(e.target.value.length);
-      handleCommentChange(e);
-    },
-    [handleCommentChange]
   );
 
   // Determine border/background styles based on state
@@ -256,12 +179,9 @@ export function OutlineEntry({
           </span>
         )}
 
-        {/* Note/comment dot indicators */}
-        {entry.note && (
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" title={t("outline.has_note")} />
-        )}
-        {entry.reviewerComment && (
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title={t("outline.has_reviewer_comment")} />
+        {/* Comment dot indicator */}
+        {comments.length > 0 && (
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" title={t("outline.has_comments")} />
         )}
 
         {/* Delete button (hidden in readonly mode and for first entry) */}
@@ -366,74 +286,19 @@ export function OutlineEntry({
             >
               <span>{commentsOpen ? "\u25B4" : "\u25BE"}</span>
               <span>{t("outline.comments_label")}</span>
+              {comments.length > 0 && (
+                <span className="text-stone-400">({comments.length})</span>
+              )}
             </button>
 
             {/* Collapsible comments section */}
             <div className="comments-collapse" data-open={commentsOpen}>
               <div>
-                <div className="space-y-3 rounded-md bg-pale-rose/30 p-3">
-                  {/* Cataloguer note */}
-                  <div>
-                    <label
-                      className="font-serif text-xs font-medium italic text-stone-600"
-                      htmlFor={`note-${entry.id}`}
-                    >
-                      {t("outline.cataloguer_note_label")}
-                    </label>
-                    <textarea
-                      id={`note-${entry.id}`}
-                      className="mt-1 w-full resize-y rounded border border-stone-200 bg-white/80 p-2 font-serif text-sm italic text-stone-800 focus:border-stone-400 focus:outline-none"
-                      rows={2}
-                      maxLength={NOTE_MAX_LENGTH}
-                      readOnly={accessLevel !== "edit"}
-                      defaultValue={entry.note || ""}
-                      placeholder={accessLevel === "edit" ? t("outline.cataloguer_note_placeholder") : ""}
-                      onChange={handleNoteInput}
-                      onBlur={handleNoteBlur}
-                    />
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-stone-400">
-                        {entry.noteUpdatedBy && entry.noteUpdatedAt
-                          ? `${entry.noteUpdatedBy} \u00B7 ${formatRelativeTime(entry.noteUpdatedAt)}`
-                          : ""}
-                      </span>
-                      <span className="text-[10px] text-stone-400">
-                        {noteLength}/{NOTE_MAX_LENGTH}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Reviewer comment */}
-                  <div>
-                    <label
-                      className="font-serif text-xs font-medium italic text-stone-600"
-                      htmlFor={`comment-${entry.id}`}
-                    >
-                      {t("outline.reviewer_comment_field_label")}
-                    </label>
-                    <textarea
-                      id={`comment-${entry.id}`}
-                      className="mt-1 w-full resize-y rounded border border-stone-200 bg-white/80 p-2 font-serif text-sm italic text-stone-800 focus:border-stone-400 focus:outline-none"
-                      rows={2}
-                      maxLength={NOTE_MAX_LENGTH}
-                      readOnly={accessLevel !== "review"}
-                      defaultValue={entry.reviewerComment || ""}
-                      placeholder={accessLevel === "review" ? t("outline.reviewer_comment_placeholder") : ""}
-                      onChange={handleCommentInput}
-                      onBlur={handleCommentBlur}
-                    />
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-stone-400">
-                        {entry.reviewerCommentUpdatedBy && entry.reviewerCommentUpdatedAt
-                          ? `${entry.reviewerCommentUpdatedBy} \u00B7 ${formatRelativeTime(entry.reviewerCommentUpdatedAt)}`
-                          : ""}
-                      </span>
-                      <span className="text-[10px] text-stone-400">
-                        {commentLength}/{NOTE_MAX_LENGTH}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <CommentThread
+                  entryId={entry.id}
+                  comments={comments}
+                  onCommentAdded={onCommentAdded}
+                />
               </div>
             </div>
           </div>

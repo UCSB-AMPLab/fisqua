@@ -4,9 +4,9 @@
  * Supports unlimited nesting via parentId references.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { comments, users } from "../db/schema";
+import { comments, entries, users } from "../db/schema";
 import type { WorkflowRole } from "./workflow";
 
 /**
@@ -66,6 +66,52 @@ export async function getCommentsForEntry(
     .where(eq(comments.entryId, entryId))
     .orderBy(comments.createdAt)
     .all();
+}
+
+/**
+ * Get all comments for all entries in a volume, grouped by entryId.
+ * Returns a Record<entryId, CommentWithAuthor[]>.
+ */
+export async function getCommentsForVolume(
+  db: DrizzleD1Database<any>,
+  volumeId: string
+) {
+  // Get all entry IDs for this volume
+  const entryRows = await db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(eq(entries.volumeId, volumeId))
+    .all();
+
+  if (entryRows.length === 0) return {};
+
+  const entryIds = entryRows.map((r) => r.id);
+
+  const rows = await db
+    .select({
+      id: comments.id,
+      entryId: comments.entryId,
+      parentId: comments.parentId,
+      authorId: comments.authorId,
+      authorRole: comments.authorRole,
+      text: comments.text,
+      createdAt: comments.createdAt,
+      updatedAt: comments.updatedAt,
+      authorEmail: users.email,
+      authorName: users.name,
+    })
+    .from(comments)
+    .leftJoin(users, eq(comments.authorId, users.id))
+    .where(inArray(comments.entryId, entryIds))
+    .orderBy(comments.createdAt)
+    .all();
+
+  const map: Record<string, typeof rows> = {};
+  for (const row of rows) {
+    if (!map[row.entryId]) map[row.entryId] = [];
+    map[row.entryId].push(row);
+  }
+  return map;
 }
 
 /**

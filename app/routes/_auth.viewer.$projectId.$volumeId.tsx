@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRevalidator } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
 import { requireProjectRole, requireVolumeAccess } from "../lib/permissions.server";
 import { loadEntries } from "../lib/entries.server";
+import { getCommentsForVolume } from "../lib/comments.server";
 import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
 import { ViewerBar } from "../components/viewer/viewer-bar";
@@ -66,10 +68,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Load entries for boundary state
   const entries = await loadEntries(db, params.volumeId);
 
+  // Load comments for all entries in the volume
+  const commentsMap = await getCommentsForVolume(db, params.volumeId);
+
   return {
     volume,
     pages,
     entries,
+    commentsMap,
     projectId: params.projectId,
     accessLevel,
     userRole,
@@ -86,7 +92,7 @@ export type PageData = {
 };
 
 export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
-  const { volume, pages, entries, projectId, accessLevel, userRole, userId } = loaderData;
+  const { volume, pages, entries, commentsMap, projectId, accessLevel, userRole, userId } = loaderData;
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [viewportYFraction, setViewportYFraction] = useState(0);
   const viewerRef = useRef<{ zoomIn: () => void; zoomOut: () => void; scrollToPage: (index: number) => void; scrollToPosition: (pageIndex: number, yFraction: number) => void } | null>(null);
@@ -113,6 +119,10 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   );
 
   const { saveStatus } = useAutosave(state, rawDispatch, volume.id);
+  const revalidator = useRevalidator();
+  const handleCommentAdded = useCallback(() => {
+    revalidator.revalidate();
+  }, [revalidator]);
 
   // Compute the set of reviewer-modified entry IDs
   const reviewerModifiedIds = useMemo(() => {
@@ -243,6 +253,8 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
             projectId={projectId}
             reviewComment={volume.reviewComment}
             viewportYFraction={viewportYFraction}
+            commentsMap={commentsMap}
+            onCommentAdded={handleCommentAdded}
           />
         </div>
       </div>

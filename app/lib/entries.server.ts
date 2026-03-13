@@ -64,7 +64,7 @@ export async function loadEntries(
  * Strategy: load existing entry IDs, partition incoming entries into
  * update (ID exists), insert (new ID), delete (ID missing from incoming).
  * UPDATE only touches segmentation-relevant fields, preserving description
- * data (note, reviewerComment, etc.) that may have been written separately.
+ * data that may have been written separately.
  *
  * Chunks all statements into batches of 89 to respect the D1 batch limit.
  */

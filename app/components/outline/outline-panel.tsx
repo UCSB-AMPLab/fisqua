@@ -3,6 +3,7 @@ import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Entry, EntryType, BoundaryAction } from "../../lib/boundary-types";
+import type { CommentWithAuthor } from "../../lib/description-types";
 import { computeAllRefCodes } from "../../lib/reference-codes";
 import { OutlineEntry } from "./outline-entry";
 import { SubmitDialog } from "../workflow/submit-dialog";
@@ -23,6 +24,8 @@ type OutlinePanelProps = {
   projectId?: string;
   reviewComment?: string | null;
   viewportYFraction?: number;
+  commentsMap?: Record<string, CommentWithAuthor[]>;
+  onCommentAdded?: () => void;
 };
 
 type TreeNode = {
@@ -216,6 +219,8 @@ export function OutlinePanel({
   projectId,
   reviewComment,
   viewportYFraction: viewportYFractionProp,
+  commentsMap = {},
+  onCommentAdded,
 }: OutlinePanelProps) {
   const { t } = useTranslation(["viewer", "workflow"]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -398,12 +403,8 @@ export function OutlinePanel({
                   }
                   onIndent={() => dispatch({ type: "INDENT", entryId: entry.id })}
                   onOutdent={() => dispatch({ type: "OUTDENT", entryId: entry.id })}
-                  onSetNote={(note) =>
-                    dispatch({ type: "SET_NOTE", entryId: entry.id, note })
-                  }
-                  onSetReviewerComment={(comment) =>
-                    dispatch({ type: "SET_REVIEWER_COMMENT", entryId: entry.id, reviewerComment: comment })
-                  }
+                  comments={commentsMap[entry.id] || []}
+                  onCommentAdded={onCommentAdded}
                   accessLevel={accessLevel}
                   onHeightChange={() => virtualizer.measure()}
                   isReviewerModified={isReviewerModified(entry)}
