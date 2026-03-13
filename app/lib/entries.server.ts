@@ -51,9 +51,14 @@ export async function loadEntries(
 }
 
 /**
- * Batch save entries for a volume.
- * Strategy: DELETE all entries for the volume, then INSERT all provided entries.
- * Chunks into batches of 90 statements if entries exceed D1 batch limit.
+ * Diff-based save for entries in a volume.
+ *
+ * Strategy: load existing entry IDs, partition incoming entries into
+ * update (ID exists), insert (new ID), delete (ID missing from incoming).
+ * UPDATE only touches segmentation-relevant fields, preserving description
+ * data (note, reviewerComment, etc.) that may have been written separately.
+ *
+ * Chunks all statements into batches of 89 to respect the D1 batch limit.
  */
 export async function saveEntries(
   db: DrizzleD1Database<any>,
@@ -65,63 +70,98 @@ export async function saveEntries(
 
   const now = Date.now();
 
-  // Build all statements: DELETE + INSERTs
-  const deleteStmt = db
-    .delete(entries)
-    .where(eq(entries.volumeId, volumeId));
+  // 1. Load existing entry IDs for this volume
+  const existingRows = await db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(eq(entries.volumeId, volumeId))
+    .all();
+  const existingIds = new Set(existingRows.map((r) => r.id));
 
-  const insertValues = entriesToSave.map((e) => ({
-    id: e.id,
-    volumeId,
-    parentId: e.parentId,
-    position: e.position,
-    startPage: e.startPage,
-    startY: e.startY,
-    endPage: e.endPage,
-    endY: e.endY,
-    type: e.type,
-    title: e.title,
-    note: e.note,
-    noteUpdatedBy: e.noteUpdatedBy,
-    noteUpdatedAt: e.noteUpdatedAt,
-    reviewerComment: e.reviewerComment,
-    reviewerCommentUpdatedBy: e.reviewerCommentUpdatedBy,
-    reviewerCommentUpdatedAt: e.reviewerCommentUpdatedAt,
-    modifiedBy: e.modifiedBy,
-    createdAt: e.createdAt,
-    updatedAt: now,
-  }));
+  // 2. Partition incoming entries
+  const incomingIds = new Set(entriesToSave.map((e) => e.id));
 
-  // D1 batch limit is ~100 statements. Chunk INSERTs so each batch
-  // stays under 90 statements (leaving room for the DELETE).
+  const toUpdate: Entry[] = [];
+  const toInsert: Entry[] = [];
+  for (const e of entriesToSave) {
+    if (existingIds.has(e.id)) {
+      toUpdate.push(e);
+    } else {
+      toInsert.push(e);
+    }
+  }
+
+  const toDeleteIds = [...existingIds].filter((id) => !incomingIds.has(id));
+
+  // 3. Build all statements
+  const stmts: any[] = [];
+
+  // DELETE statements for removed entries
+  for (const id of toDeleteIds) {
+    stmts.push(db.delete(entries).where(eq(entries.id, id)));
+  }
+
+  // UPDATE statements -- only segmentation-relevant fields
+  for (const e of toUpdate) {
+    stmts.push(
+      db
+        .update(entries)
+        .set({
+          parentId: e.parentId,
+          position: e.position,
+          startPage: e.startPage,
+          startY: e.startY,
+          endPage: e.endPage,
+          endY: e.endY,
+          type: e.type,
+          modifiedBy: e.modifiedBy,
+          updatedAt: now,
+        })
+        .where(eq(entries.id, e.id))
+    );
+  }
+
+  // INSERT statements for new entries
+  for (const e of toInsert) {
+    stmts.push(
+      db.insert(entries).values({
+        id: e.id,
+        volumeId,
+        parentId: e.parentId,
+        position: e.position,
+        startPage: e.startPage,
+        startY: e.startY,
+        endPage: e.endPage,
+        endY: e.endY,
+        type: e.type,
+        title: e.title,
+        note: e.note,
+        noteUpdatedBy: e.noteUpdatedBy,
+        noteUpdatedAt: e.noteUpdatedAt,
+        reviewerComment: e.reviewerComment,
+        reviewerCommentUpdatedBy: e.reviewerCommentUpdatedBy,
+        reviewerCommentUpdatedAt: e.reviewerCommentUpdatedAt,
+        modifiedBy: e.modifiedBy,
+        createdAt: e.createdAt,
+        updatedAt: now,
+      })
+    );
+  }
+
+  // 4. Handle empty case -- delete all for volume
+  if (entriesToSave.length === 0 && existingIds.size > 0) {
+    stmts.push(db.delete(entries).where(eq(entries.volumeId, volumeId)));
+  }
+
+  // 5. Nothing to do
+  if (stmts.length === 0) return;
+
+  // 6. Chunk and execute batches (D1 limit ~100 statements)
   const CHUNK_SIZE = 89;
 
-  if (insertValues.length <= CHUNK_SIZE) {
-    // Single batch: DELETE + all INSERTs
-    const stmts: any[] = [deleteStmt];
-    if (insertValues.length > 0) {
-      stmts.push(db.insert(entries).values(insertValues));
-    }
-    await db.batch(stmts as any);
-  } else {
-    // Multiple batches: first batch has DELETE + first chunk of INSERTs,
-    // subsequent batches have only INSERTs
-    const chunks: (typeof insertValues)[] = [];
-    for (let i = 0; i < insertValues.length; i += CHUNK_SIZE) {
-      chunks.push(insertValues.slice(i, i + CHUNK_SIZE));
-    }
-
-    // First batch includes the DELETE
-    const firstBatch: any[] = [deleteStmt];
-    if (chunks[0].length > 0) {
-      firstBatch.push(db.insert(entries).values(chunks[0]));
-    }
-    await db.batch(firstBatch as any);
-
-    // Remaining chunks
-    for (let i = 1; i < chunks.length; i++) {
-      await db.batch([db.insert(entries).values(chunks[i])] as any);
-    }
+  for (let i = 0; i < stmts.length; i += CHUNK_SIZE) {
+    const chunk = stmts.slice(i, i + CHUNK_SIZE);
+    await db.batch(chunk as any);
   }
 }
 
