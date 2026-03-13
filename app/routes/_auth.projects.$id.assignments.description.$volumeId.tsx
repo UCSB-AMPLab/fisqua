@@ -10,21 +10,21 @@ import { useTranslation } from "react-i18next";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { AlertTriangle } from "lucide-react";
-import { userContext } from "../../context";
-import { requireProjectRole } from "../../lib/permissions.server";
+import { userContext } from "../context";
+import { requireProjectRole } from "../lib/permissions.server";
 import {
   loadVolumeEntriesForDescription,
   assignDescriber,
   assignDescriptionReviewer,
-} from "../../lib/description.server";
-import { getOpenFlags } from "../../lib/resegmentation.server";
-import { volumes, projectMembers, users } from "../../db/schema";
+} from "../lib/description.server";
+import { getOpenFlags } from "../lib/resegmentation.server";
+import { volumes, projectMembers, users } from "../db/schema";
 import {
   DescriptionAssignmentTable,
   type DescriptionEntryRow,
-} from "../../components/assignments/description-assignment-table";
-import type { MemberOption } from "../../components/assignments/assignment-table";
-import type { Route } from "../+types/_auth.projects.$id.assignments.description.$volumeId";
+} from "../components/assignments/description-assignment-table";
+import type { MemberOption } from "../components/assignments/assignment-table";
+import type { Route } from "./+types/_auth.projects.$id.assignments.description.$volumeId";
 
 /** Description status colours for progress bar segments */
 const DESC_STATUS_ORDER = [
