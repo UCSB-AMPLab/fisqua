@@ -39,6 +39,12 @@ export default [
       "routes/_auth.viewer.$projectId.$volumeId.tsx"
     ),
 
+    // Description editor -- under _auth, outside project layout (full-page)
+    route(
+      "projects/:projectId/describe/:entryId",
+      "routes/_auth.description.$projectId.$entryId.tsx"
+    ),
+
     // API routes
     route("api/entries/save", "routes/api.entries.save.tsx"),
     route("api/workflow", "routes/api.workflow.tsx"),
