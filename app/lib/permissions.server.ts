@@ -2,7 +2,8 @@
 
 import { eq, and } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { projectMembers } from "../db/schema";
+import { projectMembers, entries, volumes } from "../db/schema";
+import type { DescriptionStatus } from "./description-workflow";
 import type { User } from "../context";
 
 /**
@@ -102,4 +103,141 @@ export function requireVolumeAccess(
   }
 
   return "readonly";
+}
+
+// --- Description-specific access control ---
+
+/**
+ * Load an entry, find its volume and project, check membership.
+ * Returns { entry, volume, member } or throws 403/404.
+ */
+export async function requireEntryAccess(
+  db: DrizzleD1Database<any>,
+  entryId: string,
+  userId: string,
+  isAdmin = false
+): Promise<{
+  entry: typeof entries.$inferSelect;
+  volume: typeof volumes.$inferSelect;
+  member: typeof projectMembers.$inferSelect;
+}> {
+  const [entry] = await db
+    .select()
+    .from(entries)
+    .where(eq(entries.id, entryId))
+    .limit(1)
+    .all();
+
+  if (!entry) {
+    throw new Response("Entry not found", { status: 404 });
+  }
+
+  const [volume] = await db
+    .select()
+    .from(volumes)
+    .where(eq(volumes.id, entry.volumeId))
+    .limit(1)
+    .all();
+
+  if (!volume) {
+    throw new Response("Volume not found", { status: 404 });
+  }
+
+  const memberships = await requireProjectRole(
+    db,
+    userId,
+    volume.projectId,
+    ["lead", "cataloguer", "reviewer"],
+    isAdmin
+  );
+
+  return { entry, volume, member: memberships[0] };
+}
+
+/**
+ * Like requireEntryAccess but also checks that the user is the assigned
+ * describer, assigned reviewer, or a lead.
+ */
+export async function requireDescriptionAccess(
+  db: DrizzleD1Database<any>,
+  entryId: string,
+  userId: string,
+  isAdmin = false
+): Promise<{
+  entry: typeof entries.$inferSelect;
+  volume: typeof volumes.$inferSelect;
+  member: typeof projectMembers.$inferSelect;
+}> {
+  const { entry, volume, member } = await requireEntryAccess(
+    db,
+    entryId,
+    userId,
+    isAdmin
+  );
+
+  if (isAdmin) return { entry, volume, member };
+
+  const role = member?.role;
+  const isLead = role === "lead";
+  const isAssignedDescriber = entry.assignedDescriber === userId;
+  const isAssignedReviewer = entry.assignedDescriptionReviewer === userId;
+
+  if (!isLead && !isAssignedDescriber && !isAssignedReviewer) {
+    throw new Response(
+      "You must be the assigned describer, reviewer, or a lead",
+      { status: 403 }
+    );
+  }
+
+  return { entry, volume, member };
+}
+
+/**
+ * Check if a user can edit description fields for an entry.
+ * Must be assigned describer or lead, and entry must be in an editable status.
+ */
+export function canDescribe(
+  member: { role: string; userId: string },
+  entry: {
+    assignedDescriber: string | null;
+    descriptionStatus: string | null;
+  }
+): boolean {
+  const role = member.role;
+  const editableStatuses = ["assigned", "in_progress", "sent_back"];
+  const statusOk = editableStatuses.includes(entry.descriptionStatus ?? "");
+
+  if (role === "lead") return statusOk;
+  if (
+    role === "cataloguer" &&
+    entry.assignedDescriber === member.userId &&
+    statusOk
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a user can review a description.
+ * Must be assigned reviewer or lead, and entry must be in "described" status.
+ */
+export function canReviewDescription(
+  member: { role: string; userId: string },
+  entry: {
+    assignedDescriptionReviewer: string | null;
+    descriptionStatus: string | null;
+  }
+): boolean {
+  if (entry.descriptionStatus !== "described") return false;
+
+  const role = member.role;
+  if (role === "lead") return true;
+  if (
+    role === "reviewer" &&
+    entry.assignedDescriptionReviewer === member.userId
+  ) {
+    return true;
+  }
+  return false;
 }
