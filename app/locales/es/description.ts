@@ -88,6 +88,16 @@ export default {
   locked: {
     personas_lugares: "La vinculacion de personas y lugares estara disponible proximamente",
   },
+  editor: {
+    subtitle: "Catalogacion — Descripcion",
+    cerrar_sesion: "Cerrar sesion",
+    save_status_saved: "Guardado",
+    save_status_saving: "Guardando...",
+    save_status_unsaved: "Sin guardar",
+    pantalla_completa: "Pantalla completa",
+    descripcion_pausada: "La descripcion de este volumen esta pausada por un reporte de re-segmentacion",
+    reportar_problema: "Reportar problema",
+  },
   resegmentation: {
     reportar_problema: "Reportar problema de segmentacion",
     warning: "Al enviar este reporte, se pausara la descripcion de todo el volumen hasta que un revisor corrija la segmentacion.",

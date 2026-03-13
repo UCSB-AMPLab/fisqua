@@ -88,6 +88,16 @@ export default {
   locked: {
     personas_lugares: "People and places linking will be available soon",
   },
+  editor: {
+    subtitle: "Cataloguing — Description",
+    cerrar_sesion: "Log out",
+    save_status_saved: "Saved",
+    save_status_saving: "Saving...",
+    save_status_unsaved: "Unsaved",
+    pantalla_completa: "Fullscreen",
+    descripcion_pausada: "Description work on this volume is paused due to a re-segmentation report",
+    reportar_problema: "Report issue",
+  },
   resegmentation: {
     reportar_problema: "Report segmentation issue",
     warning: "Submitting this report will pause all description work on this volume until a reviewer corrects the segmentation.",
