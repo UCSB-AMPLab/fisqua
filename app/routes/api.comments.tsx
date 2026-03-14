@@ -3,19 +3,16 @@
  * Handles CRUD operations for entry-level description comments.
  */
 
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import { requireEntryAccess } from "../lib/permissions.server";
-import {
-  createComment,
-  getCommentsForEntry,
-  deleteComment,
-} from "../lib/comments.server";
-import { logActivity } from "../lib/workflow.server";
 import type { WorkflowRole } from "../lib/workflow";
 import type { Route } from "./+types/api.comments";
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireEntryAccess } = await import("../lib/permissions.server");
+  const { createComment, deleteComment } = await import("../lib/comments.server");
+  const { logActivity } = await import("../lib/workflow.server");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 
@@ -108,6 +105,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
+
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireEntryAccess } = await import("../lib/permissions.server");
+  const { getCommentsForEntry } = await import("../lib/comments.server");
 
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);

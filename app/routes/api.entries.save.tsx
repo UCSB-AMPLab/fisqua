@@ -1,19 +1,20 @@
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and, isNotNull } from "drizzle-orm";
 import { userContext } from "../context";
-import {
-  requireProjectRole,
-  requireVolumeAccess,
-} from "../lib/permissions.server";
-import { saveEntries } from "../lib/entries.server";
-import { logActivity } from "../lib/workflow.server";
-import { volumes, entries } from "../db/schema";
 import type { Route } from "./+types/api.entries.save";
 
 export async function action({ request, context }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
+
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and, isNotNull } = await import("drizzle-orm");
+  const {
+    requireProjectRole,
+    requireVolumeAccess,
+  } = await import("../lib/permissions.server");
+  const { saveEntries } = await import("../lib/entries.server");
+  const { logActivity } = await import("../lib/workflow.server");
+  const { volumes, entries } = await import("../db/schema");
 
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
@@ -27,7 +28,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!volumeId) {
       return Response.json({ error: "volumeId is required" }, { status: 400 });
     }
-    return handleAcceptCorrections(db, user.id, user.isAdmin, volumeId);
+    return handleAcceptCorrections(db, user.id, user.isAdmin, volumeId, {
+      eq, and, isNotNull, requireProjectRole, requireVolumeAccess, logActivity, volumes, entries,
+    });
   }
 
   // --- Normal save flow ---
@@ -127,11 +130,23 @@ export async function action({ request, context }: Route.ActionArgs) {
  * and auto-transition from sent_back to in_progress.
  */
 async function handleAcceptCorrections(
-  db: ReturnType<typeof drizzle>,
+  db: ReturnType<typeof import("drizzle-orm/d1").drizzle>,
   userId: string,
   isAdmin: boolean,
-  volumeId: string
+  volumeId: string,
+  deps: {
+    eq: typeof import("drizzle-orm").eq;
+    and: typeof import("drizzle-orm").and;
+    isNotNull: typeof import("drizzle-orm").isNotNull;
+    requireProjectRole: typeof import("../lib/permissions.server").requireProjectRole;
+    requireVolumeAccess: typeof import("../lib/permissions.server").requireVolumeAccess;
+    logActivity: typeof import("../lib/workflow.server").logActivity;
+    volumes: typeof import("../db/schema").volumes;
+    entries: typeof import("../db/schema").entries;
+  }
 ) {
+  const { eq, and, isNotNull, requireProjectRole, requireVolumeAccess, logActivity, volumes, entries } = deps;
+
   // Look up volume
   const volume = await db
     .select({

@@ -1,12 +1,6 @@
 import { Form, redirect, useActionData, Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import { requireAdmin } from "../lib/permissions.server";
-import {
-  validateProjectForm,
-  createProject,
-} from "../lib/projects.server";
 import type { Route } from "./+types/_auth.projects.new";
 
 export function meta() {
@@ -14,12 +8,20 @@ export function meta() {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { requireAdmin } = await import("../lib/permissions.server");
   const user = context.get(userContext);
   requireAdmin(user);
   return {};
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireAdmin } = await import("../lib/permissions.server");
+  const {
+    validateProjectForm,
+    createProject,
+  } = await import("../lib/projects.server");
+
   const user = context.get(userContext);
   requireAdmin(user);
 

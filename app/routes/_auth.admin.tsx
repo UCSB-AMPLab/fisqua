@@ -1,10 +1,10 @@
 import { Outlet, NavLink } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
-import { requireAdmin } from "../lib/permissions.server";
 import type { Route } from "./+types/_auth.admin";
 
-export function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context }: Route.LoaderArgs) {
+  const { requireAdmin } = await import("../lib/permissions.server");
   const user = context.get(userContext);
   requireAdmin(user);
   return { user };

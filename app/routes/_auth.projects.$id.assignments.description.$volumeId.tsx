@@ -7,18 +7,8 @@
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
 import { AlertTriangle } from "lucide-react";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import {
-  loadVolumeEntriesForDescription,
-  assignDescriber,
-  assignDescriptionReviewer,
-} from "../lib/description.server";
-import { getOpenFlags } from "../lib/resegmentation.server";
-import { volumes, projectMembers, users } from "../db/schema";
 import {
   DescriptionAssignmentTable,
   type DescriptionEntryRow,
@@ -48,6 +38,17 @@ const DESC_SEGMENT_COLORS: Record<string, string> = {
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const {
+    loadVolumeEntriesForDescription,
+    assignDescriber,
+    assignDescriptionReviewer,
+  } = await import("../lib/description.server");
+  const { getOpenFlags } = await import("../lib/resegmentation.server");
+  const { volumes, projectMembers, users } = await import("../db/schema");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 
@@ -117,6 +118,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const {
+    assignDescriber,
+    assignDescriptionReviewer,
+  } = await import("../lib/description.server");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 

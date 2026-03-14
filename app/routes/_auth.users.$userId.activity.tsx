@@ -9,18 +9,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, inArray, sql } from "drizzle-orm";
 import { userContext } from "../context";
-import { getActivityForUser } from "../lib/activity.server";
 import { relativeTime } from "~/lib/format";
-import {
-  users,
-  projectMembers,
-  volumes,
-  entries,
-  projects,
-} from "../db/schema";
 import { StatusBadge } from "../components/workflow/status-badge";
 import type { Route } from "./+types/_auth.users.$userId.activity";
 
@@ -33,6 +23,17 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, inArray, sql } = await import("drizzle-orm");
+  const { getActivityForUser } = await import("../lib/activity.server");
+  const {
+    users,
+    projectMembers,
+    volumes,
+    entries,
+    projects,
+  } = await import("../db/schema");
+
   const currentUser = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
   const targetUserId = params.userId;

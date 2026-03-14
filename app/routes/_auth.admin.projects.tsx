@@ -1,24 +1,19 @@
 import { Form, Link, useActionData, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, desc, isNull, isNotNull } from "drizzle-orm";
-import {
-  projects,
-  projectMembers,
-  projectInvites,
-  volumes,
-  volumePages,
-  entries,
-  activityLog,
-  users,
-} from "../db/schema";
-import { requireAdmin } from "../lib/permissions.server";
 import { userContext } from "../context";
-import { getInstance } from "~/middleware/i18next";
 import { formatDate } from "~/lib/format";
 import type { Route } from "./+types/_auth.admin.projects";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, desc, isNull, isNotNull } = await import("drizzle-orm");
+  const { requireAdmin } = await import("../lib/permissions.server");
+  const {
+    projects,
+    projectMembers,
+    users,
+  } = await import("../db/schema");
+
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
@@ -74,6 +69,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { requireAdmin } = await import("../lib/permissions.server");
+  const { getInstance } = await import("~/middleware/i18next");
+  const {
+    projects,
+    projectMembers,
+    projectInvites,
+    volumes,
+    volumePages,
+    entries,
+    activityLog,
+  } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

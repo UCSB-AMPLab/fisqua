@@ -1,7 +1,4 @@
 import { redirect } from "react-router";
-import { drizzle } from "drizzle-orm/d1";
-import { createSessionStorage } from "../sessions.server";
-import { verifyMagicLink } from "../lib/auth.server";
 import type { Route } from "./+types/auth.verify";
 
 /**
@@ -9,6 +6,10 @@ import type { Route } from "./+types/auth.verify";
  * Loader-only route -- no component rendered.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { createSessionStorage } = await import("../sessions.server");
+  const { verifyMagicLink } = await import("../lib/auth.server");
+
   const env = context.cloudflare.env;
   const url = new URL(request.url);
   const token = url.searchParams.get("token");

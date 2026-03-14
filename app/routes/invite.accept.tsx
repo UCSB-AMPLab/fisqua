@@ -1,7 +1,4 @@
 import { redirect } from "react-router";
-import { drizzle } from "drizzle-orm/d1";
-import { createSessionStorage } from "../sessions.server";
-import { acceptInvite } from "../lib/invites.server";
 import type { Route } from "./+types/invite.accept";
 
 /**
@@ -11,6 +8,10 @@ import type { Route } from "./+types/invite.accept";
  * and redirects to the project.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { createSessionStorage } = await import("../sessions.server");
+  const { acceptInvite } = await import("../lib/invites.server");
+
   const env = context.cloudflare.env;
   const url = new URL(request.url);
   const token = url.searchParams.get("token");

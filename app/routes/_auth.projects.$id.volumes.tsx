@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { Form, useActionData } from "react-router";
 import { useTranslation, Trans } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import { getProjectVolumes, createVolume, deleteVolume } from "../lib/volumes.server";
-import { validateManifestUrl, parseManifest } from "../lib/iiif.server";
 import { VolumeCard } from "../components/volumes/volume-card";
 import type { Route } from "./+types/_auth.projects.$id.volumes";
 
@@ -18,6 +14,10 @@ type AddResult = {
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getProjectVolumes } = await import("../lib/volumes.server");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -30,6 +30,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getProjectVolumes, createVolume, deleteVolume } = await import("../lib/volumes.server");
+  const { validateManifestUrl, parseManifest } = await import("../lib/iiif.server");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

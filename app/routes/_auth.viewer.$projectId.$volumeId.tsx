@@ -1,12 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRevalidator } from "react-router";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
-import { requireProjectRole, requireVolumeAccess } from "../lib/permissions.server";
-import { loadEntries } from "../lib/entries.server";
-import { getCommentsForVolume } from "../lib/comments.server";
-import { volumes, volumePages } from "../db/schema";
 import { IIIFViewer } from "../components/viewer/iiif-viewer";
 import { ViewerBar } from "../components/viewer/viewer-bar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
@@ -19,6 +13,13 @@ import type { BoundaryAction } from "../lib/boundary-types";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { requireProjectRole, requireVolumeAccess } = await import("../lib/permissions.server");
+  const { loadEntries } = await import("../lib/entries.server");
+  const { getCommentsForVolume } = await import("../lib/comments.server");
+  const { volumes, volumePages } = await import("../db/schema");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 

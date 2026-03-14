@@ -1,14 +1,15 @@
 import { Outlet, NavLink } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
 import { userContext } from "../context";
-import { getProject } from "../lib/projects.server";
-import { requireProjectRole } from "../lib/permissions.server";
-import { projectMembers } from "../db/schema";
 import type { Route } from "./+types/_auth.projects.$id";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { getProject } = await import("../lib/projects.server");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { projectMembers } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

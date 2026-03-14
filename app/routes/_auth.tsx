@@ -1,14 +1,18 @@
 import { Outlet, useLocation } from "react-router";
-import { authMiddleware } from "../middleware/auth.server";
 import { userContext } from "../context";
-import { getAppConfig } from "../lib/config.server";
 import { TopBar } from "../components/layout/top-bar";
 import { Footer } from "../components/layout/footer";
 import type { Route } from "./+types/_auth";
 
-export const middleware = [authMiddleware];
+export const middleware = [
+  async ({ request, context }: any) => {
+    const { authMiddleware } = await import("../middleware/auth.server");
+    return authMiddleware({ request, context });
+  },
+];
 
-export function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context }: Route.LoaderArgs) {
+  const { getAppConfig } = await import("../lib/config.server");
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const { appName } = getAppConfig(env);

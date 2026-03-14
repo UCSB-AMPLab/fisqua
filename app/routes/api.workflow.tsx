@@ -4,10 +4,7 @@
  * Accepts POST with form data: volumeId, projectId, targetStatus, comment?
  */
 
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import { transitionVolumeStatus } from "../lib/workflow.server";
 import type { VolumeStatus, WorkflowRole } from "../lib/workflow";
 import type { Route } from "./+types/api.workflow";
 
@@ -15,6 +12,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ ok: false, error: "Method not allowed" }, { status: 405 });
   }
+
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { transitionVolumeStatus } = await import("../lib/workflow.server");
 
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);

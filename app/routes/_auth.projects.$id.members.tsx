@@ -1,18 +1,7 @@
 import { Form, useActionData } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and, isNull, gt } from "drizzle-orm";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import { getProject } from "../lib/projects.server";
-import { createInvite } from "../lib/invites.server";
-import { getInstance } from "~/middleware/i18next";
 import { formatDate } from "~/lib/format";
-import {
-  users,
-  projectMembers,
-  projectInvites,
-} from "../db/schema";
 import type { Route } from "./+types/_auth.projects.$id.members";
 
 type MemberRow = {
@@ -23,6 +12,16 @@ type MemberRow = {
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and, isNull, gt } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getProject } = await import("../lib/projects.server");
+  const {
+    users,
+    projectMembers,
+    projectInvites,
+  } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -90,6 +89,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { createInvite } = await import("../lib/invites.server");
+  const { getInstance } = await import("~/middleware/i18next");
+  const { projectMembers } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

@@ -1,10 +1,6 @@
 import { redirect, data } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
-import { createSessionStorage } from "../sessions.server";
-import { generateMagicLink } from "../lib/auth.server";
-import { getInstance } from "~/middleware/i18next";
 import type { Route } from "./+types/login";
 
 const emailSchema = z.object({
@@ -16,6 +12,8 @@ export function meta() {
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { createSessionStorage } = await import("../sessions.server");
+
   const env = context.cloudflare.env;
   const { getSession } = createSessionStorage(env.SESSION_SECRET);
   const session = await getSession(request.headers.get("Cookie"));
@@ -28,6 +26,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { createSessionStorage } = await import("../sessions.server");
+  const { generateMagicLink } = await import("../lib/auth.server");
+  const { getInstance } = await import("~/middleware/i18next");
+
   const env = context.cloudflare.env;
   const i18n = getInstance(context);
   const formData = await request.formData();

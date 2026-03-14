@@ -1,15 +1,13 @@
 import { Form, useActionData } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import { getProject } from "../lib/projects.server";
-import { getInstance } from "~/middleware/i18next";
-import { projects } from "../db/schema";
 import type { Route } from "./+types/_auth.projects.$id.settings";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getProject } = await import("../lib/projects.server");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -26,6 +24,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getProject } = await import("../lib/projects.server");
+  const { getInstance } = await import("~/middleware/i18next");
+  const { projects } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

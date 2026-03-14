@@ -1,5 +1,4 @@
 import { redirect } from "react-router";
-import { createSessionStorage } from "../sessions.server";
 import type { Route } from "./+types/auth.logout";
 
 /**
@@ -7,6 +6,8 @@ import type { Route } from "./+types/auth.logout";
  * Destroys the session cookie and redirects to /login.
  */
 export async function action({ request, context }: Route.ActionArgs) {
+  const { createSessionStorage } = await import("../sessions.server");
+
   const env = context.cloudflare.env;
   const { getSession, destroySession } = createSessionStorage(
     env.SESSION_SECRET

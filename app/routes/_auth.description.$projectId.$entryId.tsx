@@ -6,17 +6,8 @@ import {
   useMemo,
 } from "react";
 import { Link, useNavigate, useRevalidator } from "react-router";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, and } from "drizzle-orm";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
-import { requireProjectRole } from "../lib/permissions.server";
-import {
-  loadDescriptionEntry,
-  loadVolumeEntriesForDescription,
-} from "../lib/description.server";
-import { getCommentsForEntry } from "../lib/comments.server";
-import { hasOpenFlags } from "../lib/resegmentation.server";
 import { getSectionCompletion } from "../lib/description-types";
 import type { DescriptionEntry, CommentWithAuthor } from "../lib/description-types";
 import {
@@ -24,7 +15,6 @@ import {
   DESCRIPTION_STATUS_LABELS,
   type DescriptionStatus,
 } from "../lib/description-workflow";
-import { entries, volumes, projectMembers } from "../db/schema";
 import { DescriptionForm } from "../components/description/description-form";
 import { DescriptionImageViewer } from "../components/description/description-image-viewer";
 import { EntryNav } from "../components/description/entry-nav";
@@ -34,6 +24,17 @@ import { ResizableDivider } from "../components/outline/resizable-divider";
 import type { Route } from "./+types/_auth.description.$projectId.$entryId";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const {
+    loadDescriptionEntry,
+    loadVolumeEntriesForDescription,
+  } = await import("../lib/description.server");
+  const { getCommentsForEntry } = await import("../lib/comments.server");
+  const { hasOpenFlags } = await import("../lib/resegmentation.server");
+  const { entries, volumes, projectMembers } = await import("../db/schema");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 

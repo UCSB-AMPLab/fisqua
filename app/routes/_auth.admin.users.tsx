@@ -1,14 +1,14 @@
 import { Form, useActionData } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, desc } from "drizzle-orm";
 import { userContext } from "../context";
-import { users } from "../db/schema";
-import { getInstance } from "~/middleware/i18next";
 import { formatDate } from "~/lib/format";
 import type { Route } from "./+types/_auth.admin.users";
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { desc } = await import("drizzle-orm");
+  const { users } = await import("../db/schema");
+
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
@@ -22,6 +22,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { getInstance } = await import("~/middleware/i18next");
+  const { users } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

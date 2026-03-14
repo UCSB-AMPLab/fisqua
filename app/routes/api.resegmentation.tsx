@@ -3,24 +3,19 @@
  * Handles creating, resolving, and listing resegmentation flags.
  */
 
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import {
-  requireEntryAccess,
-  requireProjectRole,
-} from "../lib/permissions.server";
-import {
-  createResegmentationFlag,
-  resolveResegmentationFlag,
-  getOpenFlags,
-  hasOpenFlags,
-} from "../lib/resegmentation.server";
-import { logActivity } from "../lib/workflow.server";
-import { volumes } from "../db/schema";
-import { eq } from "drizzle-orm";
 import type { Route } from "./+types/api.resegmentation";
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { requireEntryAccess } = await import("../lib/permissions.server");
+  const { createResegmentationFlag, resolveResegmentationFlag } = await import(
+    "../lib/resegmentation.server"
+  );
+  const { logActivity } = await import("../lib/workflow.server");
+  const { volumes } = await import("../db/schema");
+
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
 
@@ -124,6 +119,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (request.method !== "GET") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
+
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { getOpenFlags } = await import("../lib/resegmentation.server");
+  const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);

@@ -7,18 +7,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { drizzle } from "drizzle-orm/d1";
-import { eq, sql, inArray, isNull, and, desc } from "drizzle-orm";
 import { userContext } from "../context";
-import {
-  volumes,
-  projectMembers,
-  users,
-  projects,
-  entries,
-  comments,
-  resegmentationFlags,
-} from "../db/schema";
 import {
   CataloguerDashboard,
   type CataloguerGroups,
@@ -68,6 +57,18 @@ function determinePrimaryRole(
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, sql, inArray, isNull, and, desc } = await import("drizzle-orm");
+  const {
+    volumes,
+    projectMembers,
+    users,
+    projects,
+    entries,
+    comments,
+    resegmentationFlags,
+  } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -90,8 +91,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   if (primaryRole === "cataloguer") {
     const [segData, descData] = await Promise.all([
-      loadCataloguerData(db, user.id),
-      loadCataloguerDescriptionData(db, user.id),
+      loadCataloguerData(db, user.id, { eq, sql, inArray, volumes, entries, projects }),
+      loadCataloguerDescriptionData(db, user.id, { eq, inArray, desc, volumes, entries, comments }),
     ]);
     return {
       user,
@@ -102,8 +103,8 @@ export async function loader({ context }: Route.LoaderArgs) {
 
   if (primaryRole === "reviewer") {
     const [segData, descData] = await Promise.all([
-      loadReviewerData(db, user.id),
-      loadReviewerDescriptionData(db, user.id),
+      loadReviewerData(db, user.id, { eq, sql, inArray, and, volumes, entries, projects, users }),
+      loadReviewerDescriptionData(db, user.id, { eq, inArray, and, volumes, entries, users, resegmentationFlags }),
     ]);
     return {
       user,
@@ -116,7 +117,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   return {
     user,
     primaryRole,
-    data: await loadLeadData(db, user.id, user.isAdmin),
+    data: await loadLeadData(db, user.id, user.isAdmin, { eq, sql, inArray, isNull, and, desc, volumes, projectMembers, users, projects, entries, resegmentationFlags }),
   };
 }
 
@@ -124,9 +125,12 @@ export async function loader({ context }: Route.LoaderArgs) {
  * Load cataloguer dashboard data: all assigned volumes grouped by urgency.
  */
 async function loadCataloguerData(
-  db: ReturnType<typeof drizzle>,
-  userId: string
+  db: any,
+  userId: string,
+  deps: any
 ): Promise<{ groups: CataloguerGroups }> {
+  const { eq, sql, inArray, volumes, entries, projects } = deps;
+
   // All volumes assigned to this cataloguer with entry counts
   const assignedVolumes = await db
     .select({
@@ -154,7 +158,7 @@ async function loadCataloguerData(
   }
 
   // Get entry counts for these volumes in a single query
-  const volumeIds = assignedVolumes.map((v) => v.id);
+  const volumeIds = assignedVolumes.map((v: any) => v.id);
   const entryCounts = await db
     .select({
       volumeId: entries.volumeId,
@@ -166,18 +170,18 @@ async function loadCataloguerData(
     .all();
 
   const entryCountMap = new Map(
-    entryCounts.map((e) => [e.volumeId, e.count])
+    entryCounts.map((e: any) => [e.volumeId, e.count])
   );
 
   // Get project names
-  const projectIds = [...new Set(assignedVolumes.map((v) => v.projectId))];
+  const projectIds = [...new Set(assignedVolumes.map((v: any) => v.projectId))];
   const projectRows = await db
     .select({ id: projects.id, name: projects.name })
     .from(projects)
     .where(inArray(projects.id, projectIds))
     .all();
 
-  const projectNameMap = new Map(projectRows.map((p) => [p.id, p.name]));
+  const projectNameMap = new Map(projectRows.map((p: any) => [p.id, p.name]));
 
   // Build card data and group
   const groups: CataloguerGroups = {
@@ -232,9 +236,12 @@ async function loadCataloguerData(
  * Load reviewer dashboard data: all volumes assigned for review grouped by status.
  */
 async function loadReviewerData(
-  db: ReturnType<typeof drizzle>,
-  userId: string
+  db: any,
+  userId: string,
+  deps: any
 ): Promise<{ groups: ReviewerGroups }> {
+  const { eq, sql, inArray, volumes, entries, projects, users } = deps;
+
   const reviewVolumes = await db
     .select({
       id: volumes.id,
@@ -256,7 +263,7 @@ async function loadReviewerData(
   }
 
   // Get entry counts
-  const volumeIds = reviewVolumes.map((v) => v.id);
+  const volumeIds = reviewVolumes.map((v: any) => v.id);
   const entryCounts = await db
     .select({
       volumeId: entries.volumeId,
@@ -268,12 +275,12 @@ async function loadReviewerData(
     .all();
 
   const entryCountMap = new Map(
-    entryCounts.map((e) => [e.volumeId, e.count])
+    entryCounts.map((e: any) => [e.volumeId, e.count])
   );
 
   // Get cataloguer names
   const cataloguerIds = [
-    ...new Set(reviewVolumes.map((v) => v.assignedTo).filter(Boolean)),
+    ...new Set(reviewVolumes.map((v: any) => v.assignedTo).filter(Boolean)),
   ] as string[];
 
   let cataloguerNameMap = new Map<string, string>();
@@ -284,19 +291,19 @@ async function loadReviewerData(
       .where(inArray(users.id, cataloguerIds))
       .all();
     cataloguerNameMap = new Map(
-      cataloguers.map((u) => [u.id, u.name ?? "Unnamed"])
+      cataloguers.map((u: any) => [u.id, u.name ?? "Unnamed"])
     );
   }
 
   // Get project names
-  const projectIds = [...new Set(reviewVolumes.map((v) => v.projectId))];
+  const projectIds = [...new Set(reviewVolumes.map((v: any) => v.projectId))];
   const projectRows = await db
     .select({ id: projects.id, name: projects.name })
     .from(projects)
     .where(inArray(projects.id, projectIds))
     .all();
 
-  const projectNameMap = new Map(projectRows.map((p) => [p.id, p.name]));
+  const projectNameMap = new Map(projectRows.map((p: any) => [p.id, p.name]));
 
   const groups: ReviewerGroups = {
     awaitingReview: [],
@@ -347,10 +354,13 @@ async function loadReviewerData(
  * Load lead dashboard data: cross-project overview with attention items.
  */
 async function loadLeadData(
-  db: ReturnType<typeof drizzle>,
+  db: any,
   userId: string,
-  isAdmin: boolean
+  isAdmin: boolean,
+  deps: any
 ): Promise<{ projects: ProjectOverview[]; attentionItems: AttentionItem[] }> {
+  const { eq, sql, inArray, isNull, and, volumes, projectMembers, users, projects, entries, resegmentationFlags } = deps;
+
   // Get projects where user is lead (or all projects if admin)
   let leadProjectIds: string[];
 
@@ -360,14 +370,8 @@ async function loadLeadData(
       .from(projects)
       .where(isNull(projects.archivedAt))
       .all();
-    leadProjectIds = allProjects.map((p) => p.id);
+    leadProjectIds = allProjects.map((p: any) => p.id);
   } else {
-    const leadMemberships = await db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .where(eq(projectMembers.userId, userId))
-      .all();
-    // Filter to lead role only for lead dashboard
     const allMemberships = await db
       .select({
         projectId: projectMembers.projectId,
@@ -377,8 +381,8 @@ async function loadLeadData(
       .where(eq(projectMembers.userId, userId))
       .all();
     leadProjectIds = allMemberships
-      .filter((m) => m.role === "lead")
-      .map((m) => m.projectId);
+      .filter((m: any) => m.role === "lead")
+      .map((m: any) => m.projectId);
   }
 
   if (leadProjectIds.length === 0) {
@@ -409,7 +413,7 @@ async function loadLeadData(
     .all();
 
   // Fetch all entries for description status aggregation
-  const allVolumeIds = allVolumes.map((v) => v.id);
+  const allVolumeIds = allVolumes.map((v: any) => v.id);
   let entryDescStatusRows: { volumeId: string; descriptionStatus: string | null; count: number }[] = [];
   if (allVolumeIds.length > 0) {
     entryDescStatusRows = await db
@@ -483,7 +487,7 @@ async function loadLeadData(
     .all();
 
   // Fetch user details for members
-  const memberUserIds = [...new Set(allMembers.map((m) => m.userId))];
+  const memberUserIds = [...new Set(allMembers.map((m: any) => m.userId))];
   let userMap = new Map<string, { name: string | null; lastActiveAt: number | null }>();
   if (memberUserIds.length > 0) {
     const memberUsers = await db
@@ -496,7 +500,7 @@ async function loadLeadData(
       .where(inArray(users.id, memberUserIds))
       .all();
     userMap = new Map(
-      memberUsers.map((u) => [u.id, { name: u.name, lastActiveAt: u.lastActiveAt }])
+      memberUsers.map((u: any) => [u.id, { name: u.name, lastActiveAt: u.lastActiveAt }])
     );
   }
 
@@ -506,7 +510,7 @@ async function loadLeadData(
   const attentionItems: AttentionItem[] = [];
 
   // Volume lookup for reseg/desc review attention items
-  const volumeLookup = new Map(allVolumes.map((v) => [v.id, v]));
+  const volumeLookup = new Map(allVolumes.map((v: any) => [v.id, v]));
 
   // Attention: open reseg flags
   for (const flag of openResegFlags) {
@@ -536,12 +540,12 @@ async function loadLeadData(
   }
 
   // Build project overviews
-  const projectOverviews: ProjectOverview[] = projectRows.map((project) => {
+  const projectOverviews: ProjectOverview[] = projectRows.map((project: any) => {
     const projectVolumes = allVolumes.filter(
-      (v) => v.projectId === project.id
+      (v: any) => v.projectId === project.id
     );
     const projectMemberRows = allMembers.filter(
-      (m) => m.projectId === project.id
+      (m: any) => m.projectId === project.id
     );
 
     // Status counts (segmentation)
@@ -575,7 +579,7 @@ async function loadLeadData(
     }
 
     // Attention: unassigned volumes
-    const unassigned = projectVolumes.filter((v) => !v.assignedTo);
+    const unassigned = projectVolumes.filter((v: any) => !v.assignedTo);
     if (unassigned.length > 0) {
       attentionItems.push({
         type: "unassigned",
@@ -606,7 +610,7 @@ async function loadLeadData(
     const totalEntries = Object.values(descriptionStatusCounts).reduce((sum, n) => sum + n, 0);
 
     // Build team member list
-    const teamMembers: TeamMember[] = projectMemberRows.map((m) => {
+    const teamMembers: TeamMember[] = projectMemberRows.map((m: any) => {
       const userInfo = userMap.get(m.userId);
 
       // Attention: inactive members (>7 days)
@@ -652,9 +656,12 @@ async function loadLeadData(
  * Load description entries assigned to this cataloguer for the description tab.
  */
 async function loadCataloguerDescriptionData(
-  db: ReturnType<typeof drizzle>,
-  userId: string
+  db: any,
+  userId: string,
+  deps: any
 ): Promise<DescriptionEntryCardData[]> {
+  const { eq, inArray, desc, volumes, entries, comments } = deps;
+
   const assignedEntries = await db
     .select({
       id: entries.id,
@@ -678,7 +685,7 @@ async function loadCataloguerDescriptionData(
   if (assignedEntries.length === 0) return [];
 
   // Get volume info
-  const volumeIds = [...new Set(assignedEntries.map((e) => e.volumeId))];
+  const volumeIds = [...new Set(assignedEntries.map((e: any) => e.volumeId))];
   const volumeRows = await db
     .select({
       id: volumes.id,
@@ -690,12 +697,12 @@ async function loadCataloguerDescriptionData(
     .where(inArray(volumes.id, volumeIds))
     .all();
 
-  const volumeMap = new Map(volumeRows.map((v) => [v.id, v]));
+  const volumeMap = new Map(volumeRows.map((v: any) => [v.id, v]));
 
   // Get latest reviewer comment for sent_back entries
   const sentBackIds = assignedEntries
-    .filter((e) => e.descriptionStatus === "sent_back")
-    .map((e) => e.id);
+    .filter((e: any) => e.descriptionStatus === "sent_back")
+    .map((e: any) => e.id);
 
   let feedbackMap = new Map<string, string>();
   if (sentBackIds.length > 0) {
@@ -719,7 +726,7 @@ async function loadCataloguerDescriptionData(
     }
   }
 
-  return assignedEntries.map((e) => {
+  return assignedEntries.map((e: any) => {
     const vol = volumeMap.get(e.volumeId);
     return {
       id: e.id,
@@ -746,9 +753,12 @@ async function loadCataloguerDescriptionData(
  * reseg flags and entries assigned for description review.
  */
 async function loadReviewerDescriptionData(
-  db: ReturnType<typeof drizzle>,
-  userId: string
+  db: any,
+  userId: string,
+  deps: any
 ): Promise<ReviewerDescriptionData> {
+  const { eq, inArray, and, volumes, entries, resegmentationFlags } = deps;
+
   // Entries assigned to this reviewer for description review
   const reviewEntries = await db
     .select({
@@ -766,7 +776,7 @@ async function loadReviewerDescriptionData(
     .all();
 
   // Get volume info
-  const volumeIds = [...new Set(reviewEntries.map((e) => e.volumeId))];
+  const volumeIds = [...new Set(reviewEntries.map((e: any) => e.volumeId))];
   let volumeMap = new Map<string, { name: string; referenceCode: string; projectId: string }>();
   if (volumeIds.length > 0) {
     const volumeRows = await db
@@ -779,7 +789,7 @@ async function loadReviewerDescriptionData(
       .from(volumes)
       .where(inArray(volumes.id, volumeIds))
       .all();
-    volumeMap = new Map(volumeRows.map((v) => [v.id, v]));
+    volumeMap = new Map(volumeRows.map((v: any) => [v.id, v]));
   }
 
   // Open resegmentation flags for volumes this reviewer handles
@@ -789,7 +799,7 @@ async function loadReviewerDescriptionData(
     .where(eq(volumes.assignedReviewer, userId))
     .all();
 
-  const reviewerVolumeIds = reviewerVolumes.map((v) => v.id);
+  const reviewerVolumeIds = reviewerVolumes.map((v: any) => v.id);
   let resegFlags: ReviewerDescriptionData["resegFlags"] = [];
   if (reviewerVolumeIds.length > 0) {
     const flags = await db
@@ -812,8 +822,8 @@ async function loadReviewerDescriptionData(
     // Get volume info for flags
     let flagVolumeMap = volumeMap;
     const missingVolumeIds = flags
-      .map((f) => f.volumeId)
-      .filter((vid) => !flagVolumeMap.has(vid));
+      .map((f: any) => f.volumeId)
+      .filter((vid: string) => !flagVolumeMap.has(vid));
 
     if (missingVolumeIds.length > 0) {
       const extraVolumes = await db
@@ -831,7 +841,7 @@ async function loadReviewerDescriptionData(
       }
     }
 
-    resegFlags = flags.map((f) => {
+    resegFlags = flags.map((f: any) => {
       const vol = flagVolumeMap.get(f.volumeId);
       return {
         id: f.id,
@@ -845,7 +855,7 @@ async function loadReviewerDescriptionData(
     });
   }
 
-  const entryCards = reviewEntries.map((e) => {
+  const entryCards = reviewEntries.map((e: any) => {
     const vol = volumeMap.get(e.volumeId);
     return {
       id: e.id,
@@ -864,9 +874,9 @@ async function loadReviewerDescriptionData(
 
   return {
     resegFlags,
-    awaitingReview: entryCards.filter((e) => e.descriptionStatus === "described"),
-    reviewed: entryCards.filter((e) => e.descriptionStatus === "reviewed"),
-    approved: entryCards.filter((e) => e.descriptionStatus === "approved"),
+    awaitingReview: entryCards.filter((e: any) => e.descriptionStatus === "described"),
+    reviewed: entryCards.filter((e: any) => e.descriptionStatus === "reviewed"),
+    approved: entryCards.filter((e: any) => e.descriptionStatus === "approved"),
   };
 }
 

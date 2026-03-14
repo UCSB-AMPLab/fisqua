@@ -5,15 +5,7 @@
  * Handles autosave, submit-for-review, approve, and send-back actions.
  */
 
-import { drizzle } from "drizzle-orm/d1";
 import { userContext } from "../context";
-import { requireDescriptionAccess } from "../lib/permissions.server";
-import {
-  saveDescription,
-  submitForReview,
-  approveDescription,
-  sendBackDescription,
-} from "../lib/description.server";
 import type { WorkflowRole } from "../lib/workflow";
 import type { Route } from "./+types/api.description.save";
 
@@ -21,6 +13,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
+
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { requireDescriptionAccess } = await import("../lib/permissions.server");
+  const {
+    saveDescription,
+    submitForReview,
+    approveDescription,
+    sendBackDescription,
+  } = await import("../lib/description.server");
 
   const user = context.get(userContext);
   const db = drizzle(context.cloudflare.env.DB);
