@@ -90,6 +90,7 @@ export async function createVolume(
     status: "unstarted",
     assignedTo: null,
     assignedReviewer: null,
+    reviewComment: null,
     createdAt: now,
     updatedAt: now,
   };

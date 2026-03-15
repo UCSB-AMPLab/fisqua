@@ -7,6 +7,12 @@ declare module "react-router" {
       ctx: ExecutionContext;
     };
   }
+  interface RouterContextProvider {
+    cloudflare: {
+      env: Env;
+      ctx: ExecutionContext;
+    };
+  }
 }
 
 const requestHandler = createRequestHandler(

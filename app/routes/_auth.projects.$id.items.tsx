@@ -1,7 +1,6 @@
 import { redirect } from "react-router";
-import type { Route } from "./+types/_auth.projects.$id.items";
 
-export function loader({ params }: Route.LoaderArgs) {
+export function loader({ params }: { params: { id: string } }) {
   throw redirect(`/projects/${params.id}/volumes`);
 }
 

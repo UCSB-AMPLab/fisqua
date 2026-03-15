@@ -5,9 +5,9 @@ import { Footer } from "../components/layout/footer";
 import type { Route } from "./+types/_auth";
 
 export const middleware = [
-  async ({ request, context }: any) => {
+  async (args: any, next: any) => {
     const { authMiddleware } = await import("../middleware/auth.server");
-    return authMiddleware({ request, context });
+    return authMiddleware(args, next);
   },
 ];
 

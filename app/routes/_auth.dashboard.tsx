@@ -169,7 +169,7 @@ async function loadCataloguerData(
     .groupBy(entries.volumeId)
     .all();
 
-  const entryCountMap = new Map(
+  const entryCountMap = new Map<string, number>(
     entryCounts.map((e: any) => [e.volumeId, e.count])
   );
 
@@ -181,7 +181,7 @@ async function loadCataloguerData(
     .where(inArray(projects.id, projectIds))
     .all();
 
-  const projectNameMap = new Map(projectRows.map((p: any) => [p.id, p.name]));
+  const projectNameMap = new Map<string, string>(projectRows.map((p: any) => [p.id, p.name]));
 
   // Build card data and group
   const groups: CataloguerGroups = {
@@ -274,7 +274,7 @@ async function loadReviewerData(
     .groupBy(entries.volumeId)
     .all();
 
-  const entryCountMap = new Map(
+  const entryCountMap = new Map<string, number>(
     entryCounts.map((e: any) => [e.volumeId, e.count])
   );
 
@@ -303,7 +303,7 @@ async function loadReviewerData(
     .where(inArray(projects.id, projectIds))
     .all();
 
-  const projectNameMap = new Map(projectRows.map((p: any) => [p.id, p.name]));
+  const projectNameMap = new Map<string, string>(projectRows.map((p: any) => [p.id, p.name]));
 
   const groups: ReviewerGroups = {
     awaitingReview: [],
@@ -510,7 +510,7 @@ async function loadLeadData(
   const attentionItems: AttentionItem[] = [];
 
   // Volume lookup for reseg/desc review attention items
-  const volumeLookup = new Map(allVolumes.map((v: any) => [v.id, v]));
+  const volumeLookup = new Map<string, any>(allVolumes.map((v: any) => [v.id, v]));
 
   // Attention: open reseg flags
   for (const flag of openResegFlags) {
@@ -697,7 +697,7 @@ async function loadCataloguerDescriptionData(
     .where(inArray(volumes.id, volumeIds))
     .all();
 
-  const volumeMap = new Map(volumeRows.map((v: any) => [v.id, v]));
+  const volumeMap = new Map<string, any>(volumeRows.map((v: any) => [v.id, v]));
 
   // Get latest reviewer comment for sent_back entries
   const sentBackIds = assignedEntries

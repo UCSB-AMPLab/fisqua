@@ -8,7 +8,7 @@ import { createSessionStorage } from "../sessions.server";
 import { requireUser } from "../lib/auth.server";
 import { users } from "../db/schema";
 
-import type { unstable_MiddlewareFunction as MiddlewareFunction } from "react-router";
+import type { MiddlewareFunction } from "react-router";
 
 /** Throttle lastActiveAt writes to once every 5 minutes. */
 const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
@@ -21,10 +21,10 @@ const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
  * Also throttle-updates lastActiveAt on the user row (only if the
  * current value is more than 5 minutes old, to avoid write amplification).
  */
-export const authMiddleware: MiddlewareFunction = async ({
-  request,
-  context,
-}) => {
+export const authMiddleware: MiddlewareFunction = async (
+  { request, context },
+  _next
+) => {
   const env = context.cloudflare.env;
   const { getSession } = createSessionStorage(env.SESSION_SECRET);
 

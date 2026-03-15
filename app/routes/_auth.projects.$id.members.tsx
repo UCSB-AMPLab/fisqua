@@ -173,7 +173,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           id: crypto.randomUUID(),
           projectId: params.id,
           userId: targetUserId,
-          role,
+          role: role as "lead" | "cataloguer" | "reviewer",
           createdAt: now,
         });
       }

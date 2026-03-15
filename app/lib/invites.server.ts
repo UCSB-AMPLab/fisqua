@@ -79,7 +79,7 @@ export async function createInvite(
       )
       .all();
 
-    const existingRoles = new Set(currentMemberships.map((m) => m.role));
+    const existingRoles: Set<string> = new Set(currentMemberships.map((m) => m.role));
     const newRoles = roles.filter((r) => !existingRoles.has(r));
 
     if (newRoles.length > 0) {
@@ -89,7 +89,7 @@ export async function createInvite(
           id: crypto.randomUUID(),
           projectId,
           userId: existingUser.id,
-          role,
+          role: role as "lead" | "cataloguer" | "reviewer",
           createdAt: now,
         });
       }
@@ -225,7 +225,7 @@ export async function acceptInvite(
     )
     .all();
 
-  const existingRoles = new Set(existingMemberships.map((m) => m.role));
+  const existingRoles: Set<string> = new Set(existingMemberships.map((m) => m.role));
 
   for (const role of roles) {
     if (!existingRoles.has(role)) {
@@ -233,7 +233,7 @@ export async function acceptInvite(
         id: crypto.randomUUID(),
         projectId: invite.projectId,
         userId: user.id,
-        role,
+        role: role as "lead" | "cataloguer" | "reviewer",
         createdAt: now,
       });
     }

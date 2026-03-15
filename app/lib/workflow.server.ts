@@ -12,7 +12,11 @@ type ActivityEvent =
   | "volume_opened"
   | "status_changed"
   | "review_submitted"
-  | "assignment_changed";
+  | "assignment_changed"
+  | "description_status_changed"
+  | "description_assignment_changed"
+  | "resegmentation_flagged"
+  | "comment_added";
 
 /**
  * Transition a volume's status after validating the transition is allowed.
