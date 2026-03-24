@@ -5,6 +5,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
   "routes": [{ "pattern": "catalogacion.zasqua.org", "custom_domain": true }],
+  // Secrets (set via `wrangler secret put` or .dev.vars):
+  // SESSION_SECRET, RESEND_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
   "vars": {
     "APP_NAME": "Zasqua: Catalogacion",
     "SENDER_EMAIL": "noreply@zasqua.org",
