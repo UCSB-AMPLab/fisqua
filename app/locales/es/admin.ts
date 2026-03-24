@@ -1,6 +1,6 @@
 export default {
   heading: {
-    admin: "Administracion",
+    admin: "Administración",
     users: "Usuarios",
     projects: "Proyectos",
     all_users: "Todos los usuarios",
@@ -14,11 +14,11 @@ export default {
   },
   table: {
     name: "Nombre",
-    email: "Correo electronico",
+    email: "Correo electrónico",
     role: "Rol",
     admin: "Administrador",
     user: "Usuario",
-    last_active: "Ultima actividad",
+    last_active: "Última actividad",
     created: "Creado",
     archived: "Archivado",
     lead: "Coordinador(es)",
@@ -39,14 +39,14 @@ export default {
     new_project: "Nuevo proyecto",
   },
   empty: {
-    no_users: "Aun no hay usuarios.",
-    no_projects: "Aun no hay proyectos. Crea uno para empezar.",
+    no_users: "Aún no hay usuarios.",
+    no_projects: "Aún no hay proyectos. Crea uno para empezar.",
     no_archived: "No hay proyectos archivados.",
   },
   error: {
     self_admin: "No puedes cambiar tu propio estado de administrador.",
     user_not_found: "Usuario no encontrado.",
-    invalid_email: "Ingresa una direccion de correo valida.",
+    invalid_email: "Ingresa una dirección de correo válida.",
     duplicate_email: "Ya existe un usuario con este correo.",
     user_created: "Usuario {{email}} creado.",
     admin_toggled_on: "{{email}} ahora es administrador.",
@@ -55,8 +55,8 @@ export default {
     project_archived: "Proyecto archivado.",
     project_restored: "Proyecto restaurado.",
     project_deleted: "Proyecto eliminado.",
-    unknown_action: "Accion desconocida.",
-    delete_confirm: "Eliminar permanentemente \"{{name}}\" y todos sus datos? Esta accion no se puede deshacer.",
+    unknown_action: "Acción desconocida.",
+    delete_confirm: "Eliminar permanentemente \"{{name}}\" y todos sus datos? Esta acción no se puede deshacer.",
   },
   placeholder: {
     email: "usuario@ejemplo.com",
