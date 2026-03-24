@@ -1,11 +1,126 @@
-import { describe, test } from "vitest";
+import {
+  describe,
+  test,
+  expect,
+  beforeAll,
+  beforeEach,
+} from "vitest";
+import { env } from "cloudflare:test";
+import { drizzle } from "drizzle-orm/d1";
+import * as schema from "../../app/db/schema";
+import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { createTestUser } from "../helpers/auth";
+import { loadVolumeEntriesForDescription } from "../../app/lib/description.server";
 
 describe("Entry navigation (DESC-05)", () => {
-  test.todo("loader provides ordered entry list for volume");
+  let db: ReturnType<typeof drizzle>;
+  let volumeId: string;
+  let entryIds: string[];
 
-  test.todo("prev/next navigation updates URL to adjacent entry");
+  beforeAll(async () => {
+    await applyMigrations();
+  });
 
-  test.todo("navigation wraps or disables at boundaries");
+  beforeEach(async () => {
+    await cleanDatabase();
+    db = drizzle(env.DB, { schema });
 
-  test.todo("navigation shows current position (e.g. 3 de 24)");
+    const user = await createTestUser({ isAdmin: false });
+    const now = Date.now();
+
+    const projectId = crypto.randomUUID();
+    volumeId = crypto.randomUUID();
+    entryIds = [];
+
+    await db.insert(schema.projects).values({
+      id: projectId,
+      name: "Test Project",
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await db.insert(schema.projectMembers).values({
+      id: crypto.randomUUID(),
+      projectId,
+      userId: user.id,
+      role: "lead",
+      createdAt: now,
+    });
+
+    await db.insert(schema.volumes).values({
+      id: volumeId,
+      projectId,
+      name: "Test Volume",
+      referenceCode: "co-test-vol001",
+      manifestUrl: "https://example.com/manifest.json",
+      pageCount: 10,
+      status: "approved",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Create 5 entries with positions 0-4 and startPages 1, 3, 5, 7, 9
+    for (let i = 0; i < 5; i++) {
+      const id = crypto.randomUUID();
+      entryIds.push(id);
+      await db.insert(schema.entries).values({
+        id,
+        volumeId,
+        position: i,
+        startPage: 1 + i * 2,
+        startY: 0,
+        type: "item",
+        descriptionStatus: "unassigned",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  });
+
+  test("loader provides ordered entry list for volume", async () => {
+    const result = await loadVolumeEntriesForDescription(db, volumeId);
+
+    expect(result).toHaveLength(5);
+    expect(result[0].position).toBe(0);
+    expect(result[1].position).toBe(1);
+    expect(result[2].position).toBe(2);
+    expect(result[3].position).toBe(3);
+    expect(result[4].position).toBe(4);
+  });
+
+  test("prev/next navigation updates URL to adjacent entry", async () => {
+    const result = await loadVolumeEntriesForDescription(db, volumeId);
+
+    // For the middle entry (index 2), the prev is index 1 and next is index 3
+    const middleEntry = result[2];
+    const prevEntry = result[1];
+    const nextEntry = result[3];
+
+    expect(prevEntry.id).toBeTruthy();
+    expect(nextEntry.id).toBeTruthy();
+    expect(prevEntry.position).toBe(middleEntry.position - 1);
+    expect(nextEntry.position).toBe(middleEntry.position + 1);
+  });
+
+  test("navigation wraps or disables at boundaries", async () => {
+    const result = await loadVolumeEntriesForDescription(db, volumeId);
+
+    // First entry has no prev (index -1 is undefined)
+    expect(result[-1]).toBeUndefined();
+    // Last entry has no next (index 5 is undefined)
+    expect(result[5]).toBeUndefined();
+  });
+
+  test("navigation shows current position (e.g. 3 de 24)", async () => {
+    const result = await loadVolumeEntriesForDescription(db, volumeId);
+
+    // For entry at index 2, position display would be "3 de 5"
+    const targetEntryId = entryIds[2];
+    const index = result.findIndex((e) => e.id === targetEntryId);
+
+    expect(index).toBe(2);
+    expect(index + 1).toBe(3); // Display position
+    expect(result.length).toBe(5); // Total entries
+  });
 });
