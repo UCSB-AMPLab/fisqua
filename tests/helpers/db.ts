@@ -16,7 +16,7 @@ export function getTestDb() {
 export async function applyMigrations() {
   const db = env.DB;
 
-  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
 
   await db.exec("CREATE TABLE IF NOT EXISTS magic_links (id TEXT PRIMARY KEY NOT NULL, token TEXT NOT NULL UNIQUE, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS magic_links_token_idx ON magic_links(token)");

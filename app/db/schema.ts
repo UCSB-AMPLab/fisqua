@@ -14,6 +14,7 @@ export const users = sqliteTable("users", {
   lastActiveAt: integer("last_active_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  githubId: text("github_id").unique(),
 });
 
 export const magicLinks = sqliteTable(

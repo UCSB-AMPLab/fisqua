@@ -9,6 +9,8 @@ export default [
   // Public routes
   route("login", "routes/login.tsx"),
   route("auth/verify", "routes/auth.verify.tsx"),
+  route("auth/github", "routes/auth.github.tsx"),
+  route("auth/github/callback", "routes/auth.github.callback.tsx"),
   route("auth/logout", "routes/auth.logout.tsx"),
   route("invite/accept", "routes/invite.accept.tsx"),
 
