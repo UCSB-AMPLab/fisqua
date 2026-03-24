@@ -63,7 +63,7 @@ export function CommentCard({ comment, onReply, depth }: CommentCardProps) {
       </div>
 
       {/* Comment text */}
-      <p className="font-['Crimson_Text'] text-[0.9375rem] italic leading-[1.6] text-[#44403C]">
+      <p className="font-serif text-[0.9375rem] italic leading-[1.6] text-[#44403C]">
         {comment.text}
       </p>
 

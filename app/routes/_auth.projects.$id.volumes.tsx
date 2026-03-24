@@ -34,10 +34,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProjectVolumes, createVolume, deleteVolume } = await import("../lib/volumes.server");
   const { validateManifestUrl, parseManifest } = await import("../lib/iiif.server");
+  const { getInstance } = await import("~/middleware/i18next");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+  const i18n = getInstance(context);
 
   // Only leads (and admins) can mutate volumes
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
@@ -54,7 +56,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         .filter((u) => u.length > 0);
 
       if (urls.length === 0) {
-        return { _action: "add-volumes" as const, results: [] as AddResult[], error: "Ingresa al menos una URL de manifiesto." };
+        return { _action: "add-volumes" as const, results: [] as AddResult[], error: i18n.t("project:error.at_least_one_url") };
       }
 
       const results: AddResult[] = [];
@@ -79,7 +81,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           });
         } catch (err) {
           const message =
-            err instanceof Error ? err.message : "Failed to process manifest";
+            err instanceof Error ? err.message : i18n.t("project:error.process_manifest_failed");
           results.push({ url, success: false, error: message });
         }
       }
@@ -90,7 +92,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     case "delete-volume": {
       const volumeId = formData.get("volumeId") as string;
       if (!volumeId) {
-        return { _action: "delete-volume" as const, error: "Se requiere el ID de la unidad compuesta." };
+        return { _action: "delete-volume" as const, error: i18n.t("project:error.volume_id_required") };
       }
 
       try {
@@ -101,12 +103,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           const text = await err.text();
           return { _action: "delete-volume" as const, error: text };
         }
-        return { _action: "delete-volume" as const, error: "No se pudo eliminar la unidad compuesta." };
+        return { _action: "delete-volume" as const, error: i18n.t("project:error.delete_failed") };
       }
     }
 
     default:
-      return { error: "Accion desconocida." };
+      return { error: i18n.t("project:error.unknown_action") };
   }
 }
 
@@ -135,7 +137,7 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">{t("project:heading.volumes")}</h2>
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">{t("project:heading.volumes")}</h2>
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}

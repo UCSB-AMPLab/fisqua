@@ -112,7 +112,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
     <div className="space-y-8">
       {/* Create user form */}
       <section>
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("heading.create_user")}
         </h2>
 
@@ -156,7 +156,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 
       {/* Users table */}
       <section>
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("heading.all_users")}
         </h2>
 

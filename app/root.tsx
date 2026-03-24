@@ -38,7 +38,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta property="og:image" content="/og-image.png" />
-        <meta property="og:title" content="Zasqua Catalogacion" />
+        <meta property="og:title" content="Zasqua Catalogación" />
         <Meta />
         <Links />
       </head>

@@ -156,7 +156,7 @@ export default function AdminProjects({ loaderData }: Route.ComponentProps) {
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
             {showArchived ? t("admin:heading.archived_projects") : t("admin:heading.all_projects")}
           </h2>
           <Link

@@ -89,7 +89,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
   return (
     <div className="space-y-10">
       <section>
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("project:settings.heading")}
         </h2>
 

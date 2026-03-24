@@ -55,7 +55,7 @@ export function CommentInput({ entryId, parentId, onCancel, onSubmit }: CommentI
   return (
     <div className={isReply ? "" : "rounded-lg bg-[#F5E6EA] p-3"}>
       <textarea
-        className={`w-full resize-y rounded border border-[#E7E5E4] bg-white p-2 font-['Crimson_Text'] text-[0.9375rem] italic text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none ${minHeight}`}
+        className={`w-full resize-y rounded border border-[#E7E5E4] bg-white p-2 font-serif text-[0.9375rem] italic text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none ${minHeight}`}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}

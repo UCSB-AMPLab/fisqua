@@ -234,7 +234,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
     <div className="space-y-10">
       {/* Invite form */}
       <section>
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("project:action.invite_member")}
         </h2>
 
@@ -303,7 +303,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
 
       {/* Members list */}
       <section>
-        <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("project:heading.members")}
         </h2>
 
@@ -399,7 +399,7 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
       {/* Pending invites */}
       {pendingInvites.length > 0 && (
         <section>
-          <h2 className="font-heading text-[1.5rem] font-semibold text-[#44403C]">
+          <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
             {t("project:heading.pending_invitations")}
           </h2>
           <div className="mt-4 space-y-2">

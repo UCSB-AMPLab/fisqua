@@ -222,7 +222,7 @@ export default function DescriptionVolumeAssignmentRoute({
 
       {/* Volume header */}
       <div>
-        <h1 className="font-['Crimson_Text'] text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
           {volume.name}
         </h1>
       </div>

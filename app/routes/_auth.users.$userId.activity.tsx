@@ -233,7 +233,7 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
     <div className="mx-auto max-w-5xl px-4 py-8">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <h1 className="font-heading text-[2rem] font-semibold text-[#44403C]">
+        <h1 className="font-sans text-[2rem] font-semibold text-[#44403C]">
           {targetUser.name || t("dashboard:activity.unnamed_user")}
         </h1>
         {targetUser.roles.map((role) => (
