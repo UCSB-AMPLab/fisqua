@@ -49,7 +49,7 @@ export function DescriptionProgressBar({ counts }: DescriptionProgressBarProps) 
           {t("tabs.descripcion")}
         </span>
         <span className="text-xs text-stone-500">
-          {approved}/{total} items {t("status.approved").toLowerCase()}
+          {t("progress.items_approved", { approved, total })}
         </span>
       </div>
 

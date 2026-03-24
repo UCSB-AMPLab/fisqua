@@ -145,13 +145,14 @@ function AttentionItemDescription({ item }: { item: AttentionItem }) {
 
   if (item.type === "unassigned") {
     const volumeText = t("common:domain.volume_count_full", { count: item.count });
-    return <>{`${volumeText} sin asignar en "${item.projectName}"`}</>;
+    const daysText = t("dashboard:days_waiting", { count: item.days });
+    return <>{t("dashboard:attention.unassigned_volumes", { volumes: volumeText, project: item.projectName })}</>;
   }
 
   if (item.type === "inactive") {
     const name = item.memberName ?? t("dashboard:unnamed");
     const daysText = t("dashboard:days_waiting", { count: item.days });
-    return <>{`${name} \u2014 ${daysText} sin actividad`}</>;
+    return <>{t("dashboard:attention.inactive_member", { name, days: daysText })}</>;
   }
 
   if (item.type === "description-review") {

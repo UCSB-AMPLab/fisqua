@@ -495,7 +495,7 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
                 : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
             }`}
           >
-            Segmentacion
+            {t("description:tabs.segmentacion")}
             <span className="ml-1.5 inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
               {projectVolumes.length}
             </span>
@@ -508,7 +508,7 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
                 : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
             }`}
           >
-            Descripcion
+            {t("description:tabs.descripcion")}
             {descriptionVolumeCount > 0 && (
               <span className="ml-1.5 inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">
                 {descriptionVolumeCount}

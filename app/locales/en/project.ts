@@ -92,6 +92,7 @@ export default {
     unknown_action: "Unknown action.",
     at_least_one_url: "Please enter at least one manifest URL.",
     volume_id_required: "Volume ID is required.",
+    process_manifest_failed: "Failed to process manifest.",
     delete_failed: "Failed to delete volume.",
   },
   invite: {

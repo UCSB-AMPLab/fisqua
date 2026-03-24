@@ -9,6 +9,7 @@ interface TopBarProps {
 
 export function TopBar({ user, appName }: TopBarProps) {
   const { t } = useTranslation("dashboard");
+  const { t: tCommon } = useTranslation("common");
 
   return (
     <header className="fixed top-0 right-0 left-0 z-50 border-b border-[#E7E5E4] bg-white">
@@ -17,7 +18,7 @@ export function TopBar({ user, appName }: TopBarProps) {
           <img src="/pomegranate.svg" alt="" className="h-8 w-8" aria-hidden="true" />
           <div className="h-6 border-l border-[#E7E5E4]" aria-hidden="true" />
           <span className="font-sans text-[0.875rem] text-[#78716C]">
-            Catalogacion
+            {tCommon("app_name")}
           </span>
         </div>
 

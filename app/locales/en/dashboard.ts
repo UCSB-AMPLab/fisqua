@@ -56,6 +56,8 @@ export default {
   item_abbr: "items",
   attention: {
     reseg_flag: "Re-segmentation pending on \"{{volume}}\"",
+    unassigned_volumes: "{{volumes}} unassigned in \"{{project}}\"",
+    inactive_member: "{{name}} — {{days}} inactive",
   },
   activity: {
     unnamed_user: "Unnamed user",

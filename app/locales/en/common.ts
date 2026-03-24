@@ -1,4 +1,5 @@
 export default {
+  app_name: "Catalogación",
   button: {
     save: "Save",
     cancel: "Cancel",
