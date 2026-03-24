@@ -117,12 +117,6 @@ export function DescriptionImageViewer({
     setZoom((z) => Math.max(25, z - 25));
   }, []);
 
-  const handleFullscreen = useCallback(() => {
-    if (panelRef.current) {
-      panelRef.current.requestFullscreen?.();
-    }
-  }, []);
-
   return (
     <div ref={panelRef} className="flex h-full flex-col bg-[#F5F5F4]">
       {/* Zoom bar */}
@@ -146,17 +140,6 @@ export function DescriptionImageViewer({
         >
           <ZoomInIcon />
         </button>
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={handleFullscreen}
-          className="flex h-8 items-center gap-1.5 rounded px-2 text-[#78716C] hover:bg-[#F5F5F4]"
-        >
-          <MaximizeIcon />
-          <span className="font-sans text-[0.875rem]">
-            {t("editor.pantalla_completa")}
-          </span>
-        </button>
       </div>
 
       {/* Scrollable page display */}
@@ -165,45 +148,30 @@ export function DescriptionImageViewer({
           className="mx-auto space-y-4"
           style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top center" }}
         >
-          {pages.map((page, idx) => {
-            const isCurrent = isCurrentPage(page.position);
-            const isFirst =
-              isCurrent && page.position === currentEntryStartPage;
-            return (
+          {pages.filter((page) => isCurrentPage(page.position)).map((page) => (
               <div
                 key={page.position}
-                ref={isFirst ? firstCurrentRef : undefined}
-                className={`flex gap-4 ${isCurrent ? "" : "opacity-40"}`}
+                ref={page.position === currentEntryStartPage ? firstCurrentRef : undefined}
+                className="flex gap-4"
               >
                 {/* Label column */}
-                <div
-                  className={`w-4 shrink-0 pt-1 font-sans text-[0.875rem] ${
-                    isCurrent
-                      ? "font-semibold text-[#14B8A6]"
-                      : "text-[#A8A29E]"
-                  }`}
-                >
+                <div className="w-4 shrink-0 pt-1 font-sans text-[0.875rem] font-semibold text-[#8B2942]">
                   <span className="writing-mode-vertical whitespace-nowrap">
-                    img {page.position}
+                    {page.position}
                   </span>
                 </div>
 
                 {/* Page image */}
-                <div
-                  className={`overflow-hidden rounded-lg ${
-                    isCurrent ? "border-2 border-[#14B8A6]" : ""
-                  }`}
-                >
+                <div className="overflow-hidden rounded-lg border-2 border-[#8B2942]">
                   <img
-                    src={page.imageUrl}
+                    src={`${page.imageUrl}/full/max/0/default.jpg`}
                     alt={page.label || `Page ${page.position}`}
                     className="max-w-full"
                     loading="lazy"
                   />
                 </div>
               </div>
-            );
-          })}
+          ))}
         </div>
       </div>
     </div>

@@ -308,13 +308,15 @@ export function OutlinePanel({
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
+      if (prev.has(id)) {
+        // Collapsing: just remove this one
+        const next = new Set(prev);
         next.delete(id);
+        return next;
       } else {
-        next.add(id);
+        // Expanding: accordion — collapse all others, expand only this one
+        return new Set([id]);
       }
-      return next;
     });
   }, []);
 

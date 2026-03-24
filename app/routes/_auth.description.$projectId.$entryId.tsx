@@ -87,10 +87,22 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   // Determine if read-only (reviewer viewing, or entry in non-editable status)
   const editableStatuses = ["assigned", "in_progress", "sent_back"];
-  const canEdit =
-    (isLead || isAssignedDescriber) &&
-    editableStatuses.includes(entry.descriptionStatus ?? "");
+  const statusAllowsEdit = editableStatuses.includes(entry.descriptionStatus ?? "");
+  const hasEditRole = isLead || isAssignedDescriber;
+  const canEdit = hasEditRole && statusAllowsEdit;
   const isReadOnly = !canEdit;
+
+  // Determine why it's read-only so we can tell the user
+  let readOnlyReason: string | null = null;
+  if (isReadOnly) {
+    if (!entry.descriptionStatus || entry.descriptionStatus === "unassigned") {
+      readOnlyReason = "unassigned";
+    } else if (!hasEditRole) {
+      readOnlyReason = "not_assigned";
+    } else if (!statusAllowsEdit) {
+      readOnlyReason = "status";
+    }
+  }
 
   return {
     entry,
@@ -102,6 +114,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     userRole,
     isPaused,
     isReadOnly,
+    readOnlyReason,
     projectId: params.projectId,
   };
 }
@@ -150,6 +163,7 @@ export default function DescriptionEditorRoute({
     userRole,
     isPaused,
     isReadOnly,
+    readOnlyReason,
     projectId,
   } = loaderData;
 
@@ -422,9 +436,7 @@ export default function DescriptionEditorRoute({
         {/* Left: logo + subtitle */}
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center">
-            <span className="font-serif text-lg font-bold text-[#44403C]">
-              Z
-            </span>
+            <img src="/pomegranate.svg" alt="" className="h-6 w-6" aria-hidden="true" />
           </Link>
           <span className="font-sans text-[0.875rem] text-[#78716C]">
             {t("editor.subtitle")}
@@ -494,6 +506,14 @@ export default function DescriptionEditorRoute({
           </button>
         )}
       </div>
+
+      {/* Read-only notice */}
+      {isReadOnly && readOnlyReason && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {t(`editor.readonly_${readOnlyReason}`)}
+        </div>
+      )}
 
       {/* Main split pane */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden">
@@ -744,7 +764,7 @@ function ResegmentationDialogStub({
                     }}
                   />
                   #{ne.position + 1}{" "}
-                  {ne.title || ne.translatedTitle || "Sin titulo"}
+                  {ne.title || ne.translatedTitle || t("viewer:no_title")}
                 </label>
               ))}
             </div>

@@ -59,7 +59,7 @@ const DESC_STATUS_ORDER = [
 
 /** Segment colours for description progress bars (darker, for bar fills) */
 const DESC_SEGMENT_COLORS: Record<string, string> = {
-  unassigned: "bg-[#A8A29E]",
+  unassigned: "bg-[#78716C]",
   assigned: "bg-[#3B5A9A]",
   in_progress: "bg-[#8B6914]",
   described: "bg-[#7C3AED]",
@@ -113,11 +113,11 @@ export function DescriptionTabContent({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-stone-200 text-xs font-medium uppercase tracking-wide text-stone-500">
-                  <th className="px-3 py-2">{t("promote.volumenes_en_descripcion", { context: "column" }).split(" ")[0] || "Volumen"}</th>
-                  <th className="px-3 py-2 text-right">Entradas</th>
-                  <th className="min-w-[200px] px-3 py-2">Progreso</th>
-                  <th className="px-3 py-2">Alertas</th>
-                  <th className="px-3 py-2">Acciones</th>
+                  <th className="px-3 py-2">{t("promote.columna_volumen")}</th>
+                  <th className="px-3 py-2 text-right">{t("promote.columna_entradas")}</th>
+                  <th className="min-w-[200px] px-3 py-2">{t("promote.columna_progreso")}</th>
+                  <th className="px-3 py-2">{t("promote.columna_alertas")}</th>
+                  <th className="px-3 py-2">{t("promote.columna_acciones")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -129,7 +129,7 @@ export function DescriptionTabContent({
                     <td className="px-3 py-2">
                       <Link
                         to={`/projects/${projectId}/assignments/description/${vol.id}`}
-                        className="font-['Crimson_Text'] text-base font-semibold text-[#8B2942] hover:underline"
+                        className="font-medium text-stone-900 hover:underline"
                       >
                         {vol.name}
                       </Link>
@@ -156,9 +156,9 @@ export function DescriptionTabContent({
                     <td className="px-3 py-2">
                       <Link
                         to={`/projects/${projectId}/assignments/description/${vol.id}`}
-                        className="text-sm text-[#8B2942] hover:underline"
+                        className="text-sm font-medium text-stone-500 hover:text-stone-700 hover:underline"
                       >
-                        {t("assignment.asignar_catalogador").split(" ")[0]} &rarr;
+                        {t("promote.asignar")}
                       </Link>
                     </td>
                   </tr>
@@ -173,7 +173,7 @@ export function DescriptionTabContent({
       {descriptionMembers.length > 0 && (
         <section>
           <h3 className="mb-4 text-sm font-semibold text-stone-700">
-            Progreso del equipo
+            {t("assignment.progreso_equipo")}
           </h3>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {descriptionMembers.map((member) => (
@@ -189,18 +189,29 @@ export function DescriptionTabContent({
                     {member.role}
                   </span>
                 </div>
-                <div className="mb-1 h-2 w-full overflow-hidden rounded-full bg-stone-100">
-                  {member.assignedCount > 0 && (
-                    <div
-                      className="h-full bg-[#8B2942] transition-all"
-                      style={{
-                        width: `${(member.completedCount / member.assignedCount) * 100}%`,
-                      }}
-                    />
-                  )}
+                <div className="mb-3">
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-100">
+                    {member.assignedCount > 0 && (
+                      <div
+                        className="h-full bg-[#2F6B45] transition-all"
+                        style={{
+                          width: `${(member.completedCount / member.assignedCount) * 100}%`,
+                        }}
+                        title={`${member.completedCount} / ${member.assignedCount}`}
+                      />
+                    )}
+                    {member.assignedCount > 0 && member.assignedCount - member.completedCount > 0 && (
+                      <div
+                        className="h-full bg-[#78716C] transition-all"
+                        style={{
+                          width: `${((member.assignedCount - member.completedCount) / member.assignedCount) * 100}%`,
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-stone-500">
-                  {member.completedCount} / {member.assignedCount} entradas
+                  {member.completedCount} / {member.assignedCount} {t("assignment.entradas")}
                 </p>
               </div>
             ))}
@@ -227,7 +238,7 @@ function PromoteCard({ volume }: { volume: PromotableVolume }) {
 
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-4">
-      <h4 className="font-['Crimson_Text'] text-lg font-semibold text-stone-800">
+      <h4 className="text-base font-semibold text-stone-800">
         {volume.name}
       </h4>
       {volume.referenceCode && (
@@ -244,7 +255,7 @@ function PromoteCard({ volume }: { volume: PromotableVolume }) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-[#14B8A6] px-4 py-2 text-sm font-medium text-white hover:bg-[#0D9488] disabled:opacity-50"
+          className="w-full rounded-lg bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
         >
           {isSubmitting
             ? "..."

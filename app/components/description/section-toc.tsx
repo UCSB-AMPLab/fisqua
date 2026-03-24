@@ -29,11 +29,11 @@ export function SectionTOC({
               type="button"
               className={`rounded-full ${
                 section.isComplete
-                  ? "bg-[#14B8A6]"
+                  ? "bg-[#2F6B45]"
                   : "border border-[#E7E5E4] bg-transparent"
               } ${
                 isActive
-                  ? "h-3 w-3 ring-2 ring-[#14B8A6] ring-offset-1"
+                  ? "h-3 w-3 ring-2 ring-[#2F6B45] ring-offset-1"
                   : "h-2.5 w-2.5"
               }`}
               onClick={() => onSectionClick(section.id)}

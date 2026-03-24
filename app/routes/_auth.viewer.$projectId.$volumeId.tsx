@@ -238,7 +238,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
         <ResizableDivider onResize={handleResize} />
 
         {/* Outline panel */}
-        <div className="shrink-0" style={{ width: panelWidth }}>
+        <div className="shrink-0 h-full" style={{ width: panelWidth }}>
           <OutlinePanel
             entries={state.entries}
             volumeRefCode={volume.referenceCode}

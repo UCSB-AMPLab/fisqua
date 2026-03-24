@@ -69,7 +69,7 @@ function CompletionDot({ isComplete }: { isComplete: boolean }) {
     <span
       className={`inline-block h-2.5 w-2.5 rounded-full ${
         isComplete
-          ? "bg-[#14B8A6]"
+          ? "bg-[#2F6B45]"
           : "border border-[#E7E5E4] bg-transparent"
       }`}
     />

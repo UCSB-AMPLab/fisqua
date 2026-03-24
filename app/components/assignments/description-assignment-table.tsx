@@ -86,7 +86,7 @@ export function DescriptionAssignmentTable({
   if (entryRows.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-stone-400">
-        No hay entradas en este volumen.
+        {t('no_entries_in_volume')}
       </p>
     );
   }
@@ -190,7 +190,8 @@ function EntryAssignmentRow({
     ? `${entry.startPage}-${entry.endPage}`
     : `${entry.startPage}`;
 
-  const displayTitle = entry.title || entry.translatedTitle || `Item ${entry.position}`;
+  const { t } = useTranslation("description");
+  const displayTitle = entry.title || entry.translatedTitle || t('item_position', { position: entry.position });
 
   return (
     <tr className="border-b border-stone-100 hover:bg-stone-50">
@@ -204,54 +205,41 @@ function EntryAssignmentRow({
       </td>
       <td className="px-3 py-2 text-stone-500">{entry.position}</td>
       <td className="px-3 py-2">
-        <span className="font-['Crimson_Text'] text-base font-semibold text-[#8B2942]">
+        <Link
+          to={`/projects/${projectId}/describe/${entry.id}`}
+          className="font-medium text-[#8B2942] hover:underline"
+        >
           {displayTitle}
-        </span>
+        </Link>
       </td>
       <td className="px-3 py-2 text-stone-500">{pageRange}</td>
       <td className="px-3 py-2">
-        {entry.assignedDescriber ? (
-          <span className="text-sm text-stone-700">
-            {cataloguers.find((m) => m.id === entry.assignedDescriber)?.name ??
-              cataloguers.find((m) => m.id === entry.assignedDescriber)?.email ??
-              entry.assignedDescriber}
-          </span>
-        ) : (
-          <select
-            value=""
-            onChange={(e) => handleAssign("describerId", e.target.value)}
-            className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
-          >
-            <option value="">Sin asignar</option>
-            {cataloguers.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name ?? m.email}
-              </option>
-            ))}
-          </select>
-        )}
+        <select
+          value={entry.assignedDescriber ?? ""}
+          onChange={(e) => handleAssign("describerId", e.target.value)}
+          className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
+        >
+          <option value="">{t('assignment.sin_asignar')}</option>
+          {cataloguers.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name ?? m.email}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="px-3 py-2">
-        {entry.assignedDescriptionReviewer ? (
-          <span className="text-sm text-stone-700">
-            {reviewers.find((m) => m.id === entry.assignedDescriptionReviewer)?.name ??
-              reviewers.find((m) => m.id === entry.assignedDescriptionReviewer)?.email ??
-              entry.assignedDescriptionReviewer}
-          </span>
-        ) : (
-          <select
-            value=""
-            onChange={(e) => handleAssign("reviewerId", e.target.value)}
-            className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
-          >
-            <option value="">Sin asignar</option>
-            {reviewers.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name ?? m.email}
-              </option>
-            ))}
-          </select>
-        )}
+        <select
+          value={entry.assignedDescriptionReviewer ?? ""}
+          onChange={(e) => handleAssign("reviewerId", e.target.value)}
+          className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
+        >
+          <option value="">{t('assignment.sin_asignar')}</option>
+          {reviewers.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name ?? m.email}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="px-3 py-2">
         <DescriptionStatusBadge
@@ -294,19 +282,19 @@ function BulkActionBar({
   }
 
   return (
-    <div className="sticky top-0 z-10 mb-4 flex items-center gap-4 rounded-lg bg-[#8B2942] px-4 py-3 text-white shadow-md">
-      <span className="text-sm font-medium">
+    <div className="sticky top-0 z-10 mb-4 flex items-center gap-4 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 shadow-sm">
+      <span className="text-sm font-medium text-stone-700">
         {t("assignment.items_seleccionados", { count: selectedIds.size })}
       </span>
 
       <select
         value={bulkDescriber}
         onChange={(e) => setBulkDescriber(e.target.value)}
-        className="rounded border border-white/30 bg-white/10 px-2 py-1 text-sm text-white"
+        className="rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
       >
         <option value="">{t("assignment.catalogador")}</option>
         {cataloguers.map((m) => (
-          <option key={m.id} value={m.id} className="text-stone-900">
+          <option key={m.id} value={m.id}>
             {m.name ?? m.email}
           </option>
         ))}
@@ -315,11 +303,11 @@ function BulkActionBar({
       <select
         value={bulkReviewer}
         onChange={(e) => setBulkReviewer(e.target.value)}
-        className="rounded border border-white/30 bg-white/10 px-2 py-1 text-sm text-white"
+        className="rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
       >
         <option value="">{t("assignment.revisor")}</option>
         {reviewers.map((m) => (
-          <option key={m.id} value={m.id} className="text-stone-900">
+          <option key={m.id} value={m.id}>
             {m.name ?? m.email}
           </option>
         ))}
@@ -328,14 +316,14 @@ function BulkActionBar({
       <button
         onClick={handleBulkAssign}
         disabled={!bulkDescriber && !bulkReviewer}
-        className="rounded bg-white px-3 py-1 text-sm font-medium text-[#8B2942] hover:bg-stone-100 disabled:opacity-50"
+        className="rounded bg-burgundy-deep px-3 py-1 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
       >
         {t("assignment.asignar")}
       </button>
 
       <button
         onClick={onClear}
-        className="ml-auto text-sm text-white/70 hover:text-white"
+        className="ml-auto text-sm text-stone-500 hover:text-stone-700"
       >
         &times;
       </button>
@@ -359,7 +347,7 @@ function BulkSelectDropdown({
         type="button"
         onClick={() => setOpen(!open)}
         className="flex h-8 w-8 items-center justify-center rounded border border-stone-200 bg-white text-stone-500 hover:bg-stone-50"
-        title="Opciones de seleccion"
+        title={t('assignment.selection_options')}
       >
         +
       </button>
