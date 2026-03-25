@@ -1,3 +1,4 @@
+import { redirect } from "react-router";
 import type { Route } from "./+types/auth.github";
 
 /**
@@ -11,6 +12,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const env = context.cloudflare.env;
+  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
+    throw redirect("/login?error=oauth-failed");
+  }
+
   const origin = new URL(request.url).origin;
   const github = createGitHubClient(
     env.GITHUB_CLIENT_ID,

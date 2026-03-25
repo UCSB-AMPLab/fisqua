@@ -29,6 +29,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw redirect("/login?error=oauth-failed");
   }
 
+  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
+    throw redirect("/login?error=oauth-failed");
+  }
+
   const origin = new URL(request.url).origin;
   const github = createGitHubClient(
     env.GITHUB_CLIENT_ID,
