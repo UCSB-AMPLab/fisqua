@@ -51,7 +51,7 @@ export function shouldRenderRegionChip(
   comment: Pick<CommentWithAuthor, "regionX" | "regionY" | "pageId">,
   pageNumber: number | undefined,
 ): boolean {
-  visibility gate: the chip renders iff `regionX !== null`,
+  // Visibility gate: the chip renders iff `regionX !== null`,
   // `regionY !== null`, `pageId !== null`, AND the caller supplied a
   // pageNumber for the label. Any of those falling through yields
   // `false` and the chip stays hidden.

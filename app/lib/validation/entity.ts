@@ -42,7 +42,7 @@ export const entitySchema = z.object({
   legalStatus: z.string().max(100).optional(),
   functions: z.string().optional(),
   sources: z.string().optional(),
-  mergedInto: z.string().uuid().nullable().optional()
+  mergedInto: z.string().uuid().nullable().optional(),
   wikidataId: z.string().max(20).nullable().optional(),
   viafId: z.string().max(20).nullable().optional(),
   createdAt: z.number().int(),

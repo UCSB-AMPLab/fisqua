@@ -10,7 +10,6 @@
  *
  * @version v0.3.0
  */
-
 import { eq, and, isNull, inArray, sql, desc } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
@@ -177,14 +176,14 @@ export async function promoteEntries(
   const skipped: PromotionResult["skipped"] = [];
   const errors: PromotionResult["errors"] = [];
 
-  batch size limit
+  // batch size limit
   if (inputEntries.length > MAX_BATCH_SIZE) {
     throw new Error(
       `Batch size ${inputEntries.length} exceeds maximum of ${MAX_BATCH_SIZE}`
     );
   }
 
-  validate reference code format
+  // validate reference code format
   for (const item of inputEntries) {
     if (!REFERENCE_CODE_PATTERN.test(item.referenceCode)) {
       errors.push({
@@ -228,7 +227,7 @@ export async function promoteEntries(
       errors.push({ entryId: item.entryId, error: "Entry not found" });
       continue;
     }
-    verify entry belongs to volume
+    // verify entry belongs to volume
     if (entry.volumeId !== volumeId) {
       errors.push({
         entryId: item.entryId,
@@ -236,7 +235,7 @@ export async function promoteEntries(
       });
       continue;
     }
-    : only items
+    // only items
     if (entry.type !== "item") {
       errors.push({
         entryId: item.entryId,
@@ -245,7 +244,7 @@ export async function promoteEntries(
       continue;
     }
     if (entry.descriptionStatus !== "approved") {
-      : already promoted — skip, don't error
+      // already promoted — skip, don't error
       if (
         entry.descriptionStatus === "promoted" &&
         entry.promotedDescriptionId
@@ -308,7 +307,7 @@ export async function promoteEntries(
     throw new Error(`Volume not found: ${volumeId}`);
   }
 
-  : find description matching volume's referenceCode
+  // find description matching volume's referenceCode
   const parentDescription = await db
     .select()
     .from(descriptions)

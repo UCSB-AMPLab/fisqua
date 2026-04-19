@@ -8,7 +8,6 @@
  *
  * @version v0.3.0
  */
-
 import type { PromotionInput, PromotionOutput } from "./types";
 import { RESOURCE_TYPE_MAP } from "./types";
 
@@ -53,7 +52,7 @@ export function mapEntryToDescription(
       pathCache: parentPathCache
         ? `${parentPathCache} > ${title}`
         : title,
-      descriptionLevel: "item", : always item
+      descriptionLevel: "item", // always item
       resourceType: mappedResourceType as any,
       referenceCode: assignedReferenceCode,
       localIdentifier: assignedReferenceCode,
@@ -65,8 +64,8 @@ export function mapEntryToDescription(
       extent: entry.extent ?? undefined,
       scopeContent: entry.scopeContent ?? undefined,
       language: entry.language ?? undefined,
-      notes: entry.descriptionNotes ?? undefined, : renamed
-      internalNotes: entry.internalNotes ?? undefined, : direct
+      notes: entry.descriptionNotes ?? undefined, // renamed
+      internalNotes: entry.internalNotes ?? undefined, // direct
       hasDigital: true,
       isPublished: false, // staff publishes later
       iiifManifestUrl: undefined, // set after manifest upload

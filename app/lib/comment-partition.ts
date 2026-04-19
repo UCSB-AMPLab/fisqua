@@ -102,7 +102,7 @@ export function partitionComments<C extends PartitionInputComment>(
  (commentsByQcFlag[c.qcFlagId] ??= []).push(c);
  } else if (c.pageId) {
  (commentsByPage[c.pageId] ??= []).push(c);
- + page-anchored comments with a region re-resolve to
+ // Page-anchored comments with a region re-resolve to
  // their owning entry so the outline renders them under the
  // correct entry. Skip silently when no entry covers the point
  // (volume-edge case) — the legacy page bucket still holds the row.

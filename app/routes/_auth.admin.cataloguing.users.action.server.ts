@@ -147,7 +147,7 @@ export async function handleUsersAction(
         return { ok: false, error: i18n.t("admin:error.invalid_email") };
       }
 
-      : only a superadmin can grant isCollabAdmin at invite time.
+      // Only a superadmin can grant isCollabAdmin at invite time.
       if (grantCollabAdmin) {
         requireSuperAdminOr403(user);
       }

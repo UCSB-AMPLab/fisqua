@@ -34,7 +34,7 @@ export const placeSchema = z.object({
   adminLevel1: z.string().max(100).optional(),
   adminLevel2: z.string().max(100).optional(),
   needsGeocoding: z.boolean().default(true),
-  mergedInto: z.string().uuid().nullable().optional()
+  mergedInto: z.string().uuid().nullable().optional(),
   tgnId: z.string().max(20).nullable().optional(),
   hgisId: z.string().max(50).nullable().optional(),
   whgId: z.string().max(50).nullable().optional(),
