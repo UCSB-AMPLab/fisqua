@@ -32,7 +32,7 @@ interface ExportProgressData {
   recordCounts: string | null;
   errorMessage: string | null;
   completedAt: number | null;
-  heartbeat columns — all unix ms.
+  // Heartbeat columns — all unix ms.
   startedAt: number | null;
   currentStepStartedAt: number | null;
   currentStepCompletedAt: number | null;

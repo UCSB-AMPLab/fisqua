@@ -28,7 +28,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  : collab-side users only. Include users who either have
+  // Collab-side users only. Include users who either have
   // isCollabAdmin=true or have at least one projectMembers row. Archive-only
   // admins (isAdmin=true, isCollabAdmin=false, no memberships) are excluded.
   const memberUserIds = await db

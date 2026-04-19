@@ -535,7 +535,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
  const page = pages.find((p) => p.id === pageId);
  if (!page) return;
 
- / resolve owning entry. findCurrentEntry expects a
+ // Resolve owning entry. findCurrentEntry expects a
  // 1-based page number; page.position is 0-based in the outline,
  // so we add 1 to match.
  const owningEntryId = findCurrentEntry(
@@ -656,7 +656,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
  };
   }, []);
 
-  task 15: on drag-release, PATCH the comment's region coords
+  // On drag-release, PATCH the comment's region coords
   // and revalidate so the pin settles at the server-confirmed position.
   // The overlay clamps coords in-bounds; the server re-validates and
   // enforces the author-only gate. Errors surface via a console warn

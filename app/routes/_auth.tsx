@@ -36,7 +36,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const env = context.cloudflare.env;
   const { appName } = getAppConfig(env);
 
-  : compute hasAnyProjectMembership so the sidebar can show the
+  // Compute hasAnyProjectMembership so the sidebar can show the
   // Collaborative Cataloguing section to project-member-only users.
   const db = drizzle(env.DB);
   const membershipRows = await db
