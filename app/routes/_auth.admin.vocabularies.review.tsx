@@ -1,0 +1,492 @@
+/**
+ * Vocabularies — Review Queue
+ *
+ * Reviewer-only backlog of draft vocabulary terms awaiting approval.
+ * Shows each draft with its proposed label, any linked descriptions,
+ * and inline approve / reject actions. Rejections surface the inline
+ * panel so the reviewer can capture a reason without leaving the
+ * queue.
+ *
+ * @version v0.3.0
+ */
+
+import { useState } from "react";
+import { Link, useFetcher } from "react-router";
+import { useTranslation } from "react-i18next";
+import { ChevronRight, ChevronLeft, Check, GitMerge, X } from "lucide-react";
+import { userContext } from "../context";
+import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
+import { RejectInlinePanel } from "~/components/admin/reject-inline-panel";
+import { escapeLike } from "~/lib/sql-utils";
+import type { Route } from "./+types/_auth.admin.vocabularies.review";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ProposedTerm {
+  id: string;
+  canonical: string;
+  category: string | null;
+  entityCount: number;
+  proposedByName: string | null;
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Loader
+// ---------------------------------------------------------------------------
+
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and, isNull, desc, sql } = await import("drizzle-orm");
+  const { vocabularyTerms, users } = await import("~/db/schema");
+
+  const user = context.get(userContext);
+  requireAdmin(user);
+
+  const env = context.cloudflare.env;
+  const db = drizzle(env.DB);
+  const url = new URL(request.url);
+
+  // JSON search API for merge dialog (reuse same pattern as functions listing)
+  if (url.searchParams.get("intent") === "search-terms") {
+    const { like } = await import("drizzle-orm");
+    const q = url.searchParams.get("q")?.trim() || "";
+    const excludeId = url.searchParams.get("exclude") || "";
+    const conditions = [
+      like(vocabularyTerms.canonical, `%${escapeLike(q)}%`),
+      isNull(vocabularyTerms.mergedInto),
+      eq(vocabularyTerms.status, "approved"),
+    ];
+    if (excludeId) {
+      conditions.push(sql`${vocabularyTerms.id} != ${excludeId}`);
+    }
+    const results = await db
+      .select({
+        id: vocabularyTerms.id,
+        displayName: vocabularyTerms.canonical,
+        code: vocabularyTerms.category,
+      })
+      .from(vocabularyTerms)
+      .where(and(...conditions))
+      .limit(10)
+      .all();
+    return Response.json(results);
+  }
+
+  const page = Math.max(
+    1,
+    parseInt(url.searchParams.get("page") || "1", 10)
+  );
+  const pageSize = 50;
+  const offset = (page - 1) * pageSize;
+
+  // Count total proposed terms
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(vocabularyTerms)
+    .where(
+      and(eq(vocabularyTerms.status, "proposed"), isNull(vocabularyTerms.mergedInto))
+    )
+    .all();
+
+  // Fetch proposed terms with proposer name
+  const rows = await db
+    .select({
+      id: vocabularyTerms.id,
+      canonical: vocabularyTerms.canonical,
+      category: vocabularyTerms.category,
+      entityCount: vocabularyTerms.entityCount,
+      proposedByName: users.name,
+      createdAt: vocabularyTerms.createdAt,
+    })
+    .from(vocabularyTerms)
+    .leftJoin(users, eq(vocabularyTerms.proposedBy, users.id))
+    .where(
+      and(eq(vocabularyTerms.status, "proposed"), isNull(vocabularyTerms.mergedInto))
+    )
+    .orderBy(desc(vocabularyTerms.createdAt))
+    .limit(pageSize)
+    .offset(offset)
+    .all();
+
+  return {
+    terms: rows as ProposedTerm[],
+    total,
+    page,
+    totalPages: Math.ceil(total / pageSize),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Action
+// ---------------------------------------------------------------------------
+
+export async function action({ request, context }: Route.ActionArgs) {
+  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, sql } = await import("drizzle-orm");
+  const { vocabularyTerms, entities, changelog } = await import(
+    "~/db/schema"
+  );
+
+  const user = context.get(userContext);
+  requireAdmin(user);
+
+  const env = context.cloudflare.env;
+  const db = drizzle(env.DB);
+  const formData = await request.formData();
+  const intent = formData.get("_action") as string;
+
+  switch (intent) {
+    case "approve": {
+      const termId = formData.get("termId") as string;
+      const category = (formData.get("category") as string)?.trim() || null;
+      if (!termId) return { ok: false as const, error: "missing_id" };
+
+      const now = Math.floor(Date.now() / 1000);
+      const updates: Record<string, unknown> = {
+        status: "approved",
+        reviewedBy: user.id,
+        reviewedAt: now,
+        updatedAt: now,
+      };
+      if (category) {
+        updates.category = category;
+      }
+
+      await db
+        .update(vocabularyTerms)
+        .set(updates)
+        .where(eq(vocabularyTerms.id, termId));
+
+      // Changelog entry
+      await db.insert(changelog).values({
+        id: crypto.randomUUID(),
+        recordId: termId,
+        recordType: "vocabulary_term",
+        userId: user.id,
+        note: "Approved proposed term",
+        diff: JSON.stringify({ status: { old: "proposed", new: "approved" } }),
+        createdAt: now,
+      });
+
+      return { ok: true as const, action: "approved" };
+    }
+
+    case "reject": {
+      const termId = formData.get("termId") as string;
+      const reason = (formData.get("reason") as string)?.trim() || "";
+      if (!termId) return { ok: false as const, error: "missing_id" };
+
+      const now = Math.floor(Date.now() / 1000);
+
+      // Fetch current term for notes append
+      const term = await db
+        .select({ notes: vocabularyTerms.notes })
+        .from(vocabularyTerms)
+        .where(eq(vocabularyTerms.id, termId))
+        .get();
+
+      const existingNotes = term?.notes || "";
+      const rejectNote = reason
+        ? `Rejected: ${reason}`
+        : "Rejected (no reason given)";
+      const updatedNotes = existingNotes
+        ? `${existingNotes}\n${rejectNote}`
+        : rejectNote;
+
+      // Deprecate -- do NOT delete, do NOT null entity FKs
+      await db
+        .update(vocabularyTerms)
+        .set({
+          status: "deprecated",
+          reviewedBy: user.id,
+          reviewedAt: now,
+          notes: updatedNotes,
+          updatedAt: now,
+        })
+        .where(eq(vocabularyTerms.id, termId));
+
+      // Changelog entry
+      await db.insert(changelog).values({
+        id: crypto.randomUUID(),
+        recordId: termId,
+        recordType: "vocabulary_term",
+        userId: user.id,
+        note: `Rejected: ${reason}`,
+        diff: JSON.stringify({
+          status: { old: "proposed", new: "deprecated" },
+        }),
+        createdAt: now,
+      });
+
+      return { ok: true as const, action: "rejected" };
+    }
+
+    case "merge": {
+      const sourceId = formData.get("sourceId") as string;
+      const targetId = formData.get("targetId") as string;
+      if (!sourceId || !targetId)
+        return { ok: false as const, error: "missing_ids" };
+
+      const now = Math.floor(Date.now() / 1000);
+
+      // Reassign entities from source to target
+      await db
+        .update(entities)
+        .set({ primaryFunctionId: targetId, updatedAt: now })
+        .where(eq(entities.primaryFunctionId, sourceId));
+
+      // Mark source as merged
+      await db
+        .update(vocabularyTerms)
+        .set({
+          status: "deprecated",
+          mergedInto: targetId,
+          entityCount: 0,
+          reviewedBy: user.id,
+          reviewedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(vocabularyTerms.id, sourceId));
+
+      // Update target entity count
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(entities)
+        .where(eq(entities.primaryFunctionId, targetId))
+        .all();
+      await db
+        .update(vocabularyTerms)
+        .set({ entityCount: count, updatedAt: now })
+        .where(eq(vocabularyTerms.id, targetId));
+
+      // Changelog
+      await db.insert(changelog).values({
+        id: crypto.randomUUID(),
+        recordId: sourceId,
+        recordType: "vocabulary_term",
+        userId: user.id,
+        note: `Merged into ${targetId}`,
+        diff: JSON.stringify({
+          status: { old: "proposed", new: "deprecated" },
+          mergedInto: { old: null, new: targetId },
+        }),
+        createdAt: now,
+      });
+
+      return { ok: true as const, action: "merged" };
+    }
+
+    default:
+      return { ok: false as const, error: "unknown_intent" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function ReviewQueuePage({
+  loaderData,
+}: Route.ComponentProps) {
+  const { terms, total, page, totalPages } = loaderData;
+  const { t } = useTranslation("vocabularies");
+  const [rejectingTermId, setRejectingTermId] = useState<string | null>(null);
+  const approveFetcher = useFetcher();
+
+  const formatDate = (ts: number) => {
+    const d = new Date(ts);
+    return d.toISOString().slice(0, 10);
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl px-8 py-12">
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+        <ol className="flex items-center gap-1">
+          <li>
+            <Link
+              to="/admin/vocabularies"
+              className="text-[#78716C] hover:text-[#44403C]"
+            >
+              {t("page_title")}
+            </Link>
+          </li>
+          <li>
+            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+          </li>
+          <li>
+            <Link
+              to="/admin/vocabularies/functions"
+              className="text-[#78716C] hover:text-[#44403C]"
+            >
+              {t("vocab_primary_functions")}
+            </Link>
+          </li>
+          <li>
+            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+          </li>
+          <li className="text-[#44403C]">{t("review_queue")}</li>
+        </ol>
+      </nav>
+
+      {/* Page heading */}
+      <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+        {t("review_queue")}
+      </h1>
+      <p className="mt-1 text-sm text-[#78716C]">
+        {t("n_proposed", { count: total })}
+      </p>
+
+      {/* Empty state */}
+      {terms.length === 0 ? (
+        <div className="mt-8 text-center">
+          <p className="text-sm text-[#A8A29E]">{t("no_proposed")}</p>
+        </div>
+      ) : (
+        <>
+          {/* Terms table */}
+          <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E7E5E4]">
+                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                    {t("col_function")}
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                    {t("proposed_by")}
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                    Date
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+                    {t("col_usage")}
+                  </th>
+                  <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+                    {t("col_actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {terms.map((term) => (
+                  <tr
+                    key={term.id}
+                    className="border-b border-[#E7E5E4] last:border-b-0"
+                  >
+                    <td className="px-4 py-3">
+                      <Link
+                        to={`/admin/vocabularies/functions/${term.id}`}
+                        className="font-semibold text-[#6B1F33] hover:underline"
+                      >
+                        {term.canonical}
+                      </Link>
+                      {term.category && (
+                        <span className="ml-2 text-xs text-[#A8A29E]">
+                          {term.category}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-[#78716C]">
+                      {term.proposedByName ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-[#78716C]">
+                      {formatDate(term.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[#78716C]">
+                      {term.entityCount}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Approve */}
+                        <approveFetcher.Form method="post">
+                          <input
+                            type="hidden"
+                            name="_action"
+                            value="approve"
+                          />
+                          <input
+                            type="hidden"
+                            name="termId"
+                            value={term.id}
+                          />
+                          <button
+                            type="submit"
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-600 px-2 py-1 text-xs font-semibold text-green-600 hover:bg-green-50"
+                            title={t("approve_term")}
+                          >
+                            <Check className="h-3 w-3" />
+                            {t("approve_term")}
+                          </button>
+                        </approveFetcher.Form>
+
+                        {/* Reject */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRejectingTermId(
+                              rejectingTermId === term.id ? null : term.id
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-600 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                          title={t("reject_term")}
+                        >
+                          <X className="h-3 w-3" />
+                          {t("reject_term")}
+                        </button>
+                      </div>
+
+                      {/* Reject inline panel */}
+                      {rejectingTermId === term.id && (
+                        <div className="mt-2">
+                          <RejectInlinePanel
+                            termId={term.id}
+                            termName={term.canonical}
+                            isOpen={true}
+                            onClose={() => setRejectingTermId(null)}
+                          />
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-[#78716C]">
+                Page {page} of {totalPages}
+              </p>
+              <div className="flex gap-2">
+                {page > 1 && (
+                  <Link
+                    to={`?page=${page - 1}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Link>
+                )}
+                {page < totalPages && (
+                  <Link
+                    to={`?page=${page + 1}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

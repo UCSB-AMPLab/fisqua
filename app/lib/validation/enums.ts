@@ -1,41 +1,38 @@
 /**
  * Shared Enum Arrays
  *
- * Single source of truth for every controlled vocabulary the schema
- * and the Zod validators depend on: description levels, resource
- * types, entity types, place types, role labels for description
- * links, vocabulary statuses, and function categories. Keeping these
- * arrays in one file means the Drizzle schema and the Zod schemas
- * cannot drift apart -- a new description level added here lands in
- * both layers at once, and the TypeScript literal-union inference
- * surfaces the new value to every consumer at compile time.
- * Values mirror the Django backend (catalog/models.py) exactly.
+ * Single source of truth for the controlled-vocabulary arrays used by
+ * the Drizzle schema, the Zod validation schemas, and the vocabularies
+ * admin surfaces. Values mirror the Django backend (`catalog/models.py`)
+ * exactly so a payload that validates here validates there too.
+ *
+ * @version v0.3.0
  */
 
-// Description levels (9 values from Description.Level)
+// Description levels
 export const DESCRIPTION_LEVELS = [
   "fonds", "subfonds", "series", "subseries",
   "file", "item", "collection", "section", "volume",
 ] as const;
 
-// Resource types (from Description.ResourceType)
+// Resource types
 export const RESOURCE_TYPES = [
   "text", "still_image", "cartographic", "mixed",
 ] as const;
 
-// Entity types (3 values from Entity.EntityType)
+// Entity types
 export const ENTITY_TYPES = ["person", "family", "corporate"] as const;
 
 // EntityFunction certainty levels (from EntityFunction.Certainty)
 export const CERTAINTY_LEVELS = ["certain", "probable", "possible"] as const;
 
-// Place types (12 values from Place.PlaceType)
+// Place types
 export const PLACE_TYPES = [
   "country", "region", "department", "province", "partido",
   "city", "town", "parish", "hacienda", "mine", "river", "other",
 ] as const;
 
-// Entity roles in descriptions (30 values from DescriptionEntity.Role)
+// Entity roles in descriptions
 export const ENTITY_ROLES = [
   "creator", "author", "editor", "publisher",
   "sender", "recipient",
@@ -49,7 +46,7 @@ export const ENTITY_ROLES = [
   "mortgagor", "mortgagee", "creditor", "debtor",
 ] as const;
 
-// Place roles in descriptions (7 values from DescriptionPlace.Role)
+// Place roles in descriptions
 export const PLACE_ROLES = [
   "created", "subject", "mentioned",
   "sent_from", "sent_to", "published", "venue",
