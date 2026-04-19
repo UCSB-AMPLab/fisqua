@@ -9,7 +9,7 @@ const emailSchema = z.object({
 });
 
 export function meta() {
-  return [{ title: "Iniciar sesión | Zasqua Catalogación" }];
+  return [{ title: "Iniciar sesión | Fisqua" }];
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -86,11 +86,8 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
         <div className="text-center">
           <img src="/pomegranate.svg" alt="Zasqua" className="mx-auto h-24 w-24" />
           <h1 className="mt-4 font-serif text-[2.5rem] font-bold text-[#44403C]">
-            Zasqua
+            Fisqua
           </h1>
-          <p className="mt-1 font-sans text-[1.25rem] font-medium text-[#78716C]">
-            Catalogación
-          </p>
         </div>
 
         {urlError && errorMessages[urlError] && (

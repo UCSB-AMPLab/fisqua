@@ -4,7 +4,7 @@
  * @version v0.3.0
  */
 export default {
-  app_name: "Catalogación",
+  app_name: "Fisqua",
   button: {
     save: "Save",
     cancel: "Cancel",
