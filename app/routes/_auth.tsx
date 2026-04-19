@@ -1,6 +1,32 @@
-import { Outlet, useLocation } from "react-router";
+/**
+ * Authenticated Layout
+ *
+ * Every route under `/` that requires a signed-in user flows through this
+ * layout. It runs `authMiddleware` to establish the `userContext` for
+ * loaders and actions further down the tree, then assembles the chrome
+ * around whatever child route is rendering: a compact top-bar, the
+ * sidebar with role-gated sections, and a footer with the release
+ * version.
+ *
+ * The viewer and the description editor are full-page surfaces that opt
+ * out of the chrome entirely so cataloguers have the full viewport for
+ * IIIF tiles and ISAD(G) editing. The layout detects those routes by
+ * path and renders a bare `<Outlet />` in that case.
+ *
+ * The loader also computes `hasAnyProjectMembership` -- a single boolean
+ * that tells the sidebar whether to show the "Collaborative cataloguing"
+ * section to users who are not admins but are members of at least one
+ * project. The sidebar's visibility rules live in `getSidebarSections`;
+ * this loader just supplies the fact.
+ *
+ * @version v0.3.0
+ */
+
+import { useState, useEffect } from "react";
+import { Form, Outlet, useLocation } from "react-router";
+import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
-import { TopBar } from "../components/layout/top-bar";
+import { Sidebar } from "../components/layout/sidebar";
 import { Footer } from "../components/layout/footer";
 import type { Route } from "./+types/_auth";
 
@@ -13,27 +39,107 @@ export const middleware = [
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { getAppConfig } = await import("../lib/config.server");
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { projectMembers } = await import("../db/schema");
+
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const { appName } = getAppConfig(env);
-  return { user, appName };
+
+  // Project-membership fact drives the "Collaborative cataloguing" sidebar
+  // section for plain members who hold no admin flags.
+  const db = drizzle(env.DB);
+  const membershipRows = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, user.id))
+    .limit(1);
+  const hasAnyProjectMembership = membershipRows.length > 0;
+
+  return { user, appName, hasAnyProjectMembership };
 }
 
-export default function AuthLayout({ loaderData }: Route.ComponentProps) {
+export default function CatalogacionLayout({ loaderData }: Route.ComponentProps) {
   const location = useLocation();
+  const { t } = useTranslation("common");
+  const { t: tDashboard } = useTranslation("dashboard");
+
   const isViewer = location.pathname.includes("/viewer/");
   const isDescriptionEditor = location.pathname.includes("/describe/");
   const showChrome = !isViewer && !isDescriptionEditor;
 
+  // Sidebar collapse state — initialise false, read localStorage on mount
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("sidebar-collapsed");
+    if (stored === "true") {
+      setCollapsed(true);
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", String(next));
+      return next;
+    });
+  };
+
+  // Full-page escape for viewer and description editor
+  if (!showChrome) {
+    return <Outlet />;
+  }
+
   return (
-    <div className={showChrome ? "flex min-h-screen flex-col" : ""}>
-      {showChrome && (
-        <TopBar user={loaderData.user} appName={loaderData.appName} />
-      )}
-      <main className={showChrome ? "flex-1 pt-12" : ""}>
-        <Outlet />
-      </main>
-      {showChrome && <Footer />}
+    <div className="flex h-screen flex-col bg-white">
+      {/* Header bar */}
+      <header className="flex h-14 items-center justify-between border-b border-[#E7E5E4] bg-[#FAFAF9] px-4">
+        <div className="flex items-center">
+          <img src="/pomegranate.svg" alt="" className="h-8" aria-hidden="true" />
+          <div className="mx-3 h-6 w-px bg-[#E7E5E4]" aria-hidden="true" />
+          <span className="font-sans text-sm text-[#78716C]">
+            Fisqua: <strong className="font-semibold">Neogranadina</strong>
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-sans text-sm text-[#78716C]">
+            {loaderData.user.email}
+          </span>
+          <Form method="post" action="/auth/logout">
+            <button
+              type="submit"
+              className="font-sans text-sm font-medium text-[#8B2942] hover:underline"
+            >
+              {tDashboard("nav.log_out")}
+            </button>
+          </Form>
+        </div>
+      </header>
+
+      {/* Main area: sidebar + content */}
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar
+          user={{
+            isAdmin: loaderData.user.isAdmin,
+            isSuperAdmin: loaderData.user.isSuperAdmin,
+            isCollabAdmin: loaderData.user.isCollabAdmin,
+            isArchiveUser: loaderData.user.isArchiveUser,
+            isUserManager: loaderData.user.isUserManager,
+            isCataloguer: loaderData.user.isCataloguer,
+            hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
+          }}
+          collapsed={collapsed}
+          onToggle={toggleCollapsed}
+        />
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          <div className="flex-1 p-6">
+            <Outlet />
+          </div>
+          <Footer />
+        </div>
+      </div>
     </div>
   );
 }

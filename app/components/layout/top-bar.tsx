@@ -1,3 +1,16 @@
+/**
+ * Top Bar
+ *
+ * The thin header that sits above the sidebar-and-content layout on
+ * authenticated pages. Shows the product wordmark on the left linked to
+ * the user's dashboard, and the user's email plus a log-out form on the
+ * right. Kept intentionally minimal -- every app-level navigation lives
+ * in the sidebar, so the top bar only needs to anchor identity and sign
+ * out.
+ *
+ * @version v0.3.0
+ */
+
 import { Form, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { User } from "../../context";
@@ -18,7 +31,7 @@ export function TopBar({ user, appName }: TopBarProps) {
           <img src="/pomegranate.svg" alt="" className="h-8 w-8" aria-hidden="true" />
           <div className="h-6 border-l border-[#E7E5E4]" aria-hidden="true" />
           <span className="font-sans text-[0.875rem] text-[#78716C]">
-            Zasqua: <strong className="font-semibold">{tCommon("app_name")}</strong>
+            Fisqua: <strong className="font-semibold">{tCommon("app_name")}</strong>
           </span>
         </Link>
 
