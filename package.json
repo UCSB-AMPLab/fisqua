@@ -1,8 +1,9 @@
 {
-  "name": "cloudflare-app-template",
+  "name": "fisqua",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Template for Cloudflare Workers applications with React Router, D1, and Drizzle ORM",
+  "description": "Collaborative cataloguing and data-management platform for archival materials, built on Cloudflare Workers.",
   "scripts": {
     "build": "react-router build",
     "cf-typegen": "wrangler types",
