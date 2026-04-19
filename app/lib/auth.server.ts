@@ -1,3 +1,33 @@
+/**
+ * Authentication Server Helpers
+ *
+ * This module deals with the two server-side primitives that underlie
+ * sign-in: minting and verifying magic-link tokens, and fetching the
+ * authenticated user from D1 for the middleware to hand into the
+ * request context.
+ *
+ * `generateMagicLink` looks up a user by email, mints a one-time token,
+ * stores it in the `magic_links` table with a fifteen-minute expiry,
+ * builds the verification URL, and sends it through Resend. It returns
+ * a `{ success }` shape on the happy path and `{ error }` when the
+ * email is not associated with any user -- callers surface the error
+ * verbatim on the login form.
+ *
+ * `verifyMagicLink` takes the token from the callback query string and
+ * returns the user id if the token is valid (exists, unused, and not
+ * past its expiry), or `null` otherwise. On success it marks the token
+ * as used so it cannot be replayed; the 15-minute window plus
+ * single-use semantics are the core of the magic-link security model.
+ *
+ * `requireUser` fetches the user row keyed by id and returns the full
+ * role-flag snapshot that `_auth.tsx` needs to populate
+ * `userContext`. It mirrors the shape of the `User` type defined in
+ * `app/context.ts` so loaders further down the tree can rely on every
+ * role flag being present.
+ *
+ * @version v0.3.0
+ */
+
 import { eq, and, isNull } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { users, magicLinks } from "../db/schema";
@@ -87,7 +117,8 @@ export async function verifyMagicLink(
 }
 
 /**
- * Fetches a user by ID. Returns the user or null if not found.
+ * Fetches a user by ID and returns the full role-flag snapshot that
+ * `userContext` is populated with, or null if the user is missing.
  */
 export async function requireUser(
   db: DrizzleD1Database<any>,
@@ -97,6 +128,12 @@ export async function requireUser(
   email: string;
   name: string | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isCollabAdmin: boolean;
+  isArchiveUser: boolean;
+  isUserManager: boolean;
+  isCataloguer: boolean;
+  githubId: string | null;
 } | null> {
   const user = await db
     .select()
@@ -113,5 +150,11 @@ export async function requireUser(
     email: user.email,
     name: user.name,
     isAdmin: user.isAdmin as unknown as boolean,
+    isSuperAdmin: user.isSuperAdmin as unknown as boolean,
+    isCollabAdmin: user.isCollabAdmin as unknown as boolean,
+    isArchiveUser: user.isArchiveUser as unknown as boolean,
+    isUserManager: user.isUserManager as unknown as boolean,
+    isCataloguer: user.isCataloguer as unknown as boolean,
+    githubId: user.githubId ?? null,
   };
 }

@@ -1,8 +1,45 @@
+/**
+ * Access-Control Helpers
+ *
+ * This module deals with the server-side permission checks that every
+ * loader and action relies on to decide whether the current user may
+ * see or mutate a given resource. The helpers come in two tiers.
+ *
+ * User-level guards -- `requireAdmin`, `requireCollabAdmin` -- operate
+ * purely on the typed `User` object and throw a 403 `Response` if the
+ * needed flag is missing. No DB read is needed. These are used at the
+ * top of loaders that gate a whole surface (the entities admin, the
+ * project-management pages) where the decision depends only on who the
+ * caller is, not on which resource they asked for.
+ *
+ * Resource-scoped guards -- `requireProjectRole`, `requireEntryAccess`,
+ * `requirePageAccess`, `requireDescriptionAccess` -- resolve a given
+ * record back to its owning project and then check the caller's
+ * membership roles in that project. These are the helpers that stop
+ * cross-project tampering from reaching the API surface: a member of
+ * project A cannot comment or flag things in project B, regardless of
+ * what identifiers they send in the request body.
+ *
+ * `requireEntryAccess` and `requirePageAccess` are deliberately
+ * symmetric. One resolves an entry back to its volume and project; the
+ * other resolves a page. Both delegate the final cataloguer / reviewer
+ * / lead membership check to `requireProjectRole` so the same role
+ * semantics apply whichever resource kind is targeted.
+ *
+ * Three helpers -- `requireVolumeAccess`, `canDescribe`,
+ * `canReviewDescription` -- are pure. They take pre-fetched rows and
+ * return the computed access level or boolean. Callers use them both
+ * to paint UI (disable a button when the user cannot write) and on the
+ * server to gate writes before they hit D1.
+ *
+ * @version v0.3.0
+ */
+
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
 
 import { eq, and } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { projectMembers, entries, volumes } from "../db/schema";
+import { projectMembers, entries, volumes, volumePages } from "../db/schema";
 import type { DescriptionStatus } from "./description-workflow";
 import type { User } from "../context";
 
@@ -11,6 +48,24 @@ import type { User } from "../context";
  */
 export function requireAdmin(user: User): void {
   if (!user.isAdmin) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+}
+
+/**
+ * Throws a 403 Response if the user is not a collaborative-cataloguing
+ * admin or superadmin. Plain archive admins (`isAdmin` only) are
+ * rejected here -- the archive-admin tier and the collab-admin tier
+ * are intentionally walled off so that a user who curates archival
+ * descriptions cannot automatically invite cataloguers or reassign
+ * volumes.
+ */
+export function requireCollabAdmin(user: User): void {
+  const u = user as User & {
+    isCollabAdmin?: boolean;
+    isSuperAdmin?: boolean;
+  };
+  if (!u.isCollabAdmin && !u.isSuperAdmin) {
     throw new Response("Forbidden", { status: 403 });
   }
 }
@@ -29,7 +84,7 @@ export async function requireProjectRole(
   isAdmin = false
 ): Promise<typeof projectMembers.$inferSelect[]> {
   if (isAdmin) {
-    // Admins bypass -- return any existing memberships (may be empty)
+    // Admins bypass — return any existing memberships (may be empty)
     const memberships = await db
       .select()
       .from(projectMembers)
@@ -69,7 +124,7 @@ export async function requireProjectRole(
 
 /**
  * Determine the access level for a user on a specific volume.
- * Pure function -- no DB query, takes pre-fetched volume data.
+ * Pure function — no DB query, takes pre-fetched volume data.
  *
  * Returns:
  * - "edit": user can modify boundaries and metadata
@@ -240,4 +295,65 @@ export function canReviewDescription(
     return true;
   }
   return false;
+}
+
+/**
+ * Load a page, find its volume and project, check membership.
+ *
+ * Mirrors `requireEntryAccess` but keyed to a `volume_pages.id` rather
+ * than an `entries.id`. Any of lead / cataloguer / reviewer on the
+ * parent project may view or mutate the page; the caller is free to
+ * narrow further — for example, the QC-flag resolve action separately
+ * enforces lead-only via `requireProjectRole`.
+ *
+ * Returns the minimal page and volume records needed by callers to
+ * cross-check a client-supplied `volumeId` against the server-derived
+ * `volume.id`. Throws a 404 Response if the page or its volume is
+ * missing, and a 403 Response (via `requireProjectRole`) if the user
+ * is not a member of the project.
+ */
+export async function requirePageAccess(
+  db: DrizzleD1Database<any>,
+  pageId: string,
+  userId: string,
+  isAdmin = false
+): Promise<{
+  volume: { id: string; projectId: string };
+  page: { id: string; volumeId: string; position: number };
+}> {
+  const [page] = await db
+    .select({
+      id: volumePages.id,
+      volumeId: volumePages.volumeId,
+      position: volumePages.position,
+    })
+    .from(volumePages)
+    .where(eq(volumePages.id, pageId))
+    .limit(1)
+    .all();
+
+  if (!page) {
+    throw new Response("Page not found", { status: 404 });
+  }
+
+  const [volume] = await db
+    .select({ id: volumes.id, projectId: volumes.projectId })
+    .from(volumes)
+    .where(eq(volumes.id, page.volumeId))
+    .limit(1)
+    .all();
+
+  if (!volume) {
+    throw new Response("Volume not found", { status: 404 });
+  }
+
+  await requireProjectRole(
+    db,
+    userId,
+    volume.projectId,
+    ["lead", "cataloguer", "reviewer"],
+    isAdmin
+  );
+
+  return { volume, page };
 }
