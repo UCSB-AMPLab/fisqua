@@ -1,3 +1,8 @@
+/**
+ * English translations — project namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   settings: {
     project_name: "Project name",
@@ -13,18 +18,49 @@ export default {
     settings_json_help: "Application-specific configuration (JSON)",
     save: "Save settings",
     saved: "Settings saved.",
+    restored: "Project restored.",
+    danger_zone: "Danger zone",
+    archive_title: "Archive this project",
+    archive_description: "Archived projects are hidden from team members but can be restored.",
+    archive: "Archive",
+    restore_title: "Restore this project",
+    restore_description: "Make this project visible and active again.",
+    restore: "Restore",
+    delete_title: "Delete this project",
+    delete_description: "Permanently delete this project and all its data. This cannot be undone.",
+    delete_confirm: "Type \"{{name}}\" to confirm deletion.",
+    delete_permanently: "Delete permanently",
+    subtypes_heading: "Document subtypes",
+    subtypes_help: "Customize the list of document subtypes cataloguers can choose from. Labels are shown in Colombian Spanish regardless of interface language, matching archival conventions. Removing a subtype does not change any entries that already use it.",
+    subtypes_add: "Add",
+    subtypes_add_placeholder: "New subtype (e.g. Escritura)",
+    subtypes_move_up: "Move up",
+    subtypes_move_down: "Move down",
+    subtypes_remove: "Remove",
+    subtypes_empty_hint: "No subtypes yet. Cataloguers will fall back to the default seed list until you save.",
+    subtypes_save: "Save subtypes",
+    subtypes_reset: "Discard changes",
+    subtypes_saved: "Subtypes saved.",
   },
   action: {
     invite_member: "Invite member",
     invite: "Invite",
     remove: "Remove",
+    edit_role: "Edit role",
     remove_confirm: "Remove {{name}} from the project?",
   },
   tab: {
+    overview: "Overview",
+    general_settings: "General settings",
     settings: "Settings",
     members: "Members",
+    users: "Users",
     volumes: "Volumes",
     assignments: "Assignments",
+    open_project: "Open project",
+  },
+  nav: {
+    all_projects: "All projects",
   },
   table: {
     volume: "Volume",
@@ -51,7 +87,11 @@ export default {
     no_members: "No members yet.",
     no_volumes_add: "No volumes yet. Click \"Add\" to import volumes from IIIF manifests.",
     no_volumes_assigned: "No volumes assigned yet.",
+    no_projects_title: "No projects yet",
+    no_projects_body: "You aren't a member of any projects yet. Ask a project lead to add you, or create a new one if you have permission.",
+    no_projects_cta: "Create your first project",
   },
+  action_new: "New project",
   volume_card: {
     first_page_alt: "First page of {{name}}",
     delete_confirm: "Delete this volume? This cannot be undone.",

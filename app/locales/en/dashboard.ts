@@ -1,3 +1,8 @@
+/**
+ * English translations — dashboard namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   nav: {
     home: "Home",
@@ -9,11 +14,41 @@ export default {
     log_out: "Log out",
     admin: "Admin",
   },
+  greeting: "Welcome, {{name}}",
+  role: {
+    admin: "Administrator — full access",
+    lead_one: "Lead of {{count}} project",
+    lead_other: "Lead of {{count}} projects",
+    cataloguer_one: "Cataloguer in {{count}} project",
+    cataloguer_other: "Cataloguer in {{count}} projects",
+    reviewer_one: "Reviewer in {{count}} project",
+    reviewer_other: "Reviewer in {{count}} projects",
+  },
+  stats: {
+    descriptions: "Descriptions",
+    entities: "Entities",
+    places: "Places",
+    repositories: "Repositories",
+    users: "Users",
+  },
   heading: {
     dashboard: "Home",
     recent_activity: "Recent activity",
     my_work: "My work",
     my_reviews: "My reviews",
+  },
+  member_dashboard: {
+    page_title: "My projects",
+    section_segmentation: "Segmentation",
+    section_description: "Description",
+    section_messages: "Messages",
+    my_work: "My work",
+    to_review: "To review",
+    empty_seg_my_work: "No volumes assigned yet. Your lead will assign new work when it's ready.",
+    empty_seg_to_review: "No volumes waiting for review right now.",
+    empty_desc_my_work: "No entries assigned for description. Check back when new volumes are segmented.",
+    empty_desc_to_review: "No entries waiting for review right now.",
+    empty_messages: "No messages yet. Comments and status updates from your projects will appear here.",
   },
   group: {
     needs_attention: "Needs attention",
@@ -33,6 +68,8 @@ export default {
     no_projects_body: "Create one to get started.",
     no_projects_admin_body: "Get started by creating a project or managing users.",
     no_projects_member_body: "Ask a project lead to add you.",
+    no_projects_assigned: "You have no assigned projects",
+    no_projects_assigned_body: "Projects appear here when an admin or lead assigns you.",
     no_assignments_title: "No assignments",
     no_assignments_body: "Wait to be assigned a volume.",
     no_volumes_title: "No volumes yet",
@@ -45,6 +82,13 @@ export default {
     no_description_review_title: "Nothing to review",
     no_description_review_body: "No entries are waiting for description review.",
   },
+  stat_volumes: "Volumes to segment",
+  stat_entries: "Entries to describe",
+  stat_messages: "New messages",
+  last_login: "Last login: {{date}}",
+  announcement_label: "System announcement (visible to all users)",
+  set_announcement: "Set announcement",
+  clear_announcement: "Clear",
   today: "Today",
   days_waiting_one: "{{count}} day waiting",
   days_waiting_other: "{{count}} days waiting",
@@ -83,6 +127,10 @@ export default {
       resegmentation_flagged_detail: "Re-segmentation issue reported on: {{name}}",
       comment_added: "Comment added",
       comment_added_detail: "Comment added on: {{title}}",
+      qc_flag_raised: "QC flag raised",
+      qc_flag_raised_detail: "QC flag raised on img {{pageLabel}}",
+      qc_flag_resolved: "QC flag resolved",
+      qc_flag_resolved_detail: "QC flag {{action}} on img {{pageLabel}}",
     },
     just_now: "Just now",
   },

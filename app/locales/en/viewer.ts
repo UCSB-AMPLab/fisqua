@@ -1,3 +1,8 @@
+/**
+ * English translations — viewer namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   toolbar: {
     undo: "Undo",
@@ -11,11 +16,19 @@ export default {
     fit_to_width: "Fit to width",
     go_to_image: "Go to image",
     back_to_volumes: "Back to volumes",
+    annotation: "Annotation",
+    annotationPoint: "Point",
+    annotationBox: "Box",
+    annotationMove: "Move",
   },
   save_status: {
     saved: "Saved",
     saving: "Saving...",
     unsaved: "Unsaved",
+  },
+  move_tool: {
+    not_author: "You can only move your own annotations.",
+    error_server: "Could not move the annotation. Please try again.",
   },
   outline: {
     title: "Outline",
@@ -30,6 +43,14 @@ export default {
     no_title: "Untitled",
     no_type: "(unset)",
     type_label: "Type",
+    is_document_label: "Is it a document?",
+    is_document_yes: "Yes",
+    is_document_no: "No",
+    subtype_label: "Subtype",
+    subtype_unset: "(select)",
+    subtype_other: "Other",
+    subtype_other_placeholder: "Type a custom subtype",
+    non_doc_label: "Kind",
     title_label: "Title",
     ref_label: "Ref.",
     level_label: "Level",
@@ -42,16 +63,41 @@ export default {
       item: "Document",
       blank: "Blank",
       front_matter: "Front matter",
-      back_matter: "Back matter",
+      back_matter: "End matter",
+      test_images: "Test/calibration images",
     },
     comments_label: "Comments",
     has_comments: "Has comments",
     reviewer_comment_label: "Reviewer comment:",
     accepting: "Accepting...",
+    // Task 14 (CONTEXT rev 4): outline comment-card labels and the D-26
+    // entry-delete warning copy.
+    comment_kind_annotation: "Annotation",
+    comment_kind_comment: "Comment",
+    comment_doc_prefix: "Doc {{n}}",
+    comment_img_prefix: "img {{n}}",
+    comment_reply: "Reply",
+    comment_mark_seen: "Mark as seen",
+    comment_thread_header: "Conversation thread",
+    add_comment: "Add comment",
+    delete_with_attached_count:
+      "{{count, plural, one {# attached comment linked to this entry will be deleted.} other {# attached comments linked to this entry will be deleted.}}}",
+    delete_with_anchored_remaining:
+      "{{count, plural, one {# comment linked to the images will remain.} other {# comments linked to the images will remain.}}}",
     readonly: {
       segmented: "Submitted for review",
       approved: "This volume has been approved",
       not_assigned: "Read-only -- you are not assigned to this volume",
     },
+  },
+  // Task 14.E (D-25): mandatory-comment prompt dialog.
+  comment_prompt: {
+    title: "Add a comment",
+    placeholder: "Write your comment...",
+    submit: "Save",
+    cancel: "Cancel",
+    region_label: "Region on p. {{page}}",
+    error_empty: "Comment cannot be empty.",
+    error_server: "Could not save. Please try again.",
   },
 } as const;

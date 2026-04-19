@@ -1,3 +1,8 @@
+/**
+ * Spanish translations — auth namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   email_label: "Correo electrónico",
   login_button: "Enviar enlace de acceso",
@@ -15,7 +20,7 @@ export default {
       "No existe una cuenta con el correo de tu GitHub. Pide una invitación al administrador del proyecto.",
   },
   placeholder: "tu@ejemplo.com",
-  page_title: "Iniciar sesión | Zasqua Catalogación",
+  page_title: "Iniciar sesión | Fisqua",
   footer_note:
     "Inicia sesión con GitHub o tu correo institucional de Neogranadina.",
 } as const;

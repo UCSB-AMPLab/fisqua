@@ -1,3 +1,8 @@
+/**
+ * English translations — description namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   status: {
     unassigned: "Unassigned",

@@ -1,3 +1,8 @@
+/**
+ * Spanish translations — dashboard namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   nav: {
     home: "Inicio",
@@ -9,11 +14,41 @@ export default {
     log_out: "Cerrar sesión",
     admin: "Administración",
   },
+  greeting: "Hola, {{name}}",
+  role: {
+    admin: "Administración — acceso completo",
+    lead_one: "Líder de {{count}} proyecto",
+    lead_other: "Líder de {{count}} proyectos",
+    cataloguer_one: "Catalogación en {{count}} proyecto",
+    cataloguer_other: "Catalogación en {{count}} proyectos",
+    reviewer_one: "Revisión en {{count}} proyecto",
+    reviewer_other: "Revisión en {{count}} proyectos",
+  },
+  stats: {
+    descriptions: "Descripciones",
+    entities: "Entidades",
+    places: "Lugares",
+    repositories: "Repositorios",
+    users: "Usuarios",
+  },
   heading: {
     dashboard: "Inicio",
     recent_activity: "Actividad reciente",
     my_work: "Mi trabajo",
     my_reviews: "Mis revisiones",
+  },
+  member_dashboard: {
+    page_title: "Mis proyectos",
+    section_segmentation: "Segmentación",
+    section_description: "Descripción",
+    section_messages: "Mensajes",
+    my_work: "Mi trabajo",
+    to_review: "Por revisar",
+    empty_seg_my_work: "Aún no tienes volúmenes asignados. Tu responsable asignará nuevo trabajo cuando esté listo.",
+    empty_seg_to_review: "No hay volúmenes esperando revisión en este momento.",
+    empty_desc_my_work: "No tienes entradas asignadas para descripción. Revisa cuando se segmenten nuevos volúmenes.",
+    empty_desc_to_review: "No hay entradas esperando revisión en este momento.",
+    empty_messages: "Aún no hay mensajes. Los comentarios y cambios de estado de tus proyectos aparecerán aquí.",
   },
   group: {
     needs_attention: "Necesitan atención",
@@ -33,6 +68,8 @@ export default {
     no_projects_body: "Crea uno para empezar.",
     no_projects_admin_body: "Crea un proyecto o administra los usuarios para empezar.",
     no_projects_member_body: "Espera a que un coordinador te agregue.",
+    no_projects_assigned: "No tienes proyectos asignados",
+    no_projects_assigned_body: "Los proyectos aparecen aquí cuando un administrador o líder te asigne.",
     no_assignments_title: "No tienes asignaciones",
     no_assignments_body: "Espera a que te asignen una unidad compuesta.",
     no_volumes_title: "Aún no hay unidades compuestas",
@@ -45,6 +82,13 @@ export default {
     no_description_review_title: "Nada que revisar",
     no_description_review_body: "No hay entradas pendientes de revisión de descripción.",
   },
+  stat_volumes: "Volúmenes por segmentar",
+  stat_entries: "Entradas por describir",
+  stat_messages: "Mensajes nuevos",
+  last_login: "Último acceso: {{date}}",
+  announcement_label: "Anuncio del sistema (visible para todos los usuarios)",
+  set_announcement: "Establecer anuncio",
+  clear_announcement: "Borrar",
   today: "Hoy",
   days_waiting_one: "{{count}} día en espera",
   days_waiting_other: "{{count}} días en espera",
@@ -83,7 +127,15 @@ export default {
       resegmentation_flagged_detail: "Problema de segmentación reportado en: {{name}}",
       comment_added: "Comentario agregado",
       comment_added_detail: "Comentario agregado en: {{title}}",
+      qc_flag_raised: "Marca de calidad reportada",
+      qc_flag_raised_detail:
+        "Marca de calidad reportada en img {{pageLabel}}",
+      qc_flag_resolved: "Marca de calidad resuelta",
+      qc_flag_resolved_detail:
+        "Marca de calidad {{action}} en img {{pageLabel}}",
     },
     just_now: "Ahora",
   },
 } as const;
+
+// Version: v0.3.0 - Phase 29.2 page-level annotations (2026-04-17)

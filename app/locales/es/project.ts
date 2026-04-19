@@ -1,3 +1,8 @@
+/**
+ * Spanish translations — project namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   settings: {
     project_name: "Nombre del proyecto",
@@ -13,18 +18,49 @@ export default {
     settings_json_help: "Configuración específica de la aplicación (JSON)",
     save: "Guardar configuración",
     saved: "Configuración guardada.",
+    restored: "Proyecto restaurado.",
+    danger_zone: "Zona de peligro",
+    archive_title: "Archivar este proyecto",
+    archive_description: "Los proyectos archivados se ocultan del equipo pero se pueden restaurar.",
+    archive: "Archivar",
+    restore_title: "Restaurar este proyecto",
+    restore_description: "Hacer que este proyecto sea visible y activo de nuevo.",
+    restore: "Restaurar",
+    delete_title: "Eliminar este proyecto",
+    delete_description: "Eliminar permanentemente este proyecto y todos sus datos. Esta acción no se puede deshacer.",
+    delete_confirm: "Escribe \"{{name}}\" para confirmar la eliminación.",
+    delete_permanently: "Eliminar permanentemente",
+    subtypes_heading: "Subtipos de documento",
+    subtypes_help: "Personaliza la lista de subtipos documentales que los catalogadores pueden elegir. Las etiquetas se muestran siempre en español colombiano, independientemente del idioma de la interfaz, según las convenciones archivísticas. Eliminar un subtipo no modifica los documentos que ya lo tengan asignado.",
+    subtypes_add: "Agregar",
+    subtypes_add_placeholder: "Nuevo subtipo (p. ej. Escritura)",
+    subtypes_move_up: "Subir",
+    subtypes_move_down: "Bajar",
+    subtypes_remove: "Eliminar",
+    subtypes_empty_hint: "Aún no hay subtipos. Los catalogadores verán la lista sugerida hasta que guardes cambios.",
+    subtypes_save: "Guardar subtipos",
+    subtypes_reset: "Descartar cambios",
+    subtypes_saved: "Subtipos guardados.",
   },
   action: {
     invite_member: "Invitar miembro",
     invite: "Invitar",
     remove: "Eliminar",
+    edit_role: "Editar rol",
     remove_confirm: "Eliminar a {{name}} del proyecto?",
   },
   tab: {
+    overview: "Panorama",
+    general_settings: "Configuración general",
     settings: "Configuración",
     members: "Miembros",
+    users: "Usuarios",
     volumes: "Unidades compuestas",
     assignments: "Asignaciones",
+    open_project: "Abrir proyecto",
+  },
+  nav: {
+    all_projects: "Todos los proyectos",
   },
   table: {
     volume: "Unidad compuesta",
@@ -51,7 +87,11 @@ export default {
     no_members: "Aún no hay miembros.",
     no_volumes_add: "Aún no hay unidades compuestas. Haz clic en \"Agregar\" para importar unidades compuestas desde manifiestos IIIF.",
     no_volumes_assigned: "Aún no hay unidades compuestas asignadas.",
+    no_projects_title: "Aún no hay proyectos",
+    no_projects_body: "Todavía no eres miembro de ningún proyecto. Pídele a un coordinador que te agregue, o crea uno nuevo si tienes permisos.",
+    no_projects_cta: "Crear tu primer proyecto",
   },
+  action_new: "Nuevo proyecto",
   volume_card: {
     first_page_alt: "Primera imagen de {{name}}",
     delete_confirm: "Eliminar esta unidad compuesta? Esta acción no se puede deshacer.",

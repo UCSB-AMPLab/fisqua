@@ -1,3 +1,8 @@
+/**
+ * English translations — workflow namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   status: {
     unstarted: "Unstarted",

@@ -1,3 +1,8 @@
+/**
+ * English translations — auth namespace
+ *
+ * @version v0.3.0
+ */
 export default {
   email_label: "Email address",
   login_button: "Send login link",
@@ -14,7 +19,7 @@ export default {
       "No account found for your GitHub email. Ask a project admin for an invite.",
   },
   placeholder: "you@example.com",
-  page_title: "Log in | Zasqua Catalogación",
+  page_title: "Log in | Fisqua",
   footer_note:
     "Log in with GitHub or your Neogranadina institutional email.",
 } as const;
