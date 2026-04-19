@@ -1,3 +1,36 @@
+/**
+ * Cloudflare Worker Configuration
+ *
+ * This file tells Cloudflare how to run the Fisqua cataloguing app on its
+ * Workers platform. It points at the Worker entry script, binds the app to
+ * the external services it needs, and registers any long-running background
+ * jobs. Think of it as the runtime manifest — Cloudflare reads this on every
+ * deploy to know what database to connect to, which storage buckets are
+ * available, and what custom domain the app answers on.
+ *
+ * The app talks to four kinds of Cloudflare resources:
+ *
+ *   - a D1 database (SQLite-in-the-edge) for archival descriptions, users,
+ *     projects, and cataloguing workflow state;
+ *   - four R2 buckets — `BUCKET` for live app uploads, `EXPORT_BUCKET` for
+ *     published JSON exports consumed by the static frontend, `MANIFESTS_BUCKET`
+ *     for generated IIIF image manifests, and `METS_BUCKET` for archival METS
+ *     XML packages that track provenance;
+ *   - Cloudflare Workflows, used to run the publish-export pipeline as a
+ *     durable background job that survives Worker restarts and can be resumed
+ *     after failure;
+ *   - a handful of plain environment variables (app name, sender email,
+ *     allowed IIIF manifest hosts) plus secrets managed out-of-band via
+ *     `wrangler secret put`.
+ *
+ * Two deployment environments are defined: the default production environment
+ * (served at `catalogacion.zasqua.org`) and a staging environment at
+ * `catalogacion-staging.zasqua.org` with its own D1 database. Both environments
+ * share the same R2 buckets — exports, manifests, and METS packages are
+ * written once and read by both environments.
+ *
+ * Version: v0.3.0
+ */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "zasqua-catalogacion",
@@ -10,7 +43,7 @@
   "vars": {
     "APP_NAME": "Zasqua: Catalogacion",
     "SENDER_EMAIL": "noreply@zasqua.org",
-    "ALLOWED_MANIFEST_HOSTS": "iiif.zasqua.org"
+    "ALLOWED_MANIFEST_HOSTS": "manifests.zasqua.org"
   },
   "d1_databases": [
     {
@@ -24,6 +57,26 @@
     {
       "binding": "BUCKET",
       "bucket_name": "zasqua-catalogacion-bucket"
+    },
+    {
+      "binding": "EXPORT_BUCKET",
+      "bucket_name": "zasqua-export"
+    },
+    {
+      "binding": "MANIFESTS_BUCKET",
+      "bucket_name": "zasqua-manifests"
+    },
+    {
+      "binding": "METS_BUCKET",
+      "bucket_name": "zasqua-mets"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "publish-export",
+      "binding": "PUBLISH_EXPORT",
+      "class_name": "PublishExportWorkflow",
+      "script_name": "zasqua-catalogacion"
     }
   ],
   "env": {
@@ -32,7 +85,7 @@
       "vars": {
         "APP_NAME": "Zasqua: Catalogacion [Staging]",
         "SENDER_EMAIL": "noreply@zasqua.org",
-        "ALLOWED_MANIFEST_HOSTS": "iiif.zasqua.org"
+        "ALLOWED_MANIFEST_HOSTS": "manifests.zasqua.org"
       },
       "d1_databases": [
         {
@@ -46,6 +99,26 @@
         {
           "binding": "BUCKET",
           "bucket_name": "zasqua-catalogacion-bucket"
+        },
+        {
+          "binding": "EXPORT_BUCKET",
+          "bucket_name": "zasqua-export"
+        },
+        {
+          "binding": "MANIFESTS_BUCKET",
+          "bucket_name": "zasqua-manifests"
+        },
+        {
+          "binding": "METS_BUCKET",
+          "bucket_name": "zasqua-mets"
+        }
+      ],
+      "workflows": [
+        {
+          "name": "publish-export-staging",
+          "binding": "PUBLISH_EXPORT",
+          "class_name": "PublishExportWorkflow",
+          "script_name": "zasqua-catalogacion"
         }
       ]
     }

@@ -1,3 +1,27 @@
+/**
+ * Worker Entry Point
+ *
+ * This is the first piece of code that runs when a request hits the Fisqua
+ * app on Cloudflare's edge. Every request — page load, API call, form
+ * submission — enters here and gets forwarded to React Router, which then
+ * routes it to the right loader, action, or server module.
+ *
+ * The handler does two jobs. First, it wraps the Cloudflare request context
+ * (the `env` bindings declared in `wrangler.jsonc` and the runtime
+ * `ExecutionContext`) into React Router's typed `RouterContextProvider` so
+ * loaders and actions can read `context.get(cloudflareContext).env.DB` to
+ * reach D1, or `.MANIFESTS_BUCKET` to reach R2. Second, it re-exports the
+ * `PublishExportWorkflow` class so Cloudflare's Workflows runtime can find
+ * and instantiate it when a publish job is kicked off from the admin UI.
+ *
+ * The `virtual:react-router/server-build` import is a build-time virtual
+ * module produced by the React Router Vite plugin — it contains the compiled
+ * server build for the app and is resolved during the bundle step, not at
+ * runtime.
+ *
+ * @version v0.3.0
+ */
+
 import { createRequestHandler, RouterContextProvider } from "react-router";
 
 declare module "react-router" {
@@ -19,6 +43,10 @@ const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE
 );
+
+// Re-export the publish-export workflow class so the wrangler `workflows`
+// binding (PUBLISH_EXPORT, class_name: PublishExportWorkflow) can resolve it.
+export { PublishExportWorkflow } from "../app/workflows/publish-export";
 
 export default {
   async fetch(request, env, ctx) {

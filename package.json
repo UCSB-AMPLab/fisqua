@@ -13,6 +13,7 @@
     "typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.21",
     "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.1",
@@ -29,6 +30,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1029.0",
     "@cloudflare/vite-plugin": "^1.13.7",
     "@cloudflare/vitest-pool-workers": "^0.12.20",
     "@react-router/dev": "7.12.0",
