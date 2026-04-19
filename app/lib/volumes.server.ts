@@ -1,6 +1,26 @@
-import { eq, and } from "drizzle-orm";
+/**
+ * Volume Server Operations
+ *
+ * Covers the create / list / delete lifecycle for volumes plus the
+ * volume list shape consumed by the project volumes page, the member
+ * dashboard, and the per-project workspace. Volume cards across the
+ * platform read from `getProjectVolumes`, which also reports the
+ * `openQcFlagCount` per volume so the "N open flags" badge can render
+ * without the caller having to fan out a second query.
+ *
+ * @version v0.3.0
+ */
+import { eq, and, inArray, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { volumes, volumePages } from "../db/schema";
+import {
+  volumes,
+  volumePages,
+  entries,
+  comments,
+  resegmentationFlags,
+  activityLog,
+  qcFlags,
+} from "../db/schema";
 import type { ParsedManifest } from "./iiif.server";
 
 /**
@@ -20,6 +40,7 @@ export interface VolumeListItem {
   assignedTo: string | null;
   assignedReviewer: string | null;
   firstPageImageUrl: string | null;
+  openQcFlagCount: number;
 }
 
 /**
@@ -98,7 +119,14 @@ export async function createVolume(
 
 /**
  * Returns all volumes for a project with the first page's image URL
- * for use as a thumbnail.
+ * for use as a thumbnail and the count of open QC flags per volume
+ *.
+ *
+ * Implementation note: the loop over volumes already issues a first-page
+ * SELECT per volume, so adding a single sidecar GROUP-BY over `qc_flags`
+ * keyed by `volume_id` is cheaper than interleaving another per-volume
+ * COUNT. Volumes with zero open flags simply do not appear in the map
+ * and resolve to `0`.
  */
 export async function getProjectVolumes(
   db: DrizzleD1Database<any>,
@@ -109,6 +137,31 @@ export async function getProjectVolumes(
     .from(volumes)
     .where(eq(volumes.projectId, projectId))
     .all();
+
+  const volumeIds = volumeRows.map((v) => v.id);
+
+  // Build a volumeId -> openQcFlagCount map in a single grouped query.
+  // `inArray` on an empty list is an error in D1, so guard it.
+  const openFlagCountByVolume = new Map<string, number>();
+  if (volumeIds.length > 0) {
+    const counts = await db
+      .select({
+        volumeId: qcFlags.volumeId,
+        count: sql<number>`COUNT(*)`,
+      })
+      .from(qcFlags)
+      .where(
+        and(
+          inArray(qcFlags.volumeId, volumeIds),
+          eq(qcFlags.status, "open")
+        )
+      )
+      .groupBy(qcFlags.volumeId)
+      .all();
+    for (const row of counts) {
+      openFlagCountByVolume.set(row.volumeId, Number(row.count));
+    }
+  }
 
   const result: VolumeListItem[] = [];
 
@@ -134,6 +187,7 @@ export async function getProjectVolumes(
       assignedTo: vol.assignedTo,
       assignedReviewer: vol.assignedReviewer,
       firstPageImageUrl: firstPage?.imageUrl || null,
+      openQcFlagCount: openFlagCountByVolume.get(vol.id) ?? 0,
     });
   }
 
@@ -141,10 +195,10 @@ export async function getProjectVolumes(
 }
 
 /**
- * Deletes a volume and all its pages.
- * Only volumes with status "unstarted" can be deleted.
- * Manually deletes pages before the volume to avoid reliance
- * on D1's foreign key pragma for cascade behavior.
+ * Deletes a volume. Only volumes with status "unstarted" can be deleted.
+ * Cascades through all dependent rows (entries, comments, flags, activity
+ * log, volume pages) in case the volume was demoted to "unstarted" after
+ * accumulating work.
  */
 export async function deleteVolume(
   db: DrizzleD1Database<any>,
@@ -167,11 +221,65 @@ export async function deleteVolume(
     );
   }
 
-  // Delete pages first (manual cascade)
-  await db
-    .delete(volumePages)
-    .where(eq(volumePages.volumeId, volumeId));
+  await forceDeleteVolume(db, volumeId);
+}
 
-  // Delete the volume
+/**
+ * Force-deletes a volume and all dependent rows (pages, entries, comments,
+ * flags, activity log rows, description_entities links). Superadmin-only.
+ *
+ * WARNING: this bypasses the status check and will destroy cataloguing work.
+ * Callers must confirm before invoking.
+ */
+export async function forceDeleteVolume(
+  db: DrizzleD1Database<any>,
+  volumeId: string
+): Promise<void> {
+  const volume = await db
+    .select({ id: volumes.id })
+    .from(volumes)
+    .where(eq(volumes.id, volumeId))
+    .get();
+
+  if (!volume) {
+    throw new Response("Volume not found", { status: 404 });
+  }
+
+  // Collect entry IDs for downstream cascades
+  const entryRows = await db
+    .select({ id: entries.id })
+    .from(entries)
+    .where(eq(entries.volumeId, volumeId))
+    .all();
+  const entryIds = entryRows.map((r) => r.id);
+
+  if (entryIds.length > 0) {
+    // D1 limits bound params — chunk in batches of 50
+    const CHUNK = 50;
+    for (let i = 0; i < entryIds.length; i += CHUNK) {
+      const batch = entryIds.slice(i, i + CHUNK);
+      await db.delete(comments).where(inArray(comments.entryId, batch));
+      await db
+        .delete(resegmentationFlags)
+        .where(inArray(resegmentationFlags.entryId, batch));
+    }
+  }
+
+  // Activity log: scope by volume
+  await db.delete(activityLog).where(eq(activityLog.volumeId, volumeId));
+
+  // Resegmentation flags scoped by volume (covers any not tied to an entry)
+  await db
+    .delete(resegmentationFlags)
+    .where(eq(resegmentationFlags.volumeId, volumeId));
+
+  // Entries
+  await db.delete(entries).where(eq(entries.volumeId, volumeId));
+
+  // Volume pages
+  await db.delete(volumePages).where(eq(volumePages.volumeId, volumeId));
+
+  // Finally the volume itself
   await db.delete(volumes).where(eq(volumes.id, volumeId));
 }
+

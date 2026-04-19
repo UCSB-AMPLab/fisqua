@@ -21,7 +21,7 @@ export interface ParsedManifest {
   }>;
 }
 
-const DEFAULT_MANIFEST_HOSTS = ["iiif.zasqua.org"];
+const DEFAULT_MANIFEST_HOSTS = ["manifests.zasqua.org"];
 
 /**
  * Returns the list of allowed IIIF manifest hosts from the env var,
