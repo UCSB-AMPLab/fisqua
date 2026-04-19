@@ -1,26 +1,34 @@
-import { Form, useActionData } from "react-router";
+/**
+ * Project Members Page
+ *
+ * Lead-only project membership editor. Lists every member with their
+ * role (lead, reviewer, cataloguer), exposes the invite-by-email form
+ * for adding new members, and lets leads change roles or remove a
+ * member. Cross-references the cataloguing admin team page so the
+ * project lead can work without an admin round-trip.
+ *
+ * @version v0.3.0
+ */
+
+import { Form, useActionData, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
-import { formatDate } from "~/lib/format";
 import type { Route } from "./+types/_auth.projects.$id.members";
 
 type MemberRow = {
+  membershipId: string;
   userId: string;
   email: string;
   name: string | null;
-  roles: string[];
+  role: string;
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq, and, isNull, gt } = await import("drizzle-orm");
+  const { eq } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProject } = await import("../lib/projects.server");
-  const {
-    users,
-    projectMembers,
-    projectInvites,
-  } = await import("../db/schema");
+  const { users, projectMembers } = await import("../db/schema");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
@@ -34,10 +42,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  // Load all members with their roles
+  // Load project members
   const memberRows = await db
     .select({
-      memberId: projectMembers.id,
+      membershipId: projectMembers.id,
       userId: projectMembers.userId,
       role: projectMembers.role,
       email: users.email,
@@ -48,53 +56,26 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .where(eq(projectMembers.projectId, params.id))
     .all();
 
-  // Group by user
-  const memberMap = new Map<string, MemberRow>();
-  for (const row of memberRows) {
-    const existing = memberMap.get(row.userId);
-    if (existing) {
-      existing.roles.push(row.role);
-    } else {
-      memberMap.set(row.userId, {
-        userId: row.userId,
-        email: row.email,
-        name: row.name,
-        roles: [row.role],
-      });
-    }
-  }
-  const members = Array.from(memberMap.values());
-
-  // Load pending invites (not accepted, not expired)
-  const now = Date.now();
-  const pendingInvites = await db
-    .select({
-      id: projectInvites.id,
-      email: projectInvites.email,
-      roles: projectInvites.roles,
-      expiresAt: projectInvites.expiresAt,
-      createdAt: projectInvites.createdAt,
-    })
-    .from(projectInvites)
-    .where(
-      and(
-        eq(projectInvites.projectId, params.id),
-        isNull(projectInvites.acceptedAt),
-        gt(projectInvites.expiresAt, now)
-      )
-    )
+  // Load all registered users (for the add-member picker)
+  const allUsers = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
     .all();
 
-  return { project, members, pendingInvites, currentUserId: user.id };
+  return {
+    project,
+    members: memberRows as MemberRow[],
+    allUsers,
+    currentUserId: user.id,
+  };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
-  const { createInvite } = await import("../lib/invites.server");
   const { getInstance } = await import("~/middleware/i18next");
-  const { projectMembers } = await import("../db/schema");
+  const { projectMembers, users } = await import("../db/schema");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
@@ -106,332 +87,289 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
 
-  switch (intent) {
-    case "invite": {
-      const email = (formData.get("email") as string || "").trim().toLowerCase();
-      const roleValues = formData.getAll("roles") as string[];
+  if (intent === "addMember") {
+    const userId = (formData.get("userId") as string)?.trim();
+    const role = formData.get("role") as string;
 
-      // Validate email
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return { ok: false, error: i18n.t("project:error.invalid_email") };
-      }
-
-      // Validate roles
-      const validRoles = ["lead", "cataloguer", "reviewer"];
-      const roles = roleValues.filter((r) => validRoles.includes(r));
-      if (roles.length === 0) {
-        return { ok: false, error: i18n.t("project:error.select_role") };
-      }
-
-      const result = await createInvite(
-        db,
-        params.id,
-        email,
-        roles,
-        user,
-        new URL(request.url).origin,
-        env.RESEND_API_KEY,
-        env
-      );
-
-      if (result.status === "error") {
-        return { ok: false, error: result.error };
-      }
-
-      const message =
-        result.status === "invited"
-          ? i18n.t("project:error.invite_sent", { email })
-          : i18n.t("project:error.member_added", { email });
-
-      return { ok: true, message };
+    if (!userId) {
+      return { ok: false, error: i18n.t("admin:error.user_not_found") };
     }
 
-    case "changeRoles": {
-      const targetUserId = formData.get("userId") as string;
-      const roleValues = formData.getAll("roles") as string[];
-
-      const validRoles = ["lead", "cataloguer", "reviewer"];
-      const newRoles = roleValues.filter((r) => validRoles.includes(r));
-      if (newRoles.length === 0) {
-        return { ok: false, error: i18n.t("project:error.role_required") };
-      }
-
-      // Delete existing memberships for this user+project
-      await db
-        .delete(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, params.id),
-            eq(projectMembers.userId, targetUserId)
-          )
-        );
-
-      // Insert new roles
-      const now = Date.now();
-      for (const role of newRoles) {
-        await db.insert(projectMembers).values({
-          id: crypto.randomUUID(),
-          projectId: params.id,
-          userId: targetUserId,
-          role: role as "lead" | "cataloguer" | "reviewer",
-          createdAt: now,
-        });
-      }
-
-      return { ok: true, message: i18n.t("project:error.roles_updated") };
+    const validRoles = ["lead", "cataloguer", "reviewer"];
+    if (!validRoles.includes(role)) {
+      return { ok: false, error: i18n.t("project:error.role_required") };
     }
 
-    case "removeMember": {
-      const targetUserId = formData.get("userId") as string;
+    // Verify user exists
+    const [targetUser] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .all();
+    if (!targetUser) {
+      return { ok: false, error: i18n.t("admin:error.user_not_found") };
+    }
 
-      // Check target is not a lead
-      const targetMemberships = await db
-        .select()
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, params.id),
-            eq(projectMembers.userId, targetUserId)
-          )
+    // Check for duplicate membership
+    const existing = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, params.id),
+          eq(projectMembers.userId, targetUser.id)
         )
-        .all();
-
-      const isLead = targetMemberships.some((m) => m.role === "lead");
-      if (isLead) {
-        return { ok: false, error: i18n.t("project:error.cannot_remove_lead") };
-      }
-
-      // Delete all memberships for this user+project
-      await db
-        .delete(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, params.id),
-            eq(projectMembers.userId, targetUserId)
-          )
-        );
-
-      return { ok: true, message: i18n.t("project:error.member_removed") };
+      )
+      .limit(1)
+      .all();
+    if (existing.length > 0) {
+      return { ok: false, error: i18n.t("admin:error.duplicate_email") };
     }
 
-    default:
-      return { ok: false, error: i18n.t("project:error.unknown_action") };
+    await db.insert(projectMembers).values({
+      id: crypto.randomUUID(),
+      projectId: params.id,
+      userId: targetUser.id,
+      role: role as "lead" | "cataloguer" | "reviewer",
+      createdAt: (Date.now() / 1000) | 0,
+    });
+
+    return { ok: true, message: i18n.t("project:error.member_added", { email: targetUser.email }) };
   }
+
+  if (intent === "changeMemberRole") {
+    const membershipId = formData.get("membershipId") as string;
+    const role = formData.get("role") as string;
+
+    if (!membershipId) {
+      return { ok: false, error: "Missing membership ID" };
+    }
+
+    const validRoles = ["lead", "cataloguer", "reviewer"];
+    if (!validRoles.includes(role)) {
+      return { ok: false, error: i18n.t("project:error.role_required") };
+    }
+
+    await db
+      .update(projectMembers)
+      .set({ role: role as "lead" | "cataloguer" | "reviewer" })
+      .where(eq(projectMembers.id, membershipId));
+
+    return { ok: true };
+  }
+
+  if (intent === "removeMember") {
+    const membershipId = formData.get("membershipId") as string;
+    if (!membershipId) {
+      return { ok: false, error: "Missing membership ID" };
+    }
+
+    await db
+      .delete(projectMembers)
+      .where(eq(projectMembers.id, membershipId));
+
+    return { ok: true };
+  }
+
+  return { ok: false, error: i18n.t("project:error.unknown_action") };
 }
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#F9EDD4] text-[#8B6914]",
+  lead: "bg-[#D6E8DB] text-[#2F6B45]",
   cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+  reviewer: "bg-[#CCF0EB] text-[#0D9488]",
 };
 
 export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
-  const { project, members, pendingInvites, currentUserId } = loaderData;
+  const { members, allUsers, currentUserId } = loaderData;
   const actionData = useActionData<typeof action>();
-  const { t } = useTranslation(["project", "workflow", "common"]);
+  const { t } = useTranslation(["project", "workflow", "common", "admin", "team"]);
+
+  const existingMemberIds = members.map((m) => m.userId);
+  const availableUsers = allUsers.filter((u) => !existingMemberIds.includes(u.id));
 
   return (
-    <div className="space-y-10">
-      {/* Invite form */}
+    <div className="space-y-8">
+      {/* Feedback messages */}
+      {actionData?.ok && actionData?.message && (
+        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+          {actionData.message}
+        </div>
+      )}
+      {actionData && !actionData.ok && actionData?.error && (
+        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+          {actionData.error}
+        </div>
+      )}
+
+      {/* Members table */}
       <section>
         <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
-          {t("project:action.invite_member")}
+          {t("project:heading.members")} ({members.length})
         </h2>
 
-        {actionData?.ok && actionData?.message && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
-            {actionData.message}
-          </div>
-        )}
-        {actionData && !actionData.ok && actionData?.error && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
-            {actionData.error}
-          </div>
-        )}
-
-        <Form method="post" className="mt-4 flex max-w-xl flex-wrap items-end gap-4">
-          <input type="hidden" name="_action" value="invite" />
-
-          <div className="flex-1">
-            <label
-              htmlFor="email"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
-            >
-              {t("project:settings.email")}
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              required
-              placeholder={t("project:invite.placeholder")}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
-            />
-          </div>
-
-          <fieldset>
-            <legend className="font-sans text-[0.875rem] font-medium text-[#78716C]">
-              {t("project:settings.role")}
-            </legend>
-            <div className="mt-1 flex gap-4">
-              {(["cataloguer", "reviewer", "lead"] as const).map((role) => (
-                <label key={role} className="flex items-center gap-2 font-sans text-sm text-[#44403C]">
-                  <input
-                    type="radio"
-                    name="roles"
-                    value={role}
-                    defaultChecked={role === "cataloguer"}
-                    className="border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
-                  />
-                  {t(`workflow:role.${role}`)}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <button
-            type="submit"
-            className="flex items-center gap-2 rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-            </svg>
-            {t("project:action.invite")}
-          </button>
-        </Form>
-      </section>
-
-      {/* Members list */}
-      <section>
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
-          {t("project:heading.members")}
-        </h2>
-
-        {members.length === 0 ? (
-          <p className="mt-2 font-sans text-sm text-[#A8A29E]">{t("project:empty.no_members")}</p>
-        ) : (
+        {members.length > 0 && (
           <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
             <table className="min-w-full divide-y divide-[#E7E5E4]">
               <thead className="bg-[#FAFAF9]">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
-                    {t("project:table.member")}
+                    {t("admin:table.name")}
                   </th>
                   <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
-                    {t("project:table.roles")}
+                    {t("admin:table.email")}
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                    {t("admin:table.role")}
                   </th>
                   <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
-                    {t("project:table.actions")}
+                    {t("admin:table.actions")}
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {members.map((member) => {
-                  const isLead = member.roles.includes("lead");
-                  const isSelf = member.userId === currentUserId;
-
-                  return (
-                    <tr key={member.userId}>
-                      <td className="px-4 py-3">
-                        <div className="font-sans text-sm font-medium text-[#44403C]">
-                          {member.name || member.email}
-                        </div>
-                        {member.name && (
-                          <div className="font-sans text-xs text-[#A8A29E]">
-                            {member.email}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1.5">
-                          {member.roles.map((role) => (
-                            <span
-                              key={role}
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_COLORS[role] || "bg-stone-100 text-stone-600"}`}
-                            >
-                              {t(`workflow:role.${role}`)}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {!isLead && !isSelf && (
-                          <Form method="post" className="inline">
-                            <input
-                              type="hidden"
-                              name="_action"
-                              value="removeMember"
-                            />
-                            <input
-                              type="hidden"
-                              name="userId"
-                              value={member.userId}
-                            />
-                            <button
-                              type="submit"
-                              className="font-sans text-xs font-medium text-[#8B2942] hover:underline"
-                              onClick={(e) => {
-                                if (
-                                  !confirm(
-                                    t("project:action.remove_confirm", {
-                                      name: member.name || member.email,
-                                    })
-                                  )
-                                ) {
-                                  e.preventDefault();
-                                }
-                              }}
-                            >
-                              {t("project:action.remove")}
-                            </button>
-                          </Form>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {members.map((member) => (
+                  <MemberRow
+                    key={member.membershipId}
+                    member={member}
+                    isSelf={member.userId === currentUserId}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
         )}
-      </section>
 
-      {/* Pending invites */}
-      {pendingInvites.length > 0 && (
-        <section>
-          <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
-            {t("project:heading.pending_invitations")}
-          </h2>
-          <div className="mt-4 space-y-2">
-            {pendingInvites.map((invite) => {
-              const roles: string[] = JSON.parse(invite.roles);
-              return (
-                <div
-                  key={invite.id}
-                  className="flex items-center gap-3 rounded-lg border border-[#E7E5E4] bg-white px-4 py-3"
-                >
-                  <span className="min-w-0 flex-1 font-sans text-sm text-[#44403C]">
-                    {invite.email}
-                  </span>
-                  <div className="flex gap-1.5">
-                    {roles.map((role) => (
-                      <span
-                        key={role}
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_COLORS[role] || "bg-stone-100 text-stone-600"}`}
-                      >
-                        {t(`workflow:role.${role}`)}
-                      </span>
-                    ))}
-                  </div>
-                  <span className="font-sans text-xs text-[#A8A29E]">
-                    {t("project:volumes.expires", { date: formatDate(invite.expiresAt) })}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+        {/* Add member form — always visible, disabled when no users available */}
+        <AddMemberForm availableUsers={availableUsers} />
+      </section>
     </div>
+  );
+}
+
+function MemberRow({
+  member,
+  isSelf,
+}: {
+  member: MemberRow;
+  isSelf: boolean;
+}) {
+  const { t } = useTranslation(["workflow", "team"]);
+  const fetcher = useFetcher();
+
+  return (
+    <tr>
+      <td className="px-4 py-3 font-sans text-sm text-[#44403C]">
+        {member.name || "\u2014"}
+      </td>
+      <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
+        {member.email}
+      </td>
+      <td className="px-4 py-3">
+        <fetcher.Form method="post" className="inline">
+          <input type="hidden" name="_action" value="changeMemberRole" />
+          <input type="hidden" name="membershipId" value={member.membershipId} />
+          <select
+            name="role"
+            defaultValue={member.role}
+            onChange={(e) => {
+              const form = e.target.closest("form");
+              if (form) fetcher.submit(form);
+            }}
+            className="rounded border border-[#E7E5E4] px-1.5 py-0.5 font-sans text-xs focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+          >
+            <option value="lead">{t("workflow:role.lead")}</option>
+            <option value="cataloguer">{t("workflow:role.cataloguer")}</option>
+            <option value="reviewer">{t("workflow:role.reviewer")}</option>
+          </select>
+        </fetcher.Form>
+      </td>
+      <td className="px-4 py-3 text-right">
+        {!isSelf && (
+          <fetcher.Form method="post" className="inline">
+            <input type="hidden" name="_action" value="removeMember" />
+            <input type="hidden" name="membershipId" value={member.membershipId} />
+            <button
+              type="submit"
+              className="font-sans text-xs font-medium text-[#8B2942] hover:underline"
+              onClick={(e) => {
+                if (
+                  !confirm(
+                    t("team:confirm_remove", {
+                      name: member.name || member.email,
+                    })
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              {t("team:remove_from_project")}
+            </button>
+          </fetcher.Form>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function AddMemberForm({
+  availableUsers,
+}: {
+  availableUsers: Array<{ id: string; name: string | null; email: string }>;
+}) {
+  const { t } = useTranslation(["admin", "common", "team", "workflow"]);
+  const fetcher = useFetcher();
+  const noUsers = availableUsers.length === 0;
+
+  return (
+    <fetcher.Form method="post" className="mt-4 flex items-end gap-3">
+      <input type="hidden" name="_action" value="addMember" />
+      <div>
+        <label className="block font-sans text-xs font-medium text-[#78716C]">
+          {t("admin:table.user")}
+        </label>
+        <select
+          name="userId"
+          required
+          disabled={noUsers}
+          className="mt-0.5 block w-56 rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none disabled:bg-[#FAFAF9] disabled:text-[#A8A29E]"
+        >
+          <option value="">
+            {noUsers
+              ? t("admin:placeholder.no_users_available")
+              : t("admin:placeholder.select_user")}
+          </option>
+          {availableUsers.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name ? `${u.name} (${u.email})` : u.email}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block font-sans text-xs font-medium text-[#78716C]">
+          {t("admin:table.role")}
+        </label>
+        <select
+          name="role"
+          required
+          disabled={noUsers}
+          className="mt-0.5 rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none disabled:bg-[#FAFAF9] disabled:text-[#A8A29E]"
+        >
+          <option value="cataloguer">{t("workflow:role.cataloguer")}</option>
+          <option value="reviewer">{t("workflow:role.reviewer")}</option>
+          <option value="lead">{t("workflow:role.lead")}</option>
+        </select>
+      </div>
+      <button
+        type="submit"
+        disabled={noUsers}
+        className="rounded-lg bg-[#8B2942] px-3 py-1.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {t("admin:action.add_user")}
+      </button>
+    </fetcher.Form>
   );
 }

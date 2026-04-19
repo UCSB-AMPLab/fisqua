@@ -1,18 +1,11 @@
 /**
- * No-Access Landing Page
+ * No Access Page
  *
- * The soft landing for an authenticated user who holds no role flags
- * and belongs to no project. Rather than surface a confusing empty
- * dashboard or a raw 403, the auth layout sends them here so they see
- * a clear "you are signed in, but there is nothing for you yet"
- * message. Useful during onboarding -- an admin may have created the
- * account but not yet granted a role -- and as a graceful fallback
- * for the reserved `isArchiveUser` role which has no UI surface of
- * its own.
- *
- * The loader intentionally performs no role check. Routing the user
- * here is the `_auth.tsx` layout's responsibility; this file only
- * renders the page.
+ * Terminal surface shown when an authenticated user does not hold
+ * any role that would grant access to the app. Explains the state
+ * in both English and Spanish and offers the operator a sign-out
+ * link. Never rendered through normal navigation — only reached
+ * via a redirect from role-aware loaders.
  *
  * @version v0.3.0
  */
@@ -23,6 +16,9 @@ import { userContext } from "../context";
 import type { Route } from "./+types/_auth.no-access";
 
 export async function loader({ context }: Route.LoaderArgs) {
+  // Fall-through landing page for authenticated users with no assigned role.
+  // Intentionally no role check — this is where the auth layout sends
+  // placeholder isArchiveUser-only users.
   const user = context.get(userContext);
   return { email: user.email };
 }

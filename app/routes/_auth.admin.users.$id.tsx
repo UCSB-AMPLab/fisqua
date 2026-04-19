@@ -1,0 +1,602 @@
+/**
+ * User Admin — Detail Page
+ *
+ * Superadmin surface for one user account: email, display name,
+ * all five role flags, session state, and the audit log of
+ * administrative changes. The edit form is guarded behind
+ * `requireSuperAdmin`; the audit panel is read-only.
+ *
+ * @version v0.3.0
+ */
+
+import { useState } from "react";
+import { Form, Link, useFetcher, redirect } from "react-router";
+import { useTranslation } from "react-i18next";
+import { userContext } from "../context";
+import { formatDate } from "../lib/format";
+import type { Route } from "./+types/_auth.admin.users.$id";
+
+// ---------------------------------------------------------------------------
+// Loader
+// ---------------------------------------------------------------------------
+
+export async function loader({ params, context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, isNull } = await import("drizzle-orm");
+  const { users, projectMembers, projects } = await import("../db/schema");
+
+  const currentUser = context.get(userContext);
+  if (!currentUser.isSuperAdmin && !currentUser.isUserManager) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+
+  const env = context.cloudflare.env;
+  const db = drizzle(env.DB);
+
+  const [targetUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, params.id))
+    .limit(1)
+    .all();
+
+  if (!targetUser) {
+    throw new Response("User not found", { status: 404 });
+  }
+
+  // Fetch project memberships
+  const memberships = await db
+    .select({
+      id: projectMembers.id,
+      projectId: projectMembers.projectId,
+      projectName: projects.name,
+      role: projectMembers.role,
+      createdAt: projectMembers.createdAt,
+    })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projectMembers.userId, params.id))
+    .all();
+
+  // Available projects for assignment
+  const availableProjects = await db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(isNull(projects.archivedAt))
+    .all();
+
+  // Filter out projects the user is already in
+  const memberProjectIds = new Set(memberships.map((m) => m.projectId));
+  const assignableProjects = availableProjects.filter(
+    (p) => !memberProjectIds.has(p.id)
+  );
+
+  return {
+    targetUser,
+    memberships,
+    assignableProjects,
+    isSelf: currentUser.id === params.id,
+    canEditRoles: currentUser.isSuperAdmin,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Action
+// ---------------------------------------------------------------------------
+
+export async function action({ request, params, context }: Route.ActionArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
+  const { users, projectMembers } = await import("../db/schema");
+
+  const { getInstance } = await import("~/middleware/i18next");
+  const currentUser = context.get(userContext);
+  const i18n = getInstance(context);
+  if (!currentUser.isSuperAdmin && !currentUser.isUserManager) {
+    throw new Response(i18n.t("user_admin:error_forbidden"), { status: 403 });
+  }
+
+  const env = context.cloudflare.env;
+  const db = drizzle(env.DB);
+  const formData = await request.formData();
+  const intent = formData.get("_action") as string;
+
+  if (intent === "updateProfile") {
+    const name = (formData.get("name") as string)?.trim() || null;
+    const email = (formData.get("email") as string)?.trim();
+
+    if (!email) {
+      return { ok: false, error: i18n.t("user_admin:error_email_required") };
+    }
+
+    // Check for duplicate email (excluding this user)
+    const { ne } = await import("drizzle-orm");
+    const [duplicate] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.email, email), ne(users.id, params.id)))
+      .limit(1)
+      .all();
+    if (duplicate) {
+      return { ok: false, error: i18n.t("user_admin:error_email_duplicate") };
+    }
+
+    await db
+      .update(users)
+      .set({ name, email })
+      .where(eq(users.id, params.id));
+
+    return { ok: true, message: i18n.t("user_admin:success_profile_updated") };
+  }
+
+  if (intent === "updateRoles") {
+    if (!currentUser.isSuperAdmin) {
+      return { ok: false, error: i18n.t("user_admin:error_only_superadmin_roles") };
+    }
+    if (currentUser.id === params.id) {
+      return { ok: false, error: i18n.t("user_admin:error_cannot_change_own_roles") };
+    }
+
+    const isAdmin = formData.get("isAdmin") === "on";
+    const isSuperAdmin = formData.get("isSuperAdmin") === "on";
+    const isCollabAdmin = formData.get("isCollabAdmin") === "on";
+    const isArchiveUser = formData.get("isArchiveUser") === "on";
+    const isUserManager = formData.get("isUserManager") === "on";
+    const isCataloguer = formData.get("isCataloguer") === "on";
+
+    await db
+      .update(users)
+      .set({ isAdmin, isSuperAdmin, isCollabAdmin, isArchiveUser, isUserManager, isCataloguer })
+      .where(eq(users.id, params.id));
+
+    return { ok: true, message: i18n.t("user_admin:success_roles_updated") };
+  }
+
+  if (intent === "assignToProject") {
+    const projectId = formData.get("projectId") as string;
+    const role = formData.get("role") as string;
+
+    if (!projectId || !["lead", "cataloguer", "reviewer"].includes(role)) {
+      return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+    }
+
+    const existing = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, params.id)
+        )
+      )
+      .limit(1)
+      .all();
+    if (existing.length > 0) {
+      return { ok: false, error: i18n.t("user_admin:error_already_member") };
+    }
+
+    await db.insert(projectMembers).values({
+      id: crypto.randomUUID(),
+      projectId,
+      userId: params.id,
+      role,
+      createdAt: Math.floor(Date.now() / 1000),
+    });
+
+    return { ok: true, message: i18n.t("user_admin:success_assigned") };
+  }
+
+  if (intent === "changeRole") {
+    const membershipId = formData.get("membershipId") as string;
+    const role = formData.get("role") as string;
+
+    if (!membershipId || !["lead", "cataloguer", "reviewer"].includes(role)) {
+      return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+    }
+
+    await db
+      .update(projectMembers)
+      .set({ role })
+      .where(eq(projectMembers.id, membershipId));
+
+    return { ok: true, message: i18n.t("user_admin:success_role_updated") };
+  }
+
+  if (intent === "removeFromProject") {
+    const membershipId = formData.get("membershipId") as string;
+    if (!membershipId) return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+
+    await db
+      .delete(projectMembers)
+      .where(eq(projectMembers.id, membershipId));
+
+    return { ok: true, message: i18n.t("user_admin:success_removed") };
+  }
+
+  return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+const ROLE_BADGE_COLORS: Record<string, string> = {
+  lead: "bg-[#F9EDD4] text-[#8B6914]",
+  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
+  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+};
+
+function RoleCheckbox({
+  label,
+  description,
+  name,
+  checked,
+  disabled,
+}: {
+  label: string;
+  description: string;
+  name: string;
+  checked: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-3 rounded-lg border border-[#E7E5E4] px-4 py-3 ${
+        disabled ? "opacity-60" : "hover:bg-[#FAFAF9] cursor-pointer"
+      }`}
+    >
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={checked}
+        disabled={disabled}
+        className="mt-0.5 h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+      />
+      <div>
+        <div className="font-sans text-sm font-semibold text-[#44403C]">
+          {label}
+        </div>
+        <div className="font-sans text-xs text-[#78716C]">{description}</div>
+      </div>
+    </label>
+  );
+}
+
+export default function UserDetailPage({
+  loaderData,
+}: Route.ComponentProps) {
+  const { targetUser: u, memberships, assignableProjects, isSelf, canEditRoles } =
+    loaderData;
+  const { t } = useTranslation("user_admin");
+  const fetcher = useFetcher();
+  const [showAssignForm, setShowAssignForm] = useState(false);
+
+  const result = fetcher.data as
+    | { ok: boolean; message?: string; error?: string }
+    | undefined;
+
+  return (
+    <div className="mx-auto max-w-3xl px-8 py-8 space-y-8">
+      {/* Breadcrumb */}
+      <nav className="font-sans text-sm text-[#78716C]">
+        <Link to="/admin/users" className="hover:text-[#44403C]">
+          {t("breadcrumb_system_users")}
+        </Link>
+        <span className="mx-2">&rsaquo;</span>
+        <span className="text-[#44403C]">{u.name || u.email}</span>
+      </nav>
+
+      {/* Profile */}
+      <fetcher.Form method="post" className="space-y-4">
+        <input type="hidden" name="_action" value="updateProfile" />
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <label
+              htmlFor="user-name"
+              className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+            >
+              {t("name_label")}
+            </label>
+            <input
+              id="user-name"
+              type="text"
+              name="name"
+              defaultValue={u.name || ""}
+              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+            />
+          </div>
+          <div className="flex-1">
+            <label
+              htmlFor="user-email"
+              className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+            >
+              {t("email_label")}
+            </label>
+            <input
+              id="user-email"
+              type="email"
+              name="email"
+              required
+              defaultValue={u.email}
+              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="font-sans text-xs text-[#A8A29E]">
+            {t("last_login_label")}: {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("never")}
+            {" · "}
+            {t("created_label")}: {formatDate(u.createdAt)}
+          </p>
+          <button
+            type="submit"
+            className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+          >
+            {t("save_profile")}
+          </button>
+        </div>
+      </fetcher.Form>
+
+      {/* Feedback */}
+      {result?.ok && result.message && (
+        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+          {result.message}
+        </div>
+      )}
+      {result && !result.ok && result.error && (
+        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+          {result.error}
+        </div>
+      )}
+
+      {/* Role edit warnings */}
+      {isSelf && (
+        <div className="rounded-lg border border-[#D4A843] bg-[#FEF9E7] px-4 py-3 font-sans text-sm text-[#44403C]">
+          {t("self_warning")}
+        </div>
+      )}
+      {!canEditRoles && !isSelf && (
+        <div className="rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] px-4 py-3 font-sans text-sm text-[#78716C]">
+          {t("non_superadmin_notice")}
+        </div>
+      )}
+
+      {/* Roles */}
+      <fetcher.Form method="post">
+        <input type="hidden" name="_action" value="updateRoles" />
+
+        <div className="space-y-6">
+          {/* System */}
+          <div>
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+              {t("section_system")}
+            </h2>
+            <div className="space-y-2">
+              <RoleCheckbox
+                label={t("role_super_admin")}
+                description={t("super_admin_description")}
+                name="isSuperAdmin"
+                checked={!!u.isSuperAdmin}
+                disabled={isSelf || !canEditRoles}
+              />
+              <RoleCheckbox
+                label={t("role_user_manager")}
+                description={t("user_manager_description")}
+                name="isUserManager"
+                checked={!!u.isUserManager}
+                disabled={isSelf || !canEditRoles}
+              />
+            </div>
+          </div>
+
+          {/* Cataloguing */}
+          <div>
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+              {t("section_cataloguing")}
+            </h2>
+            <div className="space-y-2">
+              <RoleCheckbox
+                label={t("role_cataloguing_admin")}
+                description={t("cataloguing_admin_description")}
+                name="isCollabAdmin"
+                checked={!!u.isCollabAdmin}
+                disabled={isSelf || !canEditRoles}
+              />
+              <RoleCheckbox
+                label={t("role_cataloguer")}
+                description={t("cataloguer_description")}
+                name="isCataloguer"
+                checked={!!u.isCataloguer}
+                disabled={isSelf || !canEditRoles}
+              />
+            </div>
+          </div>
+
+          {/* Records management */}
+          <div>
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+              {t("section_records_management")}
+            </h2>
+            <div className="space-y-2">
+              <RoleCheckbox
+                label={t("role_records_admin")}
+                description={t("records_admin_description")}
+                name="isAdmin"
+                checked={!!u.isAdmin}
+                disabled={isSelf || !canEditRoles}
+              />
+              <RoleCheckbox
+                label={t("role_archive_user")}
+                description={t("archive_user_description")}
+                name="isArchiveUser"
+                checked={!!u.isArchiveUser}
+                disabled={isSelf || !canEditRoles}
+              />
+            </div>
+          </div>
+
+          {canEditRoles && !isSelf && (
+            <button
+              type="submit"
+              className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+            >
+              {t("save_roles")}
+            </button>
+          )}
+        </div>
+      </fetcher.Form>
+
+      {/* Project memberships */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+            {t("section_project_memberships")}
+          </h2>
+          {assignableProjects.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAssignForm(!showAssignForm)}
+              className="font-sans text-xs font-semibold text-[#8B2942] hover:text-[#6B1F33]"
+            >
+              {showAssignForm ? t("cancel") : t("assign_to_project")}
+            </button>
+          )}
+        </div>
+
+        {showAssignForm && (
+          <fetcher.Form
+            method="post"
+            className="mb-4 flex items-end gap-2 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-3"
+            onSubmit={() => setTimeout(() => setShowAssignForm(false), 100)}
+          >
+            <input type="hidden" name="_action" value="assignToProject" />
+            <div className="flex-1">
+              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+                {t("project_label")}
+              </label>
+              <select
+                name="projectId"
+                required
+                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              >
+                <option value="">{t("select_project")}</option>
+                {assignableProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+                {t("role_label")}
+              </label>
+              <select
+                name="role"
+                required
+                className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              >
+                <option value="">{t("select_role")}</option>
+                <option value="lead">{t("role_lead")}</option>
+                <option value="cataloguer">{t("role_cataloguer")}</option>
+                <option value="reviewer">{t("role_reviewer")}</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+            >
+              {t("assign")}
+            </button>
+          </fetcher.Form>
+        )}
+
+        {memberships.length === 0 ? (
+          <p className="rounded-lg border border-[#E7E5E4] px-4 py-6 text-center font-sans text-sm text-[#A8A29E]">
+            {t("no_memberships")}
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
+            <table className="min-w-full divide-y divide-[#E7E5E4]">
+              <thead className="bg-[#FAFAF9]">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                    {t("project_label")}
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                    {t("role_label")}
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                    &nbsp;
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {memberships.map((m) => (
+                  <tr key={m.id}>
+                    <td className="px-4 py-3 font-sans text-sm font-semibold text-[#44403C]">
+                      {m.projectName}
+                    </td>
+                    <td className="px-4 py-3">
+                      <fetcher.Form method="post" className="inline">
+                        <input
+                          type="hidden"
+                          name="_action"
+                          value="changeRole"
+                        />
+                        <input
+                          type="hidden"
+                          name="membershipId"
+                          value={m.id}
+                        />
+                        <select
+                          name="role"
+                          defaultValue={m.role}
+                          onChange={(e) => e.target.form?.requestSubmit()}
+                          className="rounded-lg border border-[#E7E5E4] px-2 py-1 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                        >
+                          <option value="lead">{t("role_lead")}</option>
+                          <option value="cataloguer">{t("role_cataloguer")}</option>
+                          <option value="reviewer">{t("role_reviewer")}</option>
+                        </select>
+                      </fetcher.Form>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <fetcher.Form method="post" className="inline">
+                        <input
+                          type="hidden"
+                          name="_action"
+                          value="removeFromProject"
+                        />
+                        <input
+                          type="hidden"
+                          name="membershipId"
+                          value={m.id}
+                        />
+                        <button
+                          type="submit"
+                          className="font-sans text-xs text-[#A8A29E] hover:text-[#8B2942]"
+                          onClick={(e) => {
+                            if (
+                              !confirm(
+                                t("remove_confirm", { project: m.projectName })
+                              )
+                            ) {
+                              e.preventDefault();
+                            }
+                          }}
+                        >
+                          {t("remove")}
+                        </button>
+                      </fetcher.Form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

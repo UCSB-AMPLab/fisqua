@@ -1,5 +1,24 @@
-import { Form, useActionData } from "react-router";
+/**
+ * Project Settings Page
+ *
+ * Lead-only general settings surface for one project, enforced in both
+ * loader and action through `requireProjectRole`. Hosts three groups
+ * of controls: the project name / description / conventions / settings
+ * JSON form, the Colombian Spanish document subtype list editor, and
+ * the danger-zone archive and delete actions.
+ *
+ * The settings JSON blob is split into typed helpers in
+ * `app/lib/project-settings.ts`; this page still exposes a raw JSON
+ * textarea for any future per-project flags not yet modelled at the
+ * type level, while `documentSubtypes` owns its own dedicated form
+ * and action handler.
+ *
+ * @version v0.3.0
+ */
+import { useState } from "react";
+import { Form, useActionData, useNavigate, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
+import { Loader2, GripVertical, Plus, X } from "lucide-react";
 import { userContext } from "../context";
 import type { Route } from "./+types/_auth.projects.$id.settings";
 
@@ -7,12 +26,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProject } = await import("../lib/projects.server");
+  const { getDocumentSubtypes } = await import("../lib/project-settings");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  // Only leads (or admins) can access settings
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
 
   const project = await getProject(db, params.id);
@@ -20,16 +39,26 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return { project };
+  const documentSubtypes = getDocumentSubtypes(project.settings);
+
+  return { project, isSuperAdmin: user.isSuperAdmin, documentSubtypes };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
-  const { getProject } = await import("../lib/projects.server");
+  const { requireSuperAdmin } = await import("../lib/superadmin.server");
   const { getInstance } = await import("~/middleware/i18next");
-  const { projects } = await import("../db/schema");
+  const {
+    projects,
+    projectMembers,
+    projectInvites,
+    volumes,
+    volumePages,
+    entries,
+    activityLog,
+  } = await import("../db/schema");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
@@ -39,55 +68,184 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
+  const intent = formData.get("_action") as string;
 
-  const name = ((formData.get("name") as string) || "").trim();
-  const description = ((formData.get("description") as string) || "").trim();
-  const conventions = ((formData.get("conventions") as string) || "").trim();
-  const settings = ((formData.get("settings") as string) || "").trim();
+  if (intent === "updateSettings") {
+    const name = ((formData.get("name") as string) || "").trim();
+    const description = ((formData.get("description") as string) || "").trim();
+    const conventions = ((formData.get("conventions") as string) || "").trim();
+    const settings = ((formData.get("settings") as string) || "").trim();
 
-  // Validate
-  const errors: Record<string, string> = {};
+    const errors: Record<string, string> = {};
 
-  if (!name || name.length === 0) {
-    errors.name = i18n.t("project:error.name_required");
-  } else if (name.length > 200) {
-    errors.name = i18n.t("project:error.name_too_long");
-  }
-
-  // Validate settings JSON if provided
-  if (settings) {
-    try {
-      JSON.parse(settings);
-    } catch {
-      errors.settings = i18n.t("project:error.invalid_json");
+    if (!name || name.length === 0) {
+      errors.name = i18n.t("project:error.name_required");
+    } else if (name.length > 200) {
+      errors.name = i18n.t("project:error.name_too_long");
     }
+
+    if (settings) {
+      try {
+        JSON.parse(settings);
+      } catch {
+        errors.settings = i18n.t("project:error.invalid_json");
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      return { ok: false, errors, _action: "updateSettings" };
+    }
+
+    await db
+      .update(projects)
+      .set({
+        name,
+        description: description || null,
+        conventions: conventions || null,
+        settings: settings || null,
+        updatedAt: Date.now(),
+      })
+      .where(eq(projects.id, params.id));
+
+    return { ok: true, message: i18n.t("project:settings.saved"), _action: "updateSettings" };
   }
 
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, errors };
+  if (intent === "updateDocumentSubtypes") {
+    // Lead-only editor for the project's Colombian Spanish document
+    // subtype list. Accepts a newline-separated textarea payload so the
+    // server does not depend on any specific client-side control
+    // (drag-reorder, chip list, etc.). Reordering is expressed by
+    // rewriting the list wholesale.
+    const { setDocumentSubtypes } = await import("../lib/project-settings");
+    const raw = ((formData.get("documentSubtypes") as string) || "").trim();
+    const subtypes = raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    // Re-read the project so we only update the `settings` column and
+    // leave name / description / conventions untouched.
+    const row = await db
+      .select({ settings: projects.settings })
+      .from(projects)
+      .where(eq(projects.id, params.id))
+      .get();
+
+    const nextSettings = setDocumentSubtypes(row?.settings ?? null, subtypes);
+
+    await db
+      .update(projects)
+      .set({ settings: nextSettings, updatedAt: Date.now() })
+      .where(eq(projects.id, params.id));
+
+    return {
+      ok: true,
+      message: i18n.t("project:settings.subtypes_saved"),
+      _action: "updateDocumentSubtypes",
+    };
   }
 
-  await db
-    .update(projects)
-    .set({
-      name,
-      description: description || null,
-      conventions: conventions || null,
-      settings: settings || null,
-      updatedAt: Date.now(),
-    })
-    .where(eq(projects.id, params.id));
+  if (intent === "archiveProject") {
+    await db
+      .update(projects)
+      .set({ archivedAt: Date.now() })
+      .where(eq(projects.id, params.id));
 
-  return { ok: true, message: i18n.t("project:settings.saved") };
+    const { redirect } = await import("react-router");
+    return redirect("/admin/cataloguing/projects");
+  }
+
+  if (intent === "restoreProject") {
+    await db
+      .update(projects)
+      .set({ archivedAt: null })
+      .where(eq(projects.id, params.id));
+
+    return { ok: true, message: i18n.t("project:settings.restored"), _action: "restoreProject" };
+  }
+
+  if (intent === "deleteProject") {
+    requireSuperAdmin(user);
+
+    const projectVolumes = await db
+      .select({ id: volumes.id })
+      .from(volumes)
+      .where(eq(volumes.projectId, params.id))
+      .all();
+    const volumeIds = projectVolumes.map((v) => v.id);
+
+    for (const volId of volumeIds) {
+      await db.delete(entries).where(eq(entries.volumeId, volId));
+      await db.delete(volumePages).where(eq(volumePages.volumeId, volId));
+    }
+
+    await db.delete(volumes).where(eq(volumes.projectId, params.id));
+    await db.delete(activityLog).where(eq(activityLog.projectId, params.id));
+    await db.delete(projectInvites).where(eq(projectInvites.projectId, params.id));
+    await db.delete(projectMembers).where(eq(projectMembers.projectId, params.id));
+    await db.delete(projects).where(eq(projects.id, params.id));
+
+    const { redirect } = await import("react-router");
+    return redirect("/admin/cataloguing/projects");
+  }
+
+  return { ok: false, error: "Unknown action" };
 }
 
 export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
-  const { project } = loaderData;
+  const { project, isSuperAdmin, documentSubtypes } = loaderData;
   const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
   const { t } = useTranslation(["project", "common"]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  // Local draft of the document-subtype list. Seeded from the loader;
+  // reset to the server value whenever the lead saves or cancels. The
+  // form submits a newline-joined serialisation so the server handler
+  // stays framework-free.
+  const [subtypeDraft, setSubtypeDraft] =
+    useState<string[]>(documentSubtypes);
+  const [newSubtype, setNewSubtype] = useState("");
+  const isArchived = !!project.archivedAt;
+  const isSaving =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("_action") === "updateSettings";
+  const isSavingSubtypes =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("_action") === "updateDocumentSubtypes";
+
+  function addSubtype() {
+    const clean = newSubtype.trim();
+    if (clean.length === 0) return;
+    if (subtypeDraft.includes(clean)) {
+      setNewSubtype("");
+      return;
+    }
+    setSubtypeDraft([...subtypeDraft, clean]);
+    setNewSubtype("");
+  }
+
+  function removeSubtype(index: number) {
+    setSubtypeDraft(subtypeDraft.filter((_, i) => i !== index));
+  }
+
+  function moveSubtype(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= subtypeDraft.length) return;
+    const next = [...subtypeDraft];
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    setSubtypeDraft(next);
+  }
+
+  function resetSubtypes() {
+    setSubtypeDraft(documentSubtypes);
+    setNewSubtype("");
+  }
 
   return (
     <div className="space-y-10">
+      {/* Settings form */}
       <section>
         <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
           {t("project:settings.heading")}
@@ -103,6 +261,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
         )}
 
         <Form method="post" className="mt-6 max-w-xl space-y-5">
+          <input type="hidden" name="_action" value="updateSettings" />
           <div>
             <label
               htmlFor="name"
@@ -187,12 +346,252 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
 
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:opacity-70"
           >
+            {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
             {t("project:settings.save")}
           </button>
         </Form>
       </section>
+
+      {/* Document subtypes editor */}
+      <section className="border-t border-stone-200 pt-8">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+          {t("project:settings.subtypes_heading")}
+        </h2>
+        <p className="mt-2 max-w-2xl font-sans text-sm text-[#78716C]">
+          {t("project:settings.subtypes_help")}
+        </p>
+
+        {actionData?.ok &&
+          actionData?.message &&
+          actionData._action === "updateDocumentSubtypes" && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+              <svg
+                className="h-5 w-5 shrink-0 text-[#2F6B45]"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                />
+              </svg>
+              {actionData.message}
+            </div>
+          )}
+
+        <Form method="post" className="mt-6 max-w-2xl">
+          <input type="hidden" name="_action" value="updateDocumentSubtypes" />
+          <input
+            type="hidden"
+            name="documentSubtypes"
+            value={subtypeDraft.join("\n")}
+          />
+
+          <ul className="space-y-2">
+            {subtypeDraft.map((subtype, index) => (
+              <li
+                key={`${subtype}-${index}`}
+                className="flex items-center gap-2 rounded-lg border border-[#E7E5E4] bg-white px-3 py-2"
+              >
+                <GripVertical
+                  className="h-4 w-4 shrink-0 text-[#A8A29E]"
+                  aria-hidden="true"
+                />
+                <span className="flex-1 font-serif text-[1rem] text-[#44403C]">
+                  {subtype}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveSubtype(index, -1)}
+                    disabled={index === 0}
+                    className="rounded-md p-1 text-[#78716C] hover:bg-[#FAFAF9] hover:text-[#44403C] disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={t("project:settings.subtypes_move_up")}
+                    title={t("project:settings.subtypes_move_up")}
+                  >
+                    {"\u2191"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSubtype(index, 1)}
+                    disabled={index === subtypeDraft.length - 1}
+                    className="rounded-md p-1 text-[#78716C] hover:bg-[#FAFAF9] hover:text-[#44403C] disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={t("project:settings.subtypes_move_down")}
+                    title={t("project:settings.subtypes_move_down")}
+                  >
+                    {"\u2193"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeSubtype(index)}
+                    className="rounded-md p-1 text-[#78716C] hover:bg-[#F5E6EA] hover:text-[#8B2942]"
+                    aria-label={t("project:settings.subtypes_remove")}
+                    title={t("project:settings.subtypes_remove")}
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              </li>
+            ))}
+            {subtypeDraft.length === 0 && (
+              <li className="rounded-lg border border-dashed border-[#E7E5E4] px-3 py-4 text-center font-sans text-sm text-[#A8A29E]">
+                {t("project:settings.subtypes_empty_hint")}
+              </li>
+            )}
+          </ul>
+
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              type="text"
+              value={newSubtype}
+              onChange={(e) => setNewSubtype(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addSubtype();
+                }
+              }}
+              placeholder={t("project:settings.subtypes_add_placeholder")}
+              className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-serif text-[1rem] text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={addSubtype}
+              disabled={newSubtype.trim().length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-medium text-[#44403C] hover:bg-[#FAFAF9] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {t("project:settings.subtypes_add")}
+            </button>
+          </div>
+
+          <div className="mt-5 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSavingSubtypes}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:opacity-70"
+            >
+              {isSavingSubtypes && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              {t("project:settings.subtypes_save")}
+            </button>
+            <button
+              type="button"
+              onClick={resetSubtypes}
+              className="font-sans text-sm text-[#78716C] hover:text-[#44403C]"
+            >
+              {t("project:settings.subtypes_reset")}
+            </button>
+          </div>
+        </Form>
+      </section>
+
+      {/* Danger zone */}
+      <section className="border-t border-stone-200 pt-8">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+          {t("project:settings.danger_zone")}
+        </h2>
+        <div className="mt-4 max-w-xl space-y-4">
+          {/* Archive / Restore */}
+          <div className="flex items-center justify-between rounded-lg border border-[#E7E5E4] px-4 py-3">
+            <div>
+              <p className="font-sans text-sm font-medium text-[#44403C]">
+                {isArchived
+                  ? t("project:settings.restore_title")
+                  : t("project:settings.archive_title")}
+              </p>
+              <p className="font-sans text-xs text-[#A8A29E]">
+                {isArchived
+                  ? t("project:settings.restore_description")
+                  : t("project:settings.archive_description")}
+              </p>
+            </div>
+            <Form method="post">
+              <input
+                type="hidden"
+                name="_action"
+                value={isArchived ? "restoreProject" : "archiveProject"}
+              />
+              <button
+                type="submit"
+                className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-[#78716C] ring-1 ring-[#E7E5E4] hover:bg-[#FAFAF9] hover:text-[#44403C]"
+              >
+                {isArchived
+                  ? t("project:settings.restore")
+                  : t("project:settings.archive")}
+              </button>
+            </Form>
+          </div>
+
+          {/* Delete (superadmin only) */}
+          {isSuperAdmin && (
+            <div className="rounded-lg border border-[#8B2942]/30 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-sans text-sm font-medium text-[#8B2942]">
+                    {t("project:settings.delete_title")}
+                  </p>
+                  <p className="font-sans text-xs text-[#A8A29E]">
+                    {t("project:settings.delete_description")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+                  className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-[#8B2942] ring-1 ring-[#8B2942]/30 hover:bg-[#F5E6EA]"
+                >
+                  {t("common:button.delete")}
+                </button>
+              </div>
+              {showDeleteConfirm && (
+                <div className="mt-3 rounded-lg border border-[#8B2942] bg-[#FFF5F7] p-4">
+                  <p className="font-sans text-sm text-[#44403C]">
+                    {t("project:settings.delete_confirm", { name: project.name })}
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmName}
+                    onChange={(e) => setConfirmName(e.target.value)}
+                    placeholder={project.name}
+                    className="mt-2 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                  />
+                  <div className="mt-3 flex gap-2">
+                    <Form method="post">
+                      <input type="hidden" name="_action" value="deleteProject" />
+                      <button
+                        type="submit"
+                        disabled={confirmName !== project.name}
+                        className="rounded-lg bg-[#8B2942] px-3 py-1.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {t("project:settings.delete_permanently")}
+                      </button>
+                    </Form>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeleteConfirm(false);
+                        setConfirmName("");
+                      }}
+                      className="rounded-lg border border-[#E7E5E4] px-3 py-1.5 font-sans text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+                    >
+                      {t("common:button.cancel")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
+
+//

@@ -1,22 +1,10 @@
 /**
- * Root Document
+ * App Root
  *
- * The top-level layout that wraps every page in the app. It emits the
- * `<html>` document, loads the Google font families used in the app's
- * typography stack, declares the favicon and Open Graph metadata, and
- * installs the `i18next` middleware so every loader and action runs
- * inside a resolved locale context.
- *
- * The default export renders a bare `<Outlet />` because the real
- * layout chrome -- sidebar, top bar, footer -- lives in the
- * authenticated layout `_auth.tsx`. The root stays lean so public
- * routes like `/login` and the OAuth callbacks can render without
- * pulling in sidebar code.
- *
- * `ErrorBoundary` catches both route error responses and thrown
- * exceptions, surfacing a minimal error page. In development mode it
- * also dumps the stack trace so unexpected errors are visible in the
- * browser without tailing Worker logs.
+ * The outermost React Router component. Renders the HTML document
+ * scaffold, hydrates the i18next instance attached by the middleware,
+ * and mounts the fall-back error boundary that catches uncaught
+ * errors from loaders, actions, and components.
  *
  * @version v0.3.0
  */

@@ -1,12 +1,9 @@
 /**
- * Application Footer
+ * App Footer
  *
- * A thin footer that lives below the sidebar-and-content layout on every
- * authenticated page except the full-page viewer and description editor.
- * It carries the release version (linked to the matching GitHub tag) plus
- * partner logos. The version string is kept as a module-level constant
- * and bumped in this same file every release so an audit of "what shipped
- * when" can skim the footer along with the package manifest.
+ * Thin footer strip shown at the bottom of the authenticated shell.
+ * Surfaces the build version and a copyright line; deliberately
+ * minimal so it never competes with the main content.
  *
  * @version v0.3.0
  */

@@ -1,17 +1,5 @@
 /**
- * Sidebar Visibility Tests
- *
- * Exercises the pure `getSidebarSections` function from `sidebar.tsx` across
- * every meaningful role-flag combination. The cases pin the contract that
- * the sidebar is role-driven: a no-access user sees only Home, a plain
- * project member sees Home and their projects list, a collab admin adds the
- * project-management and team links, an archive admin adds the records
- * management section, and a superadmin adds Promote and Publish.
- *
- * These tests are the regression gate for sidebar visibility -- any change
- * to the role matrix has to be reflected here before it ships, so UI
- * regressions on role gating surface as a failed test rather than as a
- * misrendered rail in production.
+ * Tests for Sidebar Navigation
  *
  * @version v0.3.0
  */

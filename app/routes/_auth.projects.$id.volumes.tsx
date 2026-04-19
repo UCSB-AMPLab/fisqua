@@ -1,3 +1,16 @@
+/**
+ * Project Volumes Page
+ *
+ * Leads-only volume management for one project. Lists every volume the
+ * project holds — each one rendered as a `VolumeCard` with its status,
+ * assignments, and open-QC-flag count denormalised at read time so the
+ * page can render in a single round-trip. Leads can add new volumes
+ * from a IIIF manifest URL here; per-volume deep management lives on
+ * the `$volumeId/manage` page.
+ *
+ * @version v0.3.0
+ */
+
 import { useState } from "react";
 import { Form, useActionData } from "react-router";
 import { useTranslation, Trans } from "react-i18next";
@@ -226,6 +239,8 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {volumes.map((volume) => (
+            // `openQcFlagCount` is carried inside `volume` (from getProjectVolumes)
+            // and surfaces as a red "N open flags" badge on the card when non-zero.
             <VolumeCard key={volume.id} volume={volume} projectId={projectId} />
           ))}
         </div>
@@ -233,3 +248,4 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+

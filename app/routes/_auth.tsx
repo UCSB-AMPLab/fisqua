@@ -1,23 +1,12 @@
 /**
- * Authenticated Layout
+ * Authenticated App Shell
  *
- * Every route under `/` that requires a signed-in user flows through this
- * layout. It runs `authMiddleware` to establish the `userContext` for
- * loaders and actions further down the tree, then assembles the chrome
- * around whatever child route is rendering: a compact top-bar, the
- * sidebar with role-gated sections, and a footer with the release
- * version.
- *
- * The viewer and the description editor are full-page surfaces that opt
- * out of the chrome entirely so cataloguers have the full viewport for
- * IIIF tiles and ISAD(G) editing. The layout detects those routes by
- * path and renders a bare `<Outlet />` in that case.
- *
- * The loader also computes `hasAnyProjectMembership` -- a single boolean
- * that tells the sidebar whether to show the "Collaborative cataloguing"
- * section to users who are not admins but are members of at least one
- * project. The sidebar's visibility rules live in `getSidebarSections`;
- * this loader just supplies the fact.
+ * The parent route for everything behind login. Runs the auth guard,
+ * loads the sidebar payload — projects the caller belongs to, plus
+ * admin visibility flags — and renders the three-column shell:
+ * sidebar, top bar, outlet. The shell manages the sidebar collapse
+ * state and the mobile drawer, exposing both through the outlet
+ * context so nested pages can react.
  *
  * @version v0.3.0
  */
@@ -47,8 +36,8 @@ export async function loader({ context }: Route.LoaderArgs) {
   const env = context.cloudflare.env;
   const { appName } = getAppConfig(env);
 
-  // Project-membership fact drives the "Collaborative cataloguing" sidebar
-  // section for plain members who hold no admin flags.
+  : compute hasAnyProjectMembership so the sidebar can show the
+  // Collaborative Cataloguing section to project-member-only users.
   const db = drizzle(env.DB);
   const membershipRows = await db
     .select({ id: projectMembers.id })

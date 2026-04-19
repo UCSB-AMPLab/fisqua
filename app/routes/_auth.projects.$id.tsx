@@ -1,4 +1,16 @@
-import { Outlet, NavLink } from "react-router";
+/**
+ * Project Layout
+ *
+ * Shared frame for every project-scoped page: the sidebar project
+ * selector, the secondary navigation pills (Overview, Volumes,
+ * Members, Settings), and the project header. Loads the project
+ * record once and passes it to children through the React Router
+ * outlet context.
+ *
+ * @version v0.3.0
+ */
+
+import { Outlet, NavLink, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
 import type { Route } from "./+types/_auth.projects.$id";
@@ -39,72 +51,50 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const { project, user, userRole } = loaderData;
-  const canSeeVolumes = userRole === "lead" || user.isAdmin;
+  const isLead = userRole === "lead" || user.isAdmin;
   const { t } = useTranslation("project");
+
+  const tabClass = ({ isActive }: { isActive: boolean }) =>
+    `border-b-2 px-1 pb-2 text-sm font-medium ${
+      isActive
+        ? "border-stone-900 text-stone-900"
+        : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
+    }`;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       {/* Breadcrumb */}
       <nav className="mb-4 text-sm text-stone-500">
-        <a href="/dashboard" className="hover:text-stone-700">
-          {t("dashboard:heading.dashboard", { defaultValue: "Inicio" })}
-        </a>
+        <Link to="/admin/cataloguing/projects" className="hover:text-stone-700">
+          {t("nav.all_projects")}
+        </Link>
         <span className="mx-2">/</span>
         <span className="text-stone-900">{project.name}</span>
       </nav>
 
       {/* Section navigation */}
       <div className="mb-6 flex gap-4 border-b border-stone-200">
-        <NavLink
-          to={`/projects/${project.id}/settings`}
-          className={({ isActive }) =>
-            `border-b-2 px-1 pb-2 text-sm font-medium ${
-              isActive
-                ? "border-stone-900 text-stone-900"
-                : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
-            }`
-          }
-        >
-          {t("tab.settings")}
+        <NavLink to={`/projects/${project.id}/overview`} className={tabClass}>
+          {t("tab.overview")}
         </NavLink>
-        <NavLink
-          to={`/projects/${project.id}/members`}
-          className={({ isActive }) =>
-            `border-b-2 px-1 pb-2 text-sm font-medium ${
-              isActive
-                ? "border-stone-900 text-stone-900"
-                : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
-            }`
-          }
-        >
-          {t("tab.members")}
-        </NavLink>
-        {canSeeVolumes && (
-          <NavLink
-            to={`/projects/${project.id}/volumes`}
-            className={({ isActive }) =>
-              `border-b-2 px-1 pb-2 text-sm font-medium ${
-                isActive
-                  ? "border-stone-900 text-stone-900"
-                  : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
-              }`
-            }
-          >
+        {isLead && (
+          <NavLink to={`/projects/${project.id}/volumes`} className={tabClass}>
             {t("tab.volumes")}
           </NavLink>
         )}
-        {canSeeVolumes && (
-          <NavLink
-            to={`/projects/${project.id}/assignments`}
-            className={({ isActive }) =>
-              `border-b-2 px-1 pb-2 text-sm font-medium ${
-                isActive
-                  ? "border-stone-900 text-stone-900"
-                  : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
-              }`
-            }
-          >
+        {isLead && (
+          <NavLink to={`/projects/${project.id}/assignments`} className={tabClass}>
             {t("tab.assignments")}
+          </NavLink>
+        )}
+        {isLead && (
+          <NavLink to={`/projects/${project.id}/members`} className={tabClass}>
+            {t("tab.users")}
+          </NavLink>
+        )}
+        {isLead && (
+          <NavLink to={`/projects/${project.id}/settings`} className={tabClass}>
+            {t("tab.general_settings")}
           </NavLink>
         )}
       </div>

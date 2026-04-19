@@ -1,19 +1,12 @@
 /**
  * Role-Dependent Dashboard
  *
- * The authenticated landing page at `/dashboard` tailored to the user's
- * primary collaborative-cataloguing role. It resolves each user to
- * exactly one of `lead`, `reviewer`, `cataloguer`, or `none` based on
- * their project memberships (admins always land on the lead view), then
- * loads the data that role needs and renders the matching dashboard.
- *
- * Cataloguers see their assigned volumes grouped by urgency plus a
- * description-review tab; reviewers see volumes awaiting review plus a
- * flags + description-review tab; leads see a cross-project overview
- * with an attention panel flagging unassigned volumes, inactive members,
- * and stuck work. A user who holds no project role lands on a
- * get-started empty state that invites them to wait for an assignment
- * or (if admin) to create a project.
+ * Legacy dashboard route kept for deep links and admin-first users.
+ * Determines the caller's primary project role — with lead taking
+ * precedence over reviewer, reviewer over cataloguer — and renders
+ * the appropriate dashboard view (`LeadDashboard`, `ReviewerDashboard`,
+ * or `CataloguerDashboard`) with the role-specific payload the loader
+ * assembled from volumes, entries, and assignments.
  *
  * @version v0.3.0
  */
@@ -58,7 +51,7 @@ type DashboardRole = "lead" | "reviewer" | "cataloguer" | "none";
 
 /**
  * Determine user's primary role across all projects.
- * Priority order: lead > reviewer > cataloguer.
+ * Priority: lead > reviewer > cataloguer ()
  */
 function determinePrimaryRole(
   memberships: { role: string }[]

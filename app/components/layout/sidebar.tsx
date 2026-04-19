@@ -1,26 +1,13 @@
 /**
  * Sidebar Navigation
  *
- * The sidebar is the primary way users move through the app once signed in.
- * It is the sole navigation surface for the admin back-office -- there are no
- * admin tabs any more -- and it also hosts the user's project workspace and
- * personal settings links. What sections a given user sees depends entirely
- * on the role flags they carry: a member-only cataloguer sees only their own
- * projects list, a collab admin gains the project-management and team pages,
- * a records admin gains the archival descriptions / entities / places /
- * repositories / vocabularies group, and a superadmin gains publish and
- * promote on top.
- *
- * `getSidebarSections` is a pure function that takes the role-flag snapshot
- * and returns the sections visible to that user. Keeping it pure means the
- * visibility rules are fully unit-testable (see `sidebar.test.tsx`) and the
- * component below does no role logic of its own -- it just renders what the
- * function returns.
- *
- * The sidebar supports a collapse state that shrinks it to an icon rail;
- * the toggle is controlled from the parent layout (`_auth.tsx`), which also
- * persists the state in localStorage so a cataloguer who prefers the rail
- * sees it after reload.
+ * Primary left-hand navigation for the authenticated app. Renders
+ * the active project section, the cataloguing / description / admin
+ * link groups, and the footer with the signed-in user pill. Item
+ * visibility is computed from the caller's role flags via
+ * `getSidebarSections`, which keeps sidebar composition testable
+ * and free of inline role checks. Supports both a desktop collapsed
+ * state and a mobile drawer.
  *
  * @version v0.3.0
  */
@@ -69,11 +56,8 @@ export interface SidebarUser {
 }
 
 /**
- * Returns the sidebar sections visible to a given user, based on their
- * role flags and whether they are a member of any project. The output
- * drives what links the sidebar renders; no role logic lives in the
- * component below. Kept as a pure function so the visibility matrix
- * stays fully unit-testable.
+ * Pure function that returns the sidebar sections visible to a given user.
+ * Single source of truth for sidebar visibility, fully unit-testable.
  */
 export function getSidebarSections(user: SidebarUser): NavSection[] {
   const sections: NavSection[] = [
@@ -84,7 +68,7 @@ export function getSidebarSections(user: SidebarUser): NavSection[] {
     },
   ];
 
-  // Collaborative cataloguing — visible to any project member or collab/admin role.
+  // Collaborative cataloguing — visible if member OR any collab/admin flag
   if (
     user.hasAnyProjectMembership ||
     user.isCollabAdmin ||
@@ -124,7 +108,7 @@ export function getSidebarSections(user: SidebarUser): NavSection[] {
     });
   }
 
-  // Records management — the archival admin surfaces for catalogued material.
+  // Records management — archive admin side
   if (user.isAdmin || user.isSuperAdmin) {
     const items: NavItem[] = [
       { path: "/admin/descriptions", icon: FileText, labelKey: "sidebar:descriptions" },
