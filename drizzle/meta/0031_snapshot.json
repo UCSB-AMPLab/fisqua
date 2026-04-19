@@ -1,0 +1,80 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "qc_flags": {
+      "name": "qc_flags",
+      "columns": {
+        "id": { "name": "id", "type": "TEXT", "primaryKey": true, "notNull": true },
+        "volume_id": { "name": "volume_id", "type": "TEXT", "notNull": true },
+        "page_id": { "name": "page_id", "type": "TEXT", "notNull": true },
+        "reported_by": { "name": "reported_by", "type": "TEXT", "notNull": true },
+        "problem_type": { "name": "problem_type", "type": "TEXT", "notNull": true },
+        "description": { "name": "description", "type": "TEXT", "notNull": true },
+        "status": { "name": "status", "type": "TEXT", "notNull": true, "default": "'open'" },
+        "resolution_action": { "name": "resolution_action", "type": "TEXT", "notNull": false },
+        "resolver_note": { "name": "resolver_note", "type": "TEXT", "notNull": false },
+        "resolved_by": { "name": "resolved_by", "type": "TEXT", "notNull": false },
+        "resolved_at": { "name": "resolved_at", "type": "INTEGER", "notNull": false },
+        "region_comment_id": { "name": "region_comment_id", "type": "TEXT", "notNull": false },
+        "created_at": { "name": "created_at", "type": "INTEGER", "notNull": true }
+      },
+      "indexes": {
+        "qc_flags_volume_status_idx": { "name": "qc_flags_volume_status_idx", "columns": ["volume_id", "status"], "isUnique": false },
+        "qc_flags_page_idx": { "name": "qc_flags_page_idx", "columns": ["page_id"], "isUnique": false },
+        "qc_flags_reporter_idx": { "name": "qc_flags_reporter_idx", "columns": ["reported_by"], "isUnique": false },
+        "qc_flags_region_comment_idx": { "name": "qc_flags_region_comment_idx", "columns": ["region_comment_id"], "isUnique": false }
+      },
+      "compositePrimaryKeys": {},
+      "foreignKeys": {
+        "qc_flags_volume_id_volumes_id_fk": {
+          "name": "qc_flags_volume_id_volumes_id_fk",
+          "tableFrom": "qc_flags",
+          "tableTo": "volumes",
+          "columnsFrom": ["volume_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "qc_flags_page_id_volume_pages_id_fk": {
+          "name": "qc_flags_page_id_volume_pages_id_fk",
+          "tableFrom": "qc_flags",
+          "tableTo": "volume_pages",
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "qc_flags_reported_by_users_id_fk": {
+          "name": "qc_flags_reported_by_users_id_fk",
+          "tableFrom": "qc_flags",
+          "tableTo": "users",
+          "columnsFrom": ["reported_by"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "qc_flags_resolved_by_users_id_fk": {
+          "name": "qc_flags_resolved_by_users_id_fk",
+          "tableFrom": "qc_flags",
+          "tableTo": "users",
+          "columnsFrom": ["resolved_by"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "qc_flags_region_comment_id_comments_id_fk": {
+          "name": "qc_flags_region_comment_id_comments_id_fk",
+          "tableFrom": "qc_flags",
+          "tableTo": "comments",
+          "columnsFrom": ["region_comment_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  }
+}

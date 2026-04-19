@@ -1,0 +1,21 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "comments": {
+      "name": "comments",
+      "columns": {
+        "deleted_at": { "name": "deleted_at", "type": "INTEGER", "notNull": false },
+        "deleted_by": { "name": "deleted_by", "type": "TEXT", "notNull": false },
+        "resolved_at": { "name": "resolved_at", "type": "INTEGER", "notNull": false },
+        "resolved_by": { "name": "resolved_by", "type": "TEXT", "notNull": false },
+        "edited_at": { "name": "edited_at", "type": "INTEGER", "notNull": false }
+      },
+      "indexes": {},
+      "compositePrimaryKeys": {},
+      "foreignKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  }
+}

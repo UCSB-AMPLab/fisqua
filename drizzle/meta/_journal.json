@@ -71,6 +71,167 @@
       "when": 1773365534094,
       "tag": "0009_solid_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1774569600000,
+      "tag": "0010_github_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1775259857865,
+      "tag": "0011_schema_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1775259957068,
+      "tag": "0012_fts5_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1775350000000,
+      "tag": "0013_promote_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1775350100000,
+      "tag": "0014_historical_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1775350200000,
+      "tag": "0015_fts5_name_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1775350300000,
+      "tag": "0016_drafts_changelog",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1775350400000,
+      "tag": "0017_last_exported_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1775350500000,
+      "tag": "0018_phase23_24_additions",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1775350600000,
+      "tag": "0019_export_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1775954400000,
+      "tag": "0021_rights_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1776021323000,
+      "tag": "0022_site_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1776041700000,
+      "tag": "0023_repository_display_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1776042600000,
+      "tag": "0024_descriptions_fts5",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1776352320000,
+      "tag": "0025_vocabulary_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1776353000000,
+      "tag": "0026_user_manager",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1776353100000,
+      "tag": "0027_cataloguer_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1776353200000,
+      "tag": "0028_clear_test_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1776700000000,
+      "tag": "0029_page_targets_and_qc_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1777300000000,
+      "tag": "0030_comments_qc_flag_and_regions",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1777500000000,
+      "tag": "0031_qc_flags_region_comment_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1777700000000,
+      "tag": "0032_entries_subtype_and_test_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1777900000000,
+      "tag": "0033_comment_soft_delete_resolve",
+      "breakpoints": true
     }
   ]
 }

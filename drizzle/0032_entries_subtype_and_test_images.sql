@@ -1,0 +1,33 @@
+-- Entry subtypes and the `test_images` boundary type
+--
+-- Two small, forward-compatible additions to the segmentation model.
+--
+-- First: a new nullable `entries.subtype` column lets cataloguers tag
+-- an `item` entry with a Colombian Spanish document subtype drawn
+-- from the project's `documentSubtypes` list -- "Testamento", "Poder
+-- general", "Compraventa", and similar labels seeded by
+-- `DEFAULT_DOCUMENT_SUBTYPES` or added by the project lead. Free-form
+-- at the SQL level (no CHECK); only meaningful when `entries.type =
+-- 'item'`. A free-text "OTRO" value with a custom subtitle is
+-- supported so cataloguers can capture unusual document types without
+-- blocking on a vocabulary edit. Existing rows default to NULL.
+--
+-- Second: `test_images` joins the EntryType union as a dedicated
+-- value for calibration or test-shot pages that sit alongside the
+-- documented material but are not part of the archival record. The
+-- production `entries.type` column has no SQLite-level CHECK
+-- constraint -- the Drizzle `enum` metadata is the single source of
+-- truth -- so accepting a new value requires no DDL here. The
+-- Drizzle schema, the boundary-type union, and the server-side
+-- whitelist are the three real gates; all three are updated in the
+-- same release commit that ships this migration. The rename is
+-- documented here so that a future reader greps their way to the
+-- column add alongside the enum change.
+--
+-- `ALTER TABLE ... ADD COLUMN` is not idempotent in SQLite, so this
+-- migration must only run once. Drizzle's migration journal
+-- guarantees that; no IF NOT EXISTS guard is needed.
+--
+-- Version: v0.3.0
+
+ALTER TABLE entries ADD COLUMN subtype TEXT;

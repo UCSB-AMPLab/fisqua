@@ -1,0 +1,17 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "entries": {
+      "name": "entries",
+      "columns": {
+        "subtype": { "name": "subtype", "type": "TEXT", "notNull": false }
+      },
+      "indexes": {},
+      "compositePrimaryKeys": {},
+      "foreignKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  }
+}
