@@ -1,10 +1,13 @@
 /**
- * Re-segmentation flagging dialog.
+ * Flag Resegmentation Dialog
  *
- * Lets a cataloguer report segmentation problems during description work.
- * Creating a flag pauses description on the entire volume until resolved.
+ * Modal reviewers use to request that a lead re-segment an entry.
+ * Collects the reason and routes it to the outline through the
+ * shared fetcher; resolution happens in the `ResegmentationCard`
+ * on the outline side.
+ *
+ * @version v0.3.0
  */
-
 import { useState } from "react";
 import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -103,7 +106,11 @@ export function FlagResegmentationDialog({
         affectedEntryIds: JSON.stringify(Array.from(selectedEntries)),
         description: description.trim(),
       },
-      { method: "post", action: "/api/resegmentation" }
+      {
+        method: "post",
+        action: "/api/resegmentation",
+        encType: "application/json",
+      }
     );
 
     // Reset and close

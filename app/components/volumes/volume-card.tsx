@@ -1,5 +1,16 @@
+/**
+ * Volume Card
+ *
+ * Per-volume card used on the project volumes page and on the lead
+ * dashboard. Surfaces the volume name, status, assigned cataloguer
+ * and reviewer, entry counts by status, and any open QC flag count.
+ * Clicking the card opens the viewer at the first unresolved page.
+ *
+ * @version v0.3.0
+ */
 import { Form, Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import { Flag } from "lucide-react";
 
 type VolumeCardProps = {
   volume: {
@@ -10,6 +21,7 @@ type VolumeCardProps = {
     status: string;
     assignedTo: string | null;
     firstPageImageUrl: string | null;
+    openQcFlagCount?: number;
   };
   projectId: string;
 };
@@ -24,17 +36,18 @@ const statusBadgeColors: Record<string, string> = {
 };
 
 export function VolumeCard({ volume, projectId }: VolumeCardProps) {
-  const { t } = useTranslation(["project", "workflow", "common"]);
+  const { t } = useTranslation(["project", "workflow", "common", "qc_flags"]);
   const thumbnailUrl = volume.firstPageImageUrl
     ? `${volume.firstPageImageUrl}/full/200,/0/default.jpg`
     : null;
 
   const canDelete = !volume.assignedTo && volume.status === "unstarted";
+  const openFlagCount = volume.openQcFlagCount ?? 0;
 
   return (
     <div className="group relative overflow-hidden rounded-lg border border-[#E7E5E4] bg-white shadow-sm transition-shadow hover:shadow-md">
       <Link
-        to={`/projects/${projectId}/volumes/${volume.id}`}
+        to={`/projects/${projectId}/volumes/${volume.id}/manage`}
         className="block"
       >
         {/* Thumbnail */}
@@ -68,15 +81,26 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
             {volume.name}
           </h3>
           <p className="mt-0.5 font-mono text-xs text-[#78716C]">{volume.referenceCode}</p>
-          <div className="mt-2 flex items-center justify-between">
+          <div className="mt-2 flex items-center justify-between gap-2">
             <span className="font-sans text-xs text-[#78716C]">
               {t("common:domain.image_count", { count: volume.pageCount })}
             </span>
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${statusBadgeColors[volume.status] || "bg-[#E7E5E4] text-[#78716C]"}`}
-            >
-              {t(`workflow:status.${volume.status}`)}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {openFlagCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 font-sans text-xs font-semibold text-red-700"
+                  title={t("qc_flags:badge.open_count", { count: openFlagCount })}
+                >
+                  <Flag className="h-3 w-3" aria-hidden="true" />
+                  {t("qc_flags:badge.open_count", { count: openFlagCount })}
+                </span>
+              )}
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${statusBadgeColors[volume.status] || "bg-[#E7E5E4] text-[#78716C]"}`}
+              >
+                {t(`workflow:status.${volume.status}`)}
+              </span>
+            </div>
           </div>
         </div>
       </Link>
@@ -112,3 +136,4 @@ export function VolumeCard({ volume, projectId }: VolumeCardProps) {
     </div>
   );
 }
+

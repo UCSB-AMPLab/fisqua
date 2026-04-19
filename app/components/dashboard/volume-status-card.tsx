@@ -1,10 +1,16 @@
 /**
- * Reusable volume status card for dashboard views.
- * Shows volume name, progress info, status badge, and optional reviewer comment.
+ * Volume Status Card
+ *
+ * Per-volume progress card used across the dashboards: name,
+ * segmentation state, entry counts by status, and the cataloguer /
+ * reviewer avatars. Clicking the card opens the viewer in the
+ * caller's default mode.
+ *
+ * @version v0.3.0
  */
-
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import { Flag } from "lucide-react";
 import { StatusBadge } from "../workflow/status-badge";
 import { relativeTime } from "~/lib/format";
 
@@ -20,6 +26,7 @@ export type VolumeCardData = {
   reviewComment?: string | null;
   cataloguerName?: string | null;
   assignedReviewerName?: string | null;
+  openQcFlagCount?: number;
 };
 
 type VolumeStatusCardProps = {
@@ -27,7 +34,8 @@ type VolumeStatusCardProps = {
 };
 
 export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
-  const { t } = useTranslation(["common", "dashboard"]);
+  const { t } = useTranslation(["common", "dashboard", "qc_flags"]);
+  const openFlagCount = volume.openQcFlagCount ?? 0;
 
   return (
     <Link
@@ -43,7 +51,18 @@ export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
             {volume.projectName}
           </p>
         </div>
-        <StatusBadge status={volume.status} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {openFlagCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+              title={t("qc_flags:badge.open_count", { count: openFlagCount })}
+            >
+              <Flag className="h-3 w-3" aria-hidden="true" />
+              {t("qc_flags:badge.open_count", { count: openFlagCount })}
+            </span>
+          )}
+          <StatusBadge status={volume.status} />
+        </div>
       </div>
 
       <div className="mt-2 flex items-center gap-3 text-xs text-stone-500">
