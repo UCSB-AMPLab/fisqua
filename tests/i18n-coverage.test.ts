@@ -1,3 +1,8 @@
+/**
+ * Tests — i18n coverage
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect } from "vitest";
 
 const routeFiles = import.meta.glob("../app/routes/**/*.tsx", {
@@ -16,7 +21,7 @@ const componentFiles = import.meta.glob("../app/components/**/*.tsx", {
  * Detect suspected hardcoded English UI strings in JSX content.
  *
  * Returns an array of { file, line, text } for violations found.
- * This is a best-effort heuristic per the plan's D-04/D-05 requirements.
+ * This is a best-effort heuristic per the plan's requirements.
  */
 function findHardcodedStrings(
   files: Record<string, string>,

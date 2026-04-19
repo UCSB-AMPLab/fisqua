@@ -1,9 +1,10 @@
 /**
- * Sample IIIF v3 manifest fixture matching Zasqua's structure.
- * 3 canvases, Spanish labels, homepage with reference code.
+ * Tests — manifests
+ *
+ * @version v0.3.0
  */
 export const sampleManifestUrl =
-  "https://iiif.zasqua.org/co-ahr-gob-caj259-car005/manifest.json";
+  "https://manifests.zasqua.org/co-ahr-gob-caj259-car005/manifest.json";
 
 export const sampleManifest = {
   "@context": "http://iiif.io/api/presentation/3/context.json",

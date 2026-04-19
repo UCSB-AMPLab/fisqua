@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "code": "AHRB",
+    "name": "Archivo Hist\u00f3rico Regional de Boyac\u00e1",
+    "short_name": "AHRB",
+    "country_code": "COL",
+    "country": "Colombia",
+    "city": "Tunja",
+    "address": "Calle 19 No. 9-54",
+    "website": null,
+    "notes": null,
+    "enabled": true,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2024-01-10T09:00:00Z"
+  },
+  {
+    "id": 2,
+    "code": "AGN",
+    "name": "Archivo General de la Naci\u00f3n",
+    "short_name": "AGN",
+    "country_code": "COL",
+    "country": "Colombia",
+    "city": "Bogot\u00e1",
+    "address": "Carrera 6 No. 6-91",
+    "website": "https://www.archivogeneral.gov.co",
+    "notes": "National archive of Colombia",
+    "enabled": true,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2024-01-10T09:00:00Z"
+  }
+]

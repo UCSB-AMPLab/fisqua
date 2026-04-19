@@ -1,3 +1,8 @@
+/**
+ * Tests — session
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";

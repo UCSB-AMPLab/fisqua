@@ -1,3 +1,8 @@
+/**
+ * Tests — iiif parser
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { sampleManifest, sampleManifestUrl } from "../helpers/manifests";
 
@@ -8,7 +13,7 @@ import {
   getAllowedManifestHosts,
 } from "../../app/lib/iiif.server";
 
-const defaultEnv = { ALLOWED_MANIFEST_HOSTS: "iiif.zasqua.org" };
+const defaultEnv = { ALLOWED_MANIFEST_HOSTS: "manifests.zasqua.org" };
 
 describe("IIIF manifest parser", () => {
   describe("getAllowedManifestHosts", () => {
@@ -28,19 +33,19 @@ describe("IIIF manifest parser", () => {
 
     it("falls back to default host when env var is not set", () => {
       const hosts = getAllowedManifestHosts({});
-      expect(hosts).toEqual(["iiif.zasqua.org"]);
+      expect(hosts).toEqual(["manifests.zasqua.org"]);
     });
 
     it("falls back to default host when env var is undefined", () => {
       const hosts = getAllowedManifestHosts({
         ALLOWED_MANIFEST_HOSTS: undefined,
       });
-      expect(hosts).toEqual(["iiif.zasqua.org"]);
+      expect(hosts).toEqual(["manifests.zasqua.org"]);
     });
 
     it("falls back to default host when env var is empty string", () => {
       const hosts = getAllowedManifestHosts({ ALLOWED_MANIFEST_HOSTS: "" });
-      expect(hosts).toEqual(["iiif.zasqua.org"]);
+      expect(hosts).toEqual(["manifests.zasqua.org"]);
     });
   });
 
@@ -66,12 +71,12 @@ describe("IIIF manifest parser", () => {
         defaultEnv
       );
       expect(result.valid).toBe(false);
-      expect(result.error).toMatch(/iiif\.zasqua\.org/);
+      expect(result.error).toMatch(/manifests\.zasqua\.org/);
     });
 
     it("rejects URLs not ending in /manifest.json", () => {
       const result = validateManifestUrl(
-        "https://iiif.zasqua.org/co-ahr-gob-caj259-car005/info.json",
+        "https://manifests.zasqua.org/co-ahr-gob-caj259-car005/info.json",
         defaultEnv
       );
       expect(result.valid).toBe(false);

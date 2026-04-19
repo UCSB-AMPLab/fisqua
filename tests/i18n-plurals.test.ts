@@ -1,3 +1,8 @@
+/**
+ * Tests — i18n plurals
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect, beforeAll } from "vitest";
 import i18next from "i18next";
 import resources from "../app/locales";

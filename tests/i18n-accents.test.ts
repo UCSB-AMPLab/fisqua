@@ -1,3 +1,8 @@
+/**
+ * Tests — i18n accents
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect } from "vitest";
 
 import common from "../app/locales/es/common";

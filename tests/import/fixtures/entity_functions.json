@@ -1,0 +1,44 @@
+[
+  {
+    "id": 300,
+    "entity_id": 100,
+    "honorific": null,
+    "function": "Chronicler",
+    "date_start": "1560",
+    "date_end": "1607",
+    "date_note": "Approximate period of literary activity",
+    "certainty": "probable",
+    "source": null,
+    "notes": null,
+    "created_at": "2023-07-01T10:00:00Z",
+    "updated_at": "2024-02-15T08:30:00Z"
+  },
+  {
+    "id": 301,
+    "entity_id": 100,
+    "honorific": "Padre",
+    "function": "Priest",
+    "date_start": "1554",
+    "date_end": "1607",
+    "date_note": null,
+    "certainty": "certain",
+    "source": "Flor de baquianos: memoria y cedulario",
+    "notes": "Ordained as secular priest",
+    "created_at": "2023-07-01T10:00:00Z",
+    "updated_at": "2024-02-15T08:30:00Z"
+  },
+  {
+    "id": 302,
+    "entity_id": 101,
+    "honorific": null,
+    "function": "Municipal governance",
+    "date_start": "1539",
+    "date_end": "1810",
+    "date_note": "Colonial period",
+    "certainty": "certain",
+    "source": null,
+    "notes": null,
+    "created_at": "2023-07-15T12:00:00Z",
+    "updated_at": "2024-01-20T11:00:00Z"
+  }
+]

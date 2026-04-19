@@ -1,3 +1,8 @@
+/**
+ * Tests — auth
+ *
+ * @version v0.3.0
+ */
 import { getTestDb } from "./db";
 import { users } from "../../app/db/schema";
 

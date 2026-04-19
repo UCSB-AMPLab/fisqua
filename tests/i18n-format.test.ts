@@ -1,3 +1,8 @@
+/**
+ * Tests — i18n format
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { relativeTime, formatDate, formatNumber } from "../app/lib/format";
 

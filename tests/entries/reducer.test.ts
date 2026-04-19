@@ -1,3 +1,8 @@
+/**
+ * Tests — reducer
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect } from "vitest";
 import type { Entry, BoundaryState } from "../../app/lib/boundary-types";
 import {

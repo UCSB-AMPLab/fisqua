@@ -1,3 +1,8 @@
+/**
+ * Tests — members
+ *
+ * @version v0.3.0
+ */
 import {
   describe,
   it,

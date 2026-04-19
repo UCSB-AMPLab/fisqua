@@ -1,3 +1,8 @@
+/**
+ * Tests — logout
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect } from "vitest";
 import { createSessionStorage } from "../../app/sessions.server";
 

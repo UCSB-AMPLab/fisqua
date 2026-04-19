@@ -1,3 +1,8 @@
+/**
+ * Tests — i18n completeness
+ *
+ * @version v0.3.0
+ */
 import { describe, it, expect } from "vitest";
 import es from "../app/locales/es";
 import en from "../app/locales/en";
@@ -44,6 +49,22 @@ const NAMESPACES = [
   "project",
   "description",
   "comments",
+  "sidebar",
+  "settings",
+  "repositories",
+  "entities",
+  "places",
+  "descriptions_admin",
+  "publish",
+  "promote",
+  "no_access",
+  "cataloguing_admin",
+  "pipeline",
+  "team",
+  "vocabularies",
+  "volume_admin",
+  "user_admin",
+  "qc_flags",
 ] as const;
 
 describe("translation completeness", () => {
@@ -112,7 +133,7 @@ describe("translation completeness", () => {
     ).toEqual([]);
   });
 
-  it("all 9 namespaces are present in both locales: common, auth, dashboard, viewer, workflow, admin, project, description, comments", () => {
+  it("all namespaces are present in both locales", () => {
     const esNs = Object.keys(es).sort();
     const enNs = Object.keys(en).sort();
     const expected = [...NAMESPACES].sort();
@@ -120,3 +141,105 @@ describe("translation completeness", () => {
     expect(enNs).toEqual(expected);
   });
 });
+
+describe("qc_flags namespace structural shape (EN)", () => {
+  // These assertions guard the EN namespace in isolation. They pass now
+  // and continue to pass once the ES mirror is added; they only fail
+  // if the EN contract breaks.
+  const ns = en.qc_flags as unknown as Record<string, Record<string, unknown>>;
+
+  it("has top-level dialog, badge, card, and feed sections", () => {
+    expect(ns.dialog).toBeDefined();
+    expect(ns.badge).toBeDefined();
+    expect(ns.card).toBeDefined();
+    expect(ns.feed).toBeDefined();
+  });
+
+  it("dialog section covers all six problem types with labels + descriptions", () => {
+    const pt = ns.dialog.problem_type as Record<string, string>;
+    const types = [
+      "damaged",
+      "repeated",
+      "out_of_order",
+      "missing",
+      "blank",
+      "other",
+    ];
+    for (const k of types) {
+      expect(pt[k], `qc_flags:dialog.problem_type.${k}`).toBeTypeOf("string");
+      expect(
+        pt[`${k}_desc`],
+        `qc_flags:dialog.problem_type.${k}_desc`
+      ).toBeTypeOf("string");
+    }
+  });
+
+  it("dialog section has submit, cancel, details, and page labels", () => {
+    const d = ns.dialog as unknown as Record<string, unknown>;
+    expect(d.title).toBeTypeOf("string");
+    expect(d.subtitle).toBeTypeOf("string");
+    expect(d.page_label).toBeTypeOf("string");
+    expect(d.problem_type_label).toBeTypeOf("string");
+    expect(d.description_label).toBeTypeOf("string");
+    expect(d.description_placeholder).toBeTypeOf("string");
+    expect(d.submit).toBeTypeOf("string");
+    expect(d.cancel).toBeTypeOf("string");
+  });
+
+  it("badge section covers plural count + per-page aria + no-flags fallback", () => {
+    const b = ns.badge as unknown as Record<string, unknown>;
+    expect(b.open_count_one).toBeTypeOf("string");
+    expect(b.open_count_other).toBeTypeOf("string");
+    expect(b.no_flags).toBeTypeOf("string");
+    expect(b.per_page_aria_one).toBeTypeOf("string");
+    expect(b.per_page_aria_other).toBeTypeOf("string");
+  });
+
+  it("card section covers statuses, problem types, resolution actions, reporter/resolver, and resolve button", () => {
+    const c = ns.card as unknown as Record<string, unknown>;
+    const status = c.status as Record<string, string>;
+    expect(status.open).toBeTypeOf("string");
+    expect(status.resolved).toBeTypeOf("string");
+    expect(status.wontfix).toBeTypeOf("string");
+
+    const problemType = c.problem_type as Record<string, string>;
+    for (const k of [
+      "damaged",
+      "repeated",
+      "out_of_order",
+      "missing",
+      "blank",
+      "other",
+    ]) {
+      expect(problemType[k], `qc_flags:card.problem_type.${k}`).toBeTypeOf(
+        "string"
+      );
+    }
+
+    const action = c.resolution_action as Record<string, string>;
+    for (const k of [
+      "retake_requested",
+      "reordered",
+      "marked_duplicate",
+      "ignored",
+      "other",
+    ]) {
+      expect(action[k], `qc_flags:card.resolution_action.${k}`).toBeTypeOf(
+        "string"
+      );
+    }
+
+    expect(c.reported_by).toBeTypeOf("string");
+    expect(c.resolved_by).toBeTypeOf("string");
+    expect(c.resolve_button).toBeTypeOf("string");
+  });
+
+  it("feed section has both raised and resolved lifecycle strings", () => {
+    const f = ns.feed as unknown as Record<string, unknown>;
+    expect(f.raised).toBeTypeOf("string");
+    expect(f.resolved).toBeTypeOf("string");
+  });
+});
+
+
+
