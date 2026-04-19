@@ -1,3 +1,21 @@
+/**
+ * Entry Description Editor
+ *
+ * The full-page description editor for a single entry -- one of the
+ * segmented documentary units a cataloguer carved out of a volume.
+ * Renders a split-pane layout with the entry's IIIF image tiles on
+ * one side and the ISAD(G) description form on the other, with
+ * autosave and a review workflow (submit / approve / send back) built
+ * in. Entity and place linker dialogs attach authority records to the
+ * draft description, and the per-page QC-flag dialog lets cataloguers
+ * raise digitisation problems without leaving the editor.
+ *
+ * Breaks out of the sidebar chrome via a path check in `_auth.tsx` so
+ * cataloguers have the full viewport for image and form.
+ *
+ * @version v0.3.0
+ */
+
 import {
   useState,
   useRef,
@@ -20,6 +38,7 @@ import { DescriptionImageViewer } from "../components/description/description-im
 import { EntryNav } from "../components/description/entry-nav";
 import { SectionTOC } from "../components/description/section-toc";
 import { CommentThread } from "../components/comments/comment-thread";
+import { FlagQcDialog } from "../components/qc-flags/flag-qc-dialog";
 import { ResizableDivider } from "../components/outline/resizable-divider";
 import type { Route } from "./+types/_auth.description.$projectId.$entryId";
 
@@ -414,6 +433,33 @@ export default function DescriptionEditorRoute({
   // Resegmentation dialog state
   const [showResegDialog, setShowResegDialog] = useState(false);
 
+  // QC flag dialog state (per-page flag raise in the
+  // description editor). Single dialog instance at the tree root,
+  // pre-filled via the page id and position captured when the
+  // per-page flag button is clicked.
+  const [flagDialog, setFlagDialog] = useState<{
+    open: boolean;
+    pageId: string | null;
+    pagePosition: number | null;
+  }>({ open: false, pageId: null, pagePosition: null });
+
+  const handleFlagPage = useCallback(
+    (pageId: string, pagePosition: number) => {
+      setFlagDialog({ open: true, pageId, pagePosition });
+    },
+    []
+  );
+
+  const handleFlagDialogClose = useCallback(() => {
+    setFlagDialog({ open: false, pageId: null, pagePosition: null });
+  }, []);
+
+  const handleFlagCreated = useCallback(() => {
+    // Revalidate so any downstream surfaces picking up openQcFlagCount
+    // (viewer, volume cards) refresh on the next loader pass.
+    revalidator.revalidate();
+  }, [revalidator]);
+
   const handleCommentAdded = useCallback(() => {
     revalidator.revalidate();
   }, [revalidator]);
@@ -534,9 +580,12 @@ export default function DescriptionEditorRoute({
               validationErrors={validationErrors}
             />
 
-            {/* Comments section */}
+            {/* Comments section (pass volumeId through the
+                legacy shim prop path; Plan 05 migrates to the
+                discriminated target prop). */}
             <CommentThread
               entryId={entry.id}
+              volumeId={entry.volumeId}
               comments={comments}
               onCommentAdded={handleCommentAdded}
             />
@@ -559,9 +608,25 @@ export default function DescriptionEditorRoute({
             pages={pages}
             currentEntryStartPage={entry.startPage}
             currentEntryEndPage={entry.endPage}
+            onFlagPage={handleFlagPage}
           />
         </div>
       </div>
+
+      {/* QC flag dialog. Single instance at the tree
+          root — opened by handleFlagPage, closed either by submission or
+          by the user. `volumeId` is derived from the loaded entry's volume
+          so the server-side access check passes. */}
+      {flagDialog.open && flagDialog.pageId && flagDialog.pagePosition !== null && (
+        <FlagQcDialog
+          open={flagDialog.open}
+          onClose={handleFlagDialogClose}
+          volumeId={volume.id}
+          pageId={flagDialog.pageId}
+          pagePosition={flagDialog.pagePosition}
+          onCreated={handleFlagCreated}
+        />
+      )}
 
       {/* Re-segmentation dialog stub -- Plan 06 will provide FlagResegmentationDialog */}
       {showResegDialog && (

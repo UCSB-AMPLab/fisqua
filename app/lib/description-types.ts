@@ -1,5 +1,11 @@
 /**
- * Description-specific types for the item-level description workflow.
+ * Description Types
+ *
+ * Shared TypeScript types for the item-level description workflow --
+ * entry shape, comment target kinds, and the denormalised data the
+ * loader hands the editor component.
+ *
+ * @version v0.3.0
  */
 
 import type { DescriptionStatus } from "./description-workflow";
@@ -32,16 +38,40 @@ export type DescriptionEntry = {
 
 /**
  * Comment matching the comments table structure.
+ *
+ * Exactly one of `entryId`, `pageId`, or `qcFlagId` is set on every row;
+ * the DB CHECK constraint and `createComment()` guard enforce this.
+ * `volumeId` is denormalised for cheap volume-scoped loader queries.
+ *
+ * The schema adds `qcFlagId` (three-way target discrimination) and the
+ * `region[XYWH]` coordinates (0-1 normalised image-region pins on
+ * page-targeted comments).
  */
 export type Comment = {
   id: string;
-  entryId: string;
+  volumeId: string;
+  entryId: string | null;
+  pageId: string | null;
+  qcFlagId: string | null;
+  regionX: number | null;
+  regionY: number | null;
+  regionW: number | null;
+  regionH: number | null;
   parentId: string | null;
   authorId: string;
   authorRole: "cataloguer" | "reviewer" | "lead";
   text: string;
   createdAt: number;
   updatedAt: number;
+  // Soft-delete, resolve, and last-edit markers.
+  // `deletedAt` is intentionally absent from the UI-facing type -- the
+  // loader / read helpers filter `deleted_at IS NULL` so soft-deleted
+  // rows never reach the client. `editedAt` drives the "Editado" chip;
+  // `resolvedAt` + `resolvedBy` drive the "Resuelto" chip and the
+  // collapsed-by-default behaviour on resolved threads.
+  editedAt?: number | null;
+  resolvedAt?: number | null;
+  resolvedBy?: string | null;
 };
 
 /**

@@ -1,0 +1,80 @@
+/**
+ * Status Badges
+ *
+ * Pill badges for description publish status (Live, Pending publish,
+ * Pending removal) used across the descriptions list and edit pages.
+ *
+ * @version v0.3.0
+ */
+
+import { useTranslation } from "react-i18next";
+
+// ---------------------------------------------------------------------------
+// Publish status computation
+// ---------------------------------------------------------------------------
+
+export type PublishStatus =
+  | "live"
+  | "pending_publish"
+  | "pending_removal"
+  | "unpublished";
+
+export function getPublishStatus(
+  isPublished: boolean,
+  lastExportedAt: number | null,
+  updatedAt: number
+): PublishStatus {
+  if (isPublished && lastExportedAt && lastExportedAt >= updatedAt)
+    return "live";
+  if (isPublished && (!lastExportedAt || lastExportedAt < updatedAt))
+    return "pending_publish";
+  if (!isPublished && lastExportedAt) return "pending_removal";
+  return "unpublished";
+}
+
+// ---------------------------------------------------------------------------
+// Badge colour map per UI-SPEC
+// ---------------------------------------------------------------------------
+
+const STATUS_STYLES: Record<PublishStatus, string> = {
+  live: "bg-[#D6E8DB] text-[#2F6B45]",
+  pending_publish: "bg-[#FEF3C7] text-[#78350F]",
+  pending_removal: "bg-[#F5E6EA] text-[#8B2942]",
+  unpublished: "bg-[#F5F5F4] text-[#78716C]",
+};
+
+const STATUS_KEYS: Record<PublishStatus, string> = {
+  live: "live_badge",
+  pending_publish: "pending_publish",
+  pending_removal: "pending_removal",
+  unpublished: "unpublished_badge",
+};
+
+// ---------------------------------------------------------------------------
+// StatusBadge component
+// ---------------------------------------------------------------------------
+
+interface StatusBadgeProps {
+  isPublished: boolean;
+  lastExportedAt: number | null;
+  updatedAt: number;
+}
+
+export function StatusBadge({
+  isPublished,
+  lastExportedAt,
+  updatedAt,
+}: StatusBadgeProps) {
+  const { t } = useTranslation("descriptions_admin");
+  const status = getPublishStatus(isPublished, lastExportedAt, updatedAt);
+  const style = STATUS_STYLES[status];
+  const label = t(STATUS_KEYS[status]);
+
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${style}`}
+    >
+      {label}
+    </span>
+  );
+}

@@ -1,8 +1,17 @@
 /**
- * Description CRUD and workflow operations.
+ * Description CRUD and Workflow
  *
- * Handles saving description fields, submitting for review, approving,
- * sending back, assignment, and volume-level promotion to description phase.
+ * This module deals with every server-side mutation that touches the
+ * entry-level description workflow. Saving individual fields from the
+ * form, submitting a draft for review, approving or sending back a
+ * reviewer's response, reassigning the describer or the reviewer, and
+ * promoting a whole volume into the description phase all flow through
+ * here so that validation, activity-log writes, and status transitions
+ * are consistent across callers. The helpers sit between the route
+ * actions (which handle request parsing and permission checks) and the
+ * Drizzle queries (which do the actual table writes).
+ *
+ * @version v0.3.0
  */
 
 import { eq, sql } from "drizzle-orm";
@@ -261,7 +270,8 @@ export async function sendBackDescription(
 
   // Create a comment with the feedback
   await createComment(db, {
-    entryId,
+    target: { kind: "entry", entryId },
+    volumeId: entry.volumeId,
     parentId: null,
     authorId: userId,
     authorRole: role,
