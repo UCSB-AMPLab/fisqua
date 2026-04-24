@@ -17,7 +17,7 @@
  * Prerequisites: `wrangler` authenticated and the target bucket
  * already created in the Cloudflare dashboard.
  *
- * Version: v0.3.0
+ * Version: v0.3.1
  */
 import { execSync } from "child_process";
 
@@ -122,7 +122,7 @@ function putObject(bucket: string, key: string, body: string): void {
  * Extract reference code from a IIIF v3 manifest JSON.
  *
  * Tries:
- * 1. homepage[0].id URL: https://catalogacion.zasqua.org/viewer/{ref-code}
+ * 1. homepage[0].id URL: https://fisqua.org/viewer/{ref-code} (pre-rename manifests still use catalogacion.zasqua.org/viewer/{ref-code} and are caught by the regex since both share the {ref-code} tail)
  * 2. manifest id URL: https://.../{ref-code}.json or https://.../{ref-code}/manifest.json
  * 3. Falls back to the directory name from the source key
  */

@@ -19,7 +19,7 @@
  * Usage:
  *   npx tsx scripts/import.ts <command> [--input-dir <path>]
  *
- * Version: v0.3.0
+ * Version: v0.3.1
  */
 
 import * as path from "node:path";
@@ -334,7 +334,7 @@ async function main() {
         "Run each SQL file in order against your D1 database:\n"
       );
       for (const file of allSqlFiles) {
-        console.log(`  wrangler d1 execute zasqua-catalogacion --remote --file=${file}`);
+        console.log(`  wrangler d1 execute fisqua-db --remote --file=${file}`);
       }
       console.log(
         "\nAdd --local instead of --remote to test against local D1 first."

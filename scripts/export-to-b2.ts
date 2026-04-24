@@ -18,13 +18,13 @@
  * Environment variables `B2_KEY_ID`, `B2_APP_KEY`, and `B2_ENDPOINT`
  * authenticate against the B2 S3 endpoint.
  *
- * Version: v0.3.0
+ * Version: v0.3.1
  *
  * Original docblock kept below for CLI usage examples:
  *
- * During the transition from zasqua-backend (Django) to zasqua-catalogacion
+ * During the transition from zasqua-backend (Django) to Fisqua
  * (Cloudflare Workers), both systems export to their own storage. This
- * script bridges the gap by uploading catalogacion's R2 export files to B2
+ * script bridges the gap by uploading Fisqua's R2 export files to B2
  * so the existing frontend build pipeline continues to work.
  *
  * Usage:

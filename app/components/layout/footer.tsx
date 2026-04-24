@@ -5,10 +5,10 @@
  * Surfaces the build version and a copyright line; deliberately
  * minimal so it never competes with the main content.
  *
- * @version v0.3.0
+ * @version v0.3.1
  */
 
-const VERSION = "0.3.0";
+const VERSION = "0.3.1";
 
 export function Footer() {
   return (
@@ -16,7 +16,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-7xl items-center justify-between">
         <p className="text-xs text-stone-400">
           <a
-            href={`https://github.com/neogranadina/zasqua-catalogacion/releases/tag/v${VERSION}`}
+            href={`https://github.com/UCSB-AMPLab/fisqua/releases/tag/v${VERSION}`}
             className="text-stone-400 hover:text-stone-600"
           >
             Fisqua v{VERSION}

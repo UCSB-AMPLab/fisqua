@@ -24,20 +24,20 @@
  *     `wrangler secret put`.
  *
  * Two deployment environments are defined: the default production environment
- * (served at `catalogacion.zasqua.org`) and a staging environment at
- * `catalogacion-staging.zasqua.org` with its own D1 database. Both environments
- * share the same R2 buckets — exports, manifests, and METS packages are
- * written once and read by both environments.
+ * (served at `fisqua.org`) and a staging environment at `staging.fisqua.org`
+ * with its own D1 database. Both environments share the same R2 buckets for
+ * exports, manifests, and METS packages — those are written once and read
+ * by both environments.
  *
- * Version: v0.3.0
+ * Version: v0.3.1
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "zasqua-catalogacion",
+  "name": "fisqua",
   "compatibility_date": "2025-04-04",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
-  "routes": [{ "pattern": "catalogacion.zasqua.org", "custom_domain": true }],
+  "routes": [{ "pattern": "fisqua.org", "custom_domain": true }],
   // Secrets (set via `wrangler secret put` or .dev.vars):
   // SESSION_SECRET, RESEND_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
   "vars": {
@@ -48,15 +48,15 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "zasqua-catalogacion-db",
-      "database_id": "2b872de1-e119-41ee-8a95-f5a80cde2fe7",
+      "database_name": "fisqua-db",
+      "database_id": "7753ef91-c06c-4827-8e30-1e79eb0e0ff5",
       "migrations_dir": "drizzle"
     }
   ],
   "r2_buckets": [
     {
       "binding": "BUCKET",
-      "bucket_name": "zasqua-catalogacion-bucket"
+      "bucket_name": "fisqua-bucket"
     },
     {
       "binding": "EXPORT_BUCKET",
@@ -76,12 +76,12 @@
       "name": "publish-export",
       "binding": "PUBLISH_EXPORT",
       "class_name": "PublishExportWorkflow",
-      "script_name": "zasqua-catalogacion"
+      "script_name": "fisqua"
     }
   ],
   "env": {
     "staging": {
-      "routes": [{ "pattern": "catalogacion-staging.zasqua.org", "custom_domain": true }],
+      "routes": [{ "pattern": "staging.fisqua.org", "custom_domain": true }],
       "vars": {
         "APP_NAME": "Fisqua [Staging]",
         "SENDER_EMAIL": "noreply@zasqua.org",
@@ -90,15 +90,15 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "zasqua-catalogacion-staging-db",
-          "database_id": "d6a04c22-ec66-49b8-8aa9-c9aeb3ae21da",
+          "database_name": "fisqua-staging-db",
+          "database_id": "c98e7700-0702-4e93-8c10-f1befe722260",
           "migrations_dir": "drizzle"
         }
       ],
       "r2_buckets": [
         {
           "binding": "BUCKET",
-          "bucket_name": "zasqua-catalogacion-bucket"
+          "bucket_name": "fisqua-bucket"
         },
         {
           "binding": "EXPORT_BUCKET",
@@ -118,7 +118,7 @@
           "name": "publish-export-staging",
           "binding": "PUBLISH_EXPORT",
           "class_name": "PublishExportWorkflow",
-          "script_name": "zasqua-catalogacion"
+          "script_name": "fisqua"
         }
       ]
     }
