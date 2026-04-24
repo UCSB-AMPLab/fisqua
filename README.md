@@ -1,19 +1,18 @@
 # Fisqua
 
-Collaborative cataloguing and data-management platform for archival materials, built on Cloudflare Workers. Part of the same open-source ecosystem of tools as [Zasqua](https://zasqua.org) and [Telar](https://telar.org).
+**Fisqua** is an open-source cataloguing platform for archives — describing materials, managing authority records and controlled vocabularies, and assembling the hierarchies that hold a collection together. It runs on Cloudflare Workers with D1 and R2, and is designed to scale from community-led initiatives to major libraries.
 
-The name pairs with Zasqua ("to settle," "to remain in a given place"). Fisqua — "to gather up things that are scattered" — names what must happen first: bringing together the volumes, the people, the places, and the links between them.
+Fisqua is one of four open-source primitives developed by [AMPL](https://ampl.clair.ucsb.edu) with its partners, alongside the [Digitization Toolkit](https://github.com/UCSB-AMPLab/digitization-toolkit-software) (which captures), [Zasqua](https://zasqua.org) (which publishes), and [Telar](https://telar.org) (which tells). The four are designed to work together as a full pipeline, but each can be used independently.
 
-## Overview
+## What it does
 
-Fisqua brings together two streams of work that originally lived in separate projects:
+Fisqua describes materials in **ISAD(G)**, authorities in **ISAAR(CPF)**, serves images as **IIIF**, wraps preservation metadata in **METS**, and exports to **EAD** and **EAC-CPF**. These are not Fisqua's inventions — they are the standards the international archival community has settled on — and using them means that a collection catalogued in Fisqua is portable from day one. The schema, the data formats, and the workflow are open regardless of what software an archive uses to run them.
 
-- **Collaborative cataloguing.** Students and researchers segment multi-page archival volumes into discrete items through a web-based interface. Volumes already published on Zasqua — with IIIF manifests and tiled images on R2 — load by URL. Cataloguers scroll through a continuous-page viewer, place boundaries where items begin and end, build an outline of the volume's structure, and describe each item in ISAD(G). Reviewers verify the segmentation and descriptions before approval.
-- **Prosopography and linked entities.** Canonical records for the people, institutions, and places named across the archive. Descriptions link to these authority records, and the records themselves are editable with merge / split / draft-review workflows. A full-text search (SQLite FTS5) backs the explorer surfaces.
+### Collaborative cataloguing
 
-The platform supports both page-level boundaries (item starts at a new page) and within-page boundaries (item starts partway through a page), making it suitable for notarial records, account books, legal case files, and correspondence bundles.
+One feature at the heart of Fisqua distinguishes it from most archive-management platforms: it is designed to open description work to volunteers, students, and community members under professional archival review. A convenor assigns items; contributors describe them against the catalogue's controlled fields and vocabularies; the convenor reviews and approves entries before they enter the catalogue. Three things come out of this at once: archival description produced at a scale few institutions can resource on their own; hands-on training in the core skills of historical archival work — palaeography, description, and authority work — that are otherwise hard to come by outside professional programmes; and a practice of archiving that stays open to the communities and publics whose materials are being described.
 
-**Key features:**
+## Key features
 
 - Virtualised continuous-scroll IIIF viewer with OpenSeadragon tiles and zoom
 - Page and within-page boundary placement with click-to-place, drag-to-move, and autosave
@@ -24,6 +23,12 @@ The platform supports both page-level boundaries (item starts at a new page) and
 - Publish pipeline that exports fonds-level JSON, METS, and manifests to R2 through a durable Cloudflare Workflow
 - Role-dependent dashboards with progress tracking
 - Bilingual interface (English / Spanish)
+
+## Running Fisqua
+
+AMPL operates a hosted, multi-tenant Fisqua at **[fisqua.org](https://fisqua.org)** that partners use without maintaining servers of their own. It currently supports cataloguing across five partner repositories in Colombia and Peru — ranging from community-held collections to the Peruvian National Library — comprising over 106,000 archival descriptions. Further partner deployments are planned through UCSB's [Robinson Archives Initiative](https://www.library.ucsb.edu/news/ucsb-receives-robinson-archive).
+
+For institutions that prefer to run the primitive themselves, the code in this repository is the whole thing: schema, server, UI, and the tooling that turns catalogued data into an exportable archive. A partner that begins on the hosted Fisqua can leave with everything they have put in.
 
 ## Requirements
 
@@ -83,10 +88,9 @@ Built on Cloudflare Workers with D1 (SQLite) for data, R2 for blob storage, Driz
 
 The viewer renders IIIF Image API tiles from existing Zasqua volumes on R2 — no image processing or storage is needed inside Fisqua. Only visible pages plus a two-page buffer are rendered at any time, enabling smooth scrolling through volumes of 500+ pages.
 
-## Related tools
+## Name
 
-- [zasqua-frontend](https://github.com/neogranadina/zasqua-frontend) — Static public site for Zasqua collections
-- [zasqua-transcription](https://github.com/neogranadina/zasqua-transcription) — Transcription tool for catalogued items
+**Fisqua** is a verb from the [Muisca language](https://en.wikipedia.org/wiki/Muysccubun) of Suba, roughly *"to gather scattered things"* — related to forms for searching, gathering, and traversing. It names both the work the tool enables and the historical processes the resulting catalogues help document. The name pairs with Zasqua, *"to settle"* or *"to remain in a given place"*.
 
 ## License
 
