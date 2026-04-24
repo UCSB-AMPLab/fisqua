@@ -4,8 +4,6 @@ Collaborative cataloguing and data-management platform for archival materials, b
 
 The name pairs with Zasqua ("to settle," "to remain in a given place"). Fisqua — "to gather up things that are scattered" — names what must happen first: bringing together the volumes, the people, the places, and the links between them.
 
-Previously released as `zasqua-catalogacion`, the project was renamed to **Fisqua** in v0.3.0.
-
 ## Overview
 
 Fisqua brings together two streams of work that originally lived in separate projects:

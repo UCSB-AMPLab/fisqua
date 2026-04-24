@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **Cloudflare rename.** The Worker, D1 database, and R2 bucket are renamed from `zasqua-catalogacion` to `fisqua` to match the repository name. The primary domain moves from `catalogacion.zasqua.org` to **fisqua.org**; old URLs 301-redirect automatically, so IIIF manifests, bookmarks, and external citations continue to work. The v0.3.0 release note that "service and database names stay the same for continuity" is superseded by this work.
+- **Repository home.** The canonical repository moves from `neogranadina/zasqua-catalogacion` to **`UCSB-AMPLab/fisqua`**. GitHub automatically redirects the old URL, so existing clones, issue links, and PR references continue to resolve.
+
 ## [0.3.0] - 2026-04-19
 
 ### Renamed to Fisqua
