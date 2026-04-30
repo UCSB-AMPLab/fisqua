@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-29
+
+### Changed
+
+- **Fisqua design-system foundations.** The visual identity inherited from the Zasqua era — DM Sans + Crimson Text + Cormorant Garamond on burgundy with cut-pomegranate imagery — is fully retired. Fisqua now uses **Spectral** (display + body prose), **Bricolage Grotesque** (UI chrome), and **JetBrains Mono** (reference codes), set on a three-colour pre-industrial dye palette: **indigo** ink (`#1F2E4D`) for body text and primary buttons, **verdigris** (`#3E7A6E`) for the brand mark and the wordmark, **madder** (`#B5533D`) for reviewer actions and destructive buttons. Saffron, sage, and a parchment off-white round out the status palette; Tailwind's `stone` ramp carries every neutral. Colour and type tokens live in `app/app.css` under a Tailwind v4 `@theme` block; every utility class in the app resolves against them.
+- **Header and sidebar aligned to the design system.** The wordmark renders in verdigris Spectral, the active nav rail is indigo, group headings are eyebrow-style (uppercase, tracked wide, stone-400).
+- **Brand assets.** The pomegranate-tree mark and the Neogranadina wordmark ship as clean SVG sources at `public/brand/`; the favicon, apple-touch icon, and OG image are regenerated from the new mark.
+- **Buttons across the app.** Primary buttons now darken on hover (default `bg-indigo`, hover `bg-indigo-deep`) instead of the inverted state where the default was the deeper shade. Destructive buttons use `bg-madder` darkening to `bg-madder-deep`. White text on saturated brand surfaces switched to parchment (`#F4EFE6`), per the design system's hard-ban list — pure white on a saturated brand colour reads cheap. Button radius is rounded-md (6px) per spec.
+- **Project-role chips.** Lead, cataloguer, and reviewer chips on the user admin pages now match the design-system colour table: lead and cataloguer share the verdigris pair (brand / approved); reviewer uses the madder pair (sent-back / review). Previously the chips were scrambled across saffron, indigo, and verdigris, so the reviewer chip read as "approved" and the lead chip read as "warning". The chip palette now matches the IIIF viewer's boundary markers.
+- Footer redesigned. The version link and partner logos no longer sit inside a bordered strip that reserves a row of vertical space; they're pinned to the bottom-left and bottom-right of the content area as floating attribution. Page content scrolls underneath, and the gap between the two clusters is click-through so it doesn't intercept interactions.
+- Viewer per-page chrome. The page label and flag button now sit together in a left-hand gutter aligned to the page image, instead of floating in separate corners; the flag button is sized to read as a control rather than a status pip. The page image is left-aligned so the label and flag track it on every viewport.
+- UI strings move to sentence case across English and Spanish locales.
+- TypeScript types tightened across server, schema, and tests: drizzle role/enum columns narrowed at insert/update sites, `users.lastActiveAt` and `projects.archivedAt` exposed, comment + qc-flag events added to the `ActivityEvent` union, `ProvidedEnv` declared, fixtures topped up. `scripts/` and `tests/` are now part of the typecheck graph.
+
+### Fixed
+
+- Volume viewer and description editor cropped the footer below the fold. The two work surfaces declared their own `h-screen` layouts, but the chrome's content slot had `p-6` padding plus `overflow-y-auto`, so the inner `100vh` block ended up taller than the available chrome content area and pushed the footer past the bottom of the window. Switched both pages to `h-full` and gave the chrome a focused-surface mode that drops the padding and the page-level scroll, fits the work area between header and footer, and forces the left-hand sidebar into its narrow (collapsed) configuration to maximise working space.
+- Outline panel scroll lock. The right-hand outline in the volume viewer would snap back within a frame of any user scroll, leaving the panel effectively unusable on volumes with more rows than fit in view. Two compounding mistakes drove an infinite resize cascade: a `useEffect` in `OutlineEntry` re-fired every render because its dependency was an inline closure (`() => virtualizer.measure()`) with fresh identity per render, calling the cache-invalidating `measure()` continuously; and the inline row-wrapper ref also had per-render identity, re-arming the `ResizeObserver` pathway. Stabilised the row-wrapper ref via `useCallback` and removed every `virtualizer.measure()`/`onHeightChange` call site — `measureElement` already installs a `ResizeObserver` that picks up genuine height changes (expand/collapse, reseg flag mounting) without manual prodding.
+- Description Miller-column ancestor row. The breadcrumb row showing the path from the root to the selected description rendered with a half-opacity burgundy fill that survived the rebrand. Now indigo at 50% opacity, with parchment text — the Fisqua palette's stand-in for "selected, but not focal".
+- Destructive-button hover. The "Send back for revision" dialog confirm, the vocabularies inline-reject submit, and the volume-approve button each ended up with identical default and hover background colours after the red-and-green palette sweep, so hovering produced no visible feedback. Default state corrected to the lighter brand tier; hover continues to darken to the deep tier.
+- Region-pin draft and final fills. The pin overlay used Tailwind's amber-500 for drafts and a stranded burgundy `rgba(139, 41, 66, …)` for finals, whose adjacent comment falsely claimed `#1F2E4D`. The fills now use saffron at 20% (draft) and indigo at 20% (final), matching the intent of the original code without the colour drift.
+- Cloudflare cutover regressions. The `generateProjectId` helper, the `ActivityEvent` type export, and the lead-membership wiring inside `createProject` were all dropped during the v0.3.0 sync; admin user creation and activity-feed type-checking restored.
+- Repositories edit page typo. Two single-line comments had been concatenated with the const decls that should have followed them, so `getConflictDraft` and the autosave `draftFetcher` were both commented out and the edit page wouldn't type-check (and would 500 at runtime as soon as the loader ran). The new-repository form's `rightsText` field now flows through the create schema, so its errors surface like the rest of the fields and edits persist.
+- Removed a stale `_auth.admin.projects.tsx` route that lingered in the public repo after the v0.3.0 IA restructure moved it under `/admin/cataloguing/projects`.
+
+### Removed
+
+- **DM Sans, Crimson Text, Cormorant Garamond** are no longer loaded — the three Google-Fonts families that backed the Zasqua-era visual identity are gone from the head, and every inline `font-['…']` class is rewritten onto Tailwind aliases (`font-sans`, `font-serif`, `font-display`, `font-mono`).
+
 ## [0.3.1] - 2026-04-24
 
 ### Changed
