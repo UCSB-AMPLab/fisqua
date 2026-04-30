@@ -44,6 +44,7 @@ export type User = {
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  lastActiveAt: number | null;
   githubId: string | null;
 };
 

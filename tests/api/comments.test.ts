@@ -27,6 +27,7 @@ function buildUser(overrides: Partial<User> & { id: string; email: string }): Us
     isArchiveUser: overrides.isArchiveUser ?? false,
     isUserManager: overrides.isUserManager ?? false,
     isCataloguer: overrides.isCataloguer ?? false,
+    lastActiveAt: overrides.lastActiveAt ?? null,
     githubId: overrides.githubId ?? null,
   };
 }

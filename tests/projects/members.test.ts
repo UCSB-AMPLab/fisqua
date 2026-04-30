@@ -210,6 +210,7 @@ describe("member management and invite flow", () => {
       const result = await acceptInvite(db, token);
 
       expect(result.success).toBe(true);
+      if (!result.success) throw new Error("expected success");
       expect(result.userId).toBe(userId);
       expect(result.projectId).toBe(projectId);
 
@@ -268,6 +269,7 @@ describe("member management and invite flow", () => {
       const result = await acceptInvite(db, token);
 
       expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected failure");
       expect(result.error).toBeTruthy();
     });
 

@@ -40,6 +40,7 @@ function buildParsedManifest(
         height: 4000,
         imageUrl:
           "https://iiif.zasqua.org/tiles/co-ahr-gob-caj259-car005/page-001",
+        label: "img 1",
       },
       {
         position: 2,
@@ -47,6 +48,7 @@ function buildParsedManifest(
         height: 3900,
         imageUrl:
           "https://iiif.zasqua.org/tiles/co-ahr-gob-caj259-car005/page-002",
+        label: "img 2",
       },
       {
         position: 3,
@@ -54,6 +56,7 @@ function buildParsedManifest(
         height: 4100,
         imageUrl:
           "https://iiif.zasqua.org/tiles/co-ahr-gob-caj259-car005/page-003",
+        label: "img 3",
       },
     ],
     ...overrides,
@@ -67,6 +70,7 @@ function buildLargeManifest(pageCount: number): ParsedManifest {
     width: 3000,
     height: 4000,
     imageUrl: `https://iiif.zasqua.org/tiles/test-volume/page-${String(i + 1).padStart(3, "0")}`,
+    label: `img ${i + 1}`,
   }));
   return {
     name: "Large Volume",
@@ -182,6 +186,7 @@ describe("volume CRUD operations", () => {
             height: 4000,
             imageUrl:
               "https://iiif.zasqua.org/tiles/co-ahr-gob-caj259-car006/page-001",
+            label: "img 1",
           },
         ],
         pageCount: 1,

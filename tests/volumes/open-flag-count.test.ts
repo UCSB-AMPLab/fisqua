@@ -26,6 +26,7 @@ function buildManifest(
     imageUrl: `https://iiif.zasqua.org/tiles/${referenceCode}/page-${String(
       i + 1
     ).padStart(3, "0")}`,
+    label: `img ${i + 1}`,
   }));
   return {
     name,

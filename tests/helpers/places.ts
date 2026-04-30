@@ -38,7 +38,8 @@ export async function createTestPlace(overrides: Partial<{
     placeCode: overrides.placeCode ?? "nl-test01",
     label: overrides.label ?? "Test Place",
     displayName: overrides.displayName ?? "Test Place",
-    placeType: overrides.placeType ?? "city",
+    placeType: (overrides.placeType ?? "city") as
+      (typeof schema.places.$inferInsert)["placeType"],
     nameVariants: overrides.nameVariants ?? "[]",
     parentId: overrides.parentId ?? undefined,
     historicalGobernacion: overrides.historicalGobernacion ?? undefined,

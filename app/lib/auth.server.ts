@@ -133,6 +133,7 @@ export async function requireUser(
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  lastActiveAt: number | null;
   githubId: string | null;
 } | null> {
   const user = await db
@@ -155,6 +156,7 @@ export async function requireUser(
     isArchiveUser: user.isArchiveUser as unknown as boolean,
     isUserManager: user.isUserManager as unknown as boolean,
     isCataloguer: user.isCataloguer as unknown as boolean,
+    lastActiveAt: user.lastActiveAt ?? null,
     githubId: user.githubId ?? null,
   };
 }

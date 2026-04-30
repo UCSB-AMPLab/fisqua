@@ -17,7 +17,7 @@ import * as schema from "../../app/db/schema";
 import { applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { requireAdmin, requireProjectRole } from "../../app/lib/permissions.server";
-import { createProject, validateProjectForm } from "../../app/lib/projects.server";
+import { createProject, generateProjectId, validateProjectForm } from "../../app/lib/projects.server";
 
 describe("project creation", () => {
   beforeAll(async () => {
@@ -30,12 +30,36 @@ describe("project creation", () => {
 
   describe("requireAdmin", () => {
     it("allows admin users", () => {
-      const admin = { id: "1", email: "admin@test.com", name: "Admin", isAdmin: true };
+      const admin = {
+        id: "1",
+        email: "admin@test.com",
+        name: "Admin",
+        isAdmin: true,
+        isSuperAdmin: false,
+        isCollabAdmin: false,
+        isArchiveUser: false,
+        isUserManager: false,
+        isCataloguer: false,
+        lastActiveAt: null,
+        githubId: null,
+      };
       expect(() => requireAdmin(admin)).not.toThrow();
     });
 
     it("throws 403 for non-admin users", () => {
-      const user = { id: "2", email: "user@test.com", name: "User", isAdmin: false };
+      const user = {
+        id: "2",
+        email: "user@test.com",
+        name: "User",
+        isAdmin: false,
+        isSuperAdmin: false,
+        isCollabAdmin: false,
+        isArchiveUser: false,
+        isUserManager: false,
+        isCataloguer: false,
+        lastActiveAt: null,
+        githubId: null,
+      };
       try {
         requireAdmin(user);
         expect.fail("Should have thrown");
@@ -145,7 +169,28 @@ describe("project creation", () => {
     });
   });
 
+  describe("generateProjectId", () => {
+    it("is exported and returns an 8-character alphanumeric id", () => {
+      expect(typeof generateProjectId).toBe("function");
+      const id = generateProjectId();
+      expect(id).toMatch(/^[A-Za-z0-9]{8}$/);
+    });
+  });
+
   describe("createProject", () => {
+    it("uses the 8-char short-id format, not a UUID", async () => {
+      const db = drizzle(env.DB, { schema });
+      const admin = await createTestUser({ isAdmin: true });
+
+      const project = await createProject(
+        db,
+        { name: "Short Id Project", description: null },
+        admin.id
+      );
+
+      expect(project.id).toMatch(/^[A-Za-z0-9]{8}$/);
+    });
+
     it("creates a project and adds creator as lead", async () => {
       const db = drizzle(env.DB, { schema });
       const admin = await createTestUser({ isAdmin: true });

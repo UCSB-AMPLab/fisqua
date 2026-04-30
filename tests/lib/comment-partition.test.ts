@@ -9,7 +9,6 @@ import type { Entry } from "../../app/lib/boundary-types";
 
 function makeEntry(overrides: Partial<Entry> & Pick<Entry, "id">): Entry {
   return {
-    id: overrides.id,
     volumeId: "vol-1",
     parentId: null,
     position: 0,
@@ -40,6 +39,7 @@ function makeComment(overrides: {
   regionY?: number | null;
   regionW?: number | null;
   regionH?: number | null;
+  authorId?: string;
 }) {
   return {
     id: overrides.id,
@@ -50,6 +50,7 @@ function makeComment(overrides: {
     regionY: overrides.regionY ?? null,
     regionW: overrides.regionW ?? null,
     regionH: overrides.regionH ?? null,
+    authorId: overrides.authorId ?? "test-author",
   };
 }
 

@@ -1,4 +1,9 @@
-export type EntryType = "item" | "blank" | "front_matter" | "back_matter";
+export type EntryType =
+  | "item"
+  | "blank"
+  | "front_matter"
+  | "back_matter"
+  | "test_images";
 
 export type Entry = {
   id: string;
@@ -10,6 +15,10 @@ export type Entry = {
   endPage: number | null; // explicit for children, null for top-level
   endY: number | null; // 0.0-1.0, null for top-level
   type: EntryType | null; // null = unset
+  // Per-project document subtype label (e.g. "Escritura", "Poder").
+  // Free text so projects can add new subtypes via settings; defaults
+  // to `DEFAULT_DOCUMENT_SUBTYPES` when no project-level list is set.
+  subtype: string | null;
   title: string | null;
   modifiedBy: string | null; // userId of last modifier, null = original cataloguer
   // Description fields (all nullable -- populated during description workflow)
@@ -46,6 +55,7 @@ export type BoundaryAction =
   | { type: "INDENT"; entryId: string; modifiedBy?: string }
   | { type: "OUTDENT"; entryId: string; modifiedBy?: string }
   | { type: "SET_TYPE"; entryId: string; entryType: EntryType | null; modifiedBy?: string }
+  | { type: "SET_SUBTYPE"; entryId: string; subtype: string | null; modifiedBy?: string }
   | { type: "SET_TITLE"; entryId: string; title: string; modifiedBy?: string }
   | { type: "SET_END_PAGE"; entryId: string; endPage: number; modifiedBy?: string }
   | { type: "SET_END_Y"; entryId: string; endY: number; modifiedBy?: string }

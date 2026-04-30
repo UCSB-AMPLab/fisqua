@@ -493,11 +493,11 @@ describe("updateCommentRegion -- task 15 ()", () => {
 
   beforeAll(async () => {
     db = drizzle(env.DB);
-    await applyMigrations(db);
+    await applyMigrations();
   });
 
   beforeEach(async () => {
-    await cleanDatabase(db);
+    await cleanDatabase();
   });
 
   it("updates a region-anchored comment when the caller is the author", async () => {
@@ -685,11 +685,11 @@ describe("softDeleteComment + deleted-row filter -- task 13 ()", () => {
 
   beforeAll(async () => {
     db = drizzle(env.DB);
-    await applyMigrations(db);
+    await applyMigrations();
   });
 
   beforeEach(async () => {
-    await cleanDatabase(db);
+    await cleanDatabase();
   });
 
   it("soft-deletes a leaf comment for its author", async () => {
@@ -894,11 +894,11 @@ describe("updateCommentBody -- task 13 ()", () => {
 
   beforeAll(async () => {
     db = drizzle(env.DB);
-    await applyMigrations(db);
+    await applyMigrations();
   });
 
   beforeEach(async () => {
-    await cleanDatabase(db);
+    await cleanDatabase();
   });
 
   it("updates the body text and sets editedAt for the author", async () => {
@@ -1012,11 +1012,11 @@ describe("resolveComment -- task 13 ()", () => {
 
   beforeAll(async () => {
     db = drizzle(env.DB);
-    await applyMigrations(db);
+    await applyMigrations();
   });
 
   beforeEach(async () => {
-    await cleanDatabase(db);
+    await cleanDatabase();
   });
 
   it("sets resolvedAt + resolvedBy on a fresh root when called with resolved=true", async () => {
