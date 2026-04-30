@@ -90,7 +90,7 @@ The viewer renders IIIF Image API tiles from existing Zasqua volumes on R2 — n
 
 ## Name
 
-**Fisqua** is a verb from the [Muisca language](https://en.wikipedia.org/wiki/Muysccubun) of Suba, roughly *"to gather scattered things"* — related to forms for searching, gathering, and traversing. It names both the work the tool enables and the historical processes the resulting catalogues help document. The name pairs with Zasqua, *"to settle"* or *"to remain in a given place"*.
+**Fisqua** is a verb from the [Muisca language](https://es.wikipedia.org/wiki/Muysccubun) of Suba, roughly _"to gather scattered things"_ — related to forms for searching, gathering, and traversing. It names both the work the tool enables and the historical processes the resulting catalogues help document. The name pairs with Zasqua, _"to settle"_ or _"to remain in a given place"_.
 
 ## License
 
