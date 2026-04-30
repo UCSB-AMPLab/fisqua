@@ -46,7 +46,7 @@ export function ResegmentationCard({
   const { t } = useTranslation(["resegmentation"]);
 
   return (
- <div className="mb-3 flex flex-col gap-2 rounded-lg border border-violet-100 bg-violet-50 p-4 font-['DM_Sans']">
+ <div className="mb-3 flex flex-col gap-2 rounded-lg border border-violet-100 bg-violet-50 p-4 font-sans">
  {/* badge */}
  <div>
  <span className="inline-block rounded bg-violet-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
@@ -57,10 +57,10 @@ export function ResegmentationCard({
  </div>
 
  {/* Reporter + timestamp */}
- <p className="text-xs text-violet-400">{formatReporterLine(flag)}</p>
+ <p className="text-xs text-stone-400">{formatReporterLine(flag)}</p>
 
  {/* Description */}
- <p className="text-sm leading-relaxed text-[#5B21B6]">
+ <p className="text-sm leading-relaxed text-stone-700">
  {flag.description}
  </p>
 
@@ -68,7 +68,7 @@ export function ResegmentationCard({
  <button
  type="button"
  onClick={onOpenDialog}
- className="mt-2 w-full rounded bg-[#8B2942] px-4 py-2 font-['DM_Sans'] text-sm font-semibold text-white transition-colors hover:bg-[#6e2034] focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="mt-2 w-full rounded bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment transition-colors hover:bg-indigo-deep focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  {t("resegmentation:openDialog", {
  defaultValue: "Abrir diálogo de resegmentación",

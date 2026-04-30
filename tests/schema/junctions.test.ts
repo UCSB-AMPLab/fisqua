@@ -109,7 +109,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
           id: crypto.randomUUID(),
           descriptionId,
           entityId,
-          role,
+          role: role as (typeof schema.descriptionEntities.$inferInsert)["role"],
           createdAt: now,
         });
       }
@@ -154,7 +154,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
         id,
         descriptionId,
         placeId,
-        role: "origin",
+        role: "origin" as (typeof schema.descriptionPlaces.$inferInsert)["role"],
         createdAt: now,
       });
 
@@ -176,7 +176,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
         id: crypto.randomUUID(),
         descriptionId,
         placeId,
-        role: "origin",
+        role: "origin" as (typeof schema.descriptionPlaces.$inferInsert)["role"],
         createdAt: now,
       });
 
@@ -185,7 +185,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
           id: crypto.randomUUID(),
           descriptionId,
           placeId,
-          role: "origin",
+          role: "origin" as (typeof schema.descriptionPlaces.$inferInsert)["role"],
           createdAt: now,
         })
       ).rejects.toThrow();

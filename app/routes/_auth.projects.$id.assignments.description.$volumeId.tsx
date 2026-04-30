@@ -28,13 +28,13 @@ const DESC_STATUS_ORDER = [
 ];
 
 const DESC_SEGMENT_COLORS: Record<string, string> = {
-  unassigned: "bg-[#A8A29E]",
-  assigned: "bg-[#3B5A9A]",
-  in_progress: "bg-[#8B6914]",
-  described: "bg-[#7C3AED]",
-  reviewed: "bg-[#0D9488]",
-  approved: "bg-[#2F6B45]",
-  sent_back: "bg-[#8B2942]",
+  unassigned: "bg-stone-400",
+  assigned: "bg-indigo",
+  in_progress: "bg-saffron-deep",
+  described: "bg-sage-deep",
+  reviewed: "bg-verdigris",
+  approved: "bg-verdigris",
+  sent_back: "bg-indigo",
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -222,16 +222,16 @@ export default function DescriptionVolumeAssignmentRoute({
 
       {/* Volume header */}
       <div>
-        <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-4xl font-semibold text-stone-700">
           {volume.name}
         </h1>
       </div>
 
       {/* Resegmentation warning */}
       {openFlags.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-800">
+        <div className="flex items-center gap-3 rounded-lg border border-saffron bg-saffron-tint p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-saffron" />
+          <p className="text-sm text-saffron-deep">
             {t("assignment.alerta_resegmentacion")}
           </p>
         </div>
@@ -240,7 +240,7 @@ export default function DescriptionVolumeAssignmentRoute({
       {/* Progress bar */}
       {total > 0 && (
         <div className="space-y-2">
-          <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-100">
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
             {DESC_STATUS_ORDER.map((status) => {
               const count = (progress as Record<string, number>)[status] ?? 0;
               if (count === 0) return null;

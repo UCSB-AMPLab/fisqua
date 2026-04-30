@@ -223,8 +223,8 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
 
   if (!authorized) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="font-sans text-sm text-amber-800">
+      <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3">
+        <p className="font-sans text-sm text-saffron-deep">
           {t("superadminRequired")}
         </p>
       </div>
@@ -256,7 +256,7 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-display text-4xl font-semibold text-stone-700">
           {t("title")}
         </h1>
         <p className="mt-2 font-sans text-sm text-stone-500">

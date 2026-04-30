@@ -91,7 +91,7 @@ export function PromotionSummary({
           type="button"
           onClick={onConfirm}
           disabled={isSubmitting}
-          className="rounded bg-[#6B1F33] px-6 py-2.5 font-semibold text-white hover:bg-[#8B2942] disabled:opacity-50"
+          className="rounded bg-indigo px-6 py-2.5 font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-50"
         >
           {isSubmitting ? (
             <span className="inline-flex items-center gap-2">

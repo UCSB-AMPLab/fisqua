@@ -29,6 +29,7 @@ function buildUser(
     isArchiveUser: overrides.isArchiveUser ?? false,
     isUserManager: overrides.isUserManager ?? false,
     isCataloguer: overrides.isCataloguer ?? false,
+    lastActiveAt: overrides.lastActiveAt ?? null,
     githubId: overrides.githubId ?? null,
   };
 }

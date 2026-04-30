@@ -7,6 +7,21 @@ import {
   projectMembers,
 } from "../db/schema";
 
+// 8-char alphanumeric project IDs (URL-friendly; replaces the legacy UUID format).
+// Alphabet: 62 chars → 62^8 ≈ 2.2e14 possibilities, ample for the archive's scale.
+const PROJECT_ID_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+export function generateProjectId(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += PROJECT_ID_ALPHABET[bytes[i] % PROJECT_ID_ALPHABET.length];
+  }
+  return out;
+}
+
 /**
  * Schema for project creation form validation.
  */
@@ -44,7 +59,7 @@ export async function createProject(
   creatorId: string
 ) {
   const now = Date.now();
-  const projectId = crypto.randomUUID();
+  const projectId = generateProjectId();
 
   const project = {
     id: projectId,
@@ -176,6 +191,7 @@ export async function getProject(
       createdBy: projects.createdBy,
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,
+      archivedAt: projects.archivedAt,
     })
     .from(projects)
     .where(eq(projects.id, projectId))

@@ -27,12 +27,12 @@ import { QcFlagCard, type QcFlagCardData } from "../components/qc-flags/qc-flag-
 import { ResolveQcFlagDialog } from "../components/qc-flags/resolve-qc-flag-dialog";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
-  unstarted: "bg-[#E7E5E4] text-[#78716C]",
-  in_progress: "bg-[#F9EDD4] text-[#8B6914]",
-  segmented: "bg-[#E9D5FF] text-[#7C3AED]",
-  reviewed: "bg-[#CCF0EB] text-[#0D9488]",
-  approved: "bg-[#D6E8DB] text-[#2F6B45]",
-  sent_back: "bg-[#F5E6EA] text-[#8B2942]",
+  unstarted: "bg-stone-200 text-stone-500",
+  in_progress: "bg-saffron-tint text-saffron-deep",
+  segmented: "bg-sage-tint text-sage-deep",
+  reviewed: "bg-verdigris-tint text-verdigris",
+  approved: "bg-verdigris-tint text-verdigris",
+  sent_back: "bg-indigo-tint text-indigo",
 };
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -316,7 +316,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
       throw redirect(`/projects/${params.id}/volumes`);
     } catch (err) {
-      if (err instanceof Response && err.status >= 300 && err.status < 400) {
+      if (
+        err instanceof Response &&
+        err.status >= 300 &&
+        err.status < 400
+      ) {
         throw err;
       }
       const msg =
@@ -343,7 +347,7 @@ function StatusTransitionForm({
 
   if (validTransitions.length === 0) {
     return (
-      <p className="font-sans text-sm text-[#A8A29E]">
+      <p className="font-sans text-sm text-stone-400">
         {t("volume_admin:no_transitions")}
       </p>
     );
@@ -354,7 +358,7 @@ function StatusTransitionForm({
       <input type="hidden" name="_action" value="transitionStatus" />
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+          <label className="mb-1 block font-sans text-xs font-medium text-indigo">
             {t("volume_admin:change_status_to")}
           </label>
           <select
@@ -362,7 +366,7 @@ function StatusTransitionForm({
             value={selected}
             onChange={(e) => setSelected(e.target.value as VolumeStatus)}
             required
-            className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
           >
             <option value="">{t("volume_admin:select_new_status")}</option>
             {validTransitions.map((s) => (
@@ -375,7 +379,7 @@ function StatusTransitionForm({
         <button
           type="submit"
           disabled={!selected || isApplying}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-50"
         >
           {isApplying && <Loader2 className="h-4 w-4 animate-spin" />}
           {t("volume_admin:apply")}
@@ -383,7 +387,7 @@ function StatusTransitionForm({
       </div>
       {selected === "sent_back" && (
         <div>
-          <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+          <label className="mb-1 block font-sans text-xs font-medium text-indigo">
             {t("volume_admin:sent_back_reason")}
           </label>
           <textarea
@@ -391,7 +395,7 @@ function StatusTransitionForm({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={2}
-            className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
           />
         </div>
       )}
@@ -425,29 +429,29 @@ function DangerZone({
 
   return (
     <section>
-      <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#8B2942]">
+      <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-indigo">
         {t("section_danger_zone")}
       </h2>
-      <div className="space-y-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] p-4">
+      <div className="space-y-4 rounded-md border border-indigo bg-indigo-tint p-4">
         {isNothingShown && (
-          <p className="font-sans text-sm text-[#44403C]">
+          <p className="font-sans text-sm text-stone-700">
             {t("delete_ineligible")}
           </p>
         )}
 
         {canDelete && (
           <div>
-            <p className="mb-2 font-sans text-sm font-semibold text-[#8B2942]">
+            <p className="mb-2 font-sans text-sm font-semibold text-indigo">
               {t("delete_button")}
             </p>
-            <p className="mb-3 font-sans text-sm text-[#44403C]">
+            <p className="mb-3 font-sans text-sm text-stone-700">
               {t("delete_eligible")}
             </p>
             <deleteFetcher.Form method="post">
               <input type="hidden" name="_action" value="delete" />
               <label
                 htmlFor={`delete-confirm-${volume.id}`}
-                className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+                className="mb-1 block font-sans text-xs font-medium text-indigo"
               >
                 {t("force_delete_type_name", { name: volume.name })}
               </label>
@@ -457,17 +461,17 @@ function DangerZone({
                 value={deleteTyped}
                 onChange={(e) => setDeleteTyped(e.target.value)}
                 autoComplete="off"
-                className="mb-3 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="mb-3 w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               />
               {deleteResult && !deleteResult.ok && deleteResult.error && (
-                <p className="mb-2 font-sans text-sm text-[#8B2942]">
+                <p className="mb-2 font-sans text-sm text-indigo">
                   {deleteResult.error}
                 </p>
               )}
               <button
                 type="submit"
                 disabled={deleteTyped !== volume.name}
-                className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("delete_button")}
               </button>
@@ -476,18 +480,18 @@ function DangerZone({
         )}
 
         {canForceDelete && (
-          <div className={canDelete ? "border-t border-[#8B2942]/30 pt-4" : ""}>
-            <p className="mb-2 font-sans text-sm font-semibold text-[#8B2942]">
+          <div className={canDelete ? "border-t border-indigo/30 pt-4" : ""}>
+            <p className="mb-2 font-sans text-sm font-semibold text-indigo">
               {t("force_delete_heading")}
             </p>
-            <p className="mb-3 font-sans text-sm text-[#44403C]">
+            <p className="mb-3 font-sans text-sm text-stone-700">
               {t("force_delete_warning")}
             </p>
             <forceFetcher.Form method="post">
               <input type="hidden" name="_action" value="forceDelete" />
               <label
                 htmlFor={`force-confirm-${volume.id}`}
-                className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+                className="mb-1 block font-sans text-xs font-medium text-indigo"
               >
                 {t("force_delete_type_name", { name: volume.name })}
               </label>
@@ -497,17 +501,17 @@ function DangerZone({
                 value={forceTyped}
                 onChange={(e) => setForceTyped(e.target.value)}
                 autoComplete="off"
-                className="mb-3 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="mb-3 w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               />
               {forceResult && !forceResult.ok && forceResult.error && (
-                <p className="mb-2 font-sans text-sm text-[#8B2942]">
+                <p className="mb-2 font-sans text-sm text-indigo">
                   {forceResult.error}
                 </p>
               )}
               <button
                 type="submit"
                 disabled={forceTyped !== volume.name}
-                className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("force_delete_button")}
               </button>
@@ -567,31 +571,31 @@ export default function VolumeManagePage({
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       {/* Breadcrumb */}
-      <nav className="font-sans text-sm text-[#78716C]">
+      <nav className="font-sans text-sm text-stone-500">
         <Link
           to={`/projects/${projectId}/volumes`}
-          className="hover:text-[#44403C]"
+          className="hover:text-stone-700"
         >
           {t("volume_admin:breadcrumb_volumes")}
         </Link>
         <span className="mx-2">&rsaquo;</span>
-        <span className="text-[#44403C]">{volume.name}</span>
+        <span className="text-stone-700">{volume.name}</span>
       </nav>
 
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-display text-3xl font-semibold text-[#44403C]">
+          <h1 className="font-display text-3xl font-semibold text-stone-700">
             {volume.name}
           </h1>
-          <p className="mt-1 font-mono text-sm text-[#78716C]">
+          <p className="mt-1 font-mono text-sm text-stone-500">
             {volume.referenceCode}
           </p>
-          <div className="mt-2 flex items-center gap-3 font-sans text-sm text-[#78716C]">
+          <div className="mt-2 flex items-center gap-3 font-sans text-sm text-stone-500">
             <span>{t("volume_admin:pages", { count: volume.pageCount })}</span>
-            <span className="text-[#D6D3D1]">·</span>
+            <span className="text-stone-300">·</span>
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE_COLORS[volume.status] || "bg-[#E7E5E4] text-[#78716C]"}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_BADGE_COLORS[volume.status] || "bg-stone-200 text-stone-500"}`}
             >
               {t(`workflow:status.${volume.status}`)}
             </span>
@@ -599,7 +603,7 @@ export default function VolumeManagePage({
         </div>
         <Link
           to={`/projects/${projectId}/volumes/${volume.id}`}
-          className="rounded-lg border border-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-[#8B2942] hover:bg-[#F5E6EA]"
+          className="rounded-md border border-indigo px-4 py-2 font-sans text-sm font-semibold text-indigo hover:bg-indigo-tint"
         >
           {t("volume_admin:open_in_viewer")}
         </Link>
@@ -607,34 +611,34 @@ export default function VolumeManagePage({
 
       {/* Feedback */}
       {result?.ok && result.message && (
-        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
           {result.message}
         </div>
       )}
       {result && !result.ok && result.error && (
-        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
           {result.error}
         </div>
       )}
 
       {/* Progress */}
       <section>
-        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
           {t("volume_admin:section_progress")}
         </h2>
         {totalEntries === 0 ? (
-          <p className="rounded-lg border border-[#E7E5E4] px-4 py-3 font-sans text-sm text-[#A8A29E]">
+          <p className="rounded-lg border border-stone-200 px-4 py-3 font-sans text-sm text-stone-400">
             {t("volume_admin:entries_empty")}
           </p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
-            <table className="min-w-full divide-y divide-[#E7E5E4]">
-              <thead className="bg-[#FAFAF9]">
+          <div className="overflow-hidden rounded-lg border border-stone-200">
+            <table className="min-w-full divide-y divide-stone-200">
+              <thead className="bg-stone-50">
                 <tr>
-                  <th className="px-4 py-2 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("volume_admin:col_description_status")}
                   </th>
-                  <th className="px-4 py-2 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2 text-right font-sans text-xs font-medium uppercase text-stone-500">
                     {t("volume_admin:col_count")}
                   </th>
                 </tr>
@@ -642,19 +646,19 @@ export default function VolumeManagePage({
               <tbody className="divide-y divide-stone-100">
                 {entryCounts.map((c) => (
                   <tr key={c.status || "none"}>
-                    <td className="px-4 py-2 font-sans text-sm text-[#44403C]">
+                    <td className="px-4 py-2 font-sans text-sm text-stone-700">
                       {c.status || "—"}
                     </td>
-                    <td className="px-4 py-2 text-right font-sans text-sm text-[#44403C]">
+                    <td className="px-4 py-2 text-right font-sans text-sm text-stone-700">
                       {c.count}
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-[#FAFAF9]">
-                  <td className="px-4 py-2 font-sans text-sm font-semibold text-[#44403C]">
+                <tr className="bg-stone-50">
+                  <td className="px-4 py-2 font-sans text-sm font-semibold text-stone-700">
                     {t("volume_admin:col_total")}
                   </td>
-                  <td className="px-4 py-2 text-right font-sans text-sm font-semibold text-[#44403C]">
+                  <td className="px-4 py-2 text-right font-sans text-sm font-semibold text-stone-700">
                     {totalEntries}
                   </td>
                 </tr>
@@ -666,16 +670,16 @@ export default function VolumeManagePage({
 
       {/* QC flags */}
       <section>
-        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
           {t("qc_flags:card.status.open")}
         </h2>
         {qcFlags.length === 0 ? (
-          <p className="rounded-lg border border-[#E7E5E4] px-4 py-3 font-sans text-sm text-[#A8A29E]">
+          <p className="rounded-lg border border-stone-200 px-4 py-3 font-sans text-sm text-stone-400">
             {t("qc_flags:badge.no_flags")}
           </p>
         ) : (
           <>
-            <p className="mb-3 font-sans text-sm text-[#78716C]">
+            <p className="mb-3 font-sans text-sm text-stone-500">
               {t("qc_flags:badge.open_count", { count: qcFlags.length })}
             </p>
             <div className="space-y-3">
@@ -698,21 +702,21 @@ export default function VolumeManagePage({
 
       {/* Assignments */}
       <section>
-        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
           {t("volume_admin:section_assignments")}
         </h2>
-        <div className="space-y-3 rounded-lg border border-[#E7E5E4] p-4">
+        <div className="space-y-3 rounded-lg border border-stone-200 p-4">
           <fetcher.Form method="post" className="flex items-end gap-2">
             <input type="hidden" name="_action" value="assignCataloguer" />
             <div className="flex-1">
-              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
                 {t("volume_admin:cataloguer_label")}
               </label>
               <select
                 name="userId"
                 defaultValue={volume.assignedTo || ""}
                 onChange={(e) => e.target.form?.requestSubmit()}
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               >
                 <option value="">{t("volume_admin:unassigned")}</option>
                 {cataloguers.map((m) => (
@@ -727,14 +731,14 @@ export default function VolumeManagePage({
           <fetcher.Form method="post" className="flex items-end gap-2">
             <input type="hidden" name="_action" value="assignReviewer" />
             <div className="flex-1">
-              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
                 {t("volume_admin:reviewer_label")}
               </label>
               <select
                 name="userId"
                 defaultValue={volume.assignedReviewer || ""}
                 onChange={(e) => e.target.form?.requestSubmit()}
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               >
                 <option value="">{t("volume_admin:unassigned")}</option>
                 {reviewers.map((m) => (
@@ -750,12 +754,12 @@ export default function VolumeManagePage({
 
       {/* Status workflow */}
       <section>
-        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
           {t("volume_admin:section_workflow")}
         </h2>
-        <div className="rounded-lg border border-[#E7E5E4] p-4">
+        <div className="rounded-lg border border-stone-200 p-4">
           {volume.reviewComment && (
-            <div className="mb-3 rounded-lg bg-[#F5E6EA] px-3 py-2 font-sans text-sm text-[#44403C]">
+            <div className="mb-3 rounded-md bg-indigo-tint px-3 py-2 font-sans text-sm text-stone-700">
               <span className="font-semibold">{t("volume_admin:sent_back_prefix")} </span>
               {volume.reviewComment}
             </div>
@@ -766,16 +770,16 @@ export default function VolumeManagePage({
 
       {/* Metadata */}
       <section>
-        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+        <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
           {t("volume_admin:section_metadata")}
         </h2>
         <fetcher.Form
           method="post"
-          className="space-y-3 rounded-lg border border-[#E7E5E4] p-4"
+          className="space-y-3 rounded-lg border border-stone-200 p-4"
         >
           <input type="hidden" name="_action" value="updateMetadata" />
           <div>
-            <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+            <label className="mb-1 block font-sans text-xs font-medium text-indigo">
               {t("volume_admin:name_label")}
             </label>
             <input
@@ -783,11 +787,11 @@ export default function VolumeManagePage({
               name="name"
               defaultValue={volume.name}
               required
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+            <label className="mb-1 block font-sans text-xs font-medium text-indigo">
               {t("volume_admin:reference_code_label")}
             </label>
             <input
@@ -795,12 +799,12 @@ export default function VolumeManagePage({
               name="referenceCode"
               defaultValue={volume.referenceCode}
               required
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("volume_admin:save_metadata")}
           </button>

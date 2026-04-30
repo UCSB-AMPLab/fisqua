@@ -33,7 +33,8 @@ export async function createTestEntity(overrides: Partial<{
     sortName: overrides.sortName ?? "Entity, Test",
     surname: overrides.surname ?? undefined,
     givenName: overrides.givenName ?? undefined,
-    entityType: overrides.entityType ?? "person",
+    entityType: (overrides.entityType ?? "person") as
+      (typeof schema.entities.$inferInsert)["entityType"],
     honorific: overrides.honorific ?? undefined,
     primaryFunction: overrides.primaryFunction ?? undefined,
     nameVariants: overrides.nameVariants ?? "[]",

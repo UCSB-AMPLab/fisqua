@@ -22,7 +22,7 @@ export function PromotedBadge({
   const { t } = useTranslation("promote");
 
   const badge = (
-    <span className="inline-flex items-center gap-1 rounded-full bg-[#E0E7F7] px-2 py-0.5 text-xs font-semibold text-[#3B5A9A]">
+    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-tint px-2 py-0.5 text-xs font-semibold text-indigo">
       {t("status.alreadyPromoted")}
       {referenceCode && (
         <span className="font-mono">&rarr; {referenceCode}</span>
@@ -34,7 +34,7 @@ export function PromotedBadge({
     return (
       <a
         href={descriptionLink}
-        className="text-[#6B1F33] hover:underline"
+        className="text-indigo-deep hover:underline"
       >
         {badge}
       </a>

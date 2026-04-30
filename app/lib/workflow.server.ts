@@ -7,7 +7,7 @@ import {
   type WorkflowRole,
 } from "./workflow";
 
-type ActivityEvent =
+export type ActivityEvent =
   | "login"
   | "volume_opened"
   | "status_changed"
@@ -16,7 +16,14 @@ type ActivityEvent =
   | "description_status_changed"
   | "description_assignment_changed"
   | "resegmentation_flagged"
-  | "comment_added";
+  | "comment_added"
+  | "comment_edited"
+  | "comment_deleted"
+  | "comment_resolved"
+  | "comment_unresolved"
+  | "comment_region_moved"
+  | "qc_flag_raised"
+  | "qc_flag_resolved";
 
 /**
  * Transition a volume's status after validating the transition is allowed.

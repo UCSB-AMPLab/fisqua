@@ -5,7 +5,7 @@
  */
 export default {
   heading: {
-    title: "Promote Entries",
+    title: "Promote entries",
   },
   volume: {
     heading: "Select a volume",
@@ -17,7 +17,7 @@ export default {
     col: {
       title: "Title",
       pages: "Pages",
-      refCode: "Reference Code",
+      refCode: "Reference code",
       status: "Status",
     },
     children: "{{count}} sub-entries",
@@ -25,7 +25,7 @@ export default {
   refCode: {
     patternLabel: "Reference code pattern",
     prefixPlaceholder: "Prefix (e.g. d)",
-    applyPattern: "Apply Pattern",
+    applyPattern: "Apply pattern",
   },
   status: {
     alreadyPromoted: "Already promoted",
@@ -34,15 +34,15 @@ export default {
     noManifest: "No manifest available for this volume.",
   },
   action: {
-    review: "Review Promotion",
-    promote: "Promote {{count}} Entries",
+    review: "Review promotion",
+    promote: "Promote {{count}} entries",
     back: "Back to selection",
   },
   summary: {
-    heading: "Promotion Summary",
+    heading: "Promotion summary",
     col: {
-      fields: "Fields Mapped",
-      parent: "Parent Description",
+      fields: "Fields mapped",
+      parent: "Parent description",
     },
   },
   toast: {

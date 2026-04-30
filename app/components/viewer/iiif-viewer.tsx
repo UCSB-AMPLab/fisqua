@@ -932,12 +932,35 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
  width: "100%",
  }}
  >
- <div className="flex h-full">
+ <div className="flex h-full justify-center">
  {/* Label gutter + FlagBadge slot */}
- <div className="flex w-16 shrink-0 flex-col items-center gap-2 pt-2">
- <span className="text-xs font-medium text-stone-500">
+ <div className="flex w-12 shrink-0 flex-col items-end gap-2 pr-1 pt-2">
+ <span className="text-base font-medium text-stone-500">
  {page.label || page.position}
  </span>
+ {onFlagClick && (
+ <button
+ type="button"
+ aria-label={t(
+ "qc_flags:badge.raise_button_aria",
+ { position: page.position }
+ )}
+ onClick={(e) => {
+ e.stopPropagation();
+ onFlagClick({
+ pageId: page.id,
+ pagePosition: page.position,
+ });
+ }}
+ className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-stone-500 shadow-sm ring-1 ring-stone-200 hover:bg-white hover:text-indigo"
+ >
+ <Flag
+ size={20}
+ strokeWidth={2}
+ aria-hidden="true"
+ />
+ </button>
+ )}
  {/* per-page FlagBadge.
  Replaces the 12px red dot. Hidden
  at zero by the FlagBadge render predicate. */}
@@ -959,7 +982,7 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
  />
  </div>
  {/* Page image */}
- <div className="relative flex flex-1 justify-center">
+ <div className="relative flex">
  <div
  style={{
  position: "relative",
@@ -1032,34 +1055,6 @@ export const IIIFViewer = forwardRef<IIIFViewerHandle, IIIFViewerProps>(
  />
  )}
  </div>
- {onFlagClick && (
- <button
- type="button"
- aria-label={t(
- "qc_flags:badge.raise_button_aria",
- { position: page.position }
- )}
- onClick={(e) => {
- e.stopPropagation();
- onFlagClick({
- pageId: page.id,
- pagePosition: page.position,
- });
- }}
- className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-stone-500 shadow-sm ring-1 ring-stone-200 hover:bg-white hover:text-[#8B2942]"
- >
- {/* Cleanup 2026-04-18: swap the legacy "!" glyph
- for the Flag icon. The toolbar "Marcar
- problema" shortcut was removed in the same
- cleanup, so this per-image button is now
- the single entry into the RaiseFlagDialog. */}
- <Flag
- size={14}
- strokeWidth={2}
- aria-hidden="true"
- />
- </button>
- )}
  </div>
  </div>
  </div>

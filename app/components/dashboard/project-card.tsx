@@ -22,10 +22,10 @@ type ProjectCardProps = {
 };
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#D6E8DB] text-[#2F6B45]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#CCF0EB] text-[#0D9488]",
-  admin: "bg-[#F5E6EA] text-[#8B2942]",
+  lead: "bg-verdigris-tint text-verdigris",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
+  admin: "bg-indigo-tint text-indigo",
 };
 
 export function ProjectCard({ project, role }: ProjectCardProps) {
@@ -34,14 +34,14 @@ export function ProjectCard({ project, role }: ProjectCardProps) {
   const badgeColor = ROLE_BADGE_COLORS[role] || "bg-stone-100 text-stone-600";
 
   return (
-    <div className="rounded-lg border border-[#E7E5E4] bg-white p-6 transition-shadow hover:shadow-sm">
+    <div className="rounded-lg border border-stone-200 bg-white p-6 transition-shadow hover:shadow-sm">
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="font-heading text-lg font-semibold text-[#44403C]">
+          <h3 className="font-heading text-lg font-semibold text-stone-700">
             {project.name}
           </h3>
           {project.description && (
-            <p className="mt-1 text-sm text-[#78716C] line-clamp-2">
+            <p className="mt-1 text-sm text-stone-500 line-clamp-2">
               {project.description}
             </p>
           )}
@@ -53,7 +53,7 @@ export function ProjectCard({ project, role }: ProjectCardProps) {
         </div>
         <Link
           to={`/projects/${project.id}`}
-          className="shrink-0 rounded p-1 text-[#8B2942] hover:bg-[#F5E6EA]"
+          className="shrink-0 rounded p-1 text-indigo hover:bg-indigo-tint"
           aria-label={project.name}
         >
           <ArrowRight className="h-5 w-5" />

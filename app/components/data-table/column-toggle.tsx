@@ -49,7 +49,7 @@ export function ColumnToggle<TData>({
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+        className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
@@ -59,20 +59,20 @@ export function ColumnToggle<TData>({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-10 mt-1 min-w-48 rounded-lg border border-[#E7E5E4] bg-white p-2 shadow-lg"
+          className="absolute right-0 z-10 mt-1 min-w-48 rounded-lg border border-stone-200 bg-white p-2 shadow-lg"
         >
           {toggleableColumns.map((column) => (
             <label
               key={column.id}
               role="menuitemcheckbox"
               aria-checked={column.getIsVisible()}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 font-sans text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 font-sans text-sm font-medium text-indigo hover:bg-stone-50"
             >
               <input
                 type="checkbox"
                 checked={column.getIsVisible()}
                 onChange={column.getToggleVisibilityHandler()}
-                className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+                className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
               />
               {typeof column.columnDef.header === "string"
                 ? column.columnDef.header

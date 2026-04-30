@@ -150,8 +150,9 @@ export function computePinInlineStyle(pin: RegionPin): CSSProperties {
 /**
  * Pure function: compute the className for a single pin, branching on
  * point vs box and draft vs final. Exported so tests can assert the
- * exact class strings without rendering. The burgundy `#8B2942` and
- * amber-500 tokens come straight out of /.
+ * exact class strings without rendering. Final pins render in indigo
+ * (`#1F2E4D`); draft pins render in saffron (`#C68A2E`) so an
+ * unsaved annotation reads as in-progress against the document tile.
  */
 export function computePinClassName(
   pin: RegionPin,
@@ -166,22 +167,22 @@ export function computePinClassName(
  // focus outline, and the highlight ring only. The icon colour is
  // set on the <MapPin> element below.
  const base =
- "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#8B2942]";
- const draftClasses = isDraft ? "text-amber-500" : "text-[#8B2942]";
- const highlightClasses = highlighted ? "ring-2 ring-[#8B2942]/50" : "";
+ "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo";
+ const draftClasses = isDraft ? "text-saffron" : "text-indigo";
+ const highlightClasses = highlighted ? "ring-2 ring-indigo/50" : "";
  return [base, draftClasses, highlightClasses].filter(Boolean).join(" ");
   }
 
-  // Box pins. Committed-box fill + border both burgundy `#8B2942`
+  // Box pins. Committed-box fill + border both burgundy `#1F2E4D`
   // (fill at 15%). Ties to the annotation card's burgundy palette after
   // the 2026-04-18 palette flip (annotations = burgundy, comments =
   // cream). Draft amber, hover ring, highlight ring all unchanged.
   const base =
- "cursor-pointer rounded outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[#8B2942] hover:ring-2 hover:ring-[#8B2942]/50";
+ "cursor-pointer rounded outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-indigo hover:ring-2 hover:ring-indigo/50";
   const variantClasses = isDraft
- ? "border-2 border-dashed border-amber-500 bg-amber-500/10"
- : "border-2 border-[#8B2942] bg-[#8B2942]/15";
-  const highlightClasses = highlighted ? "ring-2 ring-[#8B2942]/50" : "";
+ ? "border-2 border-dashed border-saffron bg-saffron/10"
+ : "border-2 border-indigo bg-indigo/15";
+  const highlightClasses = highlighted ? "ring-2 ring-indigo/50" : "";
   return [base, variantClasses, highlightClasses].filter(Boolean).join(" ");
 }
 
@@ -333,8 +334,8 @@ export function RegionPinOverlay({
  strokeWidth={2}
  fill={
  pin.draft
- ? "rgba(245, 158, 11, 0.2)" /* amber-500 at 20% */
- : "rgba(139, 41, 66, 0.2)" /* #8B2942 at 20% */
+ ? "rgba(198, 138, 46, 0.2)" /* saffron at 20% */
+ : "rgba(31, 46, 77, 0.2)" /* indigo at 20% */
  }
  aria-hidden="true"
  />

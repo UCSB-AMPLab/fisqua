@@ -158,7 +158,9 @@ export function ResolveQcFlagDialog({
  if (resolverNote.trim().length > 0) {
  payload.resolverNote = resolverNote.trim();
  }
- fetcher.submit(payload, {
+ // JSON encType accepts arbitrary serialisable payloads; cast so the
+ // SubmitTarget union doesn't reject the optional resolverNote field.
+ fetcher.submit(payload as Parameters<typeof fetcher.submit>[0], {
  method: "PATCH",
  action: "/api/qc-flags",
  encType: "application/json",
@@ -177,14 +179,14 @@ export function ResolveQcFlagDialog({
 
   return (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
- <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-xl">
+ <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-lg">
  {/* Header */}
  <div className="flex items-start gap-3 p-6 pb-4">
  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100">
  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
  </div>
  <div className="flex-1">
- <h2 className="font-['Cormorant_Garamond'] text-2xl font-semibold text-stone-800">
+ <h2 className="font-display text-2xl font-semibold text-stone-800">
  {t("qc_flags:card.resolve_button")}
  </h2>
  </div>
@@ -208,7 +210,7 @@ export function ResolveQcFlagDialog({
  {STATUSES.map((s) => (
  <label
  key={s.value}
- className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
+ className="font-medium flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
  >
  <input
  type="radio"
@@ -216,7 +218,7 @@ export function ResolveQcFlagDialog({
  value={s.value}
  checked={status === s.value}
  onChange={() => setStatus(s.value)}
- className="accent-[#2F6B45]"
+ className="accent-verdigris"
  />
  <span className="text-sm font-medium text-stone-700">
  {t(s.labelKey)}
@@ -235,7 +237,7 @@ export function ResolveQcFlagDialog({
  {ACTIONS.map((a) => (
  <label
  key={a.value}
- className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
+ className="font-medium flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
  >
  <input
  type="radio"
@@ -243,7 +245,7 @@ export function ResolveQcFlagDialog({
  value={a.value}
  checked={resolutionAction === a.value}
  onChange={() => setResolutionAction(a.value)}
- className="accent-[#2F6B45]"
+ className="accent-verdigris"
  />
  <span className="text-sm font-medium text-stone-700">
  {t(a.labelKey)}
@@ -257,11 +259,11 @@ export function ResolveQcFlagDialog({
  <div>
  <label
  htmlFor="qc-flag-resolver-note"
- className="mb-1 block text-sm font-medium text-stone-700"
+ className="mb-1 block text-sm font-medium text-indigo"
  >
  {t("qc_flags:dialog.description_label")}
  {noteRequired && (
- <span className="ml-1 text-red-600" aria-hidden="true">
+ <span className="ml-1 text-madder-deep" aria-hidden="true">
  *
  </span>
  )}
@@ -282,14 +284,14 @@ export function ResolveQcFlagDialog({
  <button
  onClick={handleClose}
  disabled={submitting}
- className="flex-1 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+ className="flex-1 rounded-md border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
  >
  {t("qc_flags:dialog.cancel")}
  </button>
  <button
  onClick={handleSubmit}
  disabled={!isValid || submitting}
- className="flex-1 rounded-lg bg-[#2F6B45] px-4 py-2 text-sm font-medium text-white hover:bg-[#265838] disabled:opacity-50"
+ className="flex-1 rounded-md bg-verdigris px-4 py-2 text-sm font-medium text-parchment hover:bg-verdigris-deep disabled:opacity-50"
  >
  {t("qc_flags:card.resolve_button")}
  </button>

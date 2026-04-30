@@ -658,12 +658,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!(ENTITY_ROLES as readonly string[]).includes(role)) {
         return { ok: false as const, error: "generic" };
       }
+      const narrowedRole = role as (typeof ENTITY_ROLES)[number];
       try {
         await db.insert(descriptionEntities).values({
           id: crypto.randomUUID(),
           descriptionId,
           entityId: id,
-          role,
+          role: narrowedRole,
           sequence: 0,
           createdAt: Date.now(),
         });
@@ -686,6 +687,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!(roles as readonly string[]).includes(role)) {
         return { ok: false as const, error: "generic" };
       }
+      const narrowedRole = role as (typeof roles)[number];
       const roleNote = (formData.get("roleNote") as string)?.trim() || null;
       const sequence = parseInt(formData.get("sequence") as string, 10) || 0;
       const honorific = (formData.get("honorific") as string)?.trim() || null;
@@ -694,7 +696,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         (formData.get("nameAsRecorded") as string)?.trim() || null;
       await db
         .update(descriptionEntities)
-        .set({ role, roleNote, sequence, honorific, function: func, nameAsRecorded })
+        .set({ role: narrowedRole, roleNote, sequence, honorific, function: func, nameAsRecorded })
         .where(eq(descriptionEntities.id, linkId));
       return { ok: true as const };
     }
@@ -819,21 +821,21 @@ export default function EntityDetailPage({
           <li>
             <Link
               to="/admin/entities"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("title")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
-          <li className="text-[#44403C]">{entity.displayName}</li>
+          <li className="text-stone-700">{entity.displayName}</li>
         </ol>
       </nav>
 
       {/* Title row */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-2xl font-semibold text-stone-700">
           {entity.displayName}
         </h1>
 
@@ -842,7 +844,7 @@ export default function EntityDetailPage({
             <button
               type="button"
               onClick={() => setShowMergeDialog(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Merge className="h-4 w-4" />
               {t("mergeButton")}
@@ -850,7 +852,7 @@ export default function EntityDetailPage({
             <button
               type="button"
               onClick={() => setShowSplitDialog(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Split className="h-4 w-4" />
               {t("splitButton")}
@@ -858,7 +860,7 @@ export default function EntityDetailPage({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Pencil className="h-4 w-4" />
               {t("editButton")}
@@ -875,8 +877,8 @@ export default function EntityDetailPage({
               }
               className={
                 hasDescriptions
-                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white opacity-50"
-                  : "inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment opacity-50"
+                  : "inline-flex items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
               }
             >
               <Trash2 className="h-4 w-4" />
@@ -899,7 +901,7 @@ export default function EntityDetailPage({
 
       {/* Autosave status */}
       {isEditing && draftStatus && (
-        <p className="mt-2 text-xs text-[#A8A29E]">
+        <p className="mt-2 text-xs text-stone-400">
           {draftStatus === "saving"
             ? t("autosave_saving")
             : t("autosave_saved")}
@@ -908,11 +910,11 @@ export default function EntityDetailPage({
 
       {/* Merge banner */}
       {isMerged && mergeTarget && (
-        <div className="mt-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {t("mergedBanner", { target: mergeTarget.displayName })}{" "}
           <Link
             to={`/admin/entities/${mergeTarget.id}`}
-            className="font-semibold text-[#6B1F33] hover:underline"
+            className="font-semibold text-indigo-deep hover:underline"
           >
             {t("mergedBannerLink")}
           </Link>
@@ -921,14 +923,14 @@ export default function EntityDetailPage({
 
       {/* Success banner */}
       {successMessage === "updated" && (
-        <div className="mt-4 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
           {t("successUpdated")}
         </div>
       )}
 
       {/* Error banner */}
       {globalError && globalError !== "conflict" && (
-        <div className="mt-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {globalError === "has_descriptions"
             ? t("deleteBlocked", { count: descLinkCount })
             : t("errorGeneric")}
@@ -938,20 +940,20 @@ export default function EntityDetailPage({
       {/* Linked descriptions section */}
       <div className="mt-6">
         <div className="flex items-center justify-between">
-          <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-[#78716C]">
+          <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-stone-500">
             {t("linked_descriptions")}
           </h2>
           <button
             type="button"
             onClick={() => setShowLinkDialog(true)}
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#6B1F33] hover:text-[#8B2942]"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-deep hover:text-indigo"
           >
             <Plus className="h-4 w-4" />
             {t("add_description_link")}
           </button>
         </div>
         {descLinks.length === 0 ? (
-          <p className="mt-3 text-sm text-[#A8A29E]">
+          <p className="mt-3 text-sm text-stone-400">
             {t("no_linked_descriptions")}
           </p>
         ) : (
@@ -959,8 +961,8 @@ export default function EntityDetailPage({
             {descLinks.map((link) => (
               <div key={link.id}>
                 {confirmRemoveLinkId === link.id ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-[#DC2626] bg-[#FEF2F2] px-4 py-3 text-sm">
-                    <span className="text-[#44403C]">{t("remove_link_confirm")}</span>
+                  <div className="flex items-center gap-3 rounded-md border border-madder bg-madder-tint px-4 py-3 text-sm">
+                    <span className="text-stone-700">{t("remove_link_confirm")}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -970,14 +972,14 @@ export default function EntityDetailPage({
                         );
                         setConfirmRemoveLinkId(null);
                       }}
-                      className="font-semibold text-[#DC2626] hover:underline"
+                      className="font-semibold text-madder hover:underline"
                     >
                       {t("remove_link")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmRemoveLinkId(null)}
-                      className="text-[#78716C] hover:text-[#44403C]"
+                      className="text-stone-500 hover:text-stone-700"
                     >
                       {t("mergeCancel")}
                     </button>
@@ -1041,7 +1043,7 @@ export default function EntityDetailPage({
       })()}
 
       {/* Detail card */}
-      <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-white p-6">
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
         {isEditing ? (
           <EditMode
             entity={entity}
@@ -1073,25 +1075,25 @@ export default function EntityDetailPage({
             role="alertdialog"
             aria-labelledby="delete-modal-title"
             aria-describedby="delete-modal-body"
-            className="max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="max-w-md rounded-lg bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
               id="delete-modal-title"
-              className="font-serif text-lg font-semibold text-[#44403C]"
+              className="font-serif text-lg font-semibold text-stone-700"
             >
               {t("deleteTitle")}
             </h2>
             <p
               id="delete-modal-body"
-              className="mt-2 text-sm text-[#78716C]"
+              className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto"
             >
               {t("deleteBody", { name: entity.displayName })}
             </p>
             <div className="mt-3">
               <label
                 htmlFor="delete-confirm-input"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field.entityCode")}: {entity.entityCode}
               </label>
@@ -1099,7 +1101,7 @@ export default function EntityDetailPage({
                 id="delete-confirm-input"
                 type="text"
                 autoComplete="off"
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-madder focus:outline-none focus:ring-1 focus:ring-madder"
                 value={deleteConfirmation}
                 onChange={(e) => setDeleteConfirmation(e.target.value)}
               />
@@ -1111,7 +1113,7 @@ export default function EntityDetailPage({
                   setShowDeleteModal(false);
                   setDeleteConfirmation("");
                 }}
-                className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 {t("mergeCancel")}
               </button>
@@ -1120,7 +1122,7 @@ export default function EntityDetailPage({
                 <button
                   type="submit"
                   disabled={deleteConfirmation !== entity.entityCode}
-                  className="rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-md bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {t("deleteButton")}
                 </button>
@@ -1159,8 +1161,8 @@ export default function EntityDetailPage({
         "error" in actionData &&
         actionData.error === "conflict" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="text-lg font-semibold text-[#44403C]">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+              <h2 className="text-lg font-semibold text-stone-700">
                 {t("overwrite_confirm", {
                   name: "",
                   time:
@@ -1175,7 +1177,7 @@ export default function EntityDetailPage({
                 <button
                   type="button"
                   onClick={() => setShowConflictDialog(false)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                  className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
                 >
                   {t("overwrite_cancel")}
                 </button>
@@ -1189,7 +1191,7 @@ export default function EntityDetailPage({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+                    className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
                   >
                     {t("overwrite_button")}
                   </button>
@@ -1260,14 +1262,14 @@ function ViewMode({
           />
           {nameVariantsList.length > 0 && (
             <div>
-              <p className="text-xs text-[#78716C]">
+              <p className="text-xs text-stone-500">
                 {t("field.nameVariants")}
               </p>
               <div className="mt-1 flex flex-wrap gap-2">
                 {nameVariantsList.map((v, i) => (
                   <span
                     key={i}
-                    className="inline-block rounded bg-stone-100 px-2 py-1 text-xs text-[#44403C]"
+                    className="inline-block rounded bg-stone-100 px-2 py-1 text-xs text-stone-700"
                   >
                     {v}
                   </span>
@@ -1297,13 +1299,13 @@ function ViewMode({
           </div>
           <FieldDisplay label={t("field.history")} value={entity.history} />
           <div>
-            <p className="text-xs text-[#78716C]">{t("field.primaryFunction")}</p>
+            <p className="text-xs text-stone-500">{t("field.primaryFunction")}</p>
             <div className="flex items-center gap-2">
-              <p className="text-sm text-[#44403C]">
+              <p className="text-sm text-stone-700">
                 {functionTerm?.canonical ?? entity.primaryFunction ?? "\u2014"}
               </p>
               {functionTerm?.status === "proposed" && (
-                <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#78350F]">
+                <span className="rounded-full bg-saffron-tint px-2 py-0.5 text-xs font-semibold text-saffron-deep">
                   Proposed
                 </span>
               )}
@@ -1359,8 +1361,8 @@ function FieldDisplay({
 }) {
   return (
     <div>
-      <p className="text-xs text-[#78716C]">{label}</p>
-      <p className="text-sm text-[#44403C]">{value || "\u2014"}</p>
+      <p className="text-xs text-stone-500">{label}</p>
+      <p className="text-sm text-stone-700">{value || "\u2014"}</p>
     </div>
   );
 }
@@ -1448,17 +1450,17 @@ function EditMode({
           <div>
             <label
               htmlFor="entityType"
-              className="mb-1 block text-xs text-[#78716C]"
+              className="mb-1 block text-xs font-medium text-indigo"
             >
               {t("field.entityType")}
-              <span className="text-[#DC2626]"> *</span>
+              <span className="text-madder"> *</span>
             </label>
             <select
               id="entityType"
               name="entityType"
               defaultValue={entity.entityType}
               aria-required="true"
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             >
               <option value="person">{t("person")}</option>
               <option value="family">{t("family")}</option>
@@ -1466,13 +1468,13 @@ function EditMode({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-[#78716C]">
+            <label className="mb-1 block text-xs font-medium text-indigo">
               {t("field.entityCode")}
             </label>
-            <p className="text-sm text-[#44403C]">{entity.entityCode}</p>
+            <p className="text-sm text-stone-700">{entity.entityCode}</p>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-[#78716C]">
+            <label className="mb-1 block text-xs font-medium text-indigo">
               {t("field.nameVariants")}
             </label>
             <NameVariantInput
@@ -1514,7 +1516,7 @@ function EditMode({
             error={errors?.history?.[0]}
           />
           <div>
-            <label className="mb-1 block text-xs text-[#78716C]">
+            <label className="mb-1 block text-xs font-medium text-indigo">
               {t("field.primaryFunction")}
             </label>
             <TypeaheadInput
@@ -1526,7 +1528,7 @@ function EditMode({
               placeholder={t("primary_function_placeholder")}
             />
             {errors?.primaryFunction?.[0] && (
-              <p className="mt-1 text-xs text-[#DC2626]">
+              <p className="mt-1 text-xs text-madder">
                 {errors.primaryFunction[0]}
               </p>
             )}
@@ -1573,24 +1575,24 @@ function EditMode({
       </CollapsibleSection>
 
       {/* Actions */}
-      <div className="mt-6 space-y-3 border-t border-[#E7E5E4] pt-4">
+      <div className="mt-6 space-y-3 border-t border-stone-200 pt-4">
         <input
           type="text"
           name="commitNote"
           placeholder={t("commit_note_placeholder")}
-          className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
         <div className="flex gap-3">
           <button
             type="submit"
-            className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("editSave")}
           </button>
           <button
             type="button"
             onClick={onDiscard}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("discardButton")}
           </button>
@@ -1616,9 +1618,9 @@ function EditField({
   const errorId = error ? `${name}-error` : undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
-        {required && <span className="text-[#DC2626]"> *</span>}
+        {required && <span className="text-madder"> *</span>}
       </label>
       <input
         type="text"
@@ -1627,10 +1629,10 @@ function EditField({
         defaultValue={defaultValue}
         aria-required={required ? "true" : undefined}
         aria-describedby={errorId}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}
@@ -1652,7 +1654,7 @@ function EditTextarea({
   const errorId = error ? `${name}-error` : undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
       </label>
       <textarea
@@ -1661,10 +1663,10 @@ function EditTextarea({
         rows={3}
         defaultValue={defaultValue}
         aria-describedby={errorId}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}

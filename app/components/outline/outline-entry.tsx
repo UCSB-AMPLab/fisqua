@@ -107,12 +107,17 @@ type OutlineEntryProps = {
   children?: React.ReactNode;
 };
 
+// Entry-type pills, mapped onto the Fisqua status palette by role:
+//   item        -> indigo  (primary, in-progress: a real document entry)
+//   blank       -> stone   (draft / unstarted)
+//   front/back  -> saffron (segmented but not a document — "matter")
+//   test_images -> sage    (a "reviewed-aside" — flagged out of scope)
 const TYPE_BADGE_COLORS: Record<string, string> = {
-  item: "bg-blue-100 text-blue-700",
+  item: "bg-indigo-tint text-indigo",
   blank: "bg-stone-100 text-stone-600",
-  front_matter: "bg-amber-100 text-amber-700",
-  back_matter: "bg-amber-100 text-amber-700",
-  test_images: "bg-teal-100 text-teal-700",
+  front_matter: "bg-saffron-tint text-saffron-deep",
+  back_matter: "bg-saffron-tint text-saffron-deep",
+  test_images: "bg-sage-tint text-sage-deep",
 };
 
 /**
@@ -175,19 +180,19 @@ export function computeCardClassName(params: {
   entryType?: EntryType | null;
 }): string {
   const isDocument = params.entryType === "item";
-  const typeBg = isDocument ? "bg-[#F5F7FC]" : "bg-white";
+  const typeBg = isDocument ? "bg-indigo-wash" : "bg-white";
   const base = [
  "rounded-lg",
  "border",
  typeBg,
  "transition-colors",
- "hover:border-[#8B2942]/40",
+ "hover:border-indigo/40",
   ];
   if (params.isReviewerModified) {
- base.push("border-red-400");
- base.push("bg-red-50");
+ base.push("border-madder");
+ base.push("bg-madder-tint");
   } else if (params.isHighlighted) {
- base.push("border-[#8B2942]");
+ base.push("border-indigo");
   } else {
  base.push("border-stone-200");
   }
@@ -229,16 +234,18 @@ export function OutlineEntry({
 
   const isReadonly = accessLevel === "readonly";
 
-  // Virtualiser remeasure -- Pitfall 1 from earlier research. Fire on
-  // every mount AND on every visual state change that affects row height.
-  // dropped the inline CommentThread so the `comments.length`
-  // and `draftRegion` deps are gone; only the entry's own state remains
-  // (isExpanded, reseg flag presence).
-  useEffect(() => {
- if (!onHeightChange) return;
- const raf = requestAnimationFrame(() => onHeightChange());
- return () => cancelAnimationFrame(raf);
-  }, [onHeightChange, isExpanded, openResegFlag != null]);
+  // Virtualiser remeasure: NO-OP on the entry side. The outline panel
+  // attaches `virtualizer.measureElement` to each row's wrapper, and
+  // TanStack Virtual installs a ResizeObserver inside that call which
+  // catches every height change (expand/collapse, reseg flag mount,
+  // draft-comment row mount, etc.) automatically. The previous effect
+  // here called `virtualizer.measure()` (a full cache reset) on every
+  // render because `onHeightChange` was a fresh closure each render —
+  // that was the root of the scroll-back cascade (see
+  // .planning/debug/resolved/outline-scroll-snaps-back.md).
+  // The `onHeightChange` prop is kept for API compatibility but is no
+  // longer invoked from this component.
+  void onHeightChange;
 
   const handleClick = useCallback(() => {
  onToggle();
@@ -429,8 +436,8 @@ export function OutlineEntry({
 
   const titleColor = isReviewerModified
  ? entry.title
- ? "text-red-700"
- : "italic text-red-400"
+ ? "text-madder-deep"
+ : "italic text-madder"
  : entry.title
  ? "text-stone-800"
  : "italic text-stone-400";
@@ -457,14 +464,14 @@ export function OutlineEntry({
  onClick={handleClick}
  >
  {/* Sequence badge */}
- <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-stone-200 font-['DM_Sans'] text-[10px] font-medium text-stone-600">
+ <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-stone-200 font-sans text-[10px] font-medium text-stone-600">
  {entry.position + 1}
  </span>
 
  {/* Page range */}
  <span
- className={`shrink-0 font-['DM_Sans'] text-[10px] ${
- isReviewerModified ? "text-red-500" : "text-stone-500"
+ className={`shrink-0 font-sans text-[10px] ${
+ isReviewerModified ? "text-madder" : "text-stone-500"
  }`}
  >
  {pageRange}
@@ -473,9 +480,9 @@ export function OutlineEntry({
  {/* Type badge -- moved before the title */}
  {entry.type && typeLabel && (
  <span
- className={`shrink-0 rounded-full px-1.5 py-0.5 font-['DM_Sans'] text-[10px] font-medium ${
+ className={`shrink-0 rounded-full px-1.5 py-0.5 font-sans text-[10px] font-medium ${
  isReviewerModified
- ? "bg-red-100 text-red-700"
+ ? "bg-madder-tint text-madder-deep"
  : TYPE_BADGE_COLORS[entry.type]
  }`}
  >
@@ -486,7 +493,7 @@ export function OutlineEntry({
  {/* Subtype pill -- only when type='item' AND subtype is non-null. */}
  {entry.type === "item" && entry.subtype && (
  <span
- className="shrink-0 rounded-full border border-stone-200 bg-stone-100 px-1.5 py-0.5 font-['DM_Sans'] text-[10px] font-medium text-stone-700"
+ className="shrink-0 rounded-full border border-stone-200 bg-stone-100 px-1.5 py-0.5 font-sans text-[10px] font-medium text-stone-700"
  title={entry.subtype}
  >
  {entry.subtype}
@@ -498,7 +505,7 @@ export function OutlineEntry({
  of truth for edits regardless. */}
  {!shouldHideTitle(entry.title) && (
  <span
- className={`min-w-0 truncate font-['Cormorant_Garamond'] text-xs italic ${titleColor}`}
+ className={`min-w-0 truncate font-display text-xs italic ${titleColor}`}
  >
  {entry.title}
  </span>
@@ -506,7 +513,7 @@ export function OutlineEntry({
 
  {/* reseg pill */}
  {showResegPill && (
- <span className="ml-2 inline-block rounded bg-violet-600 px-1.5 py-0.5 font-['DM_Sans'] text-[9px] font-bold uppercase tracking-wide text-white">
+ <span className="ml-2 inline-block rounded bg-violet-600 px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase tracking-wide text-white">
  {t("resegmentation:proposed", {
  defaultValue: "Resegmentación propuesta",
  })}
@@ -522,10 +529,10 @@ export function OutlineEntry({
  {!isReadonly && !isFirstEntry && onDelete && (
  <button
  type="button"
- className={`shrink-0 rounded px-1 py-0.5 font-['DM_Sans'] text-xs ${
+ className={`shrink-0 rounded px-1 py-0.5 font-sans text-xs ${
  confirmDelete
- ? "bg-red-100 text-red-700 hover:bg-red-200"
- : "text-stone-400 hover:text-red-600"
+ ? "bg-madder-tint text-madder-deep hover:bg-madder"
+ : "text-stone-400 hover:text-madder-deep"
  }`}
  onClick={handleDeleteClick}
  title={
@@ -567,7 +574,7 @@ export function OutlineEntry({
  <div className="space-y-3">
  {/* Two-step type picker */}
  <div>
- <div className="font-['DM_Sans'] text-xs font-medium text-stone-500">
+ <div className="font-sans text-xs font-medium text-stone-500">
  {t("viewer:outline.is_document_label")}
  </div>
  <div
@@ -580,9 +587,9 @@ export function OutlineEntry({
  role="radio"
  aria-checked={isDocumentChoice === "yes"}
  onClick={() => handleDocumentChoice("yes")}
- className={`px-3 py-1 font-['DM_Sans'] text-xs ${
+ className={`px-3 py-1 font-sans text-xs ${
  isDocumentChoice === "yes"
- ? "bg-[#8B2942] text-white"
+ ? "bg-indigo text-parchment"
  : "bg-white text-stone-700 hover:bg-stone-50"
  }`}
  >
@@ -593,9 +600,9 @@ export function OutlineEntry({
  role="radio"
  aria-checked={isDocumentChoice === "no"}
  onClick={() => handleDocumentChoice("no")}
- className={`border-l border-stone-300 px-3 py-1 font-['DM_Sans'] text-xs ${
+ className={`border-l border-stone-300 px-3 py-1 font-sans text-xs ${
  isDocumentChoice === "no"
- ? "bg-[#8B2942] text-white"
+ ? "bg-indigo text-parchment"
  : "bg-white text-stone-700 hover:bg-stone-50"
  }`}
  >
@@ -608,14 +615,14 @@ export function OutlineEntry({
  {isDocumentChoice === "yes" && (
  <div className="flex items-center gap-2">
  <label
- className="font-['DM_Sans'] text-xs font-medium text-stone-500"
+ className="font-sans text-xs font-medium text-indigo"
  htmlFor={`subtype-${entry.id}`}
  >
  {t("viewer:outline.subtype_label")}
  </label>
  <select
  id={`subtype-${entry.id}`}
- className="rounded border border-stone-300 px-2 py-1 font-['DM_Sans'] text-xs"
+ className="rounded border border-stone-300 px-2 py-1 font-sans text-xs"
  value={selectedSubtypeInList}
  onChange={handleSubtypeSelect}
  >
@@ -634,7 +641,7 @@ export function OutlineEntry({
  {selectedSubtypeInList === OTHER_SUBTYPE_SENTINEL && (
  <input
  type="text"
- className="flex-1 rounded border border-stone-300 px-2 py-1 font-['DM_Sans'] text-xs"
+ className="flex-1 rounded border border-stone-300 px-2 py-1 font-sans text-xs"
  placeholder={t("viewer:outline.subtype_other_placeholder")}
  value={
  otherDraft.length > 0
@@ -653,7 +660,7 @@ export function OutlineEntry({
  {/* Non-document picklist (only when type is front/back/blank/test_images) */}
  {isDocumentChoice === "no" && (
  <div className="flex flex-wrap items-center gap-2">
- <span className="font-['DM_Sans'] text-xs font-medium text-stone-500">
+ <span className="font-sans text-xs font-medium text-stone-500">
  {t("viewer:outline.non_doc_label")}
  </span>
  {NON_DOCUMENT_TYPE_OPTIONS.map((opt) => (
@@ -662,9 +669,9 @@ export function OutlineEntry({
  type="button"
  onClick={() => handleNonDocTypeChoice(opt.value)}
  aria-pressed={entry.type === opt.value}
- className={`rounded border px-2 py-1 font-['DM_Sans'] text-xs ${
+ className={`rounded border px-2 py-1 font-sans text-xs ${
  entry.type === opt.value
- ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
+ ? "border-indigo bg-indigo-tint text-indigo"
  : "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
  }`}
  >
@@ -678,7 +685,7 @@ export function OutlineEntry({
  {entry.type != null && (
  <div className="flex items-center gap-2">
  <label
- className="font-['DM_Sans'] text-xs font-medium text-stone-500"
+ className="font-sans text-xs font-medium text-indigo"
  htmlFor={`title-${entry.id}`}
  >
  {t("viewer:outline.title_label")}
@@ -686,7 +693,7 @@ export function OutlineEntry({
  <input
  id={`title-${entry.id}`}
  type="text"
- className="flex-1 rounded border border-stone-300 px-2 py-1 font-['DM_Sans'] text-xs"
+ className="flex-1 rounded border border-stone-300 px-2 py-1 font-sans text-xs"
  placeholder={t("viewer:outline.no_title")}
  defaultValue={entry.title || ""}
  onChange={handleTitleChange}
@@ -697,7 +704,7 @@ export function OutlineEntry({
 
  {/* Reference code */}
  <div className="flex items-center gap-2">
- <span className="font-['DM_Sans'] text-xs font-medium text-stone-500">
+ <span className="font-sans text-xs font-medium text-stone-500">
  {t("viewer:outline.ref_label")}
  </span>
  <span className="font-mono text-xs text-stone-600">
@@ -709,7 +716,7 @@ export function OutlineEntry({
  <div className="flex items-center gap-1">
  <button
  type="button"
- className="rounded border border-stone-300 px-2 py-0.5 font-['DM_Sans'] text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+ className="rounded border border-stone-300 px-2 py-0.5 font-sans text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
  disabled={!canOutdent}
  onClick={onOutdent}
  title={t("viewer:outline.outdent_tooltip")}
@@ -718,14 +725,14 @@ export function OutlineEntry({
  </button>
  <button
  type="button"
- className="rounded border border-stone-300 px-2 py-0.5 font-['DM_Sans'] text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+ className="rounded border border-stone-300 px-2 py-0.5 font-sans text-xs text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
  disabled={!canIndent}
  onClick={onIndent}
  title={t("viewer:outline.indent_tooltip")}
  >
  &#8594;
  </button>
- <span className="ml-1 font-['DM_Sans'] text-[10px] text-stone-400">
+ <span className="ml-1 font-sans text-[10px] text-stone-400">
  {t("viewer:outline.level_label")}
  </span>
  </div>
@@ -740,7 +747,7 @@ export function OutlineEntry({
  <button
  type="button"
  onClick={onOpenCommentPrompt}
- className="inline-flex items-center gap-1.5 font-['DM_Sans'] text-[11px] font-bold text-[#8B2942] hover:underline"
+ className="inline-flex items-center gap-1.5 font-sans text-[11px] font-bold text-indigo hover:underline"
  >
  <svg
  xmlns="http://www.w3.org/2000/svg"

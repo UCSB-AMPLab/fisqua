@@ -72,12 +72,12 @@ export const DESCRIPTION_STATUS_STYLES: Record<
   { bg: string; text: string }
 > = {
   unassigned: { bg: "bg-[#E7E5E4]", text: "text-[#78716C]" },
-  assigned: { bg: "bg-[#E0E7F7]", text: "text-[#3B5A9A]" },
-  in_progress: { bg: "bg-[#F9EDD4]", text: "text-[#8B6914]" },
-  described: { bg: "bg-[#E9D5FF]", text: "text-[#7C3AED]" },
-  reviewed: { bg: "bg-[#CCF0EB]", text: "text-[#0D9488]" },
-  approved: { bg: "bg-[#D6E8DB]", text: "text-[#2F6B45]" },
-  sent_back: { bg: "bg-[#F5E6EA]", text: "text-[#8B2942]" },
+  assigned: { bg: "bg-[#DDE3EE]", text: "text-[#1F2E4D]" },
+  in_progress: { bg: "bg-[#F5E6C7]", text: "text-[#8B5E14]" },
+  described: { bg: "bg-[#E1ECDF]", text: "text-[#3E5C45]" },
+  reviewed: { bg: "bg-[#DCEAE6]", text: "text-[#3E7A6E]" },
+  approved: { bg: "bg-[#DCEAE6]", text: "text-[#3E7A6E]" },
+  sent_back: { bg: "bg-[#DDE3EE]", text: "text-[#1F2E4D]" },
 };
 
 /**

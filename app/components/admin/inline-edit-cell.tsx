@@ -58,7 +58,7 @@ export function InlineEditCell({ value, onSave, ariaLabel }: InlineEditCellProps
           }
           setEditing(false);
         }}
-        className="rounded border border-[#E7E5E4] px-2 py-1 text-sm focus:border-[#8B2942] focus:outline-none"
+        className="rounded border border-stone-200 px-2 py-1 text-sm focus:border-indigo focus:outline-none"
         aria-label={ariaLabel}
       />
     );
@@ -73,7 +73,7 @@ export function InlineEditCell({ value, onSave, ariaLabel }: InlineEditCellProps
           setEditValue(value);
           setEditing(true);
         }}
-        className="invisible rounded p-0.5 text-[#78716C] hover:text-[#44403C] group-hover:visible"
+        className="invisible rounded p-0.5 text-stone-500 hover:text-stone-700 group-hover:visible"
         aria-label={ariaLabel ?? "Edit"}
       >
         <Pencil className="h-3.5 w-3.5" />

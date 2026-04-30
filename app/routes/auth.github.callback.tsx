@@ -69,7 +69,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       const userResponse = await fetch("https://api.github.com/user", {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "User-Agent": "Zasqua-Catalogacion",
+          "User-Agent": "Fisqua",
         },
       });
       if (userResponse.ok) {

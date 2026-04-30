@@ -207,7 +207,7 @@ function EntryAssignmentRow({
       <td className="px-3 py-2">
         <Link
           to={`/projects/${projectId}/describe/${entry.id}`}
-          className="font-medium text-[#8B2942] hover:underline"
+          className="font-medium text-indigo hover:underline"
         >
           {displayTitle}
         </Link>
@@ -316,7 +316,7 @@ function BulkActionBar({
       <button
         onClick={handleBulkAssign}
         disabled={!bulkDescriber && !bulkReviewer}
-        className="rounded bg-burgundy-deep px-3 py-1 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
+        className="rounded bg-indigo px-3 py-1 text-sm font-medium text-parchment hover:bg-indigo-deep disabled:opacity-50"
       >
         {t("assignment.asignar")}
       </button>

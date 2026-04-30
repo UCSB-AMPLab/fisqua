@@ -76,7 +76,7 @@ export default {
   },
   detail: {
     title: "Publish run",
-    backToPublish: "← Back to publish",
+    backToPublish: "Back to publish",
     overview: "Overview",
     runId: "Run ID",
     workflowInstanceId: "Workflow instance ID",

@@ -34,8 +34,8 @@ export function CategoryFilterChips({
         onClick={() => onChange(null)}
         className={`${baseClasses} ${
           selected === null
-            ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
-            : "border-[#E7E5E4] bg-white text-[#44403C]"
+            ? "border-indigo bg-indigo-tint text-indigo"
+            : "border-stone-200 bg-white text-stone-700"
         }`}
       >
         {t("all_filter")}
@@ -47,8 +47,8 @@ export function CategoryFilterChips({
           onClick={() => onChange(cat)}
           className={`${baseClasses} ${
             selected === cat
-              ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
-              : "border-[#E7E5E4] bg-white text-[#44403C]"
+              ? "border-indigo bg-indigo-tint text-indigo"
+              : "border-stone-200 bg-white text-stone-700"
           }`}
         >
           {t(`cat_${cat}`)}

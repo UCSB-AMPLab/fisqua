@@ -22,11 +22,11 @@ const STATUS_ORDER = [
 /** Map status -> Tailwind bg class for bar segments (darker than badge bg) */
 const SEGMENT_COLORS: Record<string, string> = {
   unstarted: "bg-stone-300",
-  in_progress: "bg-[#3B5A9A]",
-  segmented: "bg-[#8B6914]",
-  sent_back: "bg-[#8B2942]",
-  reviewed: "bg-[#7C3AED]",
-  approved: "bg-[#2F6B45]",
+  in_progress: "bg-indigo",
+  segmented: "bg-saffron-deep",
+  sent_back: "bg-indigo",
+  reviewed: "bg-sage-deep",
+  approved: "bg-verdigris",
 };
 
 export function StackedProgressBar({ counts }: StackedProgressBarProps) {
@@ -35,14 +35,14 @@ export function StackedProgressBar({ counts }: StackedProgressBarProps) {
 
   if (total === 0) {
     return (
-      <div className="h-3 w-full rounded-full bg-stone-100" />
+      <div className="h-1.5 w-full rounded-full bg-stone-100" />
     );
   }
 
   return (
     <div className="space-y-2">
       {/* Bar */}
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-100">
+      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
         {STATUS_ORDER.map((status) => {
           const count = counts[status] ?? 0;
           if (count === 0) return null;

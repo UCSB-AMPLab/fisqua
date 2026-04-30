@@ -387,9 +387,24 @@ export function OutlinePanel({
   const virtualizer = useVirtualizer({
  count: flatItems.length,
  getScrollElement: () => scrollContainerRef.current,
- estimateSize: () => 36,
+ estimateSize: () => 46,
  overscan: 10,
+ getItemKey: (index) => outlineItemKey(flatItems[index]),
   });
+
+  // Hold the latest virtualizer in a ref so the row-wrapper ref
+  // callback can stay identity-stable across renders. Without this,
+  // `ref={(el) => virtualizer.measureElement(el)}` was a fresh function
+  // on every render, which (a) made React invoke it (with null then the
+  // element) on every commit and (b) re-armed the ResizeObserver
+  // pathway repeatedly. Combined with `virtualizer.measure()` calls
+  // from `onHeightChange`, this caused the scroll-back cascade — see
+  // `.planning/debug/resolved/outline-scroll-snaps-back.md`.
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
+  const measureRowRef = useCallback((el: HTMLDivElement | null) => {
+ if (el) virtualizerRef.current.measureElement(el);
+  }, []);
 
   // Track user interaction to suppress auto-scroll
   const handlePanelInteraction = useCallback(() => {
@@ -533,12 +548,12 @@ export function OutlinePanel({
  transform: `translateY(${virtualItem.start}px)`,
  }}
  data-index={virtualItem.index}
- // Wrap the measureElement ref so the callback does not return a
- // value. React 19 refs treat a non-void return as a cleanup and
- // some TanStack Virtual internals broke measurement because of it.
- ref={(el) => {
- if (el) virtualizer.measureElement(el);
- }}
+ // Stable ref callback (see `measureRowRef` above). Identity is
+ // pinned across renders so React only invokes it on actual
+ // mount/unmount, not on every commit. The wrapped form (no
+ // return value) also keeps React 19's ref-cleanup contract
+ // happy.
+ ref={measureRowRef}
  >
  {item.kind === "entry" ? (
  (() => {
@@ -590,7 +605,6 @@ export function OutlinePanel({
  }
  volumeId={volumeId}
  accessLevel={accessLevel}
- onHeightChange={() => virtualizer.measure()}
  isReviewerModified={isReviewerModified(entry)}
  isFirstEntry={
  entry.position === 0 && entry.parentId === null
@@ -639,10 +653,12 @@ export function OutlinePanel({
  }
  return next;
  });
- virtualizer.measure();
+ // Note: no `virtualizer.measure()` here — see resolved
+ // debug session outline-scroll-snaps-back. ResizeObserver
+ // installed by `measureElement` on the row wrapper picks
+ // up the expand/collapse height change automatically.
  }}
  onScrollToRegion={onScrollToRegion}
- onHeightChange={() => virtualizer.measure()}
  onReplyCreated={onDraftCreated}
  currentUserId={currentUserId}
  currentUserIsLead={currentUserIsLead}
@@ -674,7 +690,7 @@ export function OutlinePanel({
  {accessLevel === "edit" && volumeStatus === "in_progress" && (
  <button
  onClick={() => setShowSubmitDialog(true)}
- className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
+ className="w-full rounded bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
  >
  {t("workflow:action.submit_for_review")}
  </button>
@@ -684,9 +700,9 @@ export function OutlinePanel({
  {accessLevel === "edit" && volumeStatus === "sent_back" && (
  <div className="space-y-3">
  {reviewComment && (
- <div className="rounded border-l-4 border-red-400 bg-red-50 p-3">
- <p className="text-xs font-medium text-red-700">{t("viewer:outline.reviewer_comment_label")}</p>
- <p className="mt-1 text-sm text-red-800">{reviewComment}</p>
+ <div className="rounded border-l-2 border-madder bg-madder-tint p-3">
+ <p className="text-xs font-medium text-madder-deep">{t("viewer:outline.reviewer_comment_label")}</p>
+ <p className="mt-1 text-sm text-madder-deep">{reviewComment}</p>
  </div>
  )}
  <button
@@ -699,7 +715,7 @@ export function OutlinePanel({
  }
  }}
  disabled={acceptFetcher.state !== "idle"}
- className="w-full rounded bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
+ className="w-full rounded bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep disabled:opacity-50"
  >
  {acceptFetcher.state !== "idle" ? t("viewer:outline.accepting") : t("workflow:action.accept_corrections")}
  </button>
@@ -717,14 +733,14 @@ export function OutlinePanel({
  );
  }}
  disabled={workflowFetcher.state !== "idle"}
- className="flex-1 rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+ className="flex-1 rounded bg-verdigris px-3 py-2 text-sm font-medium text-parchment hover:bg-verdigris-deep disabled:opacity-50"
  >
  {t("workflow:action.approve")}
  </button>
  <button
  onClick={() => setShowSendBackDialog(true)}
  disabled={workflowFetcher.state !== "idle"}
- className="flex-1 rounded border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+ className="flex-1 rounded border border-madder px-3 py-2 text-sm font-medium text-madder-deep hover:bg-madder-tint disabled:opacity-50"
  >
  {t("workflow:action.send_back")}
  </button>

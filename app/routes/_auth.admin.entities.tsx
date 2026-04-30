@@ -304,9 +304,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
-  person: "bg-[#E0E7F7] text-[#3B5A9A]",
-  family: "bg-[#CCF0EB] text-[#0D9488]",
-  corporate: "bg-[#F5E6EA] text-[#8B2942]",
+  person: "bg-indigo-tint text-indigo",
+  family: "bg-verdigris-tint text-verdigris",
+  corporate: "bg-indigo-tint text-indigo",
 };
 
 // ---------------------------------------------------------------------------
@@ -421,7 +421,7 @@ export default function AdminEntitiesPage({
         cell: ({ row }) => (
           <Link
             to={`/admin/entities/${row.original.id}`}
-            className="font-semibold text-[#6B1F33] hover:underline"
+            className="font-semibold text-indigo-deep hover:underline"
           >
             {row.getValue("entityCode") as string}
           </Link>
@@ -448,7 +448,7 @@ export default function AdminEntitiesPage({
         cell: ({ row }) => {
           const val = row.getValue("wikidataId") as string | null;
           return val ? (
-            <Check className="h-3.5 w-3.5 text-[#2F6B45]" />
+            <Check className="h-3.5 w-3.5 text-verdigris" />
           ) : (
             <span className="text-stone-400">{"\u2014"}</span>
           );
@@ -460,7 +460,7 @@ export default function AdminEntitiesPage({
         cell: ({ row }) => {
           const val = row.getValue("viafId") as string | null;
           return val ? (
-            <Check className="h-3.5 w-3.5 text-[#2F6B45]" />
+            <Check className="h-3.5 w-3.5 text-verdigris" />
           ) : (
             <span className="text-stone-400">{"\u2014"}</span>
           );
@@ -498,7 +498,7 @@ export default function AdminEntitiesPage({
             const arr = JSON.parse(raw || "[]");
             if (!Array.isArray(arr) || arr.length === 0) return "\u2014";
             return (
-              <span className="inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs text-[#44403C]">
+              <span className="inline-block rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-700">
                 {arr.length}
               </span>
             );
@@ -529,27 +529,27 @@ export default function AdminEntitiesPage({
     return (
       <div className="mx-auto max-w-7xl px-8 py-12">
         <div className="flex items-center justify-between">
-          <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+          <h1 className="font-serif text-4xl font-semibold text-stone-700">
             {t("title")}
           </h1>
           <Link
             to="/admin/entities/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             <Plus className="h-4 w-4" />
             {t("primaryCta")}
           </Link>
         </div>
         <div className="mt-12 text-center">
-          <h2 className="font-sans text-lg font-semibold text-[#44403C]">
+          <h2 className="font-sans text-lg font-semibold text-stone-700">
             {t("emptyHeading")}
           </h2>
-          <p className="mt-2 font-sans text-sm text-[#78716C]">
+          <p className="mt-2 font-sans text-sm text-stone-500">
             {t("emptyBody")}
           </p>
           <Link
             to="/admin/entities/new"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             <Plus className="h-4 w-4" />
             {t("primaryCta")}
@@ -563,12 +563,12 @@ export default function AdminEntitiesPage({
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-4xl font-semibold text-stone-700">
           {t("title")}
         </h1>
         <Link
           to="/admin/entities/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           <Plus className="h-4 w-4" />
           {t("primaryCta")}
@@ -576,11 +576,11 @@ export default function AdminEntitiesPage({
       </div>
 
       {/* Toolbar */}
-      <div className="mb-4 mt-6 rounded-lg border border-[#E7E5E4] p-4">
+      <div className="mb-4 mt-6 rounded-lg border border-stone-200 p-4">
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
             <input
               type="text"
               value={searchInput}
@@ -588,7 +588,7 @@ export default function AdminEntitiesPage({
               placeholder={t("searchPlaceholder")}
               aria-label={t("searchPlaceholder")}
               disabled={advancedActive}
-              className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
@@ -606,7 +606,7 @@ export default function AdminEntitiesPage({
               params.delete("dir");
               window.location.search = params.toString();
             }}
-            className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           >
             <option value="">{t("allTypes")}</option>
             <option value="person">{t("person")}</option>
@@ -615,7 +615,7 @@ export default function AdminEntitiesPage({
           </select>
 
           {/* Show merged */}
-          <label className="flex items-center gap-2 text-sm text-[#44403C]">
+          <label className="flex items-center gap-2 text-sm font-medium text-indigo">
             <input
               type="checkbox"
               checked={data.showMerged}
@@ -630,7 +630,7 @@ export default function AdminEntitiesPage({
                 params.delete("dir");
                 window.location.search = params.toString();
               }}
-              className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+              className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
             />
             {t("showMerged")}
           </label>

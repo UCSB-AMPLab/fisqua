@@ -18,7 +18,6 @@ function makeFlatNode(
 ): FlatEntryNode {
   return {
     entry: {
-      id: entryOverrides.id,
       volumeId: "v1",
       parentId: null,
       position: 0,
@@ -42,7 +41,6 @@ function makeComment(
   overrides: Partial<CommentWithAuthor> & Pick<CommentWithAuthor, "id">,
 ): CommentWithAuthor {
   return {
-    id: overrides.id,
     volumeId: "v1",
     entryId: null,
     pageId: null,

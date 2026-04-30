@@ -33,10 +33,10 @@ function FieldLabel({
   required?: boolean;
 }) {
   return (
-    <label className="mb-1 block font-sans text-[0.875rem] font-medium text-[#78716C]">
+    <label className="mb-1 block font-sans text-[0.875rem] font-medium text-indigo">
       {label}
       {optional && (
-        <span className="ml-1.5 text-[0.75rem] font-normal text-[#A8A29E]">
+        <span className="ml-1.5 text-[0.75rem] font-normal text-stone-400">
           Opcional
         </span>
       )}
@@ -47,7 +47,7 @@ function FieldLabel({
 function FieldError({ error }: { error?: string }) {
   if (!error) return null;
   return (
-    <p className="mt-1 font-sans text-[0.75rem] text-[#8B2942]">{error}</p>
+    <p className="mt-1 font-sans text-[0.75rem] text-indigo">{error}</p>
   );
 }
 
@@ -92,13 +92,13 @@ export function DescriptionForm({
   );
 
   const inputClass =
-    "w-full rounded border border-[#E7E5E4] bg-white px-3 py-2 font-serif text-[1rem] text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942] disabled:bg-[#F5F5F4] disabled:cursor-not-allowed";
+    "w-full rounded border border-stone-200 bg-white px-3 py-2 font-serif text-[1rem] text-stone-700 placeholder:text-stone-400 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:bg-stone-100 disabled:cursor-not-allowed";
 
   const textareaClass =
-    "w-full rounded border border-[#E7E5E4] bg-white px-3 py-2 font-sans text-[0.9375rem] leading-[1.6] text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942] disabled:bg-[#F5F5F4] disabled:cursor-not-allowed";
+    "w-full rounded border border-stone-200 bg-white px-3 py-2 font-sans text-[0.9375rem] leading-[1.6] text-stone-700 placeholder:text-stone-400 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:bg-stone-100 disabled:cursor-not-allowed";
 
   const selectClass =
-    "w-full rounded border border-[#E7E5E4] bg-white px-3 py-2 font-sans text-[0.875rem] text-[#44403C] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942] disabled:bg-[#F5F5F4] disabled:cursor-not-allowed";
+    "w-full rounded border border-stone-200 bg-white px-3 py-2 font-sans text-[0.875rem] text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:bg-stone-100 disabled:cursor-not-allowed";
 
   // Show submit button only when status is in_progress or sent_back
   const showSubmit =
@@ -110,7 +110,7 @@ export function DescriptionForm({
     <div className="space-y-3">
       {/* Pause warning banner */}
       {isPaused && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 font-sans text-[0.875rem] text-amber-800">
+        <div className="rounded-lg border border-saffron bg-saffron-tint p-3 font-sans text-[0.875rem] text-saffron-deep">
           {t("editor.descripcion_pausada")}
         </div>
       )}
@@ -319,18 +319,18 @@ export function DescriptionForm({
         isDisabled
         onToggle={() => {}}
       >
-        <p className="font-sans text-[0.875rem] text-[#78716C]">
+        <p className="font-sans text-[0.875rem] text-stone-500">
           {t("locked.personas_lugares")}
         </p>
       </DescriptionSection>
 
       {/* Submit for review button */}
       {showSubmit && (
-        <div className="border-t border-[#E7E5E4] pt-4">
+        <div className="border-t border-stone-200 pt-4">
           <button
             type="button"
             onClick={onSubmitForReview}
-            className="h-11 w-full rounded-lg bg-[#8B2942] font-sans text-[0.9375rem] font-semibold text-white hover:bg-[#6B1F33] active:bg-[#4A1522]"
+            className="h-11 w-full rounded-md bg-indigo font-sans text-[0.9375rem] font-semibold text-parchment hover:bg-indigo-deep active:bg-indigo-deep"
           >
             {t("actions.enviar_para_revision")}
           </button>

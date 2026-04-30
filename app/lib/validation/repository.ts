@@ -20,6 +20,7 @@ export const repositorySchema = z.object({
   address: z.string().optional(),
   website: z.string().url().optional(),
   notes: z.string().optional(),
+  rightsText: z.string().optional(),
   enabled: z.boolean().default(true),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),

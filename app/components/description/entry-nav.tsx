@@ -72,10 +72,10 @@ export function EntryNav({
     DESCRIPTION_STATUS_LABELS[currentEntry.descriptionStatus];
 
   return (
-    <div className="flex items-center gap-3 border-b border-[#E7E5E4] bg-white px-4 py-2">
+    <div className="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-2">
       {/* Reference code */}
       {currentEntry.referenceCode && (
-        <span className="font-mono text-[0.875rem] text-[#78716C]">
+        <span className="font-mono text-[0.875rem] text-stone-500">
           {currentEntry.referenceCode}
         </span>
       )}
@@ -86,19 +86,19 @@ export function EntryNav({
           type="button"
           onClick={onPrev}
           disabled={prevDisabled}
-          className="flex h-7 w-7 items-center justify-center rounded border border-[#E7E5E4] text-[#44403C] hover:bg-[#F5F5F4] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 items-center justify-center rounded border border-stone-200 text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
           aria-label={t("navigation.anterior")}
         >
           <ChevronLeftIcon />
         </button>
-        <span className="font-sans text-[0.875rem] text-[#78716C]">
+        <span className="font-sans text-[0.875rem] text-stone-500">
           {currentIndex + 1} {t("navigation.de")} {totalEntries}
         </span>
         <button
           type="button"
           onClick={onNext}
           disabled={nextDisabled}
-          className="flex h-7 w-7 items-center justify-center rounded border border-[#E7E5E4] text-[#44403C] hover:bg-[#F5F5F4] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 items-center justify-center rounded border border-stone-200 text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
           aria-label={t("navigation.siguiente")}
         >
           <ChevronRightIcon />

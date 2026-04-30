@@ -178,10 +178,10 @@ export function TypeaheadInput({
           onBlur={handleBlur}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
         {isProposed && (
-          <span className="whitespace-nowrap rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#78350F]">
+          <span className="whitespace-nowrap rounded-full bg-saffron-tint px-2 py-0.5 text-xs font-semibold text-saffron-deep">
             Proposed
           </span>
         )}
@@ -195,7 +195,7 @@ export function TypeaheadInput({
       {isOpen && results.length > 0 && (
         <ul
           ref={listRef}
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[#E7E5E4] bg-white shadow-lg"
+          className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg"
           role="listbox"
         >
           {results.map((result, i) => (
@@ -205,14 +205,14 @@ export function TypeaheadInput({
               aria-selected={i === selectedIndex}
               className={`cursor-pointer px-3 py-2 text-sm ${
                 i === selectedIndex
-                  ? "bg-[#F5E6EA] text-[#44403C]"
-                  : "text-[#44403C] hover:bg-[#FAFAF9]"
+                  ? "bg-indigo-tint text-stone-700"
+                  : "text-stone-700 hover:bg-stone-50"
               }`}
               onMouseDown={() => handleSelect(result)}
             >
               <span>{result.canonical}</span>
               {result.category && (
-                <span className="ml-2 text-xs text-[#A8A29E]">
+                <span className="ml-2 text-xs text-stone-400">
                   {result.category}
                 </span>
               )}

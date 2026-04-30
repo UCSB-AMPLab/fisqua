@@ -303,27 +303,27 @@ export default function EnumVocabularyPage({
           <li>
             <Link
               to="/admin/vocabularies"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("page_title")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
-          <li className="text-[#44403C]">{t(vocabLabel)}</li>
+          <li className="text-stone-700">{t(vocabLabel)}</li>
         </ol>
       </nav>
 
       {/* Page heading */}
-      <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+      <h1 className="font-serif text-lg font-semibold text-stone-700">
         {t(vocabLabel)}
       </h1>
 
       {/* Redeployment warning banner */}
-      <div className="mt-4 flex items-start gap-3 rounded-lg border border-[#D97706] bg-[#FEF3C7] p-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#D97706]" />
-        <p className="text-sm text-[#78350F]">
+      <div className="mt-4 flex items-start gap-3 rounded-lg border border-saffron bg-saffron-tint p-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-saffron" />
+        <p className="text-sm text-saffron-deep">
           {t("enum_redeployment_warning")}
         </p>
       </div>
@@ -334,7 +334,7 @@ export default function EnumVocabularyPage({
           <button
             type="button"
             onClick={() => setIsAddingTerm(true)}
-            className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             <Plus className="h-4 w-4" />
             {t("add_term")}
@@ -343,18 +343,18 @@ export default function EnumVocabularyPage({
       )}
 
       {/* Terms table */}
-      <div className="mt-4 rounded-lg border border-[#E7E5E4] bg-white">
+      <div className="mt-4 rounded-lg border border-stone-200 bg-white">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#E7E5E4]">
-              <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+            <tr className="border-b border-stone-200">
+              <th className="px-4 py-3 text-left font-semibold text-stone-500">
                 {t("col_function")}
               </th>
-              <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+              <th className="px-4 py-3 text-right font-semibold text-stone-500">
                 {t("col_usage")}
               </th>
               {isSuperAdmin && (
-                <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+                <th className="px-4 py-3 text-right font-semibold text-stone-500">
                   {t("col_actions")}
                 </th>
               )}
@@ -363,7 +363,7 @@ export default function EnumVocabularyPage({
           <tbody>
             {/* Add term row (inline) */}
             {isAddingTerm && (
-              <tr className="border-b border-[#E7E5E4] bg-[#FAFAF9]">
+              <tr className="border-b border-stone-200 bg-stone-50">
                 <td className="px-4 py-2" colSpan={isSuperAdmin ? 3 : 2}>
                   <Form method="post" className="flex items-center gap-2">
                     <input type="hidden" name="_action" value="add-term" />
@@ -375,11 +375,11 @@ export default function EnumVocabularyPage({
                       onChange={(e) => setNewTermValue(e.target.value)}
                       placeholder={t("add_term")}
                       autoFocus
-                      className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                      className="flex-1 rounded-lg border border-stone-200 px-3 py-1.5 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                     />
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#6B1F33] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#8B2942]"
+                      className="inline-flex items-center gap-1 rounded-md bg-indigo px-3 py-1.5 text-sm font-semibold text-parchment hover:bg-indigo-deep"
                     >
                       <Check className="h-4 w-4" />
                       {t("save_term")}
@@ -390,7 +390,7 @@ export default function EnumVocabularyPage({
                         setIsAddingTerm(false);
                         setNewTermValue("");
                       }}
-                      className="inline-flex items-center rounded-lg border border-[#E7E5E4] px-2 py-1.5 text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+                      className="inline-flex items-center rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-stone-500 hover:bg-stone-50"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -402,9 +402,9 @@ export default function EnumVocabularyPage({
             {terms.map((term) => (
               <tr
                 key={term.value}
-                className="border-b border-[#E7E5E4] last:border-b-0"
+                className="border-b border-stone-200 last:border-b-0"
               >
-                <td className="px-4 py-3 text-[#44403C]">
+                <td className="px-4 py-3 text-stone-700">
                   {editingTerm === term.value ? (
                     <Form
                       method="post"
@@ -427,18 +427,18 @@ export default function EnumVocabularyPage({
                         onKeyDown={(e) => {
                           if (e.key === "Escape") setEditingTerm(null);
                         }}
-                        className="flex-1 rounded-lg border border-[#E7E5E4] px-2 py-1 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                        className="flex-1 rounded-lg border border-stone-200 px-2 py-1 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                       />
                       <button
                         type="submit"
-                        className="text-[#6B1F33] hover:text-[#8B2942]"
+                        className="text-indigo-deep hover:text-indigo"
                       >
                         <Check className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingTerm(null)}
-                        className="text-[#78716C] hover:text-[#44403C]"
+                        className="text-stone-500 hover:text-stone-700"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -447,7 +447,7 @@ export default function EnumVocabularyPage({
                     term.label
                   )}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-[#78716C]">
+                <td className="px-4 py-3 text-right tabular-nums text-stone-500">
                   {term.count}
                 </td>
                 {isSuperAdmin && (
@@ -459,7 +459,7 @@ export default function EnumVocabularyPage({
                           setEditingTerm(term.value);
                           setEditValue(term.value);
                         }}
-                        className="rounded p-1 text-[#78716C] hover:bg-[#FAFAF9] hover:text-[#44403C]"
+                        className="rounded p-1 text-stone-500 hover:bg-stone-50 hover:text-stone-700"
                         title={t("edit_term")}
                       >
                         <Pencil className="h-4 w-4" />
@@ -488,7 +488,7 @@ export default function EnumVocabularyPage({
                           />
                           <button
                             type="submit"
-                            className="rounded p-1 text-[#DC2626] hover:bg-[#FEF2F2]"
+                            className="rounded p-1 text-madder hover:bg-madder-tint"
                             title={t("delete_term")}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -496,7 +496,7 @@ export default function EnumVocabularyPage({
                         </Form>
                       ) : (
                         <span
-                          className="cursor-not-allowed rounded p-1 text-[#D6D3D1]"
+                          className="cursor-not-allowed rounded p-1 text-stone-300"
                           title={t("cannot_delete", { count: term.count })}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -514,14 +514,14 @@ export default function EnumVocabularyPage({
       {/* Pending changes section (superadmin only) */}
       {isSuperAdmin && pendingChanges.length > 0 && (
         <div className="mt-6">
-          <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-[#78716C]">
+          <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-stone-500">
             {t("enum_pending_changes")}
           </h2>
-          <div className="mt-2 rounded-lg border border-[#D97706] bg-[#FFFBEB] p-4">
-            <ul className="space-y-2 text-sm text-[#78350F]">
+          <div className="mt-2 rounded-lg border border-saffron bg-saffron-tint p-4">
+            <ul className="space-y-2 text-sm text-saffron-deep">
               {pendingChanges.map((change, i) => (
                 <li key={i} className="flex items-center gap-2">
-                  <span className="rounded bg-[#FEF3C7] px-1.5 py-0.5 text-xs font-semibold uppercase">
+                  <span className="rounded bg-saffron-tint px-1.5 py-0.5 text-xs font-semibold uppercase">
                     {change.action}
                   </span>
                   {change.action === "edit" ? (

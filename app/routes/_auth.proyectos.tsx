@@ -471,7 +471,7 @@ function EntryCard({
   const { t } = useTranslation("dashboard");
 
   return (
-    <div className="rounded-lg border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm">
+    <div className="rounded-lg border border-stone-200 p-4 hover:shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="truncate font-medium text-stone-900">
@@ -489,7 +489,7 @@ function EntryCard({
         {isCollabAdmin && (
           <Link
             to={`/projects/${entry.projectId}/overview`}
-            className="text-xs text-burgundy-deep hover:underline"
+            className="text-xs text-indigo-deep hover:underline"
           >
             Overview
           </Link>
@@ -549,10 +549,10 @@ function ActivityFeed({ items }: { items: ActivityItem[] }) {
 // ---------------------------------------------------------------------------
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#D6E8DB] text-[#2F6B45]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#CCF0EB] text-[#0D9488]",
-  admin: "bg-[#F5E6EA] text-[#8B2942]",
+  lead: "bg-verdigris-tint text-verdigris",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
+  admin: "bg-indigo-tint text-indigo",
 };
 
 function ProjectManagementCard({
@@ -565,14 +565,14 @@ function ProjectManagementCard({
   const isLead = project.role === "lead";
 
   return (
-    <div className="rounded-lg border border-[#E7E5E4] bg-white p-5">
+    <div className="rounded-lg border border-stone-200 bg-white p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-heading text-base font-semibold text-[#44403C]">
+          <h3 className="font-heading text-base font-semibold text-stone-700">
             {project.name}
           </h3>
           {project.description && (
-            <p className="mt-0.5 text-xs text-[#A8A29E] line-clamp-1">
+            <p className="mt-0.5 text-xs text-stone-400 line-clamp-1">
               {project.description}
             </p>
           )}
@@ -587,21 +587,21 @@ function ProjectManagementCard({
         <div className="mt-3 flex items-center gap-3">
           <Link
             to={`/projects/${project.id}/volumes`}
-            className="inline-flex items-center gap-1 rounded-md bg-[#FAFAF9] px-2.5 py-1.5 text-xs font-medium text-[#44403C] ring-1 ring-[#E7E5E4] hover:bg-[#F5F5F4]"
+            className="inline-flex items-center gap-1 rounded-md bg-stone-50 px-2.5 py-1.5 text-xs font-medium text-stone-700 ring-1 ring-stone-200 hover:bg-stone-100"
           >
             <BookOpen className="h-3.5 w-3.5" />
             {t("project:tab.volumes")}
           </Link>
           <Link
             to={`/projects/${project.id}/assignments`}
-            className="inline-flex items-center gap-1 rounded-md bg-[#FAFAF9] px-2.5 py-1.5 text-xs font-medium text-[#44403C] ring-1 ring-[#E7E5E4] hover:bg-[#F5F5F4]"
+            className="inline-flex items-center gap-1 rounded-md bg-stone-50 px-2.5 py-1.5 text-xs font-medium text-stone-700 ring-1 ring-stone-200 hover:bg-stone-100"
           >
             <ClipboardList className="h-3.5 w-3.5" />
             {t("project:tab.assignments")}
           </Link>
           <Link
             to={`/projects/${project.id}/settings`}
-            className="inline-flex items-center gap-1 rounded-md bg-[#FAFAF9] px-2.5 py-1.5 text-xs font-medium text-[#44403C] ring-1 ring-[#E7E5E4] hover:bg-[#F5F5F4]"
+            className="inline-flex items-center gap-1 rounded-md bg-stone-50 px-2.5 py-1.5 text-xs font-medium text-stone-700 ring-1 ring-stone-200 hover:bg-stone-100"
           >
             <Settings className="h-3.5 w-3.5" />
             {t("project:tab.settings")}
@@ -612,7 +612,7 @@ function ProjectManagementCard({
         <div className="mt-3">
           <Link
             to={`/projects/${project.id}`}
-            className="inline-flex items-center gap-1 text-xs font-medium text-[#8B2942] hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-medium text-indigo hover:underline"
           >
             {t("project:tab.open_project")}
             <ArrowRight className="h-3.5 w-3.5" />

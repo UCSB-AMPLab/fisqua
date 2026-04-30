@@ -35,11 +35,11 @@ export function CursorPagination({
   }
 
   return (
-    <div className="flex items-center justify-between border-t bg-[#FAFAF9] px-4 py-3">
+    <div className="flex items-center justify-between border-t bg-stone-50 px-4 py-3">
       {prevCursor ? (
         <Link
           to={buildUrl(prevCursor, "prev")}
-          className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-white"
+          className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-white"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -51,7 +51,7 @@ export function CursorPagination({
           disabled
           aria-label="Previous page"
           aria-disabled="true"
-          className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#A8A29E] opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-400 opacity-50"
         >
           <ChevronLeft className="h-4 w-4" />
           Previous
@@ -65,7 +65,7 @@ export function CursorPagination({
       {nextCursor ? (
         <Link
           to={buildUrl(nextCursor, "next")}
-          className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-white"
+          className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-white"
           aria-label="Next page"
         >
           Next
@@ -77,7 +77,7 @@ export function CursorPagination({
           disabled
           aria-label="Next page"
           aria-disabled="true"
-          className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#A8A29E] opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-400 opacity-50"
         >
           Next
           <ChevronRight className="h-4 w-4" />

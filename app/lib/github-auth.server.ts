@@ -23,7 +23,7 @@ export async function fetchGitHubUserEmail(
   const response = await fetch("https://api.github.com/user/emails", {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "User-Agent": "Zasqua-Catalogacion",
+      "User-Agent": "Fisqua",
     },
   });
 

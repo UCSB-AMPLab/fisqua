@@ -147,9 +147,9 @@ function DescriptionSaveStatus({
 }) {
   const { t } = useTranslation("description");
   const colors = {
-    saved: "bg-green-500",
-    saving: "bg-amber-500",
-    unsaved: "bg-amber-500",
+    saved: "bg-verdigris",
+    saving: "bg-saffron",
+    unsaved: "bg-saffron",
   };
   const labels = {
     saved: t("editor.save_status_saved"),
@@ -158,7 +158,7 @@ function DescriptionSaveStatus({
   };
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-[#78716C]">
+    <span className="flex items-center gap-1.5 text-xs text-stone-500">
       <span
         className={`inline-block h-2 w-2 rounded-full ${colors[status]}`}
       />
@@ -476,22 +476,22 @@ export default function DescriptionEditorRoute({
   }, [saveStatus]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       {/* Top bar */}
-      <div className="flex h-12 shrink-0 items-center border-b border-[#E7E5E4] bg-[#FAFAF9] px-4">
+      <div className="flex h-12 shrink-0 items-center border-b border-stone-200 bg-stone-50 px-4">
         {/* Left: logo + subtitle */}
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center">
-            <img src="/pomegranate.svg" alt="" className="h-6 w-6" aria-hidden="true" />
+            <img src="/brand/fisqua-mark.svg" alt="" className="h-6 w-6" aria-hidden="true" />
           </Link>
-          <span className="font-sans text-[0.875rem] text-[#78716C]">
+          <span className="font-sans text-[0.875rem] text-stone-500">
             {t("editor.subtitle")}
           </span>
         </div>
 
         {/* Centre: entry title */}
         <div className="flex min-w-0 flex-1 justify-center">
-          <h1 className="truncate font-serif text-[1.25rem] font-semibold text-[#44403C]">
+          <h1 className="truncate font-serif text-[1.25rem] font-semibold text-stone-700">
             {entry.title || entry.translatedTitle || `#${entry.position + 1}`}
           </h1>
         </div>
@@ -499,12 +499,12 @@ export default function DescriptionEditorRoute({
         {/* Right: save status + user + logout */}
         <div className="flex items-center gap-3">
           <DescriptionSaveStatus status={saveStatus} />
-          <span className="font-sans text-[0.875rem] text-[#78716C]">
+          <span className="font-sans text-[0.875rem] text-stone-500">
             {currentUser.email}
           </span>
           <Link
             to="/auth/logout"
-            className="font-sans text-[0.875rem] font-medium text-[#8B2942] hover:underline"
+            className="font-sans text-[0.875rem] font-medium text-indigo hover:underline"
           >
             {t("editor.cerrar_sesion")}
           </Link>
@@ -512,7 +512,7 @@ export default function DescriptionEditorRoute({
       </div>
 
       {/* Entry navigation bar */}
-      <div className="flex items-center justify-between border-b border-[#E7E5E4] bg-white px-4 py-2">
+      <div className="flex items-center justify-between border-b border-stone-200 bg-white px-4 py-2">
         <EntryNav
           currentIndex={currentIndex}
           totalEntries={allEntries.length}
@@ -531,7 +531,7 @@ export default function DescriptionEditorRoute({
           <button
             type="button"
             onClick={() => setShowResegDialog(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 font-sans text-[0.8125rem] font-medium text-amber-700 hover:bg-amber-100"
+            className="flex items-center gap-1.5 rounded-md border border-saffron bg-saffron-tint px-3 py-1.5 font-sans text-[0.8125rem] font-medium text-saffron-deep hover:bg-saffron-tint"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -555,7 +555,7 @@ export default function DescriptionEditorRoute({
 
       {/* Read-only notice */}
       {isReadOnly && readOnlyReason && (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <div className="flex items-center gap-2 border-b border-saffron bg-saffron-tint px-4 py-2 text-sm text-saffron-deep">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           {t(`editor.readonly_${readOnlyReason}`)}
         </div>
@@ -714,14 +714,14 @@ function ResegmentationDialogStub({
       <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-lg bg-white p-6">
         {/* Header */}
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-saffron-tint">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="20"
               height="20"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#D97706"
+              stroke="#C68A2E"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -731,19 +731,19 @@ function ResegmentationDialogStub({
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
           </div>
-          <h2 className="font-display text-[1.5rem] font-semibold text-[#44403C]">
+          <h2 className="font-display text-[1.5rem] font-semibold text-stone-700">
             {t("resegmentation.reportar_problema")}
           </h2>
         </div>
 
         {/* Warning */}
-        <div className="mb-4 rounded-lg bg-[#FEF3C7] p-3 text-[0.875rem] text-[#78350F]">
+        <div className="mb-4 rounded-lg bg-saffron-tint p-3 text-[0.875rem] text-saffron-deep">
           {t("resegmentation.warning")}
         </div>
 
         {/* Problem type */}
         <div className="mb-4">
-          <p className="mb-2 font-sans text-[0.875rem] font-medium text-[#44403C]">
+          <p className="mb-2 font-sans text-[0.875rem] font-medium text-stone-700">
             {t("resegmentation.tipo_problema")}
           </p>
           <div className="space-y-2">
@@ -776,7 +776,7 @@ function ResegmentationDialogStub({
             ].map((opt) => (
               <label
                 key={opt.value}
-                className="flex cursor-pointer items-start gap-2 rounded p-1.5 hover:bg-[#FAFAF9]"
+                className="font-medium flex cursor-pointer items-start gap-2 rounded p-1.5 hover:bg-stone-50"
               >
                 <input
                   type="radio"
@@ -784,14 +784,14 @@ function ResegmentationDialogStub({
                   value={opt.value}
                   checked={problemType === opt.value}
                   onChange={() => setProblemType(opt.value)}
-                  className="mt-0.5 accent-[#D97706]"
+                  className="mt-0.5 accent-saffron"
                 />
                 <div>
-                  <span className="font-sans text-[0.875rem] font-medium text-[#44403C]">
+                  <span className="font-sans text-[0.875rem] font-medium text-stone-700">
                     {opt.label}
                   </span>
                   {opt.desc && (
-                    <p className="font-sans text-[0.75rem] text-[#78716C]">
+                    <p className="font-sans text-[0.75rem] text-stone-500">
                       {opt.desc}
                     </p>
                   )}
@@ -804,14 +804,14 @@ function ResegmentationDialogStub({
         {/* Affected entries */}
         {neighbourEntries.length > 0 && (
           <div className="mb-4">
-            <p className="mb-2 font-sans text-[0.875rem] font-medium text-[#44403C]">
+            <p className="mb-2 font-sans text-[0.875rem] font-medium text-stone-700">
               {t("resegmentation.entradas_afectadas")}
             </p>
-            <div className="max-h-32 overflow-y-auto rounded border border-[#E7E5E4] p-2">
+            <div className="max-h-32 overflow-y-auto rounded border border-stone-200 p-2">
               {neighbourEntries.map((ne) => (
                 <label
                   key={ne.id}
-                  className="flex items-center gap-2 py-1 font-sans text-[0.8125rem] text-[#44403C]"
+                  className="flex items-center gap-2 py-1 font-sans text-[0.8125rem] font-medium text-indigo"
                 >
                   <input
                     type="checkbox"
@@ -839,7 +839,7 @@ function ResegmentationDialogStub({
         {/* Description */}
         <div className="mb-4">
           <textarea
-            className="min-h-[100px] w-full rounded border border-[#E7E5E4] p-3 font-sans text-[0.875rem] text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#D97706] focus:outline-none focus:ring-1 focus:ring-[#D97706]"
+            className="min-h-[100px] w-full rounded border border-stone-200 p-3 font-sans text-[0.875rem] text-stone-700 placeholder:text-stone-400 focus:border-saffron focus:outline-none focus:ring-1 focus:ring-saffron"
             placeholder={t("resegmentation.descripcion_placeholder")}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -851,7 +851,7 @@ function ResegmentationDialogStub({
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-4 py-2 font-sans text-[0.875rem] text-[#78716C] hover:bg-[#F5F5F4]"
+            className="rounded px-4 py-2 font-sans text-[0.875rem] text-stone-500 hover:bg-stone-100"
           >
             {t("resegmentation.cancelar")}
           </button>
@@ -859,7 +859,7 @@ function ResegmentationDialogStub({
             type="button"
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
-            className="rounded bg-[#D97706] px-4 py-2 font-sans text-[0.875rem] font-medium text-white hover:bg-[#B45309] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded bg-saffron px-4 py-2 font-sans text-[0.875rem] font-medium text-white hover:bg-saffron-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("resegmentation.enviar_reporte")}
           </button>

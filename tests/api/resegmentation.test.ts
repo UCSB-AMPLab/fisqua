@@ -31,6 +31,7 @@ function buildUser(overrides: {
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    lastActiveAt: null,
     githubId: null,
   };
 }

@@ -343,23 +343,23 @@ export default function AdminVocabularyFunctionsPage({
   return (
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-[#78716C]">
+      <nav className="mb-4 text-sm text-stone-500">
         <Link to="/admin/vocabularies" className="hover:underline">
           {t("page_title")}
         </Link>
         <span className="mx-1">/</span>
-        <span className="text-[#44403C]">{t("vocab_primary_functions")}</span>
+        <span className="text-stone-700">{t("vocab_primary_functions")}</span>
       </nav>
 
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+        <h1 className="font-serif text-lg font-semibold text-stone-700">
           {t("vocab_primary_functions")}
         </h1>
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6B1F33]"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           <Plus className="h-4 w-4" />
           {t("add_function")}
@@ -376,12 +376,12 @@ export default function AdminVocabularyFunctionsPage({
             value={newFunctionName}
             onChange={(e) => setNewFunctionName(e.target.value)}
             placeholder={t("col_function")}
-            className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             required
           />
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6B1F33]"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("add_function")}
           </button>
@@ -392,14 +392,14 @@ export default function AdminVocabularyFunctionsPage({
       <div className="mt-6 space-y-3">
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("search_placeholder")}
             aria-label={t("search_placeholder")}
-            className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
         </div>
 
@@ -418,10 +418,10 @@ export default function AdminVocabularyFunctionsPage({
               key={s}
               type="button"
               onClick={() => handleStatusChange(s)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${
                 statusFilter === s
-                  ? "bg-[#44403C] text-white"
-                  : "bg-[#FAFAF9] text-[#78716C] hover:bg-[#F5F5F4]"
+                  ? "bg-stone-700 text-white"
+                  : "bg-stone-50 text-stone-500 hover:bg-stone-100"
               }`}
             >
               {s === "all"
@@ -434,22 +434,22 @@ export default function AdminVocabularyFunctionsPage({
 
       {/* Data table */}
       {data.terms.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-[#E7E5E4] p-8 text-center">
-          <h2 className="font-sans text-lg font-semibold text-[#44403C]">
+        <div className="mt-8 rounded-lg border border-stone-200 p-8 text-center">
+          <h2 className="font-sans text-lg font-semibold text-stone-700">
             {t("no_functions_found")}
           </h2>
-          <p className="mt-2 text-sm text-[#78716C]">
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("no_functions_body")}
           </p>
         </div>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
+        <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
           <div className="overflow-x-auto">
             <table className="min-w-full">
-              <thead className="bg-[#FAFAF9]">
+              <thead className="bg-stone-50">
                 <tr>
                   <th
-                    className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-[#78716C]"
+                    className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-stone-500"
                   >
                     <button
                       type="button"
@@ -460,10 +460,10 @@ export default function AdminVocabularyFunctionsPage({
                       <SortIndicator column="canonical" current={currentSort} dir={currentDir} />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-[#78716C]">
+                  <th className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-stone-500">
                     {t("col_category")}
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-normal uppercase tracking-wide text-[#78716C]">
+                  <th className="px-4 py-3 text-right text-xs font-normal uppercase tracking-wide text-stone-500">
                     <button
                       type="button"
                       onClick={() => handleSort("entityCount")}
@@ -473,10 +473,10 @@ export default function AdminVocabularyFunctionsPage({
                       <SortIndicator column="entityCount" current={currentSort} dir={currentDir} />
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-[#78716C]">
+                  <th className="px-4 py-3 text-left text-xs font-normal uppercase tracking-wide text-stone-500">
                     {t("col_status")}
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-normal uppercase tracking-wide text-[#78716C]">
+                  <th className="px-4 py-3 text-right text-xs font-normal uppercase tracking-wide text-stone-500">
                     {t("col_actions")}
                   </th>
                 </tr>
@@ -485,8 +485,8 @@ export default function AdminVocabularyFunctionsPage({
                 {data.terms.map((term) => (
                   <tr
                     key={term.id}
-                    className={`border-t border-[#E7E5E4] hover:bg-[#FAFAF9] ${
-                      term.status === "proposed" ? "border-l-2 border-l-[#D97706]" : ""
+                    className={`border-t border-stone-200 hover:bg-stone-50 ${
+                      term.status === "proposed" ? "border-l-2 border-l-saffron" : ""
                     }`}
                   >
                     <td className="px-4 py-3 text-sm">
@@ -503,7 +503,7 @@ export default function AdminVocabularyFunctionsPage({
                             name="canonical"
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
-                            className="rounded border border-[#E7E5E4] px-2 py-1 text-sm focus:border-[#8B2942] focus:outline-none"
+                            className="rounded border border-stone-200 px-2 py-1 text-sm focus:border-indigo focus:outline-none"
                             onKeyDown={(e) => {
                               if (e.key === "Escape") setRenamingId(null);
                             }}
@@ -511,7 +511,7 @@ export default function AdminVocabularyFunctionsPage({
                           />
                           <button
                             type="submit"
-                            className="rounded bg-[#8B2942] px-2 py-1 text-xs text-white"
+                            className="rounded bg-indigo px-2 py-1 text-xs text-parchment"
                           >
                             {t("save_term")}
                           </button>
@@ -519,22 +519,22 @@ export default function AdminVocabularyFunctionsPage({
                       ) : (
                         <Link
                           to={`/admin/vocabularies/functions/${term.id}`}
-                          className="font-semibold text-[#6B1F33] hover:underline"
+                          className="font-semibold text-indigo-deep hover:underline"
                         >
                           {term.canonical}
                         </Link>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#78716C]">
+                    <td className="px-4 py-3 text-sm text-stone-500">
                       {term.category ? (
-                        <span className="inline-block rounded-full border border-[#E7E5E4] bg-white px-2 py-0.5 text-xs">
+                        <span className="inline-block rounded-full border border-stone-200 bg-white px-2 py-0.5 text-xs">
                           {t(`cat_${term.category}`)}
                         </span>
                       ) : (
                         "\u2014"
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm tabular-nums text-[#44403C]">
+                    <td className="px-4 py-3 text-right text-sm tabular-nums text-stone-700">
                       {term.entityCount}
                     </td>
                     <td className="px-4 py-3">
@@ -547,13 +547,13 @@ export default function AdminVocabularyFunctionsPage({
                           onClick={() =>
                             setOpenMenu(openMenu === term.id ? null : term.id)
                           }
-                          className="rounded p-1 text-[#78716C] hover:bg-[#F5F5F4]"
+                          className="rounded p-1 text-stone-500 hover:bg-stone-100"
                           aria-label={t("col_actions")}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
                         {openMenu === term.id && (
-                          <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-[#E7E5E4] bg-white py-1 shadow-lg">
+                          <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-stone-200 bg-white py-1 shadow-lg">
                             <button
                               type="button"
                               onClick={() => {
@@ -561,13 +561,13 @@ export default function AdminVocabularyFunctionsPage({
                                 setRenameValue(term.canonical);
                                 setOpenMenu(null);
                               }}
-                              className="w-full px-4 py-2 text-left text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                              className="w-full px-4 py-2 text-left text-sm text-stone-700 hover:bg-stone-50"
                             >
                               {t("rename_term")}
                             </button>
                             <Link
                               to={`/admin/vocabularies/functions/${term.id}?action=merge`}
-                              className="block w-full px-4 py-2 text-left text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                              className="block w-full px-4 py-2 text-left text-sm text-stone-700 hover:bg-stone-50"
                               onClick={() => setOpenMenu(null)}
                             >
                               {t("merge_into")}
@@ -577,7 +577,7 @@ export default function AdminVocabularyFunctionsPage({
                               <input type="hidden" name="termId" value={term.id} />
                               <button
                                 type="submit"
-                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-[#FAFAF9]"
+                                className="w-full px-4 py-2 text-left text-sm text-madder-deep hover:bg-stone-50"
                                 onClick={() => setOpenMenu(null)}
                               >
                                 {t("deprecate_term")}
@@ -594,7 +594,7 @@ export default function AdminVocabularyFunctionsPage({
           </div>
 
           {/* Pagination footer */}
-          <div className="flex items-center justify-between border-t border-[#E7E5E4] bg-[#FAFAF9] px-4 py-3 text-sm text-[#78716C]">
+          <div className="flex items-center justify-between border-t border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-500">
             <span>
               {t("n_terms", { count: data.total })}
             </span>
@@ -603,7 +603,7 @@ export default function AdminVocabularyFunctionsPage({
                 type="button"
                 disabled={data.page <= 1}
                 onClick={() => handlePageChange(data.page - 1)}
-                className="rounded-lg border border-[#E7E5E4] px-3 py-1 text-sm disabled:opacity-50"
+                className="rounded-lg border border-stone-200 px-3 py-1 text-sm disabled:opacity-50"
               >
                 Previous
               </button>
@@ -614,7 +614,7 @@ export default function AdminVocabularyFunctionsPage({
                 type="button"
                 disabled={data.page >= totalPages}
                 onClick={() => handlePageChange(data.page + 1)}
-                className="rounded-lg border border-[#E7E5E4] px-3 py-1 text-sm disabled:opacity-50"
+                className="rounded-lg border border-stone-200 px-3 py-1 text-sm disabled:opacity-50"
               >
                 Next
               </button>
@@ -640,9 +640,9 @@ function SortIndicator({
   dir: string;
 }) {
   if (current !== column) {
-    return <span className="ml-1 text-[#A8A29E]">&uarr;&darr;</span>;
+    return <span className="ml-1 text-stone-400">&uarr;&darr;</span>;
   }
   return (
-    <span className="ml-1 text-[#8B2942]">{dir === "asc" ? "\u2191" : "\u2193"}</span>
+    <span className="ml-1 text-indigo">{dir === "asc" ? "\u2191" : "\u2193"}</span>
   );
 }

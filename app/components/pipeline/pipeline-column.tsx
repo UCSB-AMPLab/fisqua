@@ -28,12 +28,12 @@ export function PipelineColumn({
   const { t } = useTranslation("pipeline");
 
   return (
-    <div className="min-w-[160px] flex-1 rounded-lg bg-[#FAFAF9] p-3">
+    <div className="min-w-[160px] flex-1 rounded-lg bg-stone-50 p-3">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#44403C]">
+        <h3 className="text-sm font-semibold text-stone-700">
           {t(`col_${columnId}`)}
         </h3>
-        <span className="rounded-full bg-[#E7E5E4] px-2 py-0.5 text-xs text-[#78716C]">
+        <span className="rounded-full bg-stone-200 px-2 py-0.5 text-xs text-stone-500">
           {column.items.length}
         </span>
       </div>

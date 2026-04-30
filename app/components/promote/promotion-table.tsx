@@ -62,7 +62,7 @@ export function PromotionTable({
                 type="checkbox"
                 checked={allSelected}
                 onChange={onToggleAll}
-                className="accent-[#8B2942]"
+                className="accent-indigo"
               />
             </th>
             <th className="px-4 py-2 text-left text-xs font-normal uppercase tracking-wide text-stone-500">
@@ -83,7 +83,7 @@ export function PromotionTable({
               <button
                 type="button"
                 onClick={onToggleAll}
-                className="cursor-pointer text-sm text-[#8B2942]"
+                className="cursor-pointer text-sm text-indigo"
               >
                 {allSelected ? t("table.deselectAll") : t("table.selectAll")}
               </button>
@@ -101,7 +101,7 @@ export function PromotionTable({
                 key={entry.id}
                 className={`border-b border-stone-100 transition-colors ${
                   isPromoted ? "opacity-60" : "hover:bg-stone-50"
-                } ${isActive ? "border-l-2 border-l-[#8B2942]" : ""}`}
+                } ${isActive ? "border-l-2 border-l-indigo" : ""}`}
                 onClick={() => !isPromoted && onEntryClick?.(entry)}
               >
                 <td className="px-3 py-2 text-center">
@@ -110,7 +110,7 @@ export function PromotionTable({
                     checked={isSelected}
                     onChange={() => onToggle(entry.id)}
                     disabled={isPromoted}
-                    className="accent-[#8B2942]"
+                    className="accent-indigo"
                   />
                 </td>
                 <td className="max-w-xs px-4 py-2">
@@ -143,7 +143,7 @@ export function PromotionTable({
                       onChange={(e) =>
                         onRefCodeChange(entry.id, e.target.value)
                       }
-                      className="w-full rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-[#8B2942] focus:ring-[#8B2942] focus:outline-none"
+                      className="w-full rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-indigo focus:ring-indigo focus:outline-none"
                     />
                   )}
                 </td>

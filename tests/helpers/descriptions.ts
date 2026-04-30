@@ -38,7 +38,8 @@ export async function createTestDescription(
     depth: overrides.depth ?? 0,
     childCount: overrides.childCount ?? 0,
     pathCache: overrides.pathCache ?? "",
-    descriptionLevel: overrides.descriptionLevel ?? "fonds",
+    descriptionLevel: (overrides.descriptionLevel ?? "fonds") as
+      (typeof schema.descriptions.$inferInsert)["descriptionLevel"],
     referenceCode: overrides.referenceCode ?? `ref-${id.slice(0, 8)}`,
     localIdentifier: overrides.localIdentifier ?? `loc-${id.slice(0, 8)}`,
     title: overrides.title ?? "Test Description",

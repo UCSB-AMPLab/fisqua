@@ -81,14 +81,14 @@ export function AssignDescriberPopover({
   return (
     <div
       ref={popoverRef}
-      className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-[#E7E5E4] bg-white p-3 shadow-lg"
+      className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-stone-200 bg-white p-3 shadow-lg"
     >
       <input
         type="text"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder={t("search_team")}
-        className="mb-2 w-full rounded border border-[#E7E5E4] px-2 py-1.5 text-sm text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none"
+        className="mb-2 w-full rounded border border-stone-200 px-2 py-1.5 text-sm text-stone-700 placeholder:text-stone-400 focus:border-indigo focus:outline-none"
       />
 
       <ul className="max-h-40 overflow-y-auto">
@@ -99,13 +99,13 @@ export function AssignDescriberPopover({
               onClick={() => setSelectedId(member.id)}
               className={`w-full rounded px-2 py-1.5 text-left text-sm ${
                 selectedId === member.id
-                  ? "bg-[#F5E6EA] text-[#8B2942]"
-                  : "text-[#44403C] hover:bg-[#FAFAF9]"
+                  ? "bg-indigo-tint text-indigo"
+                  : "text-stone-700 hover:bg-stone-50"
               }`}
             >
               <span className="block">{member.name ?? member.email}</span>
               {member.name && (
-                <span className="block text-xs text-[#A8A29E]">
+                <span className="block text-xs text-stone-400">
                   {member.email}
                 </span>
               )}
@@ -118,7 +118,7 @@ export function AssignDescriberPopover({
         <button
           type="button"
           onClick={onClose}
-          className="rounded px-3 py-1.5 text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+          className="rounded px-3 py-1.5 text-sm text-stone-500 hover:bg-stone-50"
         >
           {t("assign_cancel")}
         </button>
@@ -126,14 +126,14 @@ export function AssignDescriberPopover({
           type="button"
           onClick={handleAssign}
           disabled={!selectedId || fetcher.state !== "idle"}
-          className="rounded bg-[#8B2942] px-3 py-1.5 text-sm text-white hover:bg-[#6D1F33] disabled:opacity-50"
+          className="rounded bg-indigo px-3 py-1.5 text-sm text-parchment hover:bg-indigo-deep disabled:opacity-50"
         >
           {t("assign_confirm")}
         </button>
       </div>
 
       {fetcher.data?.error && (
-        <p className="mt-2 text-xs text-red-600">{t("error_assign")}</p>
+        <p className="mt-2 text-xs text-madder-deep">{t("error_assign")}</p>
       )}
     </div>
   );

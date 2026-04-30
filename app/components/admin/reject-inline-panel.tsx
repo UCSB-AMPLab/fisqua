@@ -37,8 +37,8 @@ export function RejectInlinePanel({
   if (!isOpen) return null;
 
   return (
-    <div className="rounded-lg border border-[#DC2626] bg-[#FEF2F2] px-4 py-3">
-      <p className="mb-2 text-sm text-[#44403C]">
+    <div className="rounded-md border border-madder bg-madder-tint px-4 py-3">
+      <p className="mb-2 text-sm text-stone-700">
         {t("reject_confirm", { term: termName })}
       </p>
       <Form method="post">
@@ -48,19 +48,19 @@ export function RejectInlinePanel({
           name="reason"
           rows={2}
           placeholder="Reason for rejection..."
-          className="mb-2 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          className="mb-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-madder focus:outline-none focus:ring-1 focus:ring-madder"
         />
         <div className="flex items-center gap-3">
           <button
             type="submit"
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+            className="rounded-md bg-madder px-3 py-1.5 text-sm font-semibold text-parchment hover:bg-madder-deep"
           >
             {t("reject_term")}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-[#78716C] hover:text-[#44403C]"
+            className="text-sm text-stone-500 hover:text-stone-700"
           >
             Cancel
           </button>

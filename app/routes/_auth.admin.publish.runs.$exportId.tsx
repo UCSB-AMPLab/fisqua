@@ -13,6 +13,7 @@
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import { ArrowLeft } from "lucide-react";
 import { userContext } from "../context";
 import { formatIsoDateTime } from "~/lib/format-date";
 import type { Route } from "./+types/_auth.admin.publish.runs.$exportId";
@@ -135,9 +136,9 @@ export async function loader({
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  complete: "bg-green-100 text-green-800",
-  error: "bg-red-100 text-red-800",
-  running: "bg-amber-100 text-amber-800",
+  complete: "bg-verdigris-tint text-verdigris-deep",
+  error: "bg-madder-tint text-madder-deep",
+  running: "bg-saffron-tint text-saffron-deep",
   pending: "bg-stone-100 text-stone-600",
 };
 
@@ -172,8 +173,8 @@ export default function PublishRunDetail({
 
   if (!authorized) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="font-sans text-sm text-amber-800">
+      <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3">
+        <p className="font-sans text-sm text-saffron-deep">
           {t("superadminRequired")}
         </p>
       </div>
@@ -185,8 +186,9 @@ export default function PublishRunDetail({
       <div className="space-y-4">
         <Link
           to="/admin/publish"
-          className="font-sans text-sm text-[#8B2942] hover:underline"
+          className="inline-flex items-center gap-1.5 font-sans text-sm text-indigo hover:underline"
         >
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
           {t("detail.backToPublish")}
         </Link>
         <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3">
@@ -214,11 +216,12 @@ export default function PublishRunDetail({
       <div>
         <Link
           to="/admin/publish"
-          className="font-sans text-sm text-[#8B2942] hover:underline"
+          className="inline-flex items-center gap-1.5 font-sans text-sm text-indigo hover:underline"
         >
+          <ArrowLeft className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
           {t("detail.backToPublish")}
         </Link>
-        <h1 className="mt-2 font-display text-3xl font-semibold text-[#44403C]">
+        <h1 className="mt-2 font-display text-3xl font-semibold text-stone-700">
           {t("detail.title")}
         </h1>
       </div>
@@ -298,11 +301,11 @@ export default function PublishRunDetail({
 
       {/* Error */}
       {run.errorMessage && (
-        <section className="rounded-lg border border-red-200 bg-red-50 p-5">
-          <h2 className="font-sans text-lg font-semibold text-red-800">
+        <section className="rounded-md border border-madder bg-madder-tint p-5">
+          <h2 className="font-sans text-lg font-semibold text-madder-deep">
             {t("detail.errorTitle")}
           </h2>
-          <pre className="mt-3 whitespace-pre-wrap font-mono text-xs text-red-900">
+          <pre className="mt-3 whitespace-pre-wrap font-mono text-xs text-madder-deep">
             {run.errorMessage}
           </pre>
         </section>
@@ -355,7 +358,8 @@ export default function PublishRunDetail({
           </h2>
           <p className="mt-1 font-sans text-xs text-stone-500">
             {t("detail.childrenFilesTotal", {
-              count: childrenTotal.toLocaleString("en-US"),
+              count: childrenTotal,
+              defaultValue: "",
             })}
           </p>
           <div className="mt-4 overflow-hidden rounded border border-stone-200">

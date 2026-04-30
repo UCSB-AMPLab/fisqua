@@ -10,17 +10,22 @@
 
 import { useTranslation } from "react-i18next";
 
+// Status pairs follow README §Colour and the @theme `--*-bg` / `--*-fg`
+// tokens in app.css. The two workflows pick deliberately different
+// mappings of the same six pairs so segmentation states never read as
+// description states (or vice versa).
+
 /** Segmentation (volume) status styles */
 export const STATUS_STYLES: Record<
   string,
   { bg: string; text: string }
 > = {
   unstarted: { bg: "bg-stone-100", text: "text-stone-600" },
-  in_progress: { bg: "bg-[#E0E7F7]", text: "text-[#3B5A9A]" },
-  segmented: { bg: "bg-[#F9EDD4]", text: "text-[#8B6914]" },
-  sent_back: { bg: "bg-[#F5E6EA]", text: "text-[#8B2942]" },
-  reviewed: { bg: "bg-[#E9D5FF]", text: "text-[#7C3AED]" },
-  approved: { bg: "bg-[#D6E8DB]", text: "text-[#2F6B45]" },
+  in_progress: { bg: "bg-indigo-tint", text: "text-indigo" },
+  segmented: { bg: "bg-saffron-tint", text: "text-saffron-deep" },
+  sent_back: { bg: "bg-madder-tint", text: "text-madder-deep" },
+  reviewed: { bg: "bg-sage-tint", text: "text-sage-deep" },
+  approved: { bg: "bg-verdigris-tint", text: "text-verdigris-deep" },
 };
 
 /** Description (per-entry) status styles -- distinct palette from segmentation */
@@ -28,14 +33,20 @@ export const DESCRIPTION_STATUS_STYLES: Record<
   string,
   { bg: string; text: string }
 > = {
-  unassigned: { bg: "bg-[#E7E5E4]", text: "text-[#78716C]" },
-  assigned: { bg: "bg-[#E0E7F7]", text: "text-[#3B5A9A]" },
-  in_progress: { bg: "bg-[#F9EDD4]", text: "text-[#8B6914]" },
-  described: { bg: "bg-[#E9D5FF]", text: "text-[#7C3AED]" },
-  reviewed: { bg: "bg-[#CCF0EB]", text: "text-[#0D9488]" },
-  approved: { bg: "bg-[#D6E8DB]", text: "text-[#2F6B45]" },
-  sent_back: { bg: "bg-[#F5E6EA]", text: "text-[#8B2942]" },
+  unassigned: { bg: "bg-stone-100", text: "text-stone-600" },
+  assigned: { bg: "bg-indigo-tint", text: "text-indigo" },
+  in_progress: { bg: "bg-saffron-tint", text: "text-saffron-deep" },
+  described: { bg: "bg-sage-tint", text: "text-sage-deep" },
+  reviewed: { bg: "bg-sage-tint", text: "text-sage-deep" },
+  approved: { bg: "bg-verdigris-tint", text: "text-verdigris-deep" },
+  sent_back: { bg: "bg-madder-tint", text: "text-madder-deep" },
 };
+
+// One shape, one size, one style — only the colour pair varies.
+// README §4.4: rounded-full px-2.5 py-0.5 text-[11px] font-sans
+// font-semibold tracking-[0.02em] uppercase.
+const BADGE_SHAPE =
+  "inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-[11px] font-semibold uppercase tracking-[0.02em]";
 
 type StatusBadgeProps = {
   status: string;
@@ -50,9 +61,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   };
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style.bg} ${style.text}`}
-    >
+    <span className={`${BADGE_SHAPE} ${style.bg} ${style.text}`}>
       {t(`status.${status}`)}
     </span>
   );
@@ -62,14 +71,12 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 export function DescriptionStatusBadge({ status }: StatusBadgeProps) {
   const { t } = useTranslation("description");
   const style = DESCRIPTION_STATUS_STYLES[status] ?? {
-    bg: "bg-[#E7E5E4]",
-    text: "text-[#78716C]",
+    bg: "bg-stone-100",
+    text: "text-stone-600",
   };
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${style.bg} ${style.text}`}
-    >
+    <span className={`${BADGE_SHAPE} ${style.bg} ${style.text}`}>
       {t(`status.${status}`)}
     </span>
   );

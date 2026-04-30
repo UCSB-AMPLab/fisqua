@@ -53,6 +53,7 @@ export function boundaryReducer(
         endPage: null,
         endY: null,
         type: null,
+        subtype: null,
         title: null,
         modifiedBy: action.modifiedBy ?? null,
         translatedTitle: null,
@@ -231,6 +232,26 @@ export function boundaryReducer(
           ? {
               ...e,
               type: action.entryType,
+              modifiedBy: action.modifiedBy ?? e.modifiedBy,
+              updatedAt: Date.now(),
+            }
+          : e
+      );
+
+      return {
+        ...state,
+        entries,
+        isDirty: true,
+        saveStatus: "unsaved",
+      };
+    }
+
+    case "SET_SUBTYPE": {
+      const entries = state.entries.map((e) =>
+        e.id === action.entryId
+          ? {
+              ...e,
+              subtype: action.subtype,
               modifiedBy: action.modifiedBy ?? e.modifiedBy,
               updatedAt: Date.now(),
             }

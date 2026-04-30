@@ -70,13 +70,13 @@ export function ResizablePane({
       <div
         role="separator"
         aria-orientation="vertical"
-        className="w-2 flex-none cursor-col-resize bg-[#E7E5E4] hover:bg-[#A8A29E]"
+        className="w-2 flex-none cursor-col-resize bg-stone-200 hover:bg-stone-400"
         onPointerDown={handlePointerDown}
       />
 
       {/* Right pane */}
       <div
-        className="flex-1 overflow-y-auto border-l border-[#E7E5E4] bg-[#F5F5F4]"
+        className="flex-1 overflow-y-auto border-l border-stone-200 bg-stone-100"
         style={{ minWidth: `${minRightWidth}px`, maxWidth: "60%" }}
       >
         {right}

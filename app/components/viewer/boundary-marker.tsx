@@ -15,14 +15,17 @@ import { useDragOrClick } from "../../lib/drag-utils";
 
 type BoundaryMarkerVariant = "cataloguer" | "reviewer";
 
+// Per design-system §4.8: cataloguer-authored boundaries render in
+// verdigris-deep, reviewer-authored in madder-deep. The most legible
+// place the three-colour identity shows up in product.
 const VARIANT_STYLES: Record<BoundaryMarkerVariant, { badge: string; line: string }> = {
   cataloguer: {
- badge: "bg-teal-600",
- line: "border-teal-500",
+ badge: "bg-verdigris-deep",
+ line: "border-verdigris",
   },
   reviewer: {
- badge: "bg-red-600",
- line: "border-red-500",
+ badge: "bg-madder-deep",
+ line: "border-madder",
   },
 };
 
@@ -161,7 +164,7 @@ export function BoundaryMarker({
  >
  <button
  type="button"
- className="whitespace-nowrap text-sm text-red-600 hover:text-red-800"
+ className="whitespace-nowrap text-sm text-madder-deep hover:text-madder-deep"
  onClick={handleDelete}
  >
  {t("outline.delete_boundary")}

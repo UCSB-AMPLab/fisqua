@@ -16,15 +16,15 @@ import type { TreeItem } from "./miller-columns";
 // ---------------------------------------------------------------------------
 
 const LEVEL_BADGE_STYLES: Record<string, string> = {
-  fonds: "bg-[#E0E7F7] text-[#3B5A9A]",
-  subfonds: "bg-[#CCF0EB] text-[#0D9488]",
-  collection: "bg-[#CCF0EB] text-[#0D9488]",
-  series: "bg-[#F5E6EA] text-[#8B2942]",
-  subseries: "bg-[#FEF3C7] text-[#78350F]",
-  section: "bg-[#FEF3C7] text-[#78350F]",
-  volume: "bg-[#F5F5F4] text-[#44403C]",
-  file: "bg-[#F5F5F4] text-[#44403C]",
-  item: "bg-[#F5F5F4] text-[#78716C]",
+  fonds: "bg-indigo-tint text-indigo",
+  subfonds: "bg-verdigris-tint text-verdigris",
+  collection: "bg-verdigris-tint text-verdigris",
+  series: "bg-indigo-tint text-indigo",
+  subseries: "bg-saffron-tint text-saffron-deep",
+  section: "bg-saffron-tint text-saffron-deep",
+  volume: "bg-stone-100 text-stone-700",
+  file: "bg-stone-100 text-stone-700",
+  item: "bg-stone-100 text-stone-500",
 };
 
 // ---------------------------------------------------------------------------
@@ -51,20 +51,20 @@ export function MillerItem({
   const { t } = useTranslation("descriptions_admin");
 
   const badgeStyle =
-    LEVEL_BADGE_STYLES[item.descriptionLevel] || "bg-[#F5F5F4] text-[#78716C]";
+    LEVEL_BADGE_STYLES[item.descriptionLevel] || "bg-stone-100 text-stone-500";
 
   const levelLabel =
     t(`level_${item.descriptionLevel}`, { defaultValue: item.descriptionLevel });
 
   let containerClass =
-    "px-4 py-2 border-b border-[#F5F5F4] cursor-pointer transition-colors";
+    "px-4 py-2 border-b border-stone-100 cursor-pointer transition-colors";
 
   if (isSelected) {
-    containerClass += " bg-[#6B1F33] text-white";
+    containerClass += " bg-indigo-deep text-parchment";
   } else if (isAncestor) {
-    containerClass += " bg-[rgba(107,31,51,0.5)] text-white";
+    containerClass += " bg-indigo/50 text-parchment";
   } else {
-    containerClass += " hover:bg-[#FAFAF9]";
+    containerClass += " hover:bg-stone-50";
   }
 
   return (
@@ -82,7 +82,7 @@ export function MillerItem({
           </p>
           <div className="mt-0.5 flex items-center gap-2">
             <span
-              className={`text-xs ${isSelected || isAncestor ? "text-white/70" : "text-[#78716C]"}`}
+              className={`text-xs ${isSelected || isAncestor ? "text-white/70" : "text-stone-500"}`}
             >
               {item.referenceCode}
             </span>
@@ -104,7 +104,7 @@ export function MillerItem({
         {item.childCount > 0 && (
           <span
             className={`flex-none text-xs ${
-              isSelected || isAncestor ? "text-white/70" : "text-[#A8A29E]"
+              isSelected || isAncestor ? "text-white/70" : "text-stone-400"
             }`}
           >
             ({item.childCount})
@@ -115,7 +115,7 @@ export function MillerItem({
         {item.childCount > 0 && (
           <ChevronRight
             className={`h-4 w-4 flex-none ${
-              isSelected || isAncestor ? "text-white/70" : "text-[#A8A29E]"
+              isSelected || isAncestor ? "text-white/70" : "text-stone-400"
             }`}
           />
         )}

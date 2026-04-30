@@ -127,19 +127,19 @@ export function LinkDescriptionDialog({
         role="dialog"
         aria-labelledby="link-description-dialog-title"
         tabIndex={-1}
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="link-description-dialog-title"
-          className="font-serif text-lg font-semibold text-[#44403C]"
+          className="font-serif text-lg font-semibold text-stone-700"
         >
           {t("add_description_link")}
         </h2>
 
         {/* Search input */}
         <div className="relative mt-4">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
           <input
             type="text"
             value={searchQuery}
@@ -149,13 +149,13 @@ export function LinkDescriptionDialog({
             }}
             placeholder={t("search_descriptions")}
             autoFocus
-            className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+            className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
         </div>
 
         {/* Search results */}
         {!selectedDescription && searchResults.length > 0 && (
-          <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#E7E5E4]">
+          <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200">
             {searchResults.map((result) => (
               <button
                 key={result.id}
@@ -164,10 +164,10 @@ export function LinkDescriptionDialog({
                   setSelectedDescription(result);
                   setSearchQuery(result.title);
                 }}
-                className="flex w-full items-center justify-between border-b border-[#E7E5E4] px-3 py-2 text-left text-sm last:border-b-0 hover:bg-[#FAFAF9]"
+                className="flex w-full items-center justify-between border-b border-stone-200 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stone-50"
               >
-                <span className="truncate text-[#44403C]">{result.title}</span>
-                <span className="ml-2 whitespace-nowrap font-mono text-xs text-[#78716C]">
+                <span className="truncate text-stone-700">{result.title}</span>
+                <span className="ml-2 whitespace-nowrap font-mono text-xs text-stone-500">
                   {result.referenceCode}
                 </span>
               </button>
@@ -178,21 +178,21 @@ export function LinkDescriptionDialog({
         {/* Selected description + role */}
         {selectedDescription && (
           <div className="mt-4 space-y-3">
-            <div className="rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] px-3 py-2 text-sm text-[#44403C]">
+            <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
               {selectedDescription.title}{" "}
-              <span className="font-mono text-xs text-[#78716C]">
+              <span className="font-mono text-xs text-stone-500">
                 {selectedDescription.referenceCode}
               </span>
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-[#78716C]">
+              <label className="mb-1 block text-xs font-medium text-indigo">
                 {t("select_role")}
               </label>
               <select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 {roles.map((r) => (
                   <option key={r} value={r}>
@@ -206,7 +206,7 @@ export function LinkDescriptionDialog({
 
         {/* Duplicate error */}
         {duplicateError && (
-          <p className="mt-2 text-xs text-[#DC2626]">
+          <p className="mt-2 text-xs text-madder">
             {t("duplicate_link_error")}
           </p>
         )}
@@ -216,7 +216,7 @@ export function LinkDescriptionDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("mergeCancel")}
           </button>
@@ -224,7 +224,7 @@ export function LinkDescriptionDialog({
             type="button"
             onClick={handleLink}
             disabled={!selectedDescription || linkFetcher.state === "submitting"}
-            className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("link_button")}
           </button>

@@ -18,14 +18,14 @@ type ArchiveStatCardProps = {
 
 export function ArchiveStatCard({ icon: Icon, label, value }: ArchiveStatCardProps) {
   return (
-    <div className="rounded-lg border border-[#E7E5E4] bg-white p-4">
+    <div className="rounded-lg border border-stone-200 bg-white p-4">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F5E6EA]">
-          <Icon className="h-5 w-5 text-[#8B2942]" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-tint">
+          <Icon className="h-5 w-5 text-indigo" />
         </div>
         <div>
-          <p className="text-sm text-[#78716C]">{label}</p>
-          <p className="font-heading text-2xl font-semibold text-[#8B2942]">{value}</p>
+          <p className="text-sm text-stone-500">{label}</p>
+          <p className="font-heading text-2xl font-semibold text-indigo">{value}</p>
         </div>
       </div>
     </div>

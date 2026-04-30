@@ -37,7 +37,6 @@ function makeVolumeItem(
     updatedAt: Math.floor(Date.now() / 1000) - 86400,
     isSentBack: false,
     type: "volume" as const,
-    status: "unstarted",
     ...overrides,
   };
 }
@@ -54,7 +53,6 @@ function makeEntryItem(
     updatedAt: Math.floor(Date.now() / 1000) - 86400,
     isSentBack: false,
     type: "entry" as const,
-    descriptionStatus: "assigned",
     ...overrides,
   };
 }

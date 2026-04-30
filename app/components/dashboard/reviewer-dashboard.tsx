@@ -30,8 +30,8 @@ function WaitingBadge({ days }: { days: number }) {
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
         urgent
-          ? "bg-red-100 text-red-700"
-          : "bg-amber-100 text-amber-700"
+          ? "bg-madder-tint text-madder-deep"
+          : "bg-saffron-tint text-saffron-deep"
       }`}
     >
       {days === 0 ? t("today") : t("days_waiting", { count: days })}
@@ -83,14 +83,14 @@ export function ReviewerDashboard({ groups }: ReviewerDashboardProps) {
     return (
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+            <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_review_title")}</h3>
-          <p className="mt-2 text-sm text-stone-500">
+          <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">{t("empty.no_review_title")}</h3>
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("empty.no_review_body")}
           </p>
         </div>

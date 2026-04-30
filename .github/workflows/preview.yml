@@ -14,7 +14,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      deployments: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -25,8 +24,3 @@ jobs:
       - run: npm ci
       - run: npx vitest --run
       - run: npm run typecheck
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: versions upload

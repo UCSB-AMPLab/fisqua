@@ -70,17 +70,17 @@ export function ChangelogSection({ changelog }: ChangelogSectionProps) {
                   </div>
                   <div className="flex gap-3">
                     {f.added > 0 && (
-                      <span className="font-sans text-xs text-green-700">
+                      <span className="font-sans text-xs text-verdigris-deep">
                         +{f.added} {t("changelog.added")}
                       </span>
                     )}
                     {f.modified > 0 && (
-                      <span className="font-sans text-xs text-amber-700">
+                      <span className="font-sans text-xs text-saffron-deep">
                         {f.modified} {t("changelog.modified")}
                       </span>
                     )}
                     {f.unpublished > 0 && (
-                      <span className="font-sans text-xs text-red-700">
+                      <span className="font-sans text-xs text-madder-deep">
                         {f.unpublished} {t("changelog.unpublished")}
                       </span>
                     )}
@@ -93,17 +93,17 @@ export function ChangelogSection({ changelog }: ChangelogSectionProps) {
               </span>
               <div className="flex gap-3">
                 {totalAdded > 0 && (
-                  <span className="font-sans text-xs text-green-700">
+                  <span className="font-sans text-xs text-verdigris-deep">
                     +{totalAdded}
                   </span>
                 )}
                 {totalModified > 0 && (
-                  <span className="font-sans text-xs text-amber-700">
+                  <span className="font-sans text-xs text-saffron-deep">
                     {totalModified}
                   </span>
                 )}
                 {totalUnpublished > 0 && (
-                  <span className="font-sans text-xs text-red-700">
+                  <span className="font-sans text-xs text-madder-deep">
                     {totalUnpublished}
                   </span>
                 )}
@@ -134,7 +134,7 @@ export function ChangelogSection({ changelog }: ChangelogSectionProps) {
               {t(`changelog.${key}`)}
             </h3>
             {count > 0 ? (
-              <p className="mt-1 font-sans text-xs text-amber-700">
+              <p className="mt-1 font-sans text-xs text-saffron-deep">
                 {count} {t("changelog.modified")}
               </p>
             ) : (

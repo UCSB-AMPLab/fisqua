@@ -34,6 +34,13 @@ describe("admin area", () => {
         email: "admin@test.com",
         name: "Admin",
         isAdmin: true,
+        isSuperAdmin: false,
+        isCollabAdmin: false,
+        isArchiveUser: false,
+        isUserManager: false,
+        isCataloguer: false,
+        lastActiveAt: null,
+        githubId: null,
       };
       expect(() => requireAdmin(admin)).not.toThrow();
     });
@@ -44,6 +51,13 @@ describe("admin area", () => {
         email: "user@test.com",
         name: "User",
         isAdmin: false,
+        isSuperAdmin: false,
+        isCollabAdmin: false,
+        isArchiveUser: false,
+        isUserManager: false,
+        isCataloguer: false,
+        lastActiveAt: null,
+        githubId: null,
       };
       try {
         requireAdmin(user);

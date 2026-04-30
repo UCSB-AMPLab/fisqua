@@ -38,14 +38,14 @@ type CataloguerDescriptionTabProps = {
 function CompletionDot({ filled }: { filled: boolean }) {
   if (filled) {
     return (
-      <svg className="h-4 w-4 text-[#2F6B45]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-4 w-4 text-verdigris" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
         <polyline points="22 4 12 14.01 9 11.01" />
       </svg>
     );
   }
   return (
-    <svg className="h-4 w-4 text-[#E7E5E4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className="h-4 w-4 text-stone-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
     </svg>
   );
@@ -61,7 +61,7 @@ function EntryCard({ entry }: { entry: DescriptionEntryCardData }) {
   return (
     <Link
       to={`/projects/${entry.projectId}/describe/${entry.id}`}
-      className="block rounded-lg border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm"
+      className="block rounded-lg border border-stone-200 p-4 hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -98,7 +98,7 @@ function SentBackCard({ entry }: { entry: DescriptionEntryCardData }) {
   return (
     <Link
       to={`/projects/${entry.projectId}/describe/${entry.id}`}
-      className="block rounded-lg border-l-4 border-[#8B2942] bg-[#F5E6EA] p-4 hover:shadow-sm"
+      className="block rounded-md bg-indigo-tint p-4 hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -117,12 +117,12 @@ function SentBackCard({ entry }: { entry: DescriptionEntryCardData }) {
       {entry.reviewerFeedback && (
         <div className="mt-2">
           <div className="flex items-center gap-1.5">
-            <svg className="h-4 w-4 text-[#6B1F33]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="h-4 w-4 text-indigo-deep" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <span className="text-[0.8125rem] font-semibold text-[#6B1F33]">
+            <span className="text-[0.8125rem] font-semibold text-indigo-deep">
               {t("dashboard.reviewer_feedback_label")}
             </span>
           </div>
@@ -142,16 +142,16 @@ export function CataloguerDescriptionTab({ entries }: CataloguerDescriptionTabPr
     return (
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+            <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
               <polyline points="14 2 14 8 20 8" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">
+          <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">
             {t("dashboard:empty.no_description_entries_title")}
           </h3>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("dashboard:empty.no_description_entries_body")}
           </p>
         </div>

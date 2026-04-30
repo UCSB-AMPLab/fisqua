@@ -51,7 +51,7 @@ export function NameVariantInput({
           {value.map((variant, index) => (
             <span
               key={`${variant}-${index}`}
-              className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-1 text-xs text-[#44403C]"
+              className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-1 text-xs text-stone-700"
             >
               {variant}
               <button
@@ -73,12 +73,12 @@ export function NameVariantInput({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           aria-label="Add name variant"
-          className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+          className="flex-1 rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
         <button
           type="button"
           onClick={addVariant}
-          className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+          className="rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50"
         >
           {addLabel}
         </button>

@@ -14,6 +14,11 @@ type DescriptionImageViewerProps = {
   currentEntryStartPage: number;
   currentEntryEndPage: number | null;
   manifestUrl?: string;
+  // Plumbed from the description editor route so a per-page flag UI
+  // can hook the existing QC flag dialog. The component does not yet
+  // render a flag control of its own; the prop is accepted so the
+  // route compiles and is forwarded once the UI lands.
+  onFlagPage?: (pageId: string, pagePosition: number) => void;
 };
 
 function ZoomOutIcon() {
@@ -82,6 +87,7 @@ export function DescriptionImageViewer({
   pages,
   currentEntryStartPage,
   currentEntryEndPage,
+  onFlagPage: _onFlagPage,
 }: DescriptionImageViewerProps) {
   const { t } = useTranslation("description");
   const [zoom, setZoom] = useState(100);
@@ -118,24 +124,24 @@ export function DescriptionImageViewer({
   }, []);
 
   return (
-    <div ref={panelRef} className="flex h-full flex-col bg-[#F5F5F4]">
+    <div ref={panelRef} className="flex h-full flex-col bg-stone-100">
       {/* Zoom bar */}
-      <div className="flex h-[48px] shrink-0 items-center gap-1 border-b border-[#E7E5E4] bg-white px-3">
+      <div className="flex h-[48px] shrink-0 items-center gap-1 border-b border-stone-200 bg-white px-3">
         <button
           type="button"
           onClick={handleZoomOut}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4]"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
           aria-label="Zoom out"
         >
           <ZoomOutIcon />
         </button>
-        <span className="min-w-[3.5rem] text-center font-sans text-[0.875rem] text-[#78716C]">
+        <span className="min-w-[3.5rem] text-center font-sans text-[0.875rem] text-stone-500">
           {zoom}%
         </span>
         <button
           type="button"
           onClick={handleZoomIn}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4]"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
           aria-label="Zoom in"
         >
           <ZoomInIcon />
@@ -155,14 +161,14 @@ export function DescriptionImageViewer({
                 className="flex gap-4"
               >
                 {/* Label column */}
-                <div className="w-4 shrink-0 pt-1 font-sans text-[0.875rem] font-semibold text-[#8B2942]">
+                <div className="w-4 shrink-0 pt-1 font-sans text-[0.875rem] font-semibold text-indigo">
                   <span className="writing-mode-vertical whitespace-nowrap">
                     {page.position}
                   </span>
                 </div>
 
                 {/* Page image */}
-                <div className="overflow-hidden rounded-lg border-2 border-[#8B2942]">
+                <div className="overflow-hidden rounded-lg border-2 border-indigo">
                   <img
                     src={`${page.imageUrl}/full/max/0/default.jpg`}
                     alt={page.label || `Page ${page.position}`}

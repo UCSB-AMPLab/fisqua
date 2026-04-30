@@ -141,12 +141,12 @@ function roleSummary(u: {
 // ---------------------------------------------------------------------------
 
 const ROLE_PILL_COLORS: Record<RoleKey, string> = {
-  super_admin: "bg-[#8B2942] text-white",
-  user_manager: "bg-[#F9EDD4] text-[#8B6914]",
-  cataloguing_admin: "bg-[#E0E7F7] text-[#3B5A9A]",
-  cataloguer: "bg-[#D6E8DB] text-[#2F6B45]",
-  records_admin: "bg-[#E8D6E8] text-[#6B2942]",
-  archive_user: "bg-[#CCF0EB] text-[#0D9488]",
+  super_admin: "bg-indigo text-parchment",
+  user_manager: "bg-saffron-tint text-saffron-deep",
+  cataloguing_admin: "bg-indigo-tint text-indigo",
+  cataloguer: "bg-verdigris-tint text-verdigris",
+  records_admin: "bg-sage-tint text-sage-deep",
+  archive_user: "bg-verdigris-tint text-verdigris",
 };
 
 export default function SystemUsersPage({
@@ -165,26 +165,26 @@ export default function SystemUsersPage({
   return (
     <div className="mx-auto max-w-7xl px-8 py-8 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-display text-4xl font-semibold text-stone-700">
           {t("sidebar:system_users")}
         </h1>
         <button
           type="button"
           onClick={() => setShowInviteModal(true)}
-          className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+          className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           {t("sidebar:invite_user")}
         </button>
       </div>
 
       {inviteSuccess && inviteResult?.message && (
-        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
           {inviteResult.message}
         </div>
       )}
 
       {inviteResult && !inviteResult.ok && inviteResult.error && (
-        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
           {inviteResult.error}
         </div>
       )}
@@ -197,16 +197,16 @@ export default function SystemUsersPage({
           <div
             role="dialog"
             aria-labelledby="invite-modal-title"
-            className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
               id="invite-modal-title"
-              className="font-serif text-lg font-semibold text-[#44403C]"
+              className="font-serif text-lg font-semibold text-stone-700"
             >
               {t("sidebar:invite_user")}
             </h2>
-            <p className="mt-1 font-sans text-sm text-[#78716C]">
+            <p className="mt-1 font-sans text-sm text-stone-500">
               {t("sidebar:invite_description")}
             </p>
             <inviteFetcher.Form
@@ -218,7 +218,7 @@ export default function SystemUsersPage({
               <div>
                 <label
                   htmlFor="invite-name"
-                  className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+                  className="mb-1 block font-sans text-xs font-medium text-indigo"
                 >
                   {t("sidebar:col_name")}
                 </label>
@@ -226,15 +226,15 @@ export default function SystemUsersPage({
                   id="invite-name"
                   type="text"
                   name="name"
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
               <div>
                 <label
                   htmlFor="invite-email"
-                  className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+                  className="mb-1 block font-sans text-xs font-medium text-indigo"
                 >
-                  {t("sidebar:col_email")} <span className="text-[#DC2626]">*</span>
+                  {t("sidebar:col_email")} <span className="text-madder">*</span>
                 </label>
                 <input
                   id="invite-email"
@@ -242,20 +242,20 @@ export default function SystemUsersPage({
                   name="email"
                   required
                   placeholder={t("admin:placeholder.email")}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
-              <div className="flex justify-end gap-3 border-t border-[#E7E5E4] pt-4">
+              <div className="flex justify-end gap-3 border-t border-stone-200 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowInviteModal(false)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                  className="rounded-md border border-stone-200 px-4 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50"
                 >
                   {t("admin:action.cancel")}
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+                  className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
                 >
                   {t("sidebar:send_invite")}
                 </button>
@@ -266,25 +266,25 @@ export default function SystemUsersPage({
       )}
 
       {allUsers.length === 0 ? (
-        <p className="font-sans text-sm text-[#A8A29E]">{t("no_users")}</p>
+        <p className="font-sans text-sm text-stone-400">{t("no_users")}</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
-          <table className="min-w-full divide-y divide-[#E7E5E4]">
-            <thead className="bg-[#FAFAF9]">
+        <div className="overflow-hidden rounded-lg border border-stone-200">
+          <table className="min-w-full divide-y divide-stone-200">
+            <thead className="bg-stone-50">
               <tr>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("col_name")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("col_email")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("col_roles")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("user_admin:col_projects")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("col_last_login")}
                 </th>
               </tr>
@@ -293,16 +293,16 @@ export default function SystemUsersPage({
               {allUsers.map((u) => {
                 const roles = roleSummary(u);
                 return (
-                  <tr key={u.id} className="hover:bg-[#FAFAF9]">
+                  <tr key={u.id} className="hover:bg-stone-50">
                     <td className="px-4 py-3">
                       <Link
                         to={`/admin/users/${u.id}`}
-                        className="font-sans text-sm font-semibold text-[#44403C] hover:text-[#8B2942]"
+                        className="font-sans text-sm font-semibold text-stone-700 hover:text-indigo"
                       >
                         {u.name || u.email.split("@")[0]}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
+                    <td className="px-4 py-3 font-sans text-sm text-stone-500">
                       {u.email}
                     </td>
                     <td className="px-4 py-3">
@@ -311,14 +311,14 @@ export default function SystemUsersPage({
                           {roles.map((r) => (
                             <span
                               key={r}
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_PILL_COLORS[r] || "bg-[#E7E5E4] text-[#78716C]"}`}
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_PILL_COLORS[r] || "bg-stone-200 text-stone-500"}`}
                             >
                               {t(`user_admin:role_${r}`)}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <span className="font-sans text-xs text-[#A8A29E]">
+                        <span className="font-sans text-xs text-stone-400">
                           {t("user_admin:no_roles")}
                         </span>
                       )}
@@ -329,10 +329,10 @@ export default function SystemUsersPage({
                           {u.projects.map((p, i) => (
                             <span
                               key={i}
-                              className="font-sans text-xs text-[#44403C]"
+                              className="font-sans text-xs text-stone-700"
                             >
                               {p.projectName}
-                              <span className="ml-0.5 text-[#A8A29E]">
+                              <span className="ml-0.5 text-stone-400">
                                 ({p.role})
                               </span>
                               {i < u.projects.length - 1 && ", "}
@@ -340,12 +340,12 @@ export default function SystemUsersPage({
                           ))}
                         </div>
                       ) : (
-                        <span className="font-sans text-xs text-[#A8A29E]">
+                        <span className="font-sans text-xs text-stone-400">
                           &mdash;
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-sans text-xs text-[#A8A29E]">
+                    <td className="px-4 py-3 font-sans text-xs text-stone-400">
                       {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("never")}
                     </td>
                   </tr>

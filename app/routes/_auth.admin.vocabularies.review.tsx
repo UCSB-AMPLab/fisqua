@@ -311,62 +311,62 @@ export default function ReviewQueuePage({
           <li>
             <Link
               to="/admin/vocabularies"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("page_title")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
           <li>
             <Link
               to="/admin/vocabularies/functions"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("vocab_primary_functions")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
-          <li className="text-[#44403C]">{t("review_queue")}</li>
+          <li className="text-stone-700">{t("review_queue")}</li>
         </ol>
       </nav>
 
       {/* Page heading */}
-      <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+      <h1 className="font-serif text-lg font-semibold text-stone-700">
         {t("review_queue")}
       </h1>
-      <p className="mt-1 text-sm text-[#78716C]">
+      <p className="mt-1 text-sm text-stone-500">
         {t("n_proposed", { count: total })}
       </p>
 
       {/* Empty state */}
       {terms.length === 0 ? (
         <div className="mt-8 text-center">
-          <p className="text-sm text-[#A8A29E]">{t("no_proposed")}</p>
+          <p className="text-sm text-stone-400">{t("no_proposed")}</p>
         </div>
       ) : (
         <>
           {/* Terms table */}
-          <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-white">
+          <div className="mt-6 rounded-lg border border-stone-200 bg-white">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#E7E5E4]">
-                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                <tr className="border-b border-stone-200">
+                  <th className="px-4 py-3 text-left font-semibold text-stone-500">
                     {t("col_function")}
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                  <th className="px-4 py-3 text-left font-semibold text-stone-500">
                     {t("proposed_by")}
                   </th>
-                  <th className="px-4 py-3 text-left font-semibold text-[#78716C]">
+                  <th className="px-4 py-3 text-left font-semibold text-stone-500">
                     Date
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+                  <th className="px-4 py-3 text-right font-semibold text-stone-500">
                     {t("col_usage")}
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold text-[#78716C]">
+                  <th className="px-4 py-3 text-right font-semibold text-stone-500">
                     {t("col_actions")}
                   </th>
                 </tr>
@@ -375,28 +375,28 @@ export default function ReviewQueuePage({
                 {terms.map((term) => (
                   <tr
                     key={term.id}
-                    className="border-b border-[#E7E5E4] last:border-b-0"
+                    className="border-b border-stone-200 last:border-b-0"
                   >
                     <td className="px-4 py-3">
                       <Link
                         to={`/admin/vocabularies/functions/${term.id}`}
-                        className="font-semibold text-[#6B1F33] hover:underline"
+                        className="font-semibold text-indigo-deep hover:underline"
                       >
                         {term.canonical}
                       </Link>
                       {term.category && (
-                        <span className="ml-2 text-xs text-[#A8A29E]">
+                        <span className="ml-2 text-xs text-stone-400">
                           {term.category}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-[#78716C]">
+                    <td className="px-4 py-3 text-stone-500">
                       {term.proposedByName ?? "\u2014"}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-[#78716C]">
+                    <td className="px-4 py-3 tabular-nums text-stone-500">
                       {formatDate(term.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-[#78716C]">
+                    <td className="px-4 py-3 text-right tabular-nums text-stone-500">
                       {term.entityCount}
                     </td>
                     <td className="px-4 py-3">
@@ -415,7 +415,7 @@ export default function ReviewQueuePage({
                           />
                           <button
                             type="submit"
-                            className="inline-flex items-center gap-1 rounded-lg border border-green-600 px-2 py-1 text-xs font-semibold text-green-600 hover:bg-green-50"
+                            className="inline-flex items-center gap-1 rounded-md border border-verdigris-deep px-2 py-1 text-xs font-semibold text-verdigris-deep hover:bg-verdigris-tint"
                             title={t("approve_term")}
                           >
                             <Check className="h-3 w-3" />
@@ -431,7 +431,7 @@ export default function ReviewQueuePage({
                               rejectingTermId === term.id ? null : term.id
                             )
                           }
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-600 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                          className="inline-flex items-center gap-1 rounded-md border border-madder-deep px-2 py-1 text-xs font-semibold text-madder-deep hover:bg-madder-tint"
                           title={t("reject_term")}
                         >
                           <X className="h-3 w-3" />
@@ -460,14 +460,14 @@ export default function ReviewQueuePage({
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-[#78716C]">
+              <p className="text-sm text-stone-500">
                 Page {page} of {totalPages}
               </p>
               <div className="flex gap-2">
                 {page > 1 && (
                   <Link
                     to={`?page=${page - 1}`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50"
                   >
                     <ChevronLeft className="h-4 w-4" />
                     Previous
@@ -476,7 +476,7 @@ export default function ReviewQueuePage({
                 {page < totalPages && (
                   <Link
                     to={`?page=${page + 1}`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[#E7E5E4] px-3 py-1.5 text-sm text-[#44403C] hover:bg-[#FAFAF9]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50"
                   >
                     Next
                     <ChevronRight className="h-4 w-4" />

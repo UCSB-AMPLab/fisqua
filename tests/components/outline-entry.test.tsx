@@ -54,21 +54,22 @@ describe("computeCardClassName", () => {
     expect(cls).toContain("border");
   });
 
-  it("applies burgundy border on highlight -- accent", () => {
+  it("applies indigo border on highlight -- accent", () => {
     const cls = computeCardClassName({
       isReviewerModified: false,
       isHighlighted: true,
     });
-    expect(cls).toContain("border-[#8B2942]");
+    const tokens = cls.split(/\s+/);
+    expect(tokens).toContain("border-indigo");
   });
 
-  it("applies red border + bg on reviewer-modified state", () => {
+  it("applies madder border + bg on reviewer-modified state", () => {
     const cls = computeCardClassName({
       isReviewerModified: true,
       isHighlighted: false,
     });
-    expect(cls).toContain("border-red-400");
-    expect(cls).toContain("bg-red-50");
+    expect(cls).toContain("border-madder");
+    expect(cls).toContain("bg-madder-tint");
   });
 
   it("prefers reviewer-modified over highlight when both are true", () => {
@@ -76,12 +77,12 @@ describe("computeCardClassName", () => {
       isReviewerModified: true,
       isHighlighted: true,
     });
-    // Reviewer-modified red wins; the burgundy solid-border highlight
-    // token does not appear (the hover token at /40 alpha is always
-    // present regardless and is not a state indicator).
-    expect(cls).toContain("border-red-400");
+    // Reviewer-modified madder wins; the solid indigo highlight token
+    // does not appear (the hover token at /40 alpha is always present
+    // regardless and is not a state indicator).
+    expect(cls).toContain("border-madder");
     const tokens = cls.split(/\s+/);
-    expect(tokens).not.toContain("border-[#8B2942]");
+    expect(tokens).not.toContain("border-indigo");
   });
 
   it("defaults to stone-200 border when no state is active", () => {
@@ -92,12 +93,12 @@ describe("computeCardClassName", () => {
     expect(cls).toContain("border-stone-200");
   });
 
-  it("always includes the hover burgundy border token", () => {
+  it("always includes the hover indigo border token", () => {
     const cls = computeCardClassName({
       isReviewerModified: false,
       isHighlighted: false,
     });
-    expect(cls).toContain("hover:border-[#8B2942]/40");
+    expect(cls).toContain("hover:border-indigo/40");
   });
 
   it("uses a white card background by default", () => {

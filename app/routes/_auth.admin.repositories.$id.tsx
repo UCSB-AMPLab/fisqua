@@ -79,7 +79,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
         .all()
     : [];
 
-  // Check for another user's draft on this record  const { getConflictDraft } = await import("~/lib/drafts.server");
+  // Check for another user's draft on this record
+  const { getConflictDraft } = await import("~/lib/drafts.server");
   const { users } = await import("~/db/schema");
   const conflictRaw = await getConflictDraft(db, id, "repository", user.id);
   let conflictDraft: { userName: string; updatedAt: number } | null = null;
@@ -326,7 +327,8 @@ export default function RepositoryDetailPage({
     }
   }, [actionData]);
 
-  // Autosave via useFetcher  const draftFetcher = useFetcher();
+  // Autosave via useFetcher
+  const draftFetcher = useFetcher();
   const formRef = useRef<HTMLFormElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -381,21 +383,21 @@ export default function RepositoryDetailPage({
           <li>
             <Link
               to="/admin/repositories"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("title")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
-          <li className="text-[#44403C]">{repository.name}</li>
+          <li className="text-stone-700">{repository.name}</li>
         </ol>
       </nav>
 
       {/* Title row */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-2xl font-semibold text-stone-700">
           {repository.name}
         </h1>
 
@@ -404,7 +406,7 @@ export default function RepositoryDetailPage({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Pencil className="h-4 w-4" />
               {t("edit")}
@@ -421,8 +423,8 @@ export default function RepositoryDetailPage({
               }
               className={
                 hasDescriptions
-                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white opacity-50"
-                  : "inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment opacity-50"
+                  : "inline-flex items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
               }
             >
               <Trash2 className="h-4 w-4" />
@@ -445,7 +447,7 @@ export default function RepositoryDetailPage({
 
       {/* Autosave status */}
       {isEditing && draftStatus && (
-        <p className="mt-2 text-xs text-[#A8A29E]">
+        <p className="mt-2 text-xs text-stone-400">
           {draftStatus === "saving"
             ? t("autosave_saving")
             : t("autosave_saved")}
@@ -454,14 +456,14 @@ export default function RepositoryDetailPage({
 
       {/* Success banner */}
       {successMessage === "updated" && (
-        <div className="mt-4 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
           {t("success_updated")}
         </div>
       )}
 
       {/* Error banner */}
       {globalError && globalError !== "conflict" && (
-        <div className="mt-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {globalError === "duplicate_code"
             ? t("error_duplicate_code")
             : globalError === "has_descriptions"
@@ -472,10 +474,10 @@ export default function RepositoryDetailPage({
 
       {/* Linked descriptions tree */}
       <div className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
           {t("linked_descriptions")}
         </h2>
-        <div className="rounded-lg border border-[#E7E5E4] bg-white p-4">
+        <div className="rounded-lg border border-stone-200 bg-white p-4">
           <DescriptionTree
             repositoryId={repository.id}
             descriptionCount={descriptionCount}
@@ -483,14 +485,14 @@ export default function RepositoryDetailPage({
           />
         </div>
         {hasDescriptions && (
-          <p className="mt-2 text-xs text-[#A8A29E]">
+          <p className="mt-2 text-xs text-stone-400">
             {t("delete_blocked_inline", { count: descriptionCount })}
           </p>
         )}
       </div>
 
       {/* Detail card */}
-      <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-white p-6">
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
         {isEditing ? (
           <EditMode
             repository={repository}
@@ -515,25 +517,25 @@ export default function RepositoryDetailPage({
             role="alertdialog"
             aria-labelledby="delete-modal-title"
             aria-describedby="delete-modal-body"
-            className="max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="max-w-md rounded-lg bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
               id="delete-modal-title"
-              className="font-serif text-lg font-semibold text-[#44403C]"
+              className="font-serif text-lg font-semibold text-stone-700"
             >
               {t("delete_modal_title")}
             </h2>
             <p
               id="delete-modal-body"
-              className="mt-2 text-sm text-[#78716C]"
+              className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto"
             >
               {t("delete_modal_body", { name: repository.name })}
             </p>
             <div className="mt-3">
               <label
                 htmlFor="delete-confirm-input"
-                className="block text-xs text-[#78716C] mb-1"
+                className="block text-xs font-medium text-indigo mb-1"
               >
                 {t("delete_modal_confirm_label", { code: repository.code })}
               </label>
@@ -541,7 +543,7 @@ export default function RepositoryDetailPage({
                 id="delete-confirm-input"
                 type="text"
                 autoComplete="off"
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-madder focus:outline-none focus:ring-1 focus:ring-madder"
                 value={deleteConfirmation}
                 onChange={(e) => setDeleteConfirmation(e.target.value)}
               />
@@ -553,7 +555,7 @@ export default function RepositoryDetailPage({
                   setShowDeleteModal(false);
                   setDeleteConfirmation("");
                 }}
-                className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 {t("delete_modal_dismiss")}
               </button>
@@ -562,7 +564,7 @@ export default function RepositoryDetailPage({
                 <button
                   type="submit"
                   disabled={deleteConfirmation !== repository.code}
-                  className="rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-md bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t("delete")}
                 </button>
@@ -577,8 +579,8 @@ export default function RepositoryDetailPage({
         "error" in actionData &&
         actionData.error === "conflict" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="text-lg font-semibold text-[#44403C]">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+              <h2 className="text-lg font-semibold text-stone-700">
                 {t("overwrite_confirm", {
                   name: "",
                   time:
@@ -593,7 +595,7 @@ export default function RepositoryDetailPage({
                 <button
                   type="button"
                   onClick={() => setShowConflictDialog(false)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                  className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
                 >
                   {t("overwrite_cancel")}
                 </button>
@@ -607,7 +609,7 @@ export default function RepositoryDetailPage({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+                    className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
                   >
                     {t("overwrite_button")}
                   </button>
@@ -635,7 +637,7 @@ function ViewMode({
     <div className="space-y-6">
       {/* Identity area */}
       <section>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
           {t("section_identity")}
         </h2>
         <div className="space-y-3">
@@ -650,7 +652,7 @@ function ViewMode({
 
       {/* Contact area */}
       <section>
-        <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+        <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
           {t("section_contact")}
         </h2>
         <div className="space-y-3">
@@ -669,12 +671,12 @@ function ViewMode({
           />
           {repository.website ? (
             <div>
-              <p className="text-xs text-[#78716C]">{t("field.website")}</p>
+              <p className="text-xs text-stone-500">{t("field.website")}</p>
               <a
                 href={repository.website}
                 target="_blank"
                 rel="noopener"
-                className="text-sm text-[#6B1F33] hover:underline"
+                className="text-sm text-indigo-deep hover:underline"
               >
                 {repository.website}
               </a>
@@ -690,7 +692,7 @@ function ViewMode({
 
       {/* Administrative */}
       <section>
-        <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+        <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
           {t("section_admin")}
         </h2>
         <div className="space-y-3">
@@ -700,13 +702,13 @@ function ViewMode({
           <FieldDisplay label={t("subtitle_label")} value={repository.subtitle} />
           <FieldDisplay label={t("hero_image_url_label")} value={repository.heroImageUrl} />
           <div>
-            <p className="text-xs text-[#78716C]">{t("field.enabled")}</p>
+            <p className="text-xs text-stone-500">{t("field.enabled")}</p>
             {repository.enabled ? (
-              <span className="mt-1 inline-block rounded-full bg-[#D6E8DB] px-2 py-0.5 text-xs font-medium text-[#2F6B45]">
+              <span className="mt-1 inline-block rounded-full bg-verdigris-tint px-2 py-0.5 text-xs font-medium text-verdigris">
                 {t("badge_enabled")}
               </span>
             ) : (
-              <span className="mt-1 inline-block rounded-full bg-[#F5E6EA] px-2 py-0.5 text-xs font-medium text-[#8B2942]">
+              <span className="mt-1 inline-block rounded-full bg-indigo-tint px-2 py-0.5 text-xs font-medium text-indigo">
                 {t("badge_disabled")}
               </span>
             )}
@@ -726,8 +728,8 @@ function FieldDisplay({
 }) {
   return (
     <div>
-      <p className="text-xs text-[#78716C]">{label}</p>
-      <p className="text-sm text-[#44403C]">{value || "\u2014"}</p>
+      <p className="text-xs text-stone-500">{label}</p>
+      <p className="text-sm text-stone-700">{value || "\u2014"}</p>
     </div>
   );
 }
@@ -761,7 +763,7 @@ function EditMode({
       />
 
       {/* Identity area */}
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
         {t("section_identity")}
       </h2>
       <div className="space-y-4">
@@ -788,7 +790,7 @@ function EditMode({
       </div>
 
       {/* Contact area */}
-      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
         {t("section_contact")}
       </h2>
       <div className="space-y-4">
@@ -826,7 +828,7 @@ function EditMode({
       </div>
 
       {/* Administrative */}
-      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]">
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-[0.05em] text-stone-500">
         {t("section_admin")}
       </h2>
       <div className="space-y-4">
@@ -870,33 +872,33 @@ function EditMode({
             id="enabled"
             name="enabled"
             defaultChecked={repository.enabled ?? true}
-            className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+            className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
           />
-          <label htmlFor="enabled" className="text-sm text-[#44403C]">
+          <label htmlFor="enabled" className="text-sm font-medium text-indigo">
             {t("badge_enabled")}
           </label>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="mt-6 space-y-3 border-t border-[#E7E5E4] pt-4">
+      <div className="mt-6 space-y-3 border-t border-stone-200 pt-4">
         <input
           type="text"
           name="commitNote"
           placeholder={t("commit_note_placeholder")}
-          className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
         <div className="flex gap-3">
           <button
             type="submit"
-            className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("save")}
           </button>
           <button
             type="button"
             onClick={onDiscard}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("discard")}
           </button>
@@ -928,9 +930,9 @@ function EditField({
   const describedBy = [errorId, helperId].filter(Boolean).join(" ") || undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
-        {required && <span className="text-[#DC2626]"> *</span>}
+        {required && <span className="text-madder"> *</span>}
       </label>
       <input
         type={type}
@@ -939,15 +941,15 @@ function EditField({
         defaultValue={defaultValue}
         aria-required={required ? "true" : undefined}
         aria-describedby={describedBy}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {helperText && (
-        <p id={helperId} className="mt-1 text-xs text-[#A8A29E]">
+        <p id={helperId} className="mt-1 text-xs text-stone-400">
           {helperText}
         </p>
       )}
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}
@@ -969,7 +971,7 @@ function EditTextarea({
   const errorId = error ? `${name}-error` : undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
       </label>
       <textarea
@@ -978,10 +980,10 @@ function EditTextarea({
         rows={3}
         defaultValue={defaultValue}
         aria-describedby={errorId}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}

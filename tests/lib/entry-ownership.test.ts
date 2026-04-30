@@ -31,6 +31,7 @@ function makeEntry(overrides: {
     endPage: overrides.endPage ?? null,
     endY: overrides.endY ?? null,
     type: null,
+    subtype: null,
     title: null,
     modifiedBy: null,
     translatedTitle: null,

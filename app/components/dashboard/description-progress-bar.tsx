@@ -21,13 +21,13 @@ const DESC_STATUS_ORDER = [
 
 /** Map description status -> Tailwind bg class for bar segments */
 const DESC_SEGMENT_COLORS: Record<string, string> = {
-  unassigned: "bg-[#78716C]",
-  assigned: "bg-[#3B5A9A]",
-  in_progress: "bg-[#8B6914]",
-  described: "bg-[#7C3AED]",
-  reviewed: "bg-[#0D9488]",
-  approved: "bg-[#2F6B45]",
-  sent_back: "bg-[#8B2942]",
+  unassigned: "bg-stone-500",
+  assigned: "bg-indigo",
+  in_progress: "bg-saffron-deep",
+  described: "bg-sage-deep",
+  reviewed: "bg-verdigris",
+  approved: "bg-verdigris",
+  sent_back: "bg-indigo",
 };
 
 export function DescriptionProgressBar({ counts }: DescriptionProgressBarProps) {
@@ -37,7 +37,7 @@ export function DescriptionProgressBar({ counts }: DescriptionProgressBarProps) 
 
   if (total === 0) {
     return (
-      <div className="h-3 w-full rounded-full bg-stone-100" />
+      <div className="h-1.5 w-full rounded-full bg-stone-100" />
     );
   }
 
@@ -45,7 +45,7 @@ export function DescriptionProgressBar({ counts }: DescriptionProgressBarProps) 
     <div className="space-y-1">
       {/* Label */}
       <div className="flex items-center justify-between">
-        <span className="text-[0.8125rem] font-semibold uppercase text-[#78716C]">
+        <span className="text-[0.8125rem] font-semibold uppercase text-stone-500">
           {t("tabs.descripcion")}
         </span>
         <span className="text-xs text-stone-500">
@@ -54,7 +54,7 @@ export function DescriptionProgressBar({ counts }: DescriptionProgressBarProps) 
       </div>
 
       {/* Bar */}
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-100">
+      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
         {DESC_STATUS_ORDER.map((status) => {
           const count = counts[status] ?? 0;
           if (count === 0) return null;

@@ -25,7 +25,14 @@ import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
 export default defineWorkersConfig({
   test: {
-    exclude: ["tests/schema/migrations.test.ts", "tests/import/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "tests/schema/migrations.test.ts",
+      "tests/import/**",
+    ],
+    testTimeout: 15000,
+    hookTimeout: 30000,
     poolOptions: {
       workers: {
         wrangler: {

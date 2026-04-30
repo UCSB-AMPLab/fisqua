@@ -88,9 +88,9 @@ function formatNumber(n: number): string {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  complete: "bg-green-100 text-green-800",
-  error: "bg-red-100 text-red-800",
-  running: "bg-amber-100 text-amber-800",
+  complete: "bg-verdigris-tint text-verdigris-deep",
+  error: "bg-madder-tint text-madder-deep",
+  running: "bg-saffron-tint text-saffron-deep",
   pending: "bg-stone-100 text-stone-600",
 };
 

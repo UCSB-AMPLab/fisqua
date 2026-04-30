@@ -54,7 +54,7 @@ export function PublishToggle({
         <input type="hidden" name="descriptionId" value={descriptionId} />
         <button
           type="submit"
-          className="text-xs font-medium text-[#6B1F33] underline hover:text-[#8B2942]"
+          className="text-xs font-medium text-indigo-deep underline hover:text-indigo"
         >
           {actionLabel}
         </button>
