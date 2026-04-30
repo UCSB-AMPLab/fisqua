@@ -54,12 +54,29 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
   const { t } = useTranslation("common");
   const { t: tDashboard } = useTranslation("dashboard");
 
-  const isViewer = location.pathname.includes("/viewer/");
-  const isDescriptionEditor = location.pathname.includes("/describe/");
-  const showChrome = !isViewer && !isDescriptionEditor;
+  // Detect the focused work surfaces — volume viewer and description
+  // editor. Their URL paths are /projects/:projectId/volumes/:volumeId
+  // and /projects/:projectId/describe/:entryId; matching by file name
+  // substrings ("/viewer/", "/describe/") miss the volume URL because
+  // the route file name contains "viewer" but the URL does not.
+  const isViewer = /^\/projects\/[^/]+\/volumes\/[^/]+\/?$/.test(
+    location.pathname,
+  );
+  const isDescriptionEditor = /^\/projects\/[^/]+\/describe\/[^/]+\/?$/.test(
+    location.pathname,
+  );
+  // Both render their own full-height layouts, so the chrome's content
+  // slot drops its padding and overflow behaviour for them and defaults
+  // the sidebar to its narrow rail to maximise working space.
+  const isFocusedSurface = isViewer || isDescriptionEditor;
 
   // Sidebar collapse state — initialise false, read localStorage on mount
   const [collapsed, setCollapsed] = useState(false);
+  // Per-visit override for focused surfaces. The narrow rail is the
+  // default on viewer/describer, but the toggle still works; resets to
+  // `null` (i.e. back to default) when navigating between focused and
+  // non-focused routes so the saved preference doesn't get clobbered.
+  const [focusedOverride, setFocusedOverride] = useState<boolean | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("sidebar-collapsed");
@@ -68,7 +85,19 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
     }
   }, []);
 
+  useEffect(() => {
+    setFocusedOverride(null);
+  }, [isFocusedSurface]);
+
+  const effectiveCollapsed = isFocusedSurface
+    ? (focusedOverride ?? true)
+    : collapsed;
+
   const toggleCollapsed = () => {
+    if (isFocusedSurface) {
+      setFocusedOverride((prev) => !(prev ?? true));
+      return;
+    }
     setCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem("sidebar-collapsed", String(next));
@@ -76,30 +105,32 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
     });
   };
 
-  // Full-page escape for viewer and description editor
-  if (!showChrome) {
-    return <Outlet />;
-  }
-
   return (
     <div className="flex h-screen flex-col bg-white">
-      {/* Header bar */}
-      <header className="flex h-14 items-center justify-between border-b border-[#E7E5E4] bg-[#FAFAF9] px-4">
+      {/* Header bar — wordmark in verdigris (Spectral 22px), partner
+          name in stone-500 sans. Per design-system §Chrome. */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50 px-4">
         <div className="flex items-center">
-          <img src="/pomegranate.svg" alt="" className="h-8" aria-hidden="true" />
-          <div className="mx-3 h-6 w-px bg-[#E7E5E4]" aria-hidden="true" />
-          <span className="font-sans text-sm text-[#78716C]">
-            Fisqua: <strong className="font-semibold">Neogranadina</strong>
+          <img
+            src="/brand/fisqua-mark.svg"
+            alt=""
+            className="h-7 w-7"
+            aria-hidden="true"
+          />
+          <span className="ml-2 font-display text-[22px] font-semibold leading-none text-verdigris">
+            Fisqua
           </span>
+          <div className="mx-3 h-5 w-px bg-stone-200" aria-hidden="true" />
+          <span className="font-sans text-sm text-stone-500">Neogranadina</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-sans text-sm text-[#78716C]">
+          <span className="font-sans text-sm text-stone-500">
             {loaderData.user.email}
           </span>
           <Form method="post" action="/auth/logout">
             <button
               type="submit"
-              className="font-sans text-sm font-medium text-[#8B2942] hover:underline"
+              className="font-sans text-sm font-medium text-indigo hover:underline"
             >
               {tDashboard("nav.log_out")}
             </button>
@@ -109,24 +140,61 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
 
       {/* Main area: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          user={{
-            isAdmin: loaderData.user.isAdmin,
-            isSuperAdmin: loaderData.user.isSuperAdmin,
-            isCollabAdmin: loaderData.user.isCollabAdmin,
-            isArchiveUser: loaderData.user.isArchiveUser,
-            isUserManager: loaderData.user.isUserManager,
-            isCataloguer: loaderData.user.isCataloguer,
-            hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
-          }}
-          collapsed={collapsed}
-          onToggle={toggleCollapsed}
-        />
-        <div className="flex flex-1 flex-col overflow-y-auto">
-          <div className="flex-1 p-6">
+        {isFocusedSurface ? (
+          // On focused surfaces the sidebar floats above the work area
+          // when expanded, so the viewer/describer keeps its column
+          // widths instead of reflowing. The fixed-width 64 px slot in
+          // the flex row matches the collapsed rail; the absolute layer
+          // overlays when the user expands.
+          <div className="relative w-16 shrink-0">
+            <div className="absolute inset-y-0 left-0 z-30 flex">
+              <Sidebar
+                user={{
+                  isAdmin: loaderData.user.isAdmin,
+                  isSuperAdmin: loaderData.user.isSuperAdmin,
+                  isCollabAdmin: loaderData.user.isCollabAdmin,
+                  isArchiveUser: loaderData.user.isArchiveUser,
+                  isUserManager: loaderData.user.isUserManager,
+                  isCataloguer: loaderData.user.isCataloguer,
+                  hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
+                }}
+                collapsed={effectiveCollapsed}
+                onToggle={toggleCollapsed}
+              />
+            </div>
+          </div>
+        ) : (
+          <Sidebar
+            user={{
+              isAdmin: loaderData.user.isAdmin,
+              isSuperAdmin: loaderData.user.isSuperAdmin,
+              isCollabAdmin: loaderData.user.isCollabAdmin,
+              isArchiveUser: loaderData.user.isArchiveUser,
+              isUserManager: loaderData.user.isUserManager,
+              isCataloguer: loaderData.user.isCataloguer,
+              hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
+            }}
+            collapsed={effectiveCollapsed}
+            onToggle={toggleCollapsed}
+          />
+        )}
+        <div
+          className={
+            isFocusedSurface
+              ? "flex min-w-0 flex-1 flex-col"
+              : "relative flex flex-1 flex-col"
+          }
+        >
+          <div
+            className={
+              isFocusedSurface
+                ? "min-h-0 flex-1"
+                : "flex-1 overflow-y-auto px-6 pb-16 pt-6"
+            }
+          >
             <Outlet />
           </div>
-          <Footer />
+          {!isFocusedSurface && <Footer />}
         </div>
       </div>
     </div>

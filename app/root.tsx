@@ -32,9 +32,13 @@ export const links: Route.LinksFunction = () => [
     href: "https://fonts.gstatic.com",
     crossOrigin: "anonymous",
   },
+  // Spectral (serif: prose, headings, wordmark) +
+  // Bricolage Grotesque (sans: chrome, buttons, labels) +
+  // JetBrains Mono (mono: codes, IDs). The exact families and axes are
+  // dictated by the Fisqua design-system tokens; see app.css.
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@100..1000&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&display=swap",
   },
 ];
 
@@ -50,6 +54,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta property="og:image" content="/og-image.png" />
         <meta property="og:title" content="Fisqua" />
+        <meta property="og:site_name" content="Fisqua" />
         <Meta />
         <Links />
       </head>

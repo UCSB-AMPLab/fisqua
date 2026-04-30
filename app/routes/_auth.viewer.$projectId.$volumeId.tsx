@@ -763,7 +763,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   );
 
   return (
- <div className="flex h-screen flex-col">
+ <div className="flex h-full flex-col">
  <ViewerTopBar
  volumeName={volume.name}
  projectId={projectId}
@@ -923,11 +923,11 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
  }
  >
  <div
- className="mt-20 max-h-[80vh] w-full max-w-[520px] overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+ className="mt-20 max-h-[80vh] w-full max-w-[520px] overflow-y-auto rounded-xl bg-white p-5 shadow-lg"
  onClick={(e) => e.stopPropagation()}
  >
  <div className="mb-4 flex items-center justify-between">
- <h2 className="font-['Cormorant_Garamond'] text-xl font-semibold text-stone-800">
+ <h2 className="font-display text-xl font-semibold text-stone-800">
  {t("qc_flags:dialog.page_label", {
  position: flagPopover.pagePosition,
  })}
