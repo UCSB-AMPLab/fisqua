@@ -316,7 +316,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
       throw redirect(`/projects/${params.id}/volumes`);
     } catch (err) {
-      if (err instanceof Response && err.status >= 300 && err.status < 400) {
+      if (
+        err instanceof Response &&
+        err.status >= 300 &&
+        err.status < 400
+      ) {
         throw err;
       }
       const msg =
