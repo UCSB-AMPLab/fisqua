@@ -31,18 +31,18 @@ describe("computeChipLabelArgs", () => {
 });
 
 describe("computeChipClassName", () => {
-  it("includes the background and border hex tokens", () => {
+  it("uses stone-100 background and stone-200 border tokens", () => {
     const cls = computeChipClassName();
-    expect(cls).toContain("bg-[#F5F5F4]");
-    expect(cls).toContain("border-[#E7E5E4]");
+    expect(cls).toContain("bg-stone-100");
+    expect(cls).toContain("border-stone-200");
   });
 
-  it("uses stone-600 text at DM Sans 10px bold --,", () => {
+  it("uses stone-600 text at sans 10px bold --,", () => {
     const cls = computeChipClassName();
     expect(cls).toContain("text-stone-600");
     expect(cls).toContain("text-[10px]");
     expect(cls).toContain("font-bold");
-    expect(cls).toContain("font-['DM_Sans']");
+    expect(cls).toContain("font-sans");
   });
 
   it("renders as an inline-flex with gap-1 and small padding", () => {
@@ -55,9 +55,9 @@ describe("computeChipClassName", () => {
     expect(cls).toContain("rounded");
   });
 
-  it("includes a focus ring tied to the burgundy accent --", () => {
+  it("includes a focus ring tied to the indigo accent --", () => {
     const cls = computeChipClassName();
-    expect(cls).toContain("focus:ring-[#8B2942]/40");
+    expect(cls).toContain("focus:ring-indigo/40");
   });
 });
 

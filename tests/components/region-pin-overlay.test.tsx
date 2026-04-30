@@ -83,43 +83,44 @@ describe("computePinInlineStyle (box pin)", () => {
 });
 
 describe("computePinClassName", () => {
-  it("uses burgundy #8B2942 text colour on a final point pin --", () => {
+  it("uses indigo text colour on a final point pin --", () => {
     const cls = computePinClassName(makePin({}));
-    expect(cls).toContain("text-[#8B2942]");
-    expect(cls).not.toContain("text-amber-500");
+    expect(cls).toContain("text-indigo");
+    expect(cls).not.toContain("text-saffron");
   });
 
-  it("uses amber-500 text colour on a draft point pin --", () => {
+  it("uses saffron text colour on a draft point pin --", () => {
     const cls = computePinClassName(makePin({ draft: true }));
-    expect(cls).toContain("text-amber-500");
-    expect(cls).not.toContain("text-[#8B2942] ");
+    expect(cls).toContain("text-saffron");
+    const tokens = cls.split(/\s+/);
+    expect(tokens).not.toContain("text-indigo");
   });
 
-  it("uses 2px burgundy border on a final box pin --", () => {
+  it("uses 2px indigo border on a final box pin --", () => {
     const cls = computePinClassName(
       makePin({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 }),
     );
     expect(cls).toContain("border-2");
-    expect(cls).toContain("border-[#8B2942]");
-    expect(cls).toContain("bg-[#8B2942]/15");
+    expect(cls).toContain("border-indigo");
+    expect(cls).toContain("bg-indigo/15");
   });
 
-  it("uses dashed amber-500 border and amber-500/10 fill on a draft box pin --", () => {
+  it("uses dashed saffron border and saffron/10 fill on a draft box pin --", () => {
     const cls = computePinClassName(
       makePin({ x: 0.1, y: 0.1, w: 0.3, h: 0.3, draft: true }),
     );
     expect(cls).toContain("border-dashed");
-    expect(cls).toContain("border-amber-500");
-    expect(cls).toContain("bg-amber-500/10");
+    expect(cls).toContain("border-saffron");
+    expect(cls).toContain("bg-saffron/10");
   });
 
-  it("adds a 2px burgundy ring when highlighted -- chip-click flash", () => {
+  it("adds a 2px indigo ring when highlighted -- chip-click flash", () => {
     const cls = computePinClassName(
       makePin({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 }),
       { highlighted: true },
     );
     expect(cls).toContain("ring-2");
-    expect(cls).toContain("ring-[#8B2942]/50");
+    expect(cls).toContain("ring-indigo/50");
   });
 
   it("omits the highlight ring when highlighted = false (default)", () => {
@@ -127,17 +128,17 @@ describe("computePinClassName", () => {
       makePin({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 }),
     );
     // Hover ring is baseline; highlight ring (non-hover, non-focus) is gated.
-    expect(cls).not.toContain("ring-[#8B2942]/50 ring-2");
+    expect(cls).not.toContain("ring-indigo/50 ring-2");
     // Still has hover ring in the base string; that's by design.
     expect(cls).toContain("hover:ring-2");
   });
 
-  it("box pin className includes a hover ring at 50% burgundy --", () => {
+  it("box pin className includes a hover ring at 50% indigo --", () => {
     const cls = computePinClassName(
       makePin({ x: 0.1, y: 0.1, w: 0.3, h: 0.3 }),
     );
     expect(cls).toContain("hover:ring-2");
-    expect(cls).toContain("hover:ring-[#8B2942]/50");
+    expect(cls).toContain("hover:ring-indigo/50");
   });
 });
 
