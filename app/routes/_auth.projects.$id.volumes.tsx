@@ -150,11 +150,11 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">{t("project:heading.volumes")}</h2>
+        <h2 className="font-sans text-[1.5rem] font-semibold text-stone-700">{t("project:heading.volumes")}</h2>
         <button
           type="button"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+          className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           {showAddForm ? t("common:button.cancel") : t("project:volumes.add_volumes")}
         </button>
@@ -162,17 +162,17 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
 
       {/* Delete error */}
       {deleteError && (
-        <p className="mt-3 text-sm text-red-600">{deleteError}</p>
+        <p className="mt-3 text-sm text-madder-deep">{deleteError}</p>
       )}
 
       {/* Add form panel */}
       {showAddForm && (
-        <div className="mt-4 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-4">
+        <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
           <Form method="post">
             <input type="hidden" name="_action" value="add-volumes" />
             <label
               htmlFor="manifestUrls"
-              className="block font-sans text-sm font-medium text-[#78716C]"
+              className="block font-sans text-sm font-medium text-indigo"
             >
               {t("project:volumes.manifest_urls")}
             </label>
@@ -181,14 +181,14 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
               name="manifestUrls"
               rows={4}
               placeholder={t("project:volumes.manifest_placeholder")}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
             {addError && (
-              <p className="mt-2 font-sans text-sm text-red-600">{addError}</p>
+              <p className="mt-2 font-sans text-sm text-madder-deep">{addError}</p>
             )}
             <button
               type="submit"
-              className="mt-3 rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+              className="mt-3 rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("project:volumes.add_volumes")}
             </button>
@@ -203,8 +203,8 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
                   key={i}
                   className={`rounded-md px-3 py-2 text-sm ${
                     result.success
-                      ? "bg-green-50 text-green-800"
-                      : "bg-red-50 text-red-800"
+                      ? "bg-verdigris-tint text-verdigris-deep"
+                      : "bg-madder-tint text-madder-deep"
                   }`}
                 >
                   {result.success ? (
@@ -231,8 +231,8 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
 
       {/* Volume grid */}
       {volumes.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-8 text-center">
-          <p className="font-sans text-sm text-[#A8A29E]">
+        <div className="mt-6 rounded-lg border border-stone-200 bg-stone-50 p-8 text-center">
+          <p className="font-sans text-sm text-stone-400">
             {t("project:empty.no_volumes_add")}
           </p>
         </div>

@@ -12,9 +12,9 @@
 import { useTranslation } from "react-i18next";
 
 const STATUS_STYLES: Record<string, string> = {
-  approved: "bg-[#D6E8DB] text-[#2F6B45]",
-  proposed: "bg-[#FEF3C7] text-[#78350F]",
-  deprecated: "bg-[#F5F5F4] text-[#78716C]",
+  approved: "bg-verdigris-tint text-verdigris-deep",
+  proposed: "bg-saffron-tint text-saffron-deep",
+  deprecated: "bg-stone-100 text-stone-600",
 };
 
 interface VocabularyStatusBadgeProps {
@@ -28,7 +28,7 @@ export function VocabularyStatusBadge({ status }: VocabularyStatusBadgeProps) {
 
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${style}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-[11px] font-semibold uppercase tracking-[0.02em] ${style}`}
     >
       {label}
     </span>

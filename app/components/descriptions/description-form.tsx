@@ -89,7 +89,7 @@ export function DescriptionForm({
   const { t } = useTranslation("descriptions_admin");
 
   return (
-    <div className="rounded-lg border border-[#E7E5E4] bg-white p-6">
+    <div className="rounded-lg border border-stone-200 bg-white p-6">
       {/* 1. Identity (ISAD 3.1) */}
       <CollapsibleSection title={t("section_identity")}>
         <div className="space-y-4">
@@ -134,17 +134,17 @@ export function DescriptionForm({
             <div>
               <label
                 htmlFor="descriptionLevel"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field_descriptionLevel")}
-                <span className="text-[#DC2626]"> *</span>
+                <span className="text-madder"> *</span>
               </label>
               <select
                 id="descriptionLevel"
                 name="descriptionLevel"
                 defaultValue={description.descriptionLevel}
                 aria-required="true"
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 {allowedLevels.map((level) => (
                   <option key={level} value={level}>
@@ -153,7 +153,7 @@ export function DescriptionForm({
                 ))}
               </select>
               {errors?.descriptionLevel?.[0] && (
-                <p className="mt-1 text-xs text-[#DC2626]">
+                <p className="mt-1 text-xs text-madder">
                   {t("error_invalid_level")}
                 </p>
               )}
@@ -170,7 +170,7 @@ export function DescriptionForm({
             <div>
               <label
                 htmlFor="resourceType"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field_resourceType")}
               </label>
@@ -178,7 +178,7 @@ export function DescriptionForm({
                 id="resourceType"
                 name="resourceType"
                 defaultValue={description.resourceType ?? ""}
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 <option value="">{""}</option>
                 {RESOURCE_TYPES.map((rt) => (
@@ -251,17 +251,17 @@ export function DescriptionForm({
             <div>
               <label
                 htmlFor="repositoryId"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field_repositoryId")}
-                <span className="text-[#DC2626]"> *</span>
+                <span className="text-madder"> *</span>
               </label>
               <select
                 id="repositoryId"
                 name="repositoryId"
                 defaultValue={description.repositoryId}
                 aria-required="true"
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 {repositories.map((repo) => (
                   <option key={repo.id} value={repo.id}>
@@ -396,7 +396,7 @@ export function DescriptionForm({
             value={description.internalNotes}
             isEditing={isEditing}
             rows={4}
-            className="bg-[#FAFAF9]"
+            className="bg-stone-50"
           />
         </div>
       </CollapsibleSection>
@@ -467,9 +467,9 @@ export function DescriptionForm({
                 id="hasDigital"
                 name="hasDigital"
                 defaultChecked={description.hasDigital ?? false}
-                className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+                className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
               />
-              <label htmlFor="hasDigital" className="text-sm text-[#44403C]">
+              <label htmlFor="hasDigital" className="text-sm font-medium text-indigo">
                 {t("field_hasDigital")}
               </label>
             </div>
@@ -502,25 +502,25 @@ export function DescriptionForm({
 
       {/* Save actions (edit mode only) */}
       {isEditing && (
-        <div className="mt-6 space-y-3 border-t border-[#E7E5E4] pt-4">
+        <div className="mt-6 space-y-3 border-t border-stone-200 pt-4">
           <input
             type="text"
             name="commitNote"
             placeholder={t("commit_note_placeholder")}
-            className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+            className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
           <div className="flex gap-3">
             <button
               type="submit"
               name="_action"
               value="update"
-              className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("save_changes")}
             </button>
             <button
               type="button"
-              className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               data-action="discard"
             >
               {t("discard_changes")}
@@ -545,8 +545,8 @@ function ReadOnlyField({
 }) {
   return (
     <div>
-      <span className="mb-1 block text-xs text-[#78716C]">{label}</span>
-      <p className="text-sm text-[#44403C]">{value || "\u2014"}</p>
+      <span className="mb-1 block text-xs text-stone-500">{label}</span>
+      <p className="text-sm text-stone-700">{value || "\u2014"}</p>
     </div>
   );
 }
@@ -573,9 +573,9 @@ function ReadOnlyOrInput({
   const errorId = error ? `${name}-error` : undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
-        {required && <span className="text-[#DC2626]"> *</span>}
+        {required && <span className="text-madder"> *</span>}
       </label>
       <input
         type="text"
@@ -584,10 +584,10 @@ function ReadOnlyOrInput({
         defaultValue={value ?? ""}
         aria-required={required ? "true" : undefined}
         aria-describedby={errorId}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}
@@ -616,7 +616,7 @@ function ReadOnlyOrTextarea({
 
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
       </label>
       <textarea
@@ -624,7 +624,7 @@ function ReadOnlyOrTextarea({
         name={name}
         rows={rows}
         defaultValue={value ?? ""}
-        className={`w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942] ${className}`}
+        className={`w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo ${className}`}
       />
     </div>
   );

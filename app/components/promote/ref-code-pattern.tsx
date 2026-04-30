@@ -28,7 +28,7 @@ export function RefCodePattern({ onApply }: RefCodePatternProps) {
 
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-stone-300 bg-stone-50 px-4 py-3">
-      <label className="text-xs text-stone-500">
+      <label className="text-xs font-medium text-indigo">
         {t("refCode.patternLabel")}
       </label>
       <input
@@ -36,14 +36,14 @@ export function RefCodePattern({ onApply }: RefCodePatternProps) {
         value={prefix}
         onChange={(e) => setPrefix(e.target.value)}
         placeholder={t("refCode.prefixPlaceholder")}
-        className="rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-[#8B2942] focus:ring-[#8B2942] focus:outline-none"
+        className="rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-indigo focus:ring-indigo focus:outline-none"
       />
       <input
         type="number"
         value={startNumber}
         onChange={(e) => setStartNumber(Number(e.target.value) || 1)}
         min={1}
-        className="w-20 rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-[#8B2942] focus:ring-[#8B2942] focus:outline-none"
+        className="w-20 rounded border border-stone-300 px-2 py-1 font-mono text-sm focus:border-indigo focus:ring-indigo focus:outline-none"
       />
       <button
         type="button"

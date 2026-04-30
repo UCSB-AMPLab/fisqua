@@ -26,6 +26,9 @@ function makeUser(overrides: Partial<User> = {}): User {
     isSuperAdmin: false,
     isCollabAdmin: false,
     isArchiveUser: false,
+    isUserManager: false,
+    isCataloguer: false,
+    lastActiveAt: null,
     githubId: null,
     ...overrides,
   };

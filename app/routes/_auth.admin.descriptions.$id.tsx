@@ -819,8 +819,8 @@ export default function DescriptionDetailPage({
     <AdminIiifViewer manifestUrl={description.iiifManifestUrl} />
   ) : (
     <div className="flex h-full flex-col items-center justify-center text-center">
-      <Image className="h-16 w-16 text-[#D6D3D1]" />
-      <p className="mt-4 text-sm text-[#78716C]">{t("no_manifest")}</p>
+      <Image className="h-16 w-16 text-stone-300" />
+      <p className="mt-4 text-sm text-stone-500">{t("no_manifest")}</p>
       {isEditing && (
         <button
           type="button"
@@ -831,7 +831,7 @@ export default function DescriptionDetailPage({
             field?.scrollIntoView({ behavior: "smooth", block: "center" });
             field?.focus();
           }}
-          className="mt-2 text-xs text-[#6B1F33] underline"
+          className="mt-2 text-xs text-indigo-deep underline"
         >
           {t("add_manifest")}
         </button>
@@ -847,39 +847,39 @@ export default function DescriptionDetailPage({
           <li>
             <Link
               to="/admin/descriptions"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("breadcrumb_root")}
             </Link>
           </li>
           {visibleAncestors.map((ancestor, i) => (
             <li key={ancestor.id} className="flex items-center gap-1">
-              <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+              <ChevronRight className="h-4 w-4 text-stone-400" />
               {/* Show collapsed indicator after first ancestor */}
               {!showAllAncestors && i === 1 && collapsedCount > 0 && (
                 <>
-                  <span className="text-[#A8A29E]">...</span>
-                  <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+                  <span className="text-stone-400">...</span>
+                  <ChevronRight className="h-4 w-4 text-stone-400" />
                 </>
               )}
               <Link
                 to={`/admin/descriptions/${ancestor.id}`}
-                className="text-[#78716C] hover:text-[#44403C]"
+                className="text-stone-500 hover:text-stone-700"
               >
                 {ancestor.title}
               </Link>
             </li>
           ))}
           <li className="flex items-center gap-1">
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
-            <span className="text-[#44403C]">{description.title}</span>
+            <ChevronRight className="h-4 w-4 text-stone-400" />
+            <span className="text-stone-700">{description.title}</span>
           </li>
         </ol>
       </nav>
 
       {/* Title row */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-2xl font-semibold text-stone-700">
           {description.title}
         </h1>
 
@@ -887,7 +887,7 @@ export default function DescriptionDetailPage({
           <div className="flex gap-2">
             <Link
               to={`/admin/descriptions/new?parentId=${description.id}`}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Plus className="h-4 w-4" />
               {t("add_child")}
@@ -895,7 +895,7 @@ export default function DescriptionDetailPage({
             <button
               type="button"
               onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               <Pencil className="h-4 w-4" />
               {t("edit")}
@@ -914,8 +914,8 @@ export default function DescriptionDetailPage({
               }
               className={
                 hasChildren
-                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white opacity-50"
-                  : "inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment opacity-50"
+                  : "inline-flex items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
               }
             >
               <Trash2 className="h-4 w-4" />
@@ -927,10 +927,10 @@ export default function DescriptionDetailPage({
 
       {/* Level and ref code badges */}
       <div className="mt-2 flex items-center gap-3">
-        <span className="rounded bg-[#F5F5F4] px-2 py-0.5 text-xs font-medium text-[#78716C]">
+        <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
           {t(`level_${description.descriptionLevel}`)}
         </span>
-        <span className="text-xs text-[#78716C]">
+        <span className="text-xs text-stone-500">
           {description.referenceCode}
         </span>
         <PublishToggle
@@ -953,7 +953,7 @@ export default function DescriptionDetailPage({
 
       {/* Autosave status */}
       {isEditing && draftStatus && (
-        <p className="mt-2 text-xs text-[#A8A29E]">
+        <p className="mt-2 text-xs text-stone-400">
           {draftStatus === "saving"
             ? t("autosave_saving")
             : t("autosave_saved")}
@@ -962,14 +962,14 @@ export default function DescriptionDetailPage({
 
       {/* Success banner */}
       {successMessage === "updated" && (
-        <div className="mt-4 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
           {t("success_updated")}
         </div>
       )}
 
       {/* Error banner */}
       {globalError && (
-        <div className="mt-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {globalError === "delete_blocked"
             ? t("error_delete_blocked", {
                 count:
@@ -1009,15 +1009,15 @@ export default function DescriptionDetailPage({
       {/* Delete confirmation modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-[#44403C]">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-stone-700">
               {t("delete_description")}
             </h2>
-            <p className="mt-2 text-sm text-[#78716C]">
+            <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
               {t("error_delete_confirm", { title: description.title })}
             </p>
             {(entityLinkCount > 0 || placeLinkCount > 0) && (
-              <p className="mt-2 text-sm text-[#DC2626]">
+              <p className="mt-2 text-sm text-madder">
                 {t("error_delete_cascade", {
                   entityCount: entityLinkCount,
                   placeCount: placeLinkCount,
@@ -1028,7 +1028,7 @@ export default function DescriptionDetailPage({
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 {t("delete_cancel")}
               </button>
@@ -1036,7 +1036,7 @@ export default function DescriptionDetailPage({
                 <input type="hidden" name="_action" value="delete" />
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  className="rounded-md bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
                 >
                   {t("delete_description")}
                 </button>
@@ -1051,8 +1051,8 @@ export default function DescriptionDetailPage({
         "error" in actionData &&
         actionData.error === "conflict" && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-              <h2 className="text-lg font-semibold text-[#44403C]">
+            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+              <h2 className="text-lg font-semibold text-stone-700">
                 {t("overwrite_confirm", {
                   name: "modifiedBy" in actionData ? actionData.modifiedBy : "",
                   time:
@@ -1067,7 +1067,7 @@ export default function DescriptionDetailPage({
                 <button
                   type="button"
                   onClick={() => setShowConflictDialog(false)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                  className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
                 >
                   {t("overwrite_cancel")}
                 </button>
@@ -1081,7 +1081,7 @@ export default function DescriptionDetailPage({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+                    className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
                   >
                     {t("overwrite_button")}
                   </button>

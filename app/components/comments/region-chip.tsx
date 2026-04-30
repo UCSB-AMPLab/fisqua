@@ -44,11 +44,11 @@ export function computeChipClassName(): string {
   return [
  "inline-flex items-center gap-1",
  "px-2 py-1 rounded",
- "bg-[#F5F5F4]",
- "border border-[#E7E5E4]",
+ "bg-stone-100",
+ "border border-stone-200",
  "text-stone-600 text-[10px] font-bold",
- "font-['DM_Sans']",
- "hover:bg-[#E7E5E4] focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40",
+ "font-sans",
+ "hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-indigo/40",
  "transition-colors",
   ].join(" ");
 }
@@ -68,7 +68,7 @@ export function RegionChip({
  className={computeChipClassName()}
  data-testid="region-chip"
  >
- <MapPin size={10} color="#8B2942" aria-hidden="true" />
+ <MapPin size={10} color="#1F2E4D" aria-hidden="true" />
  <span>{t(key, { ...vars, defaultValue })}</span>
  </button>
   );

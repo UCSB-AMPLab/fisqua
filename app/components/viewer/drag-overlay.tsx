@@ -38,7 +38,7 @@ export function DragOverlay({ visible, top, width, isInvalid }: DragOverlayProps
  {/* Ghost sequence badge */}
  <div
  className={`absolute left-2 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm ${
- isInvalid ? "bg-red-400" : "bg-teal-600"
+ isInvalid ? "bg-madder" : "bg-teal-600"
  }`}
  >
  &bull;
@@ -47,7 +47,7 @@ export function DragOverlay({ visible, top, width, isInvalid }: DragOverlayProps
  {/* Ghost horizontal line */}
  <div
  className={`absolute left-16 right-0 top-1/2 -translate-y-1/2 border-t-[3px] ${
- isInvalid ? "border-red-400" : "border-teal-500"
+ isInvalid ? "border-madder" : "border-teal-500"
  }`}
  />
  </div>

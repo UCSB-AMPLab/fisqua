@@ -54,8 +54,8 @@ function WaitingBadge({ days }: { days: number }) {
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
         urgent
-          ? "bg-[#8B2942] text-white"
-          : "bg-amber-100 text-amber-700"
+          ? "bg-indigo text-parchment"
+          : "bg-saffron-tint text-saffron-deep"
       }`}
     >
       {days === 0 ? t("today") : t("days_waiting", { count: days })}
@@ -73,7 +73,7 @@ function ReviewerEntryCard({ entry }: { entry: ReviewerEntryCardData }) {
   return (
     <Link
       to={`/projects/${entry.projectId}/describe/${entry.id}`}
-      className="block rounded-lg border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm"
+      className="block rounded-lg border border-stone-200 p-4 hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -97,7 +97,7 @@ function ResegFlagCard({ flag }: { flag: ResegFlagData }) {
   return (
     <Link
       to={`/projects/${flag.projectId}/volumes/${flag.volumeId}`}
-      className="block rounded-lg border border-amber-200 bg-[#FEF3C7] p-4 hover:border-amber-300 hover:shadow-sm"
+      className="block rounded-lg border border-saffron bg-saffron-tint p-4 hover:border-saffron hover:shadow-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -106,11 +106,11 @@ function ResegFlagCard({ flag }: { flag: ResegFlagData }) {
           </h3>
           <p className="mt-0.5 font-mono text-xs text-stone-500">{flag.referenceCode}</p>
         </div>
-        <span className="inline-flex items-center rounded-full bg-[#8B2942] px-2.5 py-0.5 text-xs font-medium text-white">
+        <span className="inline-flex items-center rounded-full bg-indigo px-2.5 py-0.5 text-xs font-medium text-parchment">
           {t(`description:dashboard.problem_type.${flag.problemType}`)}
         </span>
       </div>
-      <div className="mt-2 rounded bg-[#F5E6EA] px-3 py-2 text-sm text-stone-700">
+      <div className="mt-2 rounded bg-indigo-tint px-3 py-2 text-sm text-stone-700">
         {flag.description}
       </div>
     </Link>
@@ -130,16 +130,16 @@ export function ReviewerDescriptionTab({ data }: ReviewerDescriptionTabProps) {
     return (
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+            <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">
+          <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">
             {t("empty.no_description_review_title")}
           </h3>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("empty.no_description_review_body")}
           </p>
         </div>

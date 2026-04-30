@@ -31,9 +31,9 @@ interface AvailableProject {
 }
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#F9EDD4] text-[#8B6914]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+  lead: "bg-saffron-tint text-saffron-deep",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
 };
 
 export async function loader({ context }: Route.LoaderArgs) {
@@ -293,7 +293,7 @@ function AssignForm({
       <select
         name="projectId"
         required
-        className="rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+        className="rounded-lg border border-stone-200 px-2 py-1.5 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
       >
         <option value="">{t("select_project")}</option>
         {availableProjects.map((p) => (
@@ -306,7 +306,7 @@ function AssignForm({
       <select
         name="role"
         required
-        className="rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+        className="rounded-lg border border-stone-200 px-2 py-1.5 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
       >
         <option value="">{t("select_role")}</option>
         <option value="lead">{t("role_lead")}</option>
@@ -316,14 +316,14 @@ function AssignForm({
 
       <button
         type="submit"
-        className="rounded-lg bg-[#8B2942] px-3 py-1.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+        className="rounded-md bg-indigo px-3 py-1.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
       >
         {t("assign")}
       </button>
       <button
         type="button"
         onClick={onClose}
-        className="rounded-lg border border-[#E7E5E4] px-3 py-1.5 font-sans text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+        className="rounded-lg border border-stone-200 px-3 py-1.5 font-sans text-sm text-stone-500 hover:bg-stone-50"
       >
         {t("cancel")}
       </button>
@@ -349,7 +349,7 @@ function RemoveButton({
       <input type="hidden" name="membershipId" value={membershipId} />
       <button
         type="submit"
-        className="ml-1 text-[#A8A29E] hover:text-[#8B2942]"
+        className="ml-1 text-stone-400 hover:text-indigo"
         title={t("remove_from_project")}
         onClick={(e) => {
           if (
@@ -376,56 +376,56 @@ export default function AdminCataloguingTeam({
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+      <h1 className="font-display text-4xl font-semibold text-stone-700">
         {t("title")}
       </h1>
 
       {/* Role legend */}
-      <div className="flex flex-wrap items-center gap-3 font-sans text-xs text-[#78716C]">
+      <div className="flex flex-wrap items-center gap-3 font-sans text-xs text-stone-500">
         <span className="font-semibold uppercase tracking-wider">
           {t("roles_legend")}
         </span>
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${ROLE_BADGE_COLORS.lead}`}>
           {t("role_lead")}
         </span>
-        <span className="text-[#78716C]">{t("role_lead_description")}</span>
-        <span className="text-[#D6D3D1]">·</span>
+        <span className="text-stone-500">{t("role_lead_description")}</span>
+        <span className="text-stone-300">·</span>
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${ROLE_BADGE_COLORS.cataloguer}`}>
           {t("role_cataloguer")}
         </span>
-        <span className="text-[#78716C]">{t("role_cataloguer_description")}</span>
-        <span className="text-[#D6D3D1]">·</span>
+        <span className="text-stone-500">{t("role_cataloguer_description")}</span>
+        <span className="text-stone-300">·</span>
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${ROLE_BADGE_COLORS.reviewer}`}>
           {t("role_reviewer")}
         </span>
-        <span className="text-[#78716C]">{t("role_reviewer_description")}</span>
+        <span className="text-stone-500">{t("role_reviewer_description")}</span>
       </div>
 
       {team.length === 0 ? (
-        <p className="font-sans text-sm text-[#A8A29E]">
+        <p className="font-sans text-sm text-stone-400">
           {t("idle")}
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
-          <table className="min-w-full divide-y divide-[#E7E5E4]">
-            <thead className="bg-[#FAFAF9]">
+        <div className="overflow-hidden rounded-lg border border-stone-200">
+          <table className="min-w-full divide-y divide-stone-200">
+            <thead className="bg-stone-50">
               <tr>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("name")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("email")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                   {t("projects")}
                 </th>
-                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
                   {t("active_volumes")}
                 </th>
-                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
                   {t("active_entries")}
                 </th>
-                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
                   {/* Actions column */}
                 </th>
               </tr>
@@ -433,15 +433,15 @@ export default function AdminCataloguingTeam({
             <tbody className="divide-y divide-stone-100">
               {team.map((member) => (
                 <tr key={member.id}>
-                  <td className="px-4 py-3 font-sans text-sm font-semibold text-[#44403C]">
+                  <td className="px-4 py-3 font-sans text-sm font-semibold text-stone-700">
                     {member.name || "\u2014"}
                   </td>
-                  <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
+                  <td className="px-4 py-3 font-sans text-sm text-stone-500">
                     {member.email}
                   </td>
                   <td className="px-4 py-3">
                     {member.isIdle ? (
-                      <span className="font-sans text-xs text-[#A8A29E]">
+                      <span className="font-sans text-xs text-stone-400">
                         {t("idle")}
                       </span>
                     ) : member.projects.length > 0 ? (
@@ -468,7 +468,7 @@ export default function AdminCataloguingTeam({
                         ))}
                       </div>
                     ) : (
-                      <span className="font-sans text-xs text-[#A8A29E]">
+                      <span className="font-sans text-xs text-stone-400">
                         {t("idle")}
                       </span>
                     )}
@@ -480,10 +480,10 @@ export default function AdminCataloguingTeam({
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-sans text-sm text-[#44403C]">
+                  <td className="px-4 py-3 text-right font-sans text-sm text-stone-700">
                     {member.activeVolumes}
                   </td>
-                  <td className="px-4 py-3 text-right font-sans text-sm text-[#44403C]">
+                  <td className="px-4 py-3 text-right font-sans text-sm text-stone-700">
                     {member.activeEntries}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -491,7 +491,7 @@ export default function AdminCataloguingTeam({
                       <button
                         type="button"
                         onClick={() => setAssigningUserId(member.id)}
-                        className="font-sans text-xs text-[#78716C] hover:text-[#44403C]"
+                        className="font-sans text-xs text-stone-500 hover:text-stone-700"
                       >
                         {t("assign_to_project")}
                       </button>

@@ -1,27 +1,314 @@
+/**
+ * Fisqua design system — application stylesheet
+ *
+ * Imports Tailwind, defines the CSS custom properties from the Fisqua
+ * design system (indigo + verdigris + madder palette, Spectral +
+ * Bricolage Grotesque + JetBrains Mono typography), and exposes them
+ * as Tailwind v4 theme tokens so utilities like `bg-indigo`,
+ * `text-verdigris`, `border-madder`, and `font-serif` resolve. Source
+ * of truth for every value is the design-system project's
+ * `colors_and_type.css`; do not introduce values that aren't in that
+ * file.
+ *
+ * @version v0.3.2
+ */
 @import "tailwindcss" source(".");
 
-@theme {
-  --color-burgundy: #8B2942;
-  --color-burgundy-deep: #6B1F33;
-  --color-burgundy-light: #B14D66;
-  --color-burgundy-dark: #4A1522;
-  --color-pale-rose: #F5E6EA;
-  --color-ochre: #C5965F;
-  --color-sage: #8A9B8E;
+@import url("https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&display=swap");
 
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-serif: "Crimson Text", ui-serif, Georgia, Cambria, "Times New Roman",
-    Times, serif;
-  --font-display: "Cormorant Garamond", ui-serif, Georgia, Cambria,
-    "Times New Roman", Times, serif;
+@theme {
+  /* ── Brand: Indigo (ink) ───────────────────────────────────────── */
+  --color-indigo: #1f2e4d;
+  --color-indigo-deep: #14203a;
+  --color-indigo-soft: #3f537a;
+  --color-indigo-tint: #dde3ee;
+  --color-indigo-wash: #eef1f7;
+
+  /* ── Brand: Verdigris (identity) ───────────────────────────────── */
+  --color-verdigris: #3e7a6e;
+  --color-verdigris-deep: #2c5c53;
+  --color-verdigris-soft: #6b9e92;
+  --color-verdigris-tint: #dceae6;
+  --color-verdigris-wash: #eef5f2;
+
+  /* ── Brand: Madder (accent) ────────────────────────────────────── */
+  --color-madder: #b5533d;
+  --color-madder-deep: #8c3825;
+  --color-madder-soft: #d88673;
+  --color-madder-tint: #f2ddd3;
+  --color-madder-wash: #faf1ec;
+
+  /* ── Auxiliary dyes ────────────────────────────────────────────── */
+  --color-saffron: #c68a2e;
+  --color-saffron-deep: #8b5e14;
+  --color-saffron-tint: #f5e6c7;
+
+  --color-sage: #7fa886;
+  --color-sage-deep: #3e5c45;
+  --color-sage-soft: #9fbba3;
+  --color-sage-tint: #e1ecdf;
+  --color-sage-wash: #eff5ee;
+
+  /* ── Surfaces ──────────────────────────────────────────────────── */
+  --color-parchment: #f4efe6;
+  --color-parchment-deep: #ebe3d2;
+
+  /* ── Typography ────────────────────────────────────────────────── */
+  --font-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Spectral", ui-serif, Georgia, "Times New Roman", serif;
+  --font-display: "Spectral", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
+/* CSS custom properties exposed at :root so non-utility consumers
+   (component-level `style`, the `.fs-*` semantic type tokens, status
+   pair lookups) can reach them without going through Tailwind. */
+:root {
+  --indigo: #1f2e4d;
+  --indigo-deep: #14203a;
+  --indigo-soft: #3f537a;
+  --indigo-tint: #dde3ee;
+  --indigo-wash: #eef1f7;
+
+  --verdigris: #3e7a6e;
+  --verdigris-deep: #2c5c53;
+  --verdigris-soft: #6b9e92;
+  --verdigris-tint: #dceae6;
+  --verdigris-wash: #eef5f2;
+
+  --madder: #b5533d;
+  --madder-deep: #8c3825;
+  --madder-soft: #d88673;
+  --madder-tint: #f2ddd3;
+  --madder-wash: #faf1ec;
+
+  --parchment: #f4efe6;
+  --parchment-deep: #ebe3d2;
+
+  --stone-50: #fafaf9;
+  --stone-100: #f5f5f4;
+  --stone-200: #e7e5e4;
+  --stone-300: #d6d3d1;
+  --stone-400: #a8a29e;
+  --stone-500: #78716c;
+  --stone-600: #57534e;
+  --stone-700: #44403c;
+  --stone-800: #292524;
+  --stone-900: #1c1917;
+
+  --bg: #ffffff;
+  --bg-subtle: var(--stone-50);
+  --bg-branded: var(--parchment);
+  --border: var(--stone-200);
+  --border-strong: var(--stone-300);
+
+  --fg-1: var(--indigo);
+  --fg-2: var(--indigo-soft);
+  --fg-3: var(--stone-500);
+  --fg-brand: var(--verdigris);
+  --fg-accent: var(--madder);
+
+  --approved-bg: var(--verdigris-tint);
+  --approved-fg: var(--verdigris-deep);
+  --returned-bg: var(--madder-tint);
+  --returned-fg: var(--madder-deep);
+  --in-progress-bg: var(--indigo-tint);
+  --in-progress-fg: var(--indigo);
+  --draft-bg: var(--stone-100);
+  --draft-fg: var(--stone-600);
+
+  --saffron: #c68a2e;
+  --saffron-tint: #f5e6c7;
+  --saffron-bg: var(--saffron-tint);
+  --saffron-fg: #8b5e14;
+
+  --sage: #7fa886;
+  --sage-deep: #3e5c45;
+  --sage-soft: #9fbba3;
+  --sage-tint: #e1ecdf;
+  --sage-wash: #eff5ee;
+  --sage-bg: var(--sage-tint);
+  --sage-fg: var(--sage-deep);
+  --reviewed-bg: var(--sage-tint);
+  --reviewed-fg: var(--sage-deep);
+
+  --marker-cataloguer: var(--verdigris-deep);
+  --marker-reviewer: var(--madder-deep);
+
+  --font-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Spectral", ui-serif, Georgia, "Times New Roman", serif;
+  --font-display: "Spectral", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+  --w-bold: 700;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --r-pill: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08),
+    0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --ring-focus: 0 0 0 2px #fff, 0 0 0 4px var(--verdigris);
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 300ms;
+}
+
+/* Body defaults: Bricolage at opsz 14 for chrome, indigo body text on
+   white. Headings and prose pick up Spectral via the `.fs-*` tokens
+   below or `font-serif` Tailwind utility. */
 html,
 body {
-  @apply bg-white;
+  background: var(--bg);
+  color: var(--fg-1);
 }
 
+body {
+  font-family: var(--font-sans);
+  font-variation-settings: "opsz" 14;
+}
+
+/* ── Semantic type tokens ─────────────────────────────────────── */
+.fs-display-xxl {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 5rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.fs-display-xl {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 3.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.fs-display {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 2.5rem;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.fs-stat {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--verdigris);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.fs-h1 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+.fs-h2 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+.fs-h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.125rem;
+  line-height: 1.35;
+  color: var(--fg-1);
+}
+.fs-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--fg-1);
+  letter-spacing: 0.02em;
+}
+.fs-eyebrow {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.fs-body {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--fg-1);
+}
+.fs-body-sans {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--fg-1);
+}
+.fs-meta {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+.fs-micro {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  color: var(--fg-3);
+}
+.fs-quote {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--fg-1);
+}
+.fs-code {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.fs-btn {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.2;
+}
+.fs-label {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--fg-1);
+}
+
+/* The system's one custom transition: comments collapse/expand on a
+   grid-template-rows track so the height is animated by the browser
+   without measuring content. Do not replace with a height-based
+   transition — see Phase 4.9 in the design-system handoff. */
 .comments-collapse {
   display: grid;
   grid-template-rows: 0fr;

@@ -120,12 +120,12 @@ export function EditDescriptionLinkDialog({
         role="dialog"
         aria-labelledby="edit-link-dialog-title"
         tabIndex={-1}
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="edit-link-dialog-title"
-          className="font-serif text-lg font-semibold text-[#44403C]"
+          className="font-serif text-lg font-semibold text-stone-700"
         >
           {t("edit_link")}
         </h2>
@@ -133,13 +133,13 @@ export function EditDescriptionLinkDialog({
         <div className="mt-4 space-y-4">
           {/* Role */}
           <div>
-            <label className="mb-1 block text-xs text-[#78716C]">
+            <label className="mb-1 block text-xs font-medium text-indigo">
               {t("select_role")}
             </label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             >
               {roles.map((r) => (
                 <option key={r} value={r}>
@@ -151,14 +151,14 @@ export function EditDescriptionLinkDialog({
 
           {/* Role note */}
           <div>
-            <label className="mb-1 block text-xs text-[#78716C]">
+            <label className="mb-1 block text-xs font-medium text-indigo">
               {t("role_note_label")}
             </label>
             <input
               type="text"
               value={roleNote}
               onChange={(e) => setRoleNote(e.target.value)}
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             />
           </div>
 
@@ -166,47 +166,47 @@ export function EditDescriptionLinkDialog({
           {showEntityFields && (
             <>
               <div>
-                <label className="mb-1 block text-xs text-[#78716C]">
+                <label className="mb-1 block text-xs font-medium text-indigo">
                   {t("sequence_label")}
                 </label>
                 <input
                   type="number"
                   value={sequence}
                   onChange={(e) => setSequence(parseInt(e.target.value, 10) || 0)}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[#78716C]">
+                <label className="mb-1 block text-xs font-medium text-indigo">
                   {t("honorific_label")}
                 </label>
                 <input
                   type="text"
                   value={honorific}
                   onChange={(e) => setHonorific(e.target.value)}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[#78716C]">
+                <label className="mb-1 block text-xs font-medium text-indigo">
                   {t("function_label")}
                 </label>
                 <input
                   type="text"
                   value={fn}
                   onChange={(e) => setFn(e.target.value)}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[#78716C]">
+                <label className="mb-1 block text-xs font-medium text-indigo">
                   {t("name_as_recorded_label")}
                 </label>
                 <input
                   type="text"
                   value={nameAsRecorded}
                   onChange={(e) => setNameAsRecorded(e.target.value)}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
             </>
@@ -218,7 +218,7 @@ export function EditDescriptionLinkDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("mergeCancel")}
           </button>
@@ -226,7 +226,7 @@ export function EditDescriptionLinkDialog({
             type="button"
             onClick={handleSave}
             disabled={fetcher.state === "submitting"}
-            className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("editSave")}
           </button>

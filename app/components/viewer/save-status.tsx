@@ -14,9 +14,9 @@ type SaveStatusProps = {
 };
 
 const statusColors = {
-  saved: "bg-green-500",
-  saving: "bg-amber-500",
-  unsaved: "bg-amber-500",
+  saved: "bg-verdigris",
+  saving: "bg-saffron",
+  unsaved: "bg-saffron",
 } as const;
 
 export function SaveStatus({ status }: SaveStatusProps) {

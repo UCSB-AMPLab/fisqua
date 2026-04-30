@@ -57,38 +57,38 @@ export function LinkReassignmentList({
         <button
           type="button"
           onClick={onSelectAll}
-          className="text-xs font-medium text-[#6B1F33] hover:underline"
+          className="text-xs font-medium text-indigo-deep hover:underline"
         >
           {selectAllLabel}
         </button>
-        <span className="text-xs text-[#A8A29E]">/</span>
+        <span className="text-xs text-stone-400">/</span>
         <button
           type="button"
           onClick={onDeselectAll}
-          className="text-xs font-medium text-[#6B1F33] hover:underline"
+          className="text-xs font-medium text-indigo-deep hover:underline"
         >
           {deselectAllLabel}
         </button>
       </div>
 
       {/* Scrollable list */}
-      <div className="max-h-96 overflow-y-auto rounded-lg border border-[#E7E5E4]">
+      <div className="max-h-96 overflow-y-auto rounded-lg border border-stone-200">
         {visibleLinks.map((link) => (
           <label
             key={link.id}
-            className="flex cursor-pointer items-center gap-3 border-b border-[#E7E5E4] px-3 py-2 last:border-b-0 hover:bg-[#FAFAF9]"
+            className="font-medium flex cursor-pointer items-center gap-3 border-b border-stone-200 px-3 py-2 last:border-b-0 hover:bg-stone-50"
           >
             <input
               type="checkbox"
               checked={selectedIds.has(link.id)}
               onChange={() => onToggle(link.id)}
               aria-label={link.descriptionTitle}
-              className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+              className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
             />
-            <span className="flex-1 text-sm text-[#44403C]">
+            <span className="flex-1 text-sm text-stone-700">
               {link.descriptionTitle}
             </span>
-            <span className="rounded bg-[#F5F5F4] px-2 py-0.5 text-xs text-[#44403C]">
+            <span className="rounded bg-stone-100 px-2 py-0.5 text-xs text-stone-700">
               {link.role}
             </span>
           </label>
@@ -100,7 +100,7 @@ export function LinkReassignmentList({
         <button
           type="button"
           onClick={handleLoadMore}
-          className="mt-2 text-sm font-medium text-[#6B1F33] hover:underline"
+          className="mt-2 text-sm font-medium text-indigo-deep hover:underline"
         >
           {loadMoreLabel}
         </button>

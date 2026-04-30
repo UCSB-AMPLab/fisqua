@@ -67,7 +67,7 @@ export function QCFlagCardExpandable({
  type="button"
  onClick={() => setExpanded((v) => !v)}
  aria-expanded={expanded}
- className="mt-2 inline-flex items-center gap-1 font-['DM_Sans'] text-xs font-semibold text-[#8B2942] hover:underline focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="mt-2 inline-flex items-center gap-1 font-sans text-xs font-semibold text-indigo hover:underline focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <ChevronDown
  size={14}
@@ -79,7 +79,7 @@ export function QCFlagCardExpandable({
  </button>
 
  {expanded && (
- <div className="mt-3 border-l-2 border-[#E7E5E4] pl-3">
+ <div className="mt-3 border-l-2 border-stone-200 pl-3">
  <CommentThread
  target={{ kind: "qcFlag", qcFlagId: flag.id }}
  volumeId={volumeId}

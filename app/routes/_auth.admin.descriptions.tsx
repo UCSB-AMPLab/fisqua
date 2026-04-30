@@ -92,7 +92,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const validLevel =
     levelFilter &&
     (DESCRIPTION_LEVELS as readonly string[]).includes(levelFilter)
-      ? levelFilter
+      ? (levelFilter as (typeof DESCRIPTION_LEVELS)[number])
       : null;
   const validRepoId = repoFilter || null;
 
@@ -260,15 +260,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 const LEVEL_BADGE_STYLES: Record<string, string> = {
-  fonds: "bg-[#E0E7F7] text-[#3B5A9A]",
-  subfonds: "bg-[#CCF0EB] text-[#0D9488]",
-  collection: "bg-[#CCF0EB] text-[#0D9488]",
-  series: "bg-[#F5E6EA] text-[#8B2942]",
-  subseries: "bg-[#F5E6EA] text-[#8B2942]",
-  section: "bg-[#FEF3C7] text-[#92400E]",
-  volume: "bg-[#FEF3C7] text-[#92400E]",
-  file: "bg-[#E5E7EB] text-[#374151]",
-  item: "bg-[#E5E7EB] text-[#374151]",
+  fonds: "bg-indigo-tint text-indigo",
+  subfonds: "bg-verdigris-tint text-verdigris",
+  collection: "bg-verdigris-tint text-verdigris",
+  series: "bg-indigo-tint text-indigo",
+  subseries: "bg-indigo-tint text-indigo",
+  section: "bg-saffron-tint text-saffron-deep",
+  volume: "bg-saffron-tint text-saffron-deep",
+  file: "bg-stone-200 text-stone-700",
+  item: "bg-stone-200 text-stone-700",
 };
 
 // ---------------------------------------------------------------------------
@@ -558,12 +558,12 @@ export default function AdminDescriptionsPage({
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-4xl font-semibold text-stone-700">
           {t("page_title")}
         </h1>
         <Link
           to="/admin/descriptions/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           <Plus className="h-4 w-4" />
           {t("new_description")}
@@ -571,14 +571,14 @@ export default function AdminDescriptionsPage({
       </div>
 
       {/* View toggle tabs */}
-      <div className="mt-6 flex gap-6 border-b border-[#E7E5E4]">
+      <div className="mt-6 flex gap-6 border-b border-stone-200">
         <button
           type="button"
           onClick={() => switchView("tree")}
           className={`pb-3 text-sm font-semibold ${
             activeView === "tree"
-              ? "border-b-2 border-[#6B1F33] text-[#6B1F33]"
-              : "text-[#78716C] hover:text-[#44403C]"
+              ? "border-b-2 border-indigo-deep text-indigo-deep"
+              : "text-stone-500 hover:text-stone-700"
           }`}
         >
           {t("view_tree")}
@@ -588,8 +588,8 @@ export default function AdminDescriptionsPage({
           onClick={() => switchView("columns")}
           className={`pb-3 text-sm font-semibold ${
             activeView === "columns"
-              ? "border-b-2 border-[#6B1F33] text-[#6B1F33]"
-              : "text-[#78716C] hover:text-[#44403C]"
+              ? "border-b-2 border-indigo-deep text-indigo-deep"
+              : "text-stone-500 hover:text-stone-700"
           }`}
         >
           {t("view_columns")}
@@ -688,7 +688,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
         cell: ({ row }) => (
           <Link
             to={`/admin/descriptions/${row.original.id}`}
-            className="font-mono text-sm font-semibold text-[#6B1F33] hover:underline"
+            className="font-mono text-sm font-semibold text-indigo-deep hover:underline"
           >
             {row.original.referenceCode}
           </Link>
@@ -729,7 +729,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
         header: t("col_has_digital"),
         cell: ({ row }) =>
           row.original.hasDigital ? (
-            <Check className="h-3.5 w-3.5 text-[#2F6B45]" />
+            <Check className="h-3.5 w-3.5 text-verdigris" />
           ) : (
             <span className="text-stone-400">{"\u2014"}</span>
           ),
@@ -740,7 +740,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
         enableHiding: true,
         cell: ({ row }) =>
           row.original.parentReferenceCode ? (
-            <span className="font-mono text-xs text-[#78716C]">
+            <span className="font-mono text-xs text-stone-500">
               {row.original.parentReferenceCode}
             </span>
           ) : (
@@ -763,17 +763,17 @@ function ColumnView({ loaderData }: { loaderData: any }) {
   return (
     <div className="mt-6">
       {/* Toolbar */}
-      <div className="mb-4 rounded-lg border border-[#E7E5E4] p-4">
+      <div className="mb-4 rounded-lg border border-stone-200 p-4">
         {/* Row 1: Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("search_descriptions")}
             aria-label={t("search_descriptions")}
-            className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
         </div>
 
@@ -794,7 +794,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
               params.delete("dir");
               window.location.search = params.toString();
             }}
-            className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           >
             <option value="">{t("filter_level")}</option>
             {DESCRIPTION_LEVELS.map((level) => (
@@ -819,7 +819,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
               params.delete("dir");
               window.location.search = params.toString();
             }}
-            className="max-w-xs rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="max-w-xs rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           >
             <option value="">{t("filter_repository")}</option>
             {(loaderData.repositories || []).map((repo: Repository) => (
@@ -830,7 +830,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
           </select>
 
           {/* Has digital object checkbox */}
-          <label className="flex items-center gap-2 whitespace-nowrap text-sm text-[#44403C]">
+          <label className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-indigo">
             <input
               type="checkbox"
               checked={searchParams.get("hasDigital") === "true"}
@@ -846,7 +846,7 @@ function ColumnView({ loaderData }: { loaderData: any }) {
                 params.delete("dir");
                 window.location.search = params.toString();
               }}
-              className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+              className="h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
             />
             {t("filter_has_digital")}
           </label>
@@ -860,8 +860,8 @@ function ColumnView({ loaderData }: { loaderData: any }) {
 
       {/* Data table */}
       {loaderData.items.length === 0 ? (
-        <div className="rounded-lg border border-[#E7E5E4] py-12 text-center">
-          <p className="font-sans text-sm text-[#78716C]">
+        <div className="rounded-lg border border-stone-200 py-12 text-center">
+          <p className="font-sans text-sm text-stone-500">
             {t("no_results")}
           </p>
         </div>

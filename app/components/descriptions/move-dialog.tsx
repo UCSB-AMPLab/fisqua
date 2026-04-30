@@ -49,15 +49,15 @@ interface MoveDialogProps {
 // ---------------------------------------------------------------------------
 
 const LEVEL_BADGE_STYLES: Record<string, string> = {
-  fonds: "bg-[#E0E7F7] text-[#3B5A9A]",
-  subfonds: "bg-[#CCF0EB] text-[#0D9488]",
-  collection: "bg-[#CCF0EB] text-[#0D9488]",
-  series: "bg-[#F5E6EA] text-[#8B2942]",
-  subseries: "bg-[#FEF3C7] text-[#78350F]",
-  section: "bg-[#FEF3C7] text-[#78350F]",
-  volume: "bg-[#F5F5F4] text-[#44403C]",
-  file: "bg-[#F5F5F4] text-[#44403C]",
-  item: "bg-[#F5F5F4] text-[#78716C]",
+  fonds: "bg-indigo-tint text-indigo",
+  subfonds: "bg-verdigris-tint text-verdigris",
+  collection: "bg-verdigris-tint text-verdigris",
+  series: "bg-indigo-tint text-indigo",
+  subseries: "bg-saffron-tint text-saffron-deep",
+  section: "bg-saffron-tint text-saffron-deep",
+  volume: "bg-stone-100 text-stone-700",
+  file: "bg-stone-100 text-stone-700",
+  item: "bg-stone-100 text-stone-500",
 };
 
 // ---------------------------------------------------------------------------
@@ -154,35 +154,35 @@ export function MoveDialog({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-lg">
         {/* Header */}
-        <h2 className="font-serif text-2xl font-semibold text-[#44403C]">
+        <h2 className="font-serif text-2xl font-semibold text-stone-700">
           {t("move_title")}
         </h2>
-        <p className="mt-1 text-sm text-[#78716C]">
+        <p className="mt-1 text-sm text-stone-500">
           {t("move_subtitle", { title: description.title })}
         </p>
 
         {/* Warning if description has children */}
         {description.childCount > 0 && (
-          <p className="mt-2 text-sm text-[#78350F]">
+          <p className="mt-2 text-sm text-saffron-deep">
             {t("error_move_children", { count: description.childCount })}
           </p>
         )}
 
         {/* Mini tree browser */}
         <div
-          className="mt-4 flex overflow-x-auto overflow-y-hidden rounded border border-[#E7E5E4]"
+          className="mt-4 flex overflow-x-auto overflow-y-hidden rounded border border-stone-200"
           style={{ maxHeight: 384 }}
         >
           {columns.map((col, depth) => (
             <div
               key={`${col.parentId}-${depth}`}
-              className="w-[220px] flex-none overflow-y-auto border-r border-[#E7E5E4] last:border-r-0"
+              className="w-[220px] flex-none overflow-y-auto border-r border-stone-200 last:border-r-0"
               style={{ maxHeight: 384 }}
             >
-              <div className="sticky top-0 border-b border-[#E7E5E4] bg-[#FAFAF9] px-3 py-1.5">
-                <span className="text-xs font-semibold text-[#78716C]">
+              <div className="sticky top-0 border-b border-stone-200 bg-stone-50 px-3 py-1.5">
+                <span className="text-xs font-semibold text-stone-500">
                   {col.title}
                 </span>
               </div>
@@ -192,7 +192,7 @@ export function MoveDialog({
                   const isCurrent = item.id === currentParentId;
                   const badgeStyle =
                     LEVEL_BADGE_STYLES[item.descriptionLevel] ||
-                    "bg-[#F5F5F4] text-[#78716C]";
+                    "bg-stone-100 text-stone-500";
 
                   return (
                     <li key={item.id}>
@@ -201,10 +201,10 @@ export function MoveDialog({
                         onClick={() => handleItemClick(depth, item)}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
                           isSelected
-                            ? "bg-[#6B1F33] text-white"
+                            ? "bg-indigo-deep text-parchment"
                             : isCurrent
-                              ? "bg-[#F5E6EA] text-[#44403C]"
-                              : "text-[#44403C] hover:bg-[#F5F5F4]"
+                              ? "bg-indigo-tint text-stone-700"
+                              : "text-stone-700 hover:bg-stone-100"
                         }`}
                       >
                         <span
@@ -220,7 +220,7 @@ export function MoveDialog({
                         {item.childCount > 0 && (
                           <ChevronRight
                             className={`h-3 w-3 flex-none ${
-                              isSelected ? "text-white/70" : "text-[#A8A29E]"
+                              isSelected ? "text-white/70" : "text-stone-400"
                             }`}
                           />
                         )}
@@ -229,7 +229,7 @@ export function MoveDialog({
                   );
                 })}
                 {col.items.length === 0 && (
-                  <li className="px-3 py-4 text-center text-xs text-[#A8A29E]">
+                  <li className="px-3 py-4 text-center text-xs text-stone-400">
                     {t("no_results")}
                   </li>
                 )}
@@ -239,20 +239,20 @@ export function MoveDialog({
 
           {/* Loading indicator */}
           {loading && (
-            <div className="flex w-[220px] flex-none items-center justify-center border-r border-[#E7E5E4]">
-              <Loader2 className="h-5 w-5 animate-spin text-[#78716C]" />
+            <div className="flex w-[220px] flex-none items-center justify-center border-r border-stone-200">
+              <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
             </div>
           )}
         </div>
 
         {/* Selected target display */}
         {selectedTarget && (
-          <div className="mt-3 rounded bg-[#FAFAF9] px-3 py-2 text-sm text-[#44403C]">
-            <span className="text-[#78716C]">
+          <div className="mt-3 rounded bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            <span className="text-stone-500">
               {isCurrentParent ? `(${t("field_parentId")})` : ""}{" "}
             </span>
             {selectedTarget.title}{" "}
-            <span className="text-xs text-[#78716C]">
+            <span className="text-xs text-stone-500">
               ({selectedTarget.referenceCode})
             </span>
           </div>
@@ -263,7 +263,7 @@ export function MoveDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("move_cancel")}
           </button>
@@ -275,10 +275,10 @@ export function MoveDialog({
                 onConfirm(selectedTarget.id);
               }
             }}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+            className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${
               selectedTarget && !isCurrentParent
-                ? "bg-[#6B1F33] hover:bg-[#8B2942]"
-                : "cursor-not-allowed bg-[#6B1F33] opacity-50"
+                ? "bg-indigo hover:bg-indigo-deep"
+                : "cursor-not-allowed bg-indigo-deep opacity-50"
             }`}
           >
             {t("move_confirm")}

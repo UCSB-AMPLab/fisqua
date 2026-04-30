@@ -99,16 +99,16 @@ export function SplitDialog({
         role="dialog"
         aria-labelledby="split-dialog-title"
         tabIndex={-1}
-        className="max-w-2xl rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+        className="max-w-2xl rounded-lg bg-white p-6 shadow-lg focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="split-dialog-title"
-          className="font-serif text-lg font-semibold text-[#44403C]"
+          className="font-serif text-lg font-semibold text-stone-700"
         >
           {t("splitTitle")}
         </h2>
-        <p className="mt-1 text-sm text-[#78716C]">
+        <p className="mt-1 text-sm text-stone-500">
           {t("splitSubtitle", { name: sourceName })}
         </p>
 
@@ -134,7 +134,7 @@ export function SplitDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             {t("splitCancel")}
           </button>
@@ -147,7 +147,7 @@ export function SplitDialog({
             />
             <button
               type="submit"
-              className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("splitConfirm")}
             </button>

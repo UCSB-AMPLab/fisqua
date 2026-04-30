@@ -29,9 +29,9 @@ type CommentCardProps = {
 };
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
-  lead: "bg-[#E0E7F7] text-[#3B5A9A]",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
+  lead: "bg-indigo-tint text-indigo",
 };
 
 const ROLE_I18N_KEYS: Record<string, string> = {
@@ -86,7 +86,7 @@ export function CommentCard({
   const { t } = useTranslation("comments");
 
   const isTopLevel = depth === 0;
-  const cardBg = isTopLevel ? "bg-[#F5E6EA]" : "bg-white border border-[#E7E5E4]";
+  const cardBg = isTopLevel ? "bg-indigo-tint" : "bg-white border border-stone-200";
   const showChip = shouldRenderRegionChip(comment, pageNumber);
 
   return (
@@ -98,15 +98,15 @@ export function CommentCard({
  <div className="mb-1.5 flex items-center justify-between">
  <div className="flex items-center gap-2">
  <span
- className={`rounded px-2 py-0.5 font-['DM_Sans'] text-xs font-semibold ${ROLE_BADGE_STYLES[comment.authorRole] || ROLE_BADGE_STYLES.cataloguer}`}
+ className={`rounded px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_STYLES[comment.authorRole] || ROLE_BADGE_STYLES.cataloguer}`}
  >
  {t(ROLE_I18N_KEYS[comment.authorRole] || "roles.catalogador")}
  </span>
- <span className="font-['DM_Sans'] text-[0.75rem] text-[#78716C]">
+ <span className="font-sans text-[0.75rem] text-stone-500">
  {comment.authorEmail}
  </span>
  </div>
- <span className="font-['DM_Sans'] text-[0.75rem] text-[#A8A29E]">
+ <span className="font-sans text-[0.75rem] text-stone-400">
  {formatRelativeTime(comment.createdAt)}
  </span>
  </div>
@@ -124,14 +124,14 @@ export function CommentCard({
  )}
 
  {/* Comment text */}
- <p className="font-serif text-[0.9375rem] italic leading-[1.6] text-[#44403C]">
+ <p className="font-serif text-[0.9375rem] italic leading-[1.6] text-stone-700">
  {comment.text}
  </p>
 
  {/* Reply link */}
  <button
  type="button"
- className="mt-1.5 font-['DM_Sans'] text-[0.75rem] font-semibold text-[#8B2942] hover:underline"
+ className="mt-1.5 font-sans text-[0.75rem] font-semibold text-indigo hover:underline"
  onClick={() => onReply(comment.id)}
  >
  {t("responder")}

@@ -491,7 +491,7 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
             onClick={() => setActiveTab("segmentation")}
             className={`border-b-2 pb-2 text-sm font-medium transition-colors ${
               activeTab === "segmentation"
-                ? "border-[#8B2942] text-[#8B2942]"
+                ? "border-indigo text-indigo"
                 : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
             }`}
           >
@@ -504,7 +504,7 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
             onClick={() => setActiveTab("description")}
             className={`border-b-2 pb-2 text-sm font-medium transition-colors ${
               activeTab === "description"
-                ? "border-[#8B2942] text-[#8B2942]"
+                ? "border-indigo text-indigo"
                 : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
             }`}
           >

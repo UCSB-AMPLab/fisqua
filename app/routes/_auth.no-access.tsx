@@ -30,13 +30,13 @@ export default function NoAccessPage() {
     <div className="mx-auto max-w-7xl px-8 py-12">
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 text-center shadow-sm ring-1 ring-stone-100">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <ShieldAlert className="h-8 w-8 text-burgundy" strokeWidth={1.5} />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+            <ShieldAlert className="h-8 w-8 text-indigo" strokeWidth={1.5} />
           </div>
-          <h1 className="mt-4 font-serif text-lg font-semibold text-stone-900">
+          <h1 className="mt-4 font-serif text-[18px] font-semibold text-indigo">
             {t("title")}
           </h1>
-          <p className="mt-2 text-sm text-stone-500">{t("description")}</p>
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">{t("description")}</p>
         </div>
       </div>
     </div>

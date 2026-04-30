@@ -39,18 +39,18 @@ interface ProjectDetail {
 }
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#D6E8DB] text-[#2F6B45]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#CCF0EB] text-[#0D9488]",
+  lead: "bg-verdigris-tint text-verdigris",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
   unstarted: "bg-stone-100 text-stone-600",
-  in_progress: "bg-[#E0E7F7] text-[#3B5A9A]",
-  segmented: "bg-[#D6E8DB] text-[#2F6B45]",
-  sent_back: "bg-[#F9EDD4] text-[#8B6914]",
-  reviewed: "bg-[#CCF0EB] text-[#0D9488]",
-  approved: "bg-[#D6E8DB] text-[#2F6B45]",
+  in_progress: "bg-indigo-tint text-indigo",
+  segmented: "bg-verdigris-tint text-verdigris",
+  sent_back: "bg-saffron-tint text-saffron-deep",
+  reviewed: "bg-verdigris-tint text-verdigris",
+  approved: "bg-verdigris-tint text-verdigris",
 };
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -165,16 +165,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       return { ok: false, error: i18n.t("admin:error.invalid_name") };
     }
 
-    const { generateProjectId } = await import("~/lib/projects.server");
-    const now = (Date.now() / 1000) | 0;
-    await db.insert(projects).values({
-      id: generateProjectId(),
-      name: nameResult.data,
-      description,
-      createdBy: user.id,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const { createProject } = await import("~/lib/projects.server");
+    await createProject(
+      db,
+      { name: nameResult.data, description },
+      user.id
+    );
 
     return { ok: true, message: i18n.t("admin:error.project_created") };
   }
@@ -188,7 +184,7 @@ function CreateProjectButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+      className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
     >
       {t("admin:action.new_project")}
     </button>
@@ -202,7 +198,7 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
   return (
     <fetcher.Form
       method="post"
-      className="mt-4 rounded-lg border border-[#E7E5E4] bg-white p-4"
+      className="mt-4 rounded-lg border border-stone-200 bg-white p-4"
       onSubmit={() => setTimeout(onClose, 100)}
     >
       <input type="hidden" name="_action" value="createProject" />
@@ -210,7 +206,7 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
         <div>
           <label
             htmlFor="create-name"
-            className="block font-sans text-sm font-medium text-[#78716C]"
+            className="block font-sans text-sm font-medium text-indigo"
           >
             {t("admin:table.project")}
           </label>
@@ -221,13 +217,13 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
             required
             minLength={3}
             maxLength={100}
-            className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
           />
         </div>
         <div>
           <label
             htmlFor="create-description"
-            className="block font-sans text-sm font-medium text-[#78716C]"
+            className="block font-sans text-sm font-medium text-indigo"
           >
             {t("admin:table.description")}
           </label>
@@ -235,20 +231,20 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
             id="create-description"
             name="description"
             rows={2}
-            className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
           />
         </div>
         <div className="flex gap-2">
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("common:button.save")}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 font-sans text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+            className="rounded-lg border border-stone-200 px-4 py-2 font-sans text-sm text-stone-500 hover:bg-stone-50"
           >
             {t("common:button.cancel")}
           </button>
@@ -265,38 +261,38 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
   return (
     <div className="border-b border-stone-100 last:border-b-0">
       <div
-        className="flex cursor-pointer items-center px-4 py-3 hover:bg-[#FAFAF9]"
+        className="flex cursor-pointer items-center px-4 py-3 hover:bg-stone-50"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <span className="mr-2 font-sans text-xs text-[#A8A29E]">
+        <span className="mr-2 font-sans text-xs text-stone-400">
           {isExpanded ? "\u25BC" : "\u25B6"}
         </span>
         <div className="flex-1">
-          <span className="font-serif text-sm font-semibold text-[#44403C]">
+          <span className="font-serif text-sm font-semibold text-stone-700">
             {project.name}
           </span>
           {project.description && (
-            <p className="mt-0.5 max-w-xs truncate font-sans text-xs text-[#A8A29E]">
+            <p className="mt-0.5 max-w-xs truncate font-sans text-xs text-stone-400">
               {project.description}
             </p>
           )}
         </div>
         <div className="flex items-center gap-6 text-right">
-          <span className="font-sans text-sm text-[#78716C]">
+          <span className="font-sans text-sm text-stone-500">
             {project.leads.length > 0 ? project.leads.join(", ") : "\u2014"}
           </span>
-          <span className="font-sans text-sm text-[#78716C]">
+          <span className="font-sans text-sm text-stone-500">
             {t("admin:table.members")}: {project.memberCount}
           </span>
-          <span className="font-sans text-sm text-[#78716C]">
+          <span className="font-sans text-sm text-stone-500">
             {t("admin:table.volumes")}: {project.volumeCount}
           </span>
-          <span className="font-sans text-xs text-[#A8A29E]">
+          <span className="font-sans text-xs text-stone-400">
             {formatDate(project.createdAt)}
           </span>
           <Link
             to={`/projects/${project.id}/settings`}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#8B2942] px-2.5 py-1 font-sans text-xs font-semibold text-white hover:bg-[#7a2439]"
+            className="inline-flex items-center gap-1.5 rounded-md bg-indigo px-2.5 py-1 font-sans text-xs font-semibold text-parchment hover:bg-indigo-deep"
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="h-3 w-3" />
@@ -306,10 +302,10 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
       </div>
 
       {isExpanded && (
-        <div className="border-t border-stone-100 bg-[#FAFAF9] px-4 py-4">
+        <div className="border-t border-stone-100 bg-stone-50 px-4 py-4">
           {/* Team overview (read-only) */}
           <div>
-            <h3 className="font-sans text-sm font-semibold text-[#44403C]">
+            <h3 className="font-sans text-sm font-semibold text-stone-700">
               {t("admin:table.members")} ({project.memberCount})
             </h3>
             {project.members.length > 0 ? (
@@ -317,9 +313,9 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
                 {project.members.map((member, i) => (
                   <span
                     key={`${member.userId}-${member.role}-${i}`}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 ring-1 ring-[#E7E5E4]"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 ring-1 ring-stone-200"
                   >
-                    <span className="font-sans text-xs text-[#44403C]">
+                    <span className="font-sans text-xs text-stone-700">
                       {member.name || member.email}
                     </span>
                     <span
@@ -331,7 +327,7 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
                 ))}
               </div>
             ) : (
-              <p className="mt-2 font-sans text-xs text-[#A8A29E]">
+              <p className="mt-2 font-sans text-xs text-stone-400">
                 {t("admin:empty.no_users")}
               </p>
             )}
@@ -339,7 +335,7 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
 
           {/* Volume progress (read-only) */}
           <div className="mt-5">
-            <h3 className="font-sans text-sm font-semibold text-[#44403C]">
+            <h3 className="font-sans text-sm font-semibold text-stone-700">
               {t("admin:table.volumes")} ({project.volumeCount})
             </h3>
             {project.volumeCount > 0 ? (
@@ -355,7 +351,7 @@ function ProjectRow({ project }: { project: ProjectDetail }) {
                 ))}
               </div>
             ) : (
-              <p className="mt-2 font-sans text-xs text-[#A8A29E]">
+              <p className="mt-2 font-sans text-xs text-stone-400">
                 {t("admin:empty.no_volumes")}
               </p>
             )}
@@ -378,7 +374,7 @@ export default function AdminCataloguingProjects({
     <div>
       <div className="flex items-center justify-between">
         <div className="flex items-baseline gap-4">
-          <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+          <h1 className="font-display text-4xl font-semibold text-stone-700">
             {showArchived
               ? t("admin:heading.archived_projects")
               : t("admin:heading.all_projects")}
@@ -389,7 +385,7 @@ export default function AdminCataloguingProjects({
                 ? "/admin/cataloguing/projects"
                 : "/admin/cataloguing/projects?archived=true"
             }
-            className="font-sans text-sm text-[#78716C] hover:text-[#44403C]"
+            className="font-sans text-sm text-stone-500 hover:text-stone-700"
           >
             {showArchived
               ? t("admin:action.show_active")
@@ -407,25 +403,25 @@ export default function AdminCataloguingProjects({
 
       {actionData?.message && (
         <div
-          className={`mt-3 rounded-lg border px-4 py-3 font-sans text-sm ${actionData.ok ? "border-[#2F6B45] bg-[#D6E8DB] text-[#44403C]" : "border-[#8B2942] bg-[#F5E6EA] text-[#44403C]"}`}
+          className={`mt-3 rounded-md border px-4 py-3 font-sans text-sm ${actionData.ok ? "border-verdigris bg-verdigris-tint text-stone-700" : "border-indigo bg-indigo-tint text-stone-700"}`}
         >
           {actionData.message}
         </div>
       )}
       {actionData && !actionData.ok && actionData.error && (
-        <div className="mt-3 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="mt-3 rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
           {actionData.error}
         </div>
       )}
 
       {allProjects.length === 0 ? (
-        <p className="mt-4 font-sans text-sm text-[#A8A29E]">
+        <p className="mt-4 font-sans text-sm text-stone-400">
           {showArchived
             ? t("admin:empty.no_archived")
             : t("admin:empty.no_projects")}
         </p>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
+        <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
           {allProjects.map((project) => (
             <ProjectRow key={project.id} project={project} />
           ))}

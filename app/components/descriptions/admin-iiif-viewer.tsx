@@ -160,16 +160,16 @@ export function AdminIiifViewer({ manifestUrl }: AdminIiifViewerProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#F5F5F4]">
-        <p className="text-sm text-[#78716C]">{t("loading_manifest")}</p>
+      <div className="flex h-full items-center justify-center bg-stone-100">
+        <p className="text-sm text-stone-500">{t("loading_manifest")}</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#F5F5F4]">
-        <p className="text-sm text-[#78716C]">{t(error)}</p>
+      <div className="flex h-full items-center justify-center bg-stone-100">
+        <p className="text-sm text-stone-500">{t(error)}</p>
       </div>
     );
   }
@@ -178,49 +178,49 @@ export function AdminIiifViewer({ manifestUrl }: AdminIiifViewerProps) {
   if (!canvas) return null;
 
   return (
-    <div className="flex h-full flex-col bg-[#F5F5F4]">
+    <div className="flex h-full flex-col bg-stone-100">
       {/* Toolbar */}
-      <div className="flex h-[48px] shrink-0 items-center gap-1 border-b border-[#E7E5E4] bg-white px-3">
+      <div className="flex h-[48px] shrink-0 items-center gap-1 border-b border-stone-200 bg-white px-3">
         <button
           type="button"
           onClick={handleZoomOut}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4]"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
           aria-label={t("zoom_out")}
         >
           <ZoomOut className="h-4 w-4" />
         </button>
-        <span className="min-w-[3.5rem] text-center font-sans text-sm text-[#78716C]">
+        <span className="min-w-[3.5rem] text-center font-sans text-sm text-stone-500">
           {zoom}%
         </span>
         <button
           type="button"
           onClick={handleZoomIn}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4]"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
           aria-label={t("zoom_in")}
         >
           <ZoomIn className="h-4 w-4" />
         </button>
 
-        <div className="mx-2 h-5 w-px bg-[#E7E5E4]" />
+        <div className="mx-2 h-5 w-px bg-stone-200" />
 
         {/* Page navigation */}
         <button
           type="button"
           onClick={handlePrev}
           disabled={currentPage === 0}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4] disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100 disabled:opacity-30"
           aria-label={t("prev_page")}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="min-w-[4rem] text-center font-sans text-sm text-[#78716C]">
+        <span className="min-w-[4rem] text-center font-sans text-sm text-stone-500">
           {currentPage + 1} / {canvases.length}
         </span>
         <button
           type="button"
           onClick={handleNext}
           disabled={currentPage === canvases.length - 1}
-          className="flex h-8 w-8 items-center justify-center rounded text-[#78716C] hover:bg-[#F5F5F4] disabled:opacity-30"
+          className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100 disabled:opacity-30"
           aria-label={t("next_page")}
         >
           <ChevronRight className="h-4 w-4" />

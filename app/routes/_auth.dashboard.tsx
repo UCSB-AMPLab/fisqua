@@ -907,7 +907,7 @@ function CataloguerTabs({
         onClick={() => onTabChange("segmentation")}
         className={`relative pb-3 text-sm font-medium transition-colors ${
           activeTab === "segmentation"
-            ? "text-[#8B2942]"
+            ? "text-indigo"
             : "text-stone-500 hover:text-stone-700"
         }`}
       >
@@ -915,21 +915,21 @@ function CataloguerTabs({
         {segCount > 0 && (
           <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
             activeTab === "segmentation"
-              ? "bg-[#F5E6EA] text-[#8B2942]"
+              ? "bg-indigo-tint text-indigo"
               : "bg-stone-100 text-stone-500"
           }`}>
             {segCount}
           </span>
         )}
         {activeTab === "segmentation" && (
-          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8B2942]" />
+          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo" />
         )}
       </button>
       <button
         onClick={() => onTabChange("description")}
         className={`relative pb-3 text-sm font-medium transition-colors ${
           activeTab === "description"
-            ? "text-[#8B2942]"
+            ? "text-indigo"
             : "text-stone-500 hover:text-stone-700"
         }`}
       >
@@ -937,14 +937,14 @@ function CataloguerTabs({
         {descCount > 0 && (
           <span className={`ml-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
             activeTab === "description"
-              ? "bg-[#F5E6EA] text-[#8B2942]"
+              ? "bg-indigo-tint text-indigo"
               : "bg-stone-100 text-stone-500"
           }`}>
             {descCount}
           </span>
         )}
         {activeTab === "description" && (
-          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8B2942]" />
+          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo" />
         )}
       </button>
     </div>
@@ -971,8 +971,8 @@ function ReviewerTabs({
         onClick={() => onTabChange("segmentation")}
         className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
           activeTab === "segmentation"
-            ? "bg-[#C9D5FF] text-[#3B5A9A]"
-            : "bg-[#F5F5F4] text-[#78716C] hover:bg-stone-200"
+            ? "bg-indigo-tint text-indigo"
+            : "bg-stone-100 text-stone-500 hover:bg-stone-200"
         }`}
       >
         {t("tabs.segmentacion")}
@@ -984,8 +984,8 @@ function ReviewerTabs({
         onClick={() => onTabChange("description")}
         className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
           activeTab === "description"
-            ? "bg-[#C9D5FF] text-[#3B5A9A]"
-            : "bg-[#F5F5F4] text-[#78716C] hover:bg-stone-200"
+            ? "bg-indigo-tint text-indigo"
+            : "bg-stone-100 text-stone-500 hover:bg-stone-200"
         }`}
       >
         {t("tabs.descripcion")}
@@ -1056,7 +1056,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
             </Link>
             <Link
               to="/projects/new"
-              className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
+              className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
             >
               {t("new_project")}
             </Link>
@@ -1068,21 +1068,21 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         {primaryRole === "none" || !data ? (
           <div className="mt-12 flex justify-center">
             <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-                <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+                <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
-              <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_projects_title")}</h3>
+              <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">{t("empty.no_projects_title")}</h3>
               {user.isAdmin ? (
                 <>
-                  <p className="mt-2 text-sm text-stone-500">
+                  <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
                     {t("empty.no_projects_admin_body")}
                   </p>
                   <div className="mt-5 flex items-center justify-center gap-3">
                     <Link
                       to="/projects/new"
-                      className="rounded-md bg-burgundy-deep px-3 py-2 text-sm font-medium text-white hover:bg-burgundy"
+                      className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
                     >
                       {t("new_project")}
                     </Link>
@@ -1095,7 +1095,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   </div>
                 </>
               ) : (
-                <p className="mt-2 text-sm text-stone-500">
+                <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
                   {t("empty.no_projects_member_body")}
                 </p>
               )}

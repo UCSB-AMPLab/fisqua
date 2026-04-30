@@ -87,23 +87,23 @@ export default function AdminCataloguingUsers({
 
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+      <h1 className="font-display text-4xl font-semibold text-stone-700">
         {t("cataloguing_users.title")}
       </h1>
 
       {/* Invite user form */}
       <section>
-        <h2 className="font-sans text-lg font-semibold text-[#44403C]">
+        <h2 className="font-sans text-lg font-semibold text-stone-700">
           {t("heading.create_user")}
         </h2>
 
         {actionData?.ok && actionData?.message && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
             {actionData.message}
           </div>
         )}
         {actionData && !actionData.ok && actionData?.error && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
             {actionData.error}
           </div>
         )}
@@ -113,7 +113,7 @@ export default function AdminCataloguingUsers({
           <div>
             <label
               htmlFor="email"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("table.email")}
             </label>
@@ -123,13 +123,13 @@ export default function AdminCataloguingUsers({
               name="email"
               required
               placeholder={t("placeholder.email")}
-              className="mt-1 block w-64 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-64 rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
           <div>
             <label
               htmlFor="name"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("table.name")}
             </label>
@@ -137,19 +137,19 @@ export default function AdminCataloguingUsers({
               type="text"
               id="name"
               name="name"
-              className="mt-1 block w-48 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-48 rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
           {/* isCollabAdmin checkbox is hidden unless current user is superadmin. */}
           {currentUser.isSuperAdmin && (
-            <label className="flex items-center gap-2 font-sans text-sm text-[#78716C]">
+            <label className="flex items-center gap-2 font-sans text-sm font-medium text-indigo">
               <input type="checkbox" name="isCollabAdmin" />
               Collab admin
             </label>
           )}
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("action.create_user")}
           </button>
@@ -158,29 +158,29 @@ export default function AdminCataloguingUsers({
 
       {/* Users table */}
       <section>
-        <h2 className="font-sans text-lg font-semibold text-[#44403C]">
+        <h2 className="font-sans text-lg font-semibold text-stone-700">
           {t("heading.all_users")}
         </h2>
 
         {allUsers.length === 0 ? (
-          <p className="mt-2 font-sans text-sm text-[#A8A29E]">
+          <p className="mt-2 font-sans text-sm text-stone-400">
             {t("empty.no_users")}
           </p>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
-            <table className="min-w-full divide-y divide-[#E7E5E4]">
-              <thead className="bg-[#FAFAF9]">
+          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
+            <table className="min-w-full divide-y divide-stone-200">
+              <thead className="bg-stone-50">
                 <tr>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("table.email")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("table.name")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("table.role")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("table.created")}
                   </th>
                 </tr>
@@ -188,10 +188,10 @@ export default function AdminCataloguingUsers({
               <tbody className="divide-y divide-stone-100">
                 {allUsers.map((u) => (
                   <tr key={u.id}>
-                    <td className="px-4 py-3 font-sans text-sm text-[#44403C]">
+                    <td className="px-4 py-3 font-sans text-sm text-stone-700">
                       {u.email}
                     </td>
-                    <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
+                    <td className="px-4 py-3 font-sans text-sm text-stone-500">
                       {u.name || "\u2014"}
                     </td>
                     <td className="px-4 py-3">
@@ -209,8 +209,8 @@ export default function AdminCataloguingUsers({
                               type="submit"
                               className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${
                                 u.isAdmin
-                                  ? "bg-[#F9EDD4] text-[#8B6914] hover:bg-[#f3e3be]"
-                                  : "bg-[#E7E5E4] text-[#78716C] hover:bg-stone-200"
+                                  ? "bg-saffron-tint text-saffron-deep hover:bg-saffron/20"
+                                  : "bg-stone-200 text-stone-500 hover:bg-stone-200"
                               }`}
                             >
                               {u.isAdmin ? t("table.admin") : t("table.user")}
@@ -227,8 +227,8 @@ export default function AdminCataloguingUsers({
                               type="submit"
                               className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${
                                 u.isCollabAdmin
-                                  ? "bg-[#D6E8DB] text-[#2F6B45] hover:bg-[#c6dccc]"
-                                  : "bg-[#E7E5E4] text-[#78716C] hover:bg-stone-200"
+                                  ? "bg-verdigris-tint text-verdigris hover:bg-verdigris/20"
+                                  : "bg-stone-200 text-stone-500 hover:bg-stone-200"
                               }`}
                             >
                               Collab
@@ -239,8 +239,8 @@ export default function AdminCataloguingUsers({
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${
                             u.isCollabAdmin || u.isAdmin
-                              ? "bg-[#F9EDD4] text-[#8B6914]"
-                              : "bg-[#E7E5E4] text-[#78716C]"
+                              ? "bg-saffron-tint text-saffron-deep"
+                              : "bg-stone-200 text-stone-500"
                           }`}
                         >
                           {u.isCollabAdmin
@@ -251,7 +251,7 @@ export default function AdminCataloguingUsers({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-sans text-xs text-[#A8A29E]">
+                    <td className="px-4 py-3 font-sans text-xs text-stone-400">
                       {formatDate(u.createdAt)}
                     </td>
                   </tr>

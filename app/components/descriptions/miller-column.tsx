@@ -70,10 +70,10 @@ export function MillerColumn({
   });
 
   return (
-    <div className="flex h-full w-[340px] flex-none flex-col border-r border-[#E7E5E4]">
+    <div className="flex h-full w-[340px] flex-none flex-col border-r border-stone-200">
       {/* Column header */}
-      <div className="flex-none border-b border-[#E7E5E4] bg-[#FAFAF9] px-4 py-2">
-        <p className="truncate font-sans text-sm font-semibold text-[#1C1917]">
+      <div className="flex-none border-b border-stone-200 bg-stone-50 px-4 py-2">
+        <p className="truncate font-sans text-sm font-semibold text-stone-900">
           {title}
         </p>
         <input
@@ -81,7 +81,7 @@ export function MillerColumn({
           value={filterQuery}
           onChange={(e) => onFilterChange(e.target.value)}
           placeholder={t("filter_placeholder")}
-          className="mt-1 w-full rounded border border-[#E7E5E4] px-2 py-1 font-sans text-xs text-[#44403C] placeholder:text-[#78716C] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+          className="mt-1 w-full rounded border border-stone-200 px-2 py-1 font-sans text-xs text-stone-700 placeholder:text-stone-500 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
       </div>
 

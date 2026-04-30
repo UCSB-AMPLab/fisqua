@@ -59,13 +59,13 @@ const DESC_STATUS_ORDER = [
 
 /** Segment colours for description progress bars (darker, for bar fills) */
 const DESC_SEGMENT_COLORS: Record<string, string> = {
-  unassigned: "bg-[#78716C]",
-  assigned: "bg-[#3B5A9A]",
-  in_progress: "bg-[#8B6914]",
-  described: "bg-[#7C3AED]",
-  reviewed: "bg-[#0D9488]",
-  approved: "bg-[#2F6B45]",
-  sent_back: "bg-[#8B2942]",
+  unassigned: "bg-stone-500",
+  assigned: "bg-indigo",
+  in_progress: "bg-saffron-deep",
+  described: "bg-sage-deep",
+  reviewed: "bg-verdigris",
+  approved: "bg-verdigris",
+  sent_back: "bg-indigo",
 };
 
 export function DescriptionTabContent({
@@ -150,7 +150,7 @@ export function DescriptionTabContent({
                     </td>
                     <td className="px-3 py-2">
                       {vol.hasOpenFlags && (
-                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        <AlertTriangle className="h-4 w-4 text-saffron" />
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -190,10 +190,10 @@ export function DescriptionTabContent({
                   </span>
                 </div>
                 <div className="mb-3">
-                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-100">
+                  <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
                     {member.assignedCount > 0 && (
                       <div
-                        className="h-full bg-[#2F6B45] transition-all"
+                        className="h-full bg-verdigris transition-all"
                         style={{
                           width: `${(member.completedCount / member.assignedCount) * 100}%`,
                         }}
@@ -202,7 +202,7 @@ export function DescriptionTabContent({
                     )}
                     {member.assignedCount > 0 && member.assignedCount - member.completedCount > 0 && (
                       <div
-                        className="h-full bg-[#78716C] transition-all"
+                        className="h-full bg-stone-500 transition-all"
                         style={{
                           width: `${((member.assignedCount - member.completedCount) / member.assignedCount) * 100}%`,
                         }}
@@ -246,7 +246,7 @@ function PromoteCard({ volume }: { volume: PromotableVolume }) {
           {volume.referenceCode}
         </p>
       )}
-      <p className="mt-2 text-sm text-stone-500">
+      <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
         {t("promote.entradas_aprobadas", { count: volume.approvedEntryCount })}
       </p>
       <fetcher.Form method="post" className="mt-3">
@@ -255,7 +255,7 @@ function PromoteCard({ volume }: { volume: PromotableVolume }) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-burgundy-deep px-4 py-2 text-sm font-medium text-white hover:bg-burgundy disabled:opacity-50"
+          className="w-full rounded-md bg-indigo px-4 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep disabled:opacity-50"
         >
           {isSubmitting
             ? "..."
@@ -279,7 +279,7 @@ function DescriptionProgressBar({
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
 
   if (total === 0) {
-    return <div className={`h-3 w-full rounded-full bg-stone-100 ${className}`} />;
+    return <div className={`h-1.5 w-full rounded-full bg-stone-100 ${className}`} />;
   }
 
   return (

@@ -127,7 +127,7 @@ export function CommentKebabMenu({
  aria-haspopup="menu"
  aria-expanded={open}
  aria-label={ariaLabel ?? t("comments.kebab.aria_label")}
- className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#A8A29E] transition-colors hover:bg-stone-100 hover:text-[#44403C]"
+ className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
  >
  <MoreHorizontal className="h-4 w-4" />
  </button>
@@ -146,9 +146,9 @@ export function CommentKebabMenu({
  setOpen(false);
  onAction(item.action);
  }}
- className={`flex w-full items-center px-3 py-1.5 text-left font-['DM_Sans'] text-[12px] transition-colors ${
+ className={`flex w-full items-center px-3 py-1.5 text-left font-sans text-[12px] transition-colors ${
  item.destructive
- ? "text-[#8B2942] hover:bg-[#FDF2F2]"
+ ? "text-indigo hover:bg-madder-tint"
  : "text-stone-700 hover:bg-stone-50"
  }`}
  >

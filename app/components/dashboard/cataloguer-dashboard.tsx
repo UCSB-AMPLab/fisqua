@@ -65,14 +65,14 @@ export function CataloguerDashboard({ groups }: CataloguerDashboardProps) {
     return (
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-indigo-tint to-white">
+            <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_assignments_title")}</h3>
-          <p className="mt-2 text-sm text-stone-500">
+          <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">{t("empty.no_assignments_title")}</h3>
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("empty.no_assignments_body")}
           </p>
         </div>

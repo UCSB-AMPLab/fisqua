@@ -213,8 +213,8 @@ export default function PromotePage({
   // Not authorized guard
   if (!authorized) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="font-sans text-sm text-amber-800">
+      <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3">
+        <p className="font-sans text-sm text-saffron-deep">
           Only superadmins can access this page.
         </p>
       </div>
@@ -380,7 +380,7 @@ export default function PromotePage({
   return (
     <div className="space-y-6">
       {/* Page title */}
-      <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+      <h1 className="font-display text-4xl font-semibold text-stone-700">
         {t("heading.title")}
       </h1>
 
@@ -424,7 +424,7 @@ export default function PromotePage({
                   type="button"
                   onClick={handleReview}
                   disabled={selectedIds.size === 0}
-                  className="rounded bg-[#6B1F33] px-6 py-2.5 font-semibold text-white hover:bg-[#8B2942] disabled:opacity-50"
+                  className="rounded bg-indigo px-6 py-2.5 font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-50"
                 >
                   {t("action.review")}
                 </button>

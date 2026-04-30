@@ -247,13 +247,13 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
     <div className="space-y-10">
       {/* Settings form */}
       <section>
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-stone-700">
           {t("project:settings.heading")}
         </h2>
 
         {actionData?.ok && actionData?.message && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
-            <svg className="h-5 w-5 shrink-0 text-[#2F6B45]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
+            <svg className="h-5 w-5 shrink-0 text-verdigris" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
             {actionData.message}
@@ -265,7 +265,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
           <div>
             <label
               htmlFor="name"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("project:settings.project_name")}
             </label>
@@ -276,10 +276,10 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               required
               maxLength={200}
               defaultValue={project.name}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-serif text-[1rem] text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-serif text-[1rem] text-stone-700 shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
             {actionData?.errors?.name && (
-              <p className="mt-1 text-sm text-red-600">
+              <p className="mt-1 text-sm text-madder-deep">
                 {actionData.errors.name}
               </p>
             )}
@@ -288,7 +288,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
           <div>
             <label
               htmlFor="description"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("project:settings.description")}
             </label>
@@ -297,18 +297,18 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="description"
               rows={3}
               defaultValue={project.description || ""}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
 
           <div>
             <label
               htmlFor="conventions"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("project:settings.conventions")}
             </label>
-            <p className="font-sans text-xs text-[#A8A29E]">
+            <p className="font-sans text-xs text-stone-400">
               {t("project:settings.conventions_help")}
             </p>
             <textarea
@@ -316,18 +316,18 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="conventions"
               rows={6}
               defaultValue={project.conventions || ""}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-mono text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-mono text-sm text-stone-700 shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
           </div>
 
           <div>
             <label
               htmlFor="settings"
-              className="block font-sans text-[0.875rem] font-medium text-[#78716C]"
+              className="block font-sans text-[0.875rem] font-medium text-indigo"
             >
               {t("project:settings.settings_json")}
             </label>
-            <p className="font-sans text-xs text-[#A8A29E]">
+            <p className="font-sans text-xs text-stone-400">
               {t("project:settings.settings_json_help")}
             </p>
             <textarea
@@ -335,10 +335,10 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               name="settings"
               rows={4}
               defaultValue={project.settings || ""}
-              className="mt-1 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-mono text-sm text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="mt-1 block w-full rounded-lg border border-stone-200 px-3 py-2 font-mono text-sm text-stone-700 shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
             {actionData?.errors?.settings && (
-              <p className="mt-1 text-sm text-red-600">
+              <p className="mt-1 text-sm text-madder-deep">
                 {actionData.errors.settings}
               </p>
             )}
@@ -347,7 +347,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:opacity-70"
+            className="inline-flex items-center gap-2 rounded-md bg-indigo px-5 py-2.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-70"
           >
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
             {t("project:settings.save")}
@@ -357,19 +357,19 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
 
       {/* Document subtypes editor */}
       <section className="border-t border-stone-200 pt-8">
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-stone-700">
           {t("project:settings.subtypes_heading")}
         </h2>
-        <p className="mt-2 max-w-2xl font-sans text-sm text-[#78716C]">
+        <p className="mt-2 max-w-2xl font-sans text-sm text-stone-500">
           {t("project:settings.subtypes_help")}
         </p>
 
         {actionData?.ok &&
           actionData?.message &&
           actionData._action === "updateDocumentSubtypes" && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
               <svg
-                className="h-5 w-5 shrink-0 text-[#2F6B45]"
+                className="h-5 w-5 shrink-0 text-verdigris"
                 fill="none"
                 viewBox="0 0 24 24"
                 strokeWidth={1.5}
@@ -397,13 +397,13 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
             {subtypeDraft.map((subtype, index) => (
               <li
                 key={`${subtype}-${index}`}
-                className="flex items-center gap-2 rounded-lg border border-[#E7E5E4] bg-white px-3 py-2"
+                className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-2"
               >
                 <GripVertical
-                  className="h-4 w-4 shrink-0 text-[#A8A29E]"
+                  className="h-4 w-4 shrink-0 text-stone-400"
                   aria-hidden="true"
                 />
-                <span className="flex-1 font-serif text-[1rem] text-[#44403C]">
+                <span className="flex-1 font-serif text-[1rem] text-stone-700">
                   {subtype}
                 </span>
                 <div className="flex items-center gap-1">
@@ -411,7 +411,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                     type="button"
                     onClick={() => moveSubtype(index, -1)}
                     disabled={index === 0}
-                    className="rounded-md p-1 text-[#78716C] hover:bg-[#FAFAF9] hover:text-[#44403C] disabled:cursor-not-allowed disabled:opacity-30"
+                    className="rounded-md p-1 text-stone-500 hover:bg-stone-50 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
                     aria-label={t("project:settings.subtypes_move_up")}
                     title={t("project:settings.subtypes_move_up")}
                   >
@@ -421,7 +421,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                     type="button"
                     onClick={() => moveSubtype(index, 1)}
                     disabled={index === subtypeDraft.length - 1}
-                    className="rounded-md p-1 text-[#78716C] hover:bg-[#FAFAF9] hover:text-[#44403C] disabled:cursor-not-allowed disabled:opacity-30"
+                    className="rounded-md p-1 text-stone-500 hover:bg-stone-50 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-30"
                     aria-label={t("project:settings.subtypes_move_down")}
                     title={t("project:settings.subtypes_move_down")}
                   >
@@ -430,7 +430,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                   <button
                     type="button"
                     onClick={() => removeSubtype(index)}
-                    className="rounded-md p-1 text-[#78716C] hover:bg-[#F5E6EA] hover:text-[#8B2942]"
+                    className="rounded-md p-1 text-stone-500 hover:bg-indigo-tint hover:text-indigo"
                     aria-label={t("project:settings.subtypes_remove")}
                     title={t("project:settings.subtypes_remove")}
                   >
@@ -440,7 +440,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               </li>
             ))}
             {subtypeDraft.length === 0 && (
-              <li className="rounded-lg border border-dashed border-[#E7E5E4] px-3 py-4 text-center font-sans text-sm text-[#A8A29E]">
+              <li className="rounded-lg border border-dashed border-stone-200 px-3 py-4 text-center font-sans text-sm text-stone-400">
                 {t("project:settings.subtypes_empty_hint")}
               </li>
             )}
@@ -458,13 +458,13 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                 }
               }}
               placeholder={t("project:settings.subtypes_add_placeholder")}
-              className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-2 font-serif text-[1rem] text-[#44403C] shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="flex-1 rounded-lg border border-stone-200 px-3 py-2 font-serif text-[1rem] text-stone-700 shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
             <button
               type="button"
               onClick={addSubtype}
               disabled={newSubtype.trim().length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-medium text-[#44403C] hover:bg-[#FAFAF9] disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               {t("project:settings.subtypes_add")}
@@ -475,7 +475,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
             <button
               type="submit"
               disabled={isSavingSubtypes}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:opacity-70"
+              className="inline-flex items-center gap-2 rounded-md bg-indigo px-5 py-2.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-70"
             >
               {isSavingSubtypes && (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -485,7 +485,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
             <button
               type="button"
               onClick={resetSubtypes}
-              className="font-sans text-sm text-[#78716C] hover:text-[#44403C]"
+              className="font-sans text-sm text-stone-500 hover:text-stone-700"
             >
               {t("project:settings.subtypes_reset")}
             </button>
@@ -495,19 +495,19 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
 
       {/* Danger zone */}
       <section className="border-t border-stone-200 pt-8">
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-stone-700">
           {t("project:settings.danger_zone")}
         </h2>
         <div className="mt-4 max-w-xl space-y-4">
           {/* Archive / Restore */}
-          <div className="flex items-center justify-between rounded-lg border border-[#E7E5E4] px-4 py-3">
+          <div className="flex items-center justify-between rounded-lg border border-stone-200 px-4 py-3">
             <div>
-              <p className="font-sans text-sm font-medium text-[#44403C]">
+              <p className="font-sans text-sm font-medium text-stone-700">
                 {isArchived
                   ? t("project:settings.restore_title")
                   : t("project:settings.archive_title")}
               </p>
-              <p className="font-sans text-xs text-[#A8A29E]">
+              <p className="font-sans text-xs text-stone-400">
                 {isArchived
                   ? t("project:settings.restore_description")
                   : t("project:settings.archive_description")}
@@ -521,7 +521,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
               />
               <button
                 type="submit"
-                className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-[#78716C] ring-1 ring-[#E7E5E4] hover:bg-[#FAFAF9] hover:text-[#44403C]"
+                className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50 hover:text-stone-700"
               >
                 {isArchived
                   ? t("project:settings.restore")
@@ -532,27 +532,27 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
 
           {/* Delete (superadmin only) */}
           {isSuperAdmin && (
-            <div className="rounded-lg border border-[#8B2942]/30 px-4 py-3">
+            <div className="rounded-lg border border-indigo/30 px-4 py-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-sans text-sm font-medium text-[#8B2942]">
+                  <p className="font-sans text-sm font-medium text-indigo">
                     {t("project:settings.delete_title")}
                   </p>
-                  <p className="font-sans text-xs text-[#A8A29E]">
+                  <p className="font-sans text-xs text-stone-400">
                     {t("project:settings.delete_description")}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
-                  className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-[#8B2942] ring-1 ring-[#8B2942]/30 hover:bg-[#F5E6EA]"
+                  className="rounded-md px-3 py-1.5 font-sans text-sm font-medium text-indigo ring-1 ring-indigo/30 hover:bg-indigo-tint"
                 >
                   {t("common:button.delete")}
                 </button>
               </div>
               {showDeleteConfirm && (
-                <div className="mt-3 rounded-lg border border-[#8B2942] bg-[#FFF5F7] p-4">
-                  <p className="font-sans text-sm text-[#44403C]">
+                <div className="mt-3 rounded-md border border-madder bg-madder-tint p-4">
+                  <p className="font-sans text-sm text-stone-700">
                     {t("project:settings.delete_confirm", { name: project.name })}
                   </p>
                   <input
@@ -560,7 +560,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                     value={confirmName}
                     onChange={(e) => setConfirmName(e.target.value)}
                     placeholder={project.name}
-                    className="mt-2 block w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                    className="mt-2 block w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
                   />
                   <div className="mt-3 flex gap-2">
                     <Form method="post">
@@ -568,7 +568,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                       <button
                         type="submit"
                         disabled={confirmName !== project.name}
-                        className="rounded-lg bg-[#8B2942] px-3 py-1.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-md bg-indigo px-3 py-1.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {t("project:settings.delete_permanently")}
                       </button>
@@ -579,7 +579,7 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
                         setShowDeleteConfirm(false);
                         setConfirmName("");
                       }}
-                      className="rounded-lg border border-[#E7E5E4] px-3 py-1.5 font-sans text-sm text-[#78716C] hover:bg-[#FAFAF9]"
+                      className="rounded-lg border border-stone-200 px-3 py-1.5 font-sans text-sm text-stone-500 hover:bg-stone-50"
                     >
                       {t("common:button.cancel")}
                     </button>

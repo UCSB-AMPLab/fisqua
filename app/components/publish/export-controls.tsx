@@ -88,7 +88,7 @@ export function ExportControls({
             <button
               type="button"
               onClick={selectAllFonds}
-              className="font-sans text-xs text-[#8B2942] hover:underline"
+              className="font-sans text-xs text-indigo hover:underline"
             >
               {t("controls.selectAll")}
             </button>
@@ -96,7 +96,7 @@ export function ExportControls({
             <button
               type="button"
               onClick={deselectAllFonds}
-              className="font-sans text-xs text-[#8B2942] hover:underline"
+              className="font-sans text-xs text-indigo hover:underline"
             >
               {t("controls.deselectAll")}
             </button>
@@ -106,13 +106,13 @@ export function ExportControls({
           {fondsList.map((code) => (
             <label
               key={code}
-              className="flex items-center gap-2 font-sans text-sm text-stone-700"
+              className="flex items-center gap-2 font-sans text-sm font-medium text-indigo"
             >
               <input
                 type="checkbox"
                 checked={selectedFonds.has(code)}
                 onChange={() => toggleFonds(code)}
-                className="rounded border-stone-300 text-[#8B2942] focus:ring-[#8B2942]"
+                className="rounded border-stone-300 text-indigo focus:ring-indigo"
               />
               {code}
             </label>
@@ -129,13 +129,13 @@ export function ExportControls({
           {DATA_TYPES.map((type) => (
             <label
               key={type}
-              className="flex items-center gap-2 font-sans text-sm text-stone-700"
+              className="flex items-center gap-2 font-sans text-sm font-medium text-indigo"
             >
               <input
                 type="checkbox"
                 checked={selectedTypes.has(type)}
                 onChange={() => toggleType(type)}
-                className="rounded border-stone-300 text-[#8B2942] focus:ring-[#8B2942]"
+                className="rounded border-stone-300 text-indigo focus:ring-indigo"
               />
               {t(`controls.${type}`)}
             </label>
@@ -148,7 +148,7 @@ export function ExportControls({
         type="button"
         disabled={!canExport}
         onClick={() => setShowWarning(true)}
-        className="rounded-lg bg-[#8B2942] px-5 py-2.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md bg-indigo px-5 py-2.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
       >
         {disabled ? t("controls.exporting") : t("controls.triggerExport")}
       </button>

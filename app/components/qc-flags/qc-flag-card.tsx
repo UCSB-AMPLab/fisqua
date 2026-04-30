@@ -55,20 +55,23 @@ export type QcFlagCardProps = {
   onResolveClick?: () => void;
 };
 
-// Tailwind colour classes keyed by problem type.
+// Mapped onto the Fisqua status palette by role:
+//   damaged / missing  -> madder    (returned/reviewer = something is broken)
+//   repeated / oo      -> saffron   (segmented/partial = needs attention)
+//   blank / other      -> stone     (draft/unstarted = neutral)
 const PROBLEM_TYPE_CLASSES: Record<QcProblemType, string> = {
-  damaged: "bg-red-100 text-red-800",
-  repeated: "bg-amber-100 text-amber-800",
-  out_of_order: "bg-amber-100 text-amber-800",
-  missing: "bg-red-100 text-red-800",
-  blank: "bg-zinc-100 text-zinc-700",
-  other: "bg-zinc-100 text-zinc-700",
+  damaged: "bg-madder-tint text-madder-deep",
+  repeated: "bg-saffron-tint text-saffron-deep",
+  out_of_order: "bg-saffron-tint text-saffron-deep",
+  missing: "bg-madder-tint text-madder-deep",
+  blank: "bg-stone-100 text-stone-600",
+  other: "bg-stone-100 text-stone-600",
 };
 
 const STATUS_CLASSES: Record<QcStatus, string> = {
-  open: "bg-red-100 text-red-800",
-  resolved: "bg-emerald-100 text-emerald-800",
-  wontfix: "bg-zinc-100 text-zinc-700",
+  open: "bg-madder-tint text-madder-deep",
+  resolved: "bg-verdigris-tint text-verdigris-deep",
+  wontfix: "bg-stone-100 text-stone-600",
 };
 
 export function QcFlagCard({ flag, onResolveClick }: QcFlagCardProps) {
@@ -83,16 +86,16 @@ export function QcFlagCard({ flag, onResolveClick }: QcFlagCardProps) {
  {/* Header row */}
  <div className="mb-2 flex flex-wrap items-center gap-2">
  <span
- className={`rounded px-2 py-0.5 font-['DM_Sans'] text-xs font-semibold ${PROBLEM_TYPE_CLASSES[flag.problemType]}`}
+ className={`rounded px-2 py-0.5 font-sans text-xs font-semibold ${PROBLEM_TYPE_CLASSES[flag.problemType]}`}
  >
  {problemTypeLabel}
  </span>
  <span
- className={`rounded px-2 py-0.5 font-['DM_Sans'] text-xs font-semibold ${STATUS_CLASSES[flag.status]}`}
+ className={`rounded px-2 py-0.5 font-sans text-xs font-semibold ${STATUS_CLASSES[flag.status]}`}
  >
  {statusLabel}
  </span>
- <span className="ml-auto font-['DM_Sans'] text-[0.75rem] text-stone-400">
+ <span className="ml-auto font-sans text-[0.75rem] text-stone-400">
  {formatIsoDateTime(flag.createdAt)}
  </span>
  </div>
@@ -113,7 +116,7 @@ export function QcFlagCard({ flag, onResolveClick }: QcFlagCardProps) {
  <button
  type="button"
  onClick={onResolveClick}
- className="inline-flex items-center gap-1 rounded border-2 border-green-600 px-3 py-1.5 font-['DM_Sans'] text-sm font-semibold text-green-700 transition-colors hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-600/40"
+ className="inline-flex items-center gap-1 rounded border-2 border-verdigris-deep px-3 py-1.5 font-sans text-sm font-semibold text-verdigris-deep transition-colors hover:bg-verdigris-tint focus:outline-none focus:ring-2 focus:ring-verdigris-deep/40"
  >
  <CheckCircle size={16} aria-hidden="true" />
  {t("qc_flags:card.resolve_button")}

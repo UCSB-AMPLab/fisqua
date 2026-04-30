@@ -81,7 +81,7 @@ export function ViewerToolbar({
   const annotationActive = pinMode !== "off";
 
   return (
- <div className="flex h-10 shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-3 font-['DM_Sans']">
+ <div className="flex h-10 shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-3 font-sans">
  {/* Zone 1: zoom controls */}
  <div className="flex items-center gap-1">
  <button
@@ -90,7 +90,7 @@ export function ViewerToolbar({
  aria-label={t("viewer:toolbar.zoomOut", {
  defaultValue: "Reducir zoom",
  })}
- className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <ZoomOut size={14} aria-hidden="true" />
  </button>
@@ -103,7 +103,7 @@ export function ViewerToolbar({
  aria-label={t("viewer:toolbar.zoomIn", {
  defaultValue: "Aumentar zoom",
  })}
- className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <ZoomIn size={14} aria-hidden="true" />
  </button>
@@ -117,9 +117,9 @@ export function ViewerToolbar({
  onClick={() => onPinModeChange(computeNextPinMode(pinMode))}
  disabled={accessLevel === "readonly"}
  title={accessLevel === "readonly" ? readonlyTooltip : undefined}
- className={`inline-flex h-7 items-center gap-1.5 rounded border px-2 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+ className={`inline-flex h-7 items-center gap-1.5 rounded border px-2 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-indigo/40 disabled:cursor-not-allowed disabled:opacity-50 ${
  annotationActive
- ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
+ ? "border-indigo bg-indigo-tint text-indigo"
  : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
  }`}
  >
@@ -137,9 +137,9 @@ export function ViewerToolbar({
  onClick={() => onPinModeChange("point")}
  disabled={!createEnabled}
  title={!createEnabled ? readonlyTooltip : undefined}
- className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+ className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo/40 disabled:cursor-not-allowed disabled:opacity-50 ${
  pinMode === "point"
- ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
+ ? "border-indigo bg-indigo-tint text-indigo"
  : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
  }`}
  >
@@ -154,9 +154,9 @@ export function ViewerToolbar({
  onClick={() => onPinModeChange("box")}
  disabled={!createEnabled}
  title={!createEnabled ? readonlyTooltip : undefined}
- className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+ className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo/40 disabled:cursor-not-allowed disabled:opacity-50 ${
  pinMode === "box"
- ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
+ ? "border-indigo bg-indigo-tint text-indigo"
  : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
  }`}
  >
@@ -175,9 +175,9 @@ export function ViewerToolbar({
  onClick={() => onPinModeChange("move")}
  disabled={!createEnabled}
  title={!createEnabled ? readonlyTooltip : undefined}
- className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+ className={`flex h-7 w-7 items-center justify-center rounded border transition-colors focus:outline-none focus:ring-2 focus:ring-indigo/40 disabled:cursor-not-allowed disabled:opacity-50 ${
  pinMode === "move"
- ? "border-[#8B2942] bg-[#F5E6EA] text-[#8B2942]"
+ ? "border-indigo bg-indigo-tint text-indigo"
  : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
  }`}
  >
@@ -195,7 +195,7 @@ export function ViewerToolbar({
  aria-label={t("viewer:toolbar.pantallaCompleta", {
  defaultValue: "Pantalla completa",
  })}
- className="inline-flex h-7 items-center gap-1.5 rounded border border-stone-200 bg-white px-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="inline-flex h-7 items-center gap-1.5 rounded border border-stone-200 bg-white px-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <Maximize size={14} aria-hidden="true" />
  {t("viewer:toolbar.pantallaCompleta", {

@@ -291,7 +291,10 @@ export function CommentThread(props: CommentThreadProps) {
  payload.region = draftRegion.region;
  }
 
- fetcher.submit(payload, {
+ // JSON encType accepts arbitrary serialisable payloads; cast so the
+ // SubmitTarget union (FormData | Record<string, string> | …) doesn't
+ // reject the nested region object.
+ fetcher.submit(payload as Parameters<typeof fetcher.submit>[0], {
  method: "POST",
  action: "/api/comments",
  encType: "application/json",
@@ -355,14 +358,14 @@ export function CommentThread(props: CommentThreadProps) {
   );
 
   return (
- <div className="mt-6 border-t border-[#E7E5E4] pt-6">
+ <div className="mt-6 border-t border-stone-200 pt-6">
  {/* Section heading */}
  <button
  type="button"
  className="flex w-full items-center gap-2 text-left"
  onClick={() => setIsOpen((prev) => !prev)}
  >
- <h3 className="font-['Cormorant_Garamond'] text-[1.25rem] font-semibold text-[#44403C]">
+ <h3 className="font-display text-[1.25rem] font-semibold text-stone-700">
  {heading}
  </h3>
  <ChevronIcon open={isOpen} />

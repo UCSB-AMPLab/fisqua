@@ -114,7 +114,7 @@ export default function AdminRepositoriesPage({
         cell: ({ row }) => (
           <Link
             to={`/admin/repositories/${row.original.id}`}
-            className="font-semibold text-[#6B1F33] hover:underline"
+            className="font-semibold text-indigo-deep hover:underline"
           >
             {row.getValue("code") as string}
           </Link>
@@ -141,11 +141,11 @@ export default function AdminRepositoriesPage({
         cell: ({ row }) => {
           const enabled = row.getValue("enabled") as boolean;
           return enabled ? (
-            <span className="inline-block rounded-full bg-[#D6E8DB] px-2 py-0.5 text-xs font-medium text-[#2F6B45]">
+            <span className="inline-block rounded-full bg-verdigris-tint px-2 py-0.5 text-xs font-medium text-verdigris">
               {t("badge_enabled")}
             </span>
           ) : (
-            <span className="inline-block rounded-full bg-[#F5E6EA] px-2 py-0.5 text-xs font-medium text-[#8B2942]">
+            <span className="inline-block rounded-full bg-indigo-tint px-2 py-0.5 text-xs font-medium text-indigo">
               {t("badge_disabled")}
             </span>
           );
@@ -181,7 +181,7 @@ export default function AdminRepositoriesPage({
               href={url}
               target="_blank"
               rel="noopener"
-              className="text-[#6B1F33] hover:underline"
+              className="text-indigo-deep hover:underline"
             >
               {url}
             </a>
@@ -225,27 +225,27 @@ export default function AdminRepositoriesPage({
     return (
       <div className="mx-auto max-w-7xl px-8 py-12">
         <div className="flex items-center justify-between">
-          <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+          <h1 className="font-serif text-4xl font-semibold text-stone-700">
             {t("title")}
           </h1>
           <Link
             to="/admin/repositories/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             <Plus className="h-4 w-4" />
             {t("add")}
           </Link>
         </div>
         <div className="mt-12 text-center">
-          <h2 className="font-sans text-lg font-semibold text-[#44403C]">
+          <h2 className="font-sans text-lg font-semibold text-stone-700">
             {t("empty_title")}
           </h2>
-          <p className="mt-2 font-sans text-sm text-[#78716C]">
+          <p className="mt-2 font-sans text-sm text-stone-500">
             {t("empty_body")}
           </p>
           <Link
             to="/admin/repositories/new"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             <Plus className="h-4 w-4" />
             {t("add")}
@@ -261,12 +261,12 @@ export default function AdminRepositoriesPage({
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-4xl font-semibold text-[#44403C]">
+        <h1 className="font-serif text-4xl font-semibold text-stone-700">
           {t("title")}
         </h1>
         <Link
           to="/admin/repositories/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+          className="inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
         >
           <Plus className="h-4 w-4" />
           {t("add")}
@@ -274,17 +274,17 @@ export default function AdminRepositoriesPage({
       </div>
 
       {/* Toolbar */}
-      <div className="mb-4 mt-6 flex items-center gap-3 rounded-lg border border-[#E7E5E4] p-4">
+      <div className="mb-4 mt-6 flex items-center gap-3 rounded-lg border border-stone-200 p-4">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("search_placeholder")}
             aria-label={t("search_placeholder")}
-            className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
         </div>
 
@@ -295,7 +295,7 @@ export default function AdminRepositoriesPage({
             setEnabledFilter(e.target.value);
             table?.getColumn("enabled")?.setFilterValue(e.target.value);
           }}
-          className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm shadow-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+          className="rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         >
           <option value="enabled">{t("filter_enabled")}</option>
           <option value="disabled">{t("filter_disabled")}</option>
@@ -323,7 +323,7 @@ export default function AdminRepositoriesPage({
           const filteredCount = tbl.getFilteredRowModel().rows.length;
           const totalCount = repositories.length;
           return (
-            <div className="border-t border-[#E7E5E4] bg-[#FAFAF9] px-4 py-3 font-sans text-sm text-[#78716C]">
+            <div className="border-t border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
               {t("results_count", {
                 count: filteredCount,
                 total: totalCount,

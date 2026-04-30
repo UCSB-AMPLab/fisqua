@@ -184,14 +184,14 @@ export function FlagQcDialog({
 
   return (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
- <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-xl">
+ <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-lg">
  {/* Header */}
  <div className="flex items-start gap-3 p-6 pb-4">
  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100">
  <Flag className="h-5 w-5 text-rose-600" />
  </div>
  <div className="flex-1">
- <h2 className="font-['Cormorant_Garamond'] text-2xl font-semibold text-stone-800">
+ <h2 className="font-display text-2xl font-semibold text-stone-800">
  {t("qc_flags:dialog.title")}
  </h2>
  <p className="text-sm text-stone-500">
@@ -221,7 +221,7 @@ export function FlagQcDialog({
  {PROBLEM_TYPES.map((pt) => (
  <label
  key={pt.value}
- className="flex cursor-pointer items-start gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
+ className="font-medium flex cursor-pointer items-start gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
  >
  <input
  type="radio"
@@ -229,7 +229,7 @@ export function FlagQcDialog({
  value={pt.value}
  checked={problemType === pt.value}
  onChange={() => setProblemType(pt.value)}
- className="mt-0.5 accent-[#B91C1C]"
+ className="mt-0.5 accent-madder-deep"
  />
  <div>
  <span className="text-sm font-medium text-stone-700">
@@ -246,7 +246,7 @@ export function FlagQcDialog({
  <div>
  <label
  htmlFor="qc-flag-description"
- className="mb-1 block text-sm font-medium text-stone-700"
+ className="mb-1 block text-sm font-medium text-indigo"
  >
  {t("qc_flags:dialog.description_label")}
  </label>
@@ -265,14 +265,14 @@ export function FlagQcDialog({
  <button
  onClick={handleClose}
  disabled={submitting}
- className="flex-1 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+ className="flex-1 rounded-md border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
  >
  {t("qc_flags:dialog.cancel")}
  </button>
  <button
  onClick={handleSubmit}
  disabled={!isValid || submitting}
- className="flex-1 rounded-lg bg-[#B91C1C] px-4 py-2 text-sm font-medium text-white hover:bg-[#991B1B] disabled:opacity-50"
+ className="flex-1 rounded-md bg-madder-deep px-4 py-2 text-sm font-medium text-white hover:bg-madder-deep disabled:opacity-50"
  >
  {t("qc_flags:dialog.submit")}
  </button>

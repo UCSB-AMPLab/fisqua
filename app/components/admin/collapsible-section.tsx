@@ -29,7 +29,7 @@ export function CollapsibleSection({
   const contentId = `${id}-content`;
 
   return (
-    <div className="[&:not(:first-child)]:border-t [&:not(:first-child)]:border-[#E7E5E4]">
+    <div className="[&:not(:first-child)]:border-t [&:not(:first-child)]:border-stone-200">
       <button
         type="button"
         className="flex w-full items-center justify-between py-4"
@@ -39,14 +39,14 @@ export function CollapsibleSection({
       >
         <span
           id={headingId}
-          className="text-sm font-semibold uppercase tracking-[0.05em] text-[#78716C]"
+          className="text-sm font-semibold uppercase tracking-[0.05em] text-stone-500"
         >
           {title}
         </span>
         {isOpen ? (
-          <ChevronUp className="h-4 w-4 text-[#78716C]" />
+          <ChevronUp className="h-4 w-4 text-stone-500" />
         ) : (
-          <ChevronDown className="h-4 w-4 text-[#78716C]" />
+          <ChevronDown className="h-4 w-4 text-stone-500" />
         )}
       </button>
       {isOpen && (

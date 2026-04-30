@@ -219,9 +219,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
-  lead: "bg-[#F9EDD4] text-[#8B6914]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+  lead: "bg-saffron-tint text-saffron-deep",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
 };
 
 export default function UserActivity({ loaderData }: Route.ComponentProps) {
@@ -233,14 +233,14 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
     <div className="mx-auto max-w-5xl px-4 py-8">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <h1 className="font-sans text-[2rem] font-semibold text-[#44403C]">
+        <h1 className="font-sans text-[2rem] font-semibold text-stone-700">
           {targetUser.name || t("dashboard:activity.unnamed_user")}
         </h1>
         {targetUser.roles.map((role) => (
           <span
             key={role}
             className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-xs font-semibold ${
-              ROLE_BADGE_STYLES[role] ?? "bg-[#E7E5E4] text-[#78716C]"
+              ROLE_BADGE_STYLES[role] ?? "bg-stone-200 text-stone-500"
             }`}
           >
             {t(`workflow:role.${role}`)}
@@ -248,21 +248,21 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
         ))}
       </div>
       {targetUser.lastActiveAt && (
-        <p className="mt-1 font-sans text-sm text-[#A8A29E]">
+        <p className="mt-1 font-sans text-sm text-stone-400">
           {t("dashboard:activity.last_active", { time: relativeTime(targetUser.lastActiveAt) })}
         </p>
       )}
 
       {/* Tabs */}
-      <div className="mt-6 border-b border-[#E7E5E4]">
+      <div className="mt-6 border-b border-stone-200">
         <nav className="-mb-px flex gap-6">
           <button
             type="button"
             onClick={() => setTab("activity")}
             className={`border-b-2 pb-3 font-sans text-sm font-medium ${
               tab === "activity"
-                ? "border-[#8B2942] text-[#8B2942]"
-                : "border-transparent text-[#78716C] hover:text-[#44403C]"
+                ? "border-indigo text-indigo"
+                : "border-transparent text-stone-500 hover:text-stone-700"
             }`}
           >
             {t("dashboard:activity.tab_activity")}
@@ -272,8 +272,8 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
             onClick={() => setTab("volumes")}
             className={`border-b-2 pb-3 font-sans text-sm font-medium ${
               tab === "volumes"
-                ? "border-[#8B2942] text-[#8B2942]"
-                : "border-transparent text-[#78716C] hover:text-[#44403C]"
+                ? "border-indigo text-indigo"
+                : "border-transparent text-stone-500 hover:text-stone-700"
             }`}
           >
             {t("dashboard:activity.tab_volumes", { count: volumes.length })}
@@ -308,7 +308,7 @@ function ActivityTab({
 
   if (activity.length === 0) {
     return (
-      <p className="font-sans text-sm text-[#A8A29E]">{t("activity.no_activity")}</p>
+      <p className="font-sans text-sm text-stone-400">{t("activity.no_activity")}</p>
     );
   }
 
@@ -317,16 +317,16 @@ function ActivityTab({
       {activity.map((entry) => (
         <div key={entry.id} className="flex items-start gap-3 py-3">
           <div className="flex-1">
-            <p className="font-sans text-sm text-[#44403C]">
+            <p className="font-sans text-sm text-stone-700">
               {describeEvent(t, entry.event, entry.detail)}
             </p>
             {entry.projectName && (
-              <p className="mt-0.5 font-sans text-xs text-[#A8A29E]">
+              <p className="mt-0.5 font-sans text-xs text-stone-400">
                 {entry.projectName}
               </p>
             )}
           </div>
-          <span className="shrink-0 font-sans text-xs text-[#A8A29E]">
+          <span className="shrink-0 font-sans text-xs text-stone-400">
             {relativeTime(entry.createdAt)}
           </span>
         </div>
@@ -392,31 +392,31 @@ function VolumesTab({
 
   if (volumes.length === 0) {
     return (
-      <p className="font-sans text-sm text-[#A8A29E]">{t("dashboard:activity.no_volumes")}</p>
+      <p className="font-sans text-sm text-stone-400">{t("dashboard:activity.no_volumes")}</p>
     );
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
-        <thead className="border-b border-[#E7E5E4]">
+        <thead className="border-b border-stone-200">
           <tr>
-            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.volume")}
             </th>
-            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.project", { defaultValue: "Proyecto" })}
             </th>
-            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 pr-4 font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.status")}
             </th>
-            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.images")}
             </th>
-            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 pr-4 text-right font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.entries")}
             </th>
-            <th className="pb-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+            <th className="pb-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
               {t("project:table.last_worked")}
             </th>
           </tr>
@@ -427,22 +427,22 @@ function VolumesTab({
               <td className="py-2.5 pr-4">
                 <a
                   href={`/projects/${vol.projectId}/volumes/${vol.id}`}
-                  className="font-serif text-sm font-semibold text-[#44403C] hover:underline"
+                  className="font-serif text-sm font-semibold text-stone-700 hover:underline"
                 >
                   {vol.name}
                 </a>
               </td>
-              <td className="py-2.5 pr-4 font-sans text-sm text-[#78716C]">{vol.projectName}</td>
+              <td className="py-2.5 pr-4 font-sans text-sm text-stone-500">{vol.projectName}</td>
               <td className="py-2.5 pr-4">
                 <StatusBadge status={vol.status} />
               </td>
-              <td className="py-2.5 pr-4 text-right font-sans text-sm text-[#78716C]">
+              <td className="py-2.5 pr-4 text-right font-sans text-sm text-stone-500">
                 {vol.pageCount}
               </td>
-              <td className="py-2.5 pr-4 text-right font-sans text-sm text-[#78716C]">
+              <td className="py-2.5 pr-4 text-right font-sans text-sm text-stone-500">
                 {vol.entryCount}
               </td>
-              <td className="py-2.5 text-right font-sans text-xs text-[#A8A29E]">
+              <td className="py-2.5 text-right font-sans text-xs text-stone-400">
                 {relativeTime(vol.updatedAt)}
               </td>
             </tr>

@@ -37,10 +37,10 @@ export function getPublishStatus(
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<PublishStatus, string> = {
-  live: "bg-[#D6E8DB] text-[#2F6B45]",
-  pending_publish: "bg-[#FEF3C7] text-[#78350F]",
-  pending_removal: "bg-[#F5E6EA] text-[#8B2942]",
-  unpublished: "bg-[#F5F5F4] text-[#78716C]",
+  live: "bg-verdigris-tint text-verdigris-deep",
+  pending_publish: "bg-saffron-tint text-saffron-deep",
+  pending_removal: "bg-indigo-tint text-indigo",
+  unpublished: "bg-stone-100 text-stone-600",
 };
 
 const STATUS_KEYS: Record<PublishStatus, string> = {
@@ -72,7 +72,7 @@ export function StatusBadge({
 
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${style}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-[11px] font-semibold uppercase tracking-[0.02em] ${style}`}
     >
       {label}
     </span>

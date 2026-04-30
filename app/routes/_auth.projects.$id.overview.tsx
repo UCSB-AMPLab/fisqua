@@ -139,14 +139,14 @@ export default function ProjectOverview({
     <div>
       {/* Stage toggle */}
       <div className="mb-6 flex items-center gap-2">
-        <div className="inline-flex rounded-lg border border-[#E7E5E4] bg-white p-1">
+        <div className="inline-flex rounded-lg border border-stone-200 bg-white p-1">
           <button
             type="button"
             onClick={() => setStage("segmentation")}
             className={`rounded-md px-3 py-1.5 font-sans text-sm font-medium transition-colors ${
               stage === "segmentation"
-                ? "bg-[#8B2942] text-white"
-                : "text-[#78716C] hover:text-[#44403C]"
+                ? "bg-indigo text-parchment"
+                : "text-stone-500 hover:text-stone-700"
             }`}
           >
             {t("stage_segmentation")}
@@ -156,8 +156,8 @@ export default function ProjectOverview({
             onClick={() => setStage("description")}
             className={`rounded-md px-3 py-1.5 font-sans text-sm font-medium transition-colors ${
               stage === "description"
-                ? "bg-[#8B2942] text-white"
-                : "text-[#78716C] hover:text-[#44403C]"
+                ? "bg-indigo text-parchment"
+                : "text-stone-500 hover:text-stone-700"
             }`}
           >
             {t("stage_description")}
@@ -190,7 +190,7 @@ export default function ProjectOverview({
       </div>
 
       {visibleColumns.every((c) => c.items.length === 0) && (
-        <p className="mt-8 rounded-lg border border-[#E7E5E4] px-4 py-8 text-center font-sans text-sm text-[#A8A29E]">
+        <p className="mt-8 rounded-lg border border-stone-200 px-4 py-8 text-center font-sans text-sm text-stone-400">
           {stage === "segmentation"
             ? t("empty_segmentation")
             : t("empty_description")}

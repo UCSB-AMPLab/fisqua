@@ -40,14 +40,14 @@ export function FlagBadge({
  type="button"
  onClick={onClick}
  aria-label={ariaLabel ?? "open-flag-badge"}
- className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#8B2942] text-white transition-colors hover:bg-[#6e2034] focus:outline-none focus:ring-2 focus:ring-[#8B2942]/40"
+ className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-madder text-parchment transition-colors hover:bg-madder-deep focus:outline-none focus:ring-2 focus:ring-madder/40"
  >
- <Flag size={16} color="#FFFFFF" aria-hidden="true" />
+ <Flag size={16} aria-hidden="true" />
  {/* Count bubble -- shown unconditionally once the outer badge is
  visible. No "two-or-more" gate: a single open flag
  still surfaces the exact count. */}
  <span
- className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[#8B2942] bg-white px-1 font-['DM_Sans'] text-[10px] font-bold text-[#8B2942]"
+ className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-madder bg-white px-1 font-sans text-[10px] font-bold text-madder-deep"
  >
  {count}
  </span>

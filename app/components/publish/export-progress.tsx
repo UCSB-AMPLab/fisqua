@@ -170,14 +170,14 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
           </span>
           <span>{percent}%</span>
         </div>
-        <div className="mt-1 h-2 w-full rounded-full bg-stone-200">
+        <div className="mt-1 h-1.5 w-full rounded-full bg-stone-100">
           <div
             className={`h-2 rounded-full transition-all ${
               isComplete
-                ? "bg-green-500"
+                ? "bg-verdigris"
                 : isError
-                  ? "bg-red-500"
-                  : "bg-[#8B2942]"
+                  ? "bg-madder"
+                  : "bg-indigo"
             }`}
             style={{ width: `${percent}%` }}
           />
@@ -250,9 +250,9 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
       {/* Complete */}
       {isComplete && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <div className="flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3">
             <svg
-              className="h-5 w-5 text-green-600"
+              className="h-5 w-5 text-verdigris-deep"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={2}
@@ -264,7 +264,7 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
                 d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className="font-sans text-sm font-medium text-green-800">
+            <span className="font-sans text-sm font-medium text-verdigris-deep">
               {t("progress.complete")}
             </span>
           </div>
@@ -291,9 +291,9 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
 
       {/* Error */}
       {isError && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+        <div className="flex items-start gap-2 rounded-md border border-madder bg-madder-tint px-4 py-3">
           <svg
-            className="mt-0.5 h-5 w-5 text-red-600"
+            className="mt-0.5 h-5 w-5 text-madder-deep"
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth={2}
@@ -306,11 +306,11 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
             />
           </svg>
           <div>
-            <span className="font-sans text-sm font-medium text-red-800">
+            <span className="font-sans text-sm font-medium text-madder-deep">
               {t("progress.error")}
             </span>
             {data.errorMessage && (
-              <p className="mt-1 font-sans text-sm text-red-700">
+              <p className="mt-1 font-sans text-sm text-madder-deep">
                 {data.errorMessage}
               </p>
             )}

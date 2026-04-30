@@ -24,12 +24,12 @@ export function AnnouncementBanner({ text }: AnnouncementBannerProps) {
   }
 
   return (
-    <div className="relative rounded-lg border border-[#F9EDD4] bg-[#FFFBF0] p-4 text-sm text-[#8B6914]">
+    <div className="relative rounded-lg border border-saffron bg-saffron-tint p-4 text-sm text-saffron-deep">
       <span>{text}</span>
       <button
         type="button"
         onClick={() => setDismissed(true)}
-        className="absolute right-2 top-2 rounded p-1 text-[#8B6914] hover:bg-[#F9EDD4]"
+        className="absolute right-2 top-2 rounded p-1 text-saffron-deep hover:bg-saffron-tint"
         aria-label="Dismiss announcement"
       >
         <X className="h-4 w-4" />

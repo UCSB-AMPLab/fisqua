@@ -395,9 +395,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 // ---------------------------------------------------------------------------
 
 const TYPE_BADGE_STYLES: Record<string, string> = {
-  person: "bg-[#E0E7F7] text-[#3B5A9A]",
-  family: "bg-[#CCF0EB] text-[#0D9488]",
-  corporate: "bg-[#F5E6EA] text-[#8B2942]",
+  person: "bg-indigo-tint text-indigo",
+  family: "bg-verdigris-tint text-verdigris",
+  corporate: "bg-indigo-tint text-indigo",
 };
 
 // ---------------------------------------------------------------------------
@@ -429,7 +429,7 @@ export default function AdminVocabularyFunctionDetailPage({
   return (
     <div className="mx-auto max-w-4xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-[#78716C]">
+      <nav className="mb-4 text-sm text-stone-500">
         <Link to="/admin/vocabularies" className="hover:underline">
           {t("page_title")}
         </Link>
@@ -438,12 +438,12 @@ export default function AdminVocabularyFunctionDetailPage({
           {t("vocab_primary_functions")}
         </Link>
         <span className="mx-1">/</span>
-        <span className="text-[#44403C]">{term.canonical}</span>
+        <span className="text-stone-700">{term.canonical}</span>
       </nav>
 
       {/* Page heading */}
       <div className="flex items-center gap-3">
-        <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+        <h1 className="font-serif text-lg font-semibold text-stone-700">
           {term.canonical}
         </h1>
         <VocabularyStatusBadge
@@ -453,18 +453,18 @@ export default function AdminVocabularyFunctionDetailPage({
 
       {/* Action result messages */}
       {actionData && "error" in actionData && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mt-4 rounded-md border border-madder bg-madder-tint p-3 text-sm text-madder-deep">
           {actionData.error}
         </div>
       )}
       {actionData && "success" in actionData && (
-        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint p-3 text-sm text-verdigris-deep">
           {t("save_term")} ✓
         </div>
       )}
 
       {/* Edit form card */}
-      <Form method="post" className="mt-6 rounded-lg border border-[#E7E5E4] p-6">
+      <Form method="post" className="mt-6 rounded-lg border border-stone-200 p-6">
         <input type="hidden" name="intent" value="save" />
 
         <div className="space-y-4">
@@ -472,7 +472,7 @@ export default function AdminVocabularyFunctionDetailPage({
           <div>
             <label
               htmlFor="canonical"
-              className="block text-sm font-medium text-[#44403C]"
+              className="block text-sm font-medium text-indigo"
             >
               {t("field_canonical")}
             </label>
@@ -482,7 +482,7 @@ export default function AdminVocabularyFunctionDetailPage({
               type="text"
               defaultValue={term.canonical}
               required
-              className="mt-1 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+              className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             />
           </div>
 
@@ -490,7 +490,7 @@ export default function AdminVocabularyFunctionDetailPage({
           <div>
             <label
               htmlFor="category"
-              className="block text-sm font-medium text-[#44403C]"
+              className="block text-sm font-medium text-indigo"
             >
               {t("field_category")}
             </label>
@@ -498,7 +498,7 @@ export default function AdminVocabularyFunctionDetailPage({
               id="category"
               name="category"
               defaultValue={term.category ?? ""}
-              className="mt-1 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+              className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             >
               <option value="">{"\u2014"}</option>
               {FUNCTION_CATEGORIES.map((cat) => (
@@ -513,7 +513,7 @@ export default function AdminVocabularyFunctionDetailPage({
           <div>
             <label
               htmlFor="status"
-              className="block text-sm font-medium text-[#44403C]"
+              className="block text-sm font-medium text-indigo"
             >
               {t("field_status")}
             </label>
@@ -521,7 +521,7 @@ export default function AdminVocabularyFunctionDetailPage({
               id="status"
               name="status"
               defaultValue={term.status}
-              className="mt-1 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+              className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             >
               <option value="approved">{t("status_approved")}</option>
               <option value="proposed">{t("status_proposed")}</option>
@@ -533,7 +533,7 @@ export default function AdminVocabularyFunctionDetailPage({
           <div>
             <label
               htmlFor="notes"
-              className="block text-sm font-medium text-[#44403C]"
+              className="block text-sm font-medium text-indigo"
             >
               {t("field_notes")}
             </label>
@@ -542,7 +542,7 @@ export default function AdminVocabularyFunctionDetailPage({
               name="notes"
               defaultValue={term.notes ?? ""}
               rows={3}
-              className="mt-1 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+              className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             />
           </div>
         </div>
@@ -551,7 +551,7 @@ export default function AdminVocabularyFunctionDetailPage({
         <div className="mt-6">
           <button
             type="submit"
-            className="rounded-lg bg-[#8B2942] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6B1F33]"
+            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("save_term")}
           </button>
@@ -562,7 +562,7 @@ export default function AdminVocabularyFunctionDetailPage({
       <div className="mt-8">
         <CollapsibleSection title={`${t("linked_entities")} (${totalLinked})`}>
           {linkedEntities.length === 0 ? (
-            <p className="py-4 text-sm text-[#78716C]">
+            <p className="py-4 text-sm text-stone-500">
               {t("no_linked_entities")}
             </p>
           ) : (
@@ -570,7 +570,7 @@ export default function AdminVocabularyFunctionDetailPage({
               {linkedEntities.map((entity) => (
                 <div
                   key={entity.id}
-                  className="flex items-center gap-3 rounded border border-[#E7E5E4] px-3 py-2"
+                  className="flex items-center gap-3 rounded border border-stone-200 px-3 py-2"
                 >
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -581,19 +581,19 @@ export default function AdminVocabularyFunctionDetailPage({
                   </span>
                   <Link
                     to={`/admin/entities/${entity.id}`}
-                    className="text-sm font-semibold text-[#6B1F33] hover:underline"
+                    className="text-sm font-semibold text-indigo-deep hover:underline"
                   >
                     {entity.displayName}
                   </Link>
                   {entity.entityCode && (
-                    <span className="text-xs text-[#78716C]">
+                    <span className="text-xs text-stone-500">
                       {entity.entityCode}
                     </span>
                   )}
                 </div>
               ))}
               {totalLinked > linkedEntities.length && (
-                <p className="py-2 text-xs text-[#78716C]">
+                <p className="py-2 text-xs text-stone-500">
                   {t("n_terms", {
                     count: totalLinked - linkedEntities.length,
                   })}{" "}
@@ -610,14 +610,14 @@ export default function AdminVocabularyFunctionDetailPage({
         <button
           type="button"
           onClick={() => setShowMerge(true)}
-          className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+          className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
         >
           {t("merge_into")}
         </button>
         <button
           type="button"
           onClick={() => setShowSplit(true)}
-          className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+          className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
         >
           {t("split_term")}
         </button>
@@ -625,7 +625,7 @@ export default function AdminVocabularyFunctionDetailPage({
           <input type="hidden" name="intent" value="deprecate" />
           <button
             type="submit"
-            className="rounded-lg border border-red-600 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+            className="rounded-md border border-madder-deep px-4 py-2 text-sm font-semibold text-madder-deep hover:bg-madder-tint"
             onClick={(e) => {
               if (
                 !confirm(
@@ -754,16 +754,16 @@ function VocabMergeDialog({
         role="dialog"
         aria-labelledby="merge-dialog-title"
         tabIndex={-1}
-        className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+        className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-lg focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="merge-dialog-title"
-          className="font-serif text-lg font-semibold text-[#44403C]"
+          className="font-serif text-lg font-semibold text-stone-700"
         >
           {t("merge_into")}
         </h2>
-        <p className="mt-1 text-sm text-[#78716C]">
+        <p className="mt-1 text-sm text-stone-500">
           Merge &ldquo;{sourceName}&rdquo; into another function.
         </p>
 
@@ -771,18 +771,18 @@ function VocabMergeDialog({
         {!selectedTarget && (
           <>
             <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#78716C]" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("search_placeholder")}
                 autoFocus
-                className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-9 pr-3 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 py-2 pl-9 pr-3 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               />
             </div>
             {searchResults.length > 0 && (
-              <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-[#E7E5E4]">
+              <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-stone-200">
                 {searchResults.map((result) => (
                   <button
                     key={result.id}
@@ -793,13 +793,13 @@ function VocabMergeDialog({
                         displayName: result.displayName,
                       })
                     }
-                    className="flex w-full items-center justify-between border-b border-[#E7E5E4] px-3 py-2 text-left text-sm last:border-b-0 hover:bg-[#FAFAF9]"
+                    className="flex w-full items-center justify-between border-b border-stone-200 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-stone-50"
                   >
-                    <span className="text-[#44403C]">
+                    <span className="text-stone-700">
                       {result.displayName}
                     </span>
                     {result.code && (
-                      <span className="text-xs text-[#78716C]">
+                      <span className="text-xs text-stone-500">
                         {result.code}
                       </span>
                     )}
@@ -813,7 +813,7 @@ function VocabMergeDialog({
         {/* Entity reassignment (when target is selected) */}
         {selectedTarget && linkedEntities.length > 0 && (
           <div className="mt-4">
-            <p className="text-sm text-[#78716C]">
+            <p className="text-sm text-stone-500">
               Select entities to move to &ldquo;{selectedTarget.displayName}
               &rdquo;:
             </p>
@@ -821,13 +821,13 @@ function VocabMergeDialog({
               {linkedEntities.map((entity) => (
                 <label
                   key={entity.id}
-                  className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[#FAFAF9]"
+                  className="font-medium flex items-center gap-2 rounded px-2 py-1 hover:bg-stone-50"
                 >
                   <input
                     type="checkbox"
                     checked={selectedEntityIds.has(entity.id)}
                     onChange={() => toggleEntity(entity.id)}
-                    className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942]"
+                    className="h-4 w-4 rounded border-stone-200 text-indigo"
                   />
                   <span className="text-sm">{entity.displayName}</span>
                 </label>
@@ -838,12 +838,12 @@ function VocabMergeDialog({
 
         {/* Selected target display */}
         {selectedTarget && (
-          <div className="mt-4 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] px-3 py-2 text-sm">
+          <div className="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
             Target: <strong>{selectedTarget.displayName}</strong>
             <button
               type="button"
               onClick={() => setSelectedTarget(null)}
-              className="ml-2 text-xs text-[#8B2942] hover:underline"
+              className="ml-2 text-xs text-indigo hover:underline"
             >
               Change
             </button>
@@ -855,7 +855,7 @@ function VocabMergeDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             Cancel
           </button>
@@ -870,7 +870,7 @@ function VocabMergeDialog({
               />
               <button
                 type="submit"
-                className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+                className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
               >
                 {t("merge_into")}
               </button>
@@ -938,16 +938,16 @@ function VocabSplitDialog({
         role="dialog"
         aria-labelledby="split-dialog-title"
         tabIndex={-1}
-        className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+        className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-lg focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
           id="split-dialog-title"
-          className="font-serif text-lg font-semibold text-[#44403C]"
+          className="font-serif text-lg font-semibold text-stone-700"
         >
           {t("split_term")}
         </h2>
-        <p className="mt-1 text-sm text-[#78716C]">
+        <p className="mt-1 text-sm text-stone-500">
           Split &ldquo;{sourceName}&rdquo; into a new function.
         </p>
 
@@ -955,7 +955,7 @@ function VocabSplitDialog({
         <div className="mt-4">
           <label
             htmlFor="split-new-name"
-            className="block text-sm font-medium text-[#44403C]"
+            className="block text-sm font-medium text-indigo"
           >
             New function name
           </label>
@@ -966,27 +966,27 @@ function VocabSplitDialog({
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Enter new function name..."
             autoFocus
-            className="mt-1 w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+            className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
           />
         </div>
 
         {/* Entity selection */}
         {linkedEntities.length > 0 && (
           <div className="mt-4">
-            <p className="text-sm text-[#78716C]">
+            <p className="text-sm text-stone-500">
               Select entities to move to the new function:
             </p>
             <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
               {linkedEntities.map((entity) => (
                 <label
                   key={entity.id}
-                  className="flex items-center gap-2 rounded px-2 py-1 hover:bg-[#FAFAF9]"
+                  className="font-medium flex items-center gap-2 rounded px-2 py-1 hover:bg-stone-50"
                 >
                   <input
                     type="checkbox"
                     checked={selectedEntityIds.has(entity.id)}
                     onChange={() => toggleEntity(entity.id)}
-                    className="h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942]"
+                    className="h-4 w-4 rounded border-stone-200 text-indigo"
                   />
                   <span className="text-sm">{entity.displayName}</span>
                 </label>
@@ -1000,7 +1000,7 @@ function VocabSplitDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+            className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
           >
             Cancel
           </button>
@@ -1015,7 +1015,7 @@ function VocabSplitDialog({
             <button
               type="submit"
               disabled={!newName.trim()}
-              className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942] disabled:opacity-50"
+              className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-50"
             >
               {t("split_term")}
             </button>

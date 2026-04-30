@@ -52,9 +52,9 @@ type LeadDashboardProps = {
 };
 
 const ROLE_BADGE_STYLES: Record<string, string> = {
-  lead: "bg-[#F9EDD4] text-[#8B6914]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+  lead: "bg-saffron-tint text-saffron-deep",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
 };
 
 /** Get initials from a name (up to 2 letters) */
@@ -68,13 +68,13 @@ function getInitials(name: string | null): string {
 /** Attention item background styles by type */
 function getAttentionStyles(type: AttentionItem["type"]): { border: string; bg: string; text: string } {
   if (type === "resegmentation") {
-    return { border: "border-amber-200", bg: "bg-[#FEF3C7]", text: "text-amber-800" };
+    return { border: "border-saffron", bg: "bg-saffron-tint", text: "text-saffron-deep" };
   }
   if (type === "description-review") {
-    return { border: "border-amber-200", bg: "bg-[#FEF3C7]", text: "text-amber-800" };
+    return { border: "border-saffron", bg: "bg-saffron-tint", text: "text-saffron-deep" };
   }
   // Default pink for waiting, inactive, unassigned
-  return { border: "border-red-200", bg: "bg-[#F5E6EA]", text: "text-[#8B2942]" };
+  return { border: "border-madder", bg: "bg-indigo-tint", text: "text-indigo" };
 }
 
 function AttentionSection({ items }: { items: AttentionItem[] }) {
@@ -84,7 +84,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
 
   return (
     <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-red-600">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-madder-deep">
         {t("group.needs_attention")}
         <span className="ml-2 text-xs font-normal">({items.length})</span>
       </h2>
@@ -114,7 +114,7 @@ function AttentionSection({ items }: { items: AttentionItem[] }) {
 function AttentionIcon({ type }: { type: AttentionItem["type"] }) {
   if (type === "resegmentation") {
     return (
-      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-saffron-deep" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
         <line x1="12" y1="9" x2="12" y2="13" />
         <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -123,7 +123,7 @@ function AttentionIcon({ type }: { type: AttentionItem["type"] }) {
   }
   if (type === "description-review") {
     return (
-      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-saffron-deep" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -198,7 +198,7 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
         {hasDescription ? (
           <DescriptionProgressBar counts={project.descriptionStatusCounts!} />
         ) : (
-          <div className="rounded bg-[#F5F5F4] px-3 py-2 text-xs text-[#A8A29E]">
+          <div className="rounded bg-stone-100 px-3 py-2 text-xs text-stone-400">
             {t("description:promote.descripcion_no_iniciada")}
           </div>
         )}
@@ -215,7 +215,7 @@ function ProjectCard({ project }: { project: ProjectOverview }) {
               >
                 <div className="flex items-center gap-2">
                   {/* Avatar initials */}
-                  <div className="flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full bg-[#F5F5F4] text-[0.5625rem] font-medium text-stone-500">
+                  <div className="flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-full bg-stone-100 text-[0.5625rem] font-medium text-stone-500">
                     {getInitials(member.name)}
                   </div>
                   <Link
@@ -259,13 +259,13 @@ export function LeadDashboard({
     return (
       <div className="mt-12 flex justify-center">
         <div className="mx-auto max-w-md rounded-xl bg-white p-8 shadow-sm ring-1 ring-stone-100 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-pale-rose to-white">
-            <svg className="h-8 w-8 text-burgundy" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint">
+            <svg className="h-7 w-7 text-indigo" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h3 className="mt-4 font-serif text-lg font-semibold text-stone-900">{t("empty.no_projects_title")}</h3>
-          <p className="mt-2 text-sm text-stone-500">
+          <h3 className="mt-4 font-serif text-[18px] font-semibold text-indigo">{t("empty.no_projects_title")}</h3>
+          <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
             {t("empty.no_lead_projects_body")}
           </p>
         </div>

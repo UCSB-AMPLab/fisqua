@@ -20,15 +20,15 @@ import type { TreeItem } from "./miller-columns";
 // ---------------------------------------------------------------------------
 
 const LEVEL_BADGE_STYLES: Record<string, string> = {
-  fonds: "bg-[#E0E7F7] text-[#3B5A9A]",
-  subfonds: "bg-[#CCF0EB] text-[#0D9488]",
-  collection: "bg-[#CCF0EB] text-[#0D9488]",
-  series: "bg-[#F5E6EA] text-[#8B2942]",
-  subseries: "bg-[#FEF3C7] text-[#78350F]",
-  section: "bg-[#FEF3C7] text-[#78350F]",
-  volume: "bg-[#F5F5F4] text-[#44403C]",
-  file: "bg-[#F5F5F4] text-[#44403C]",
-  item: "bg-[#F5F5F4] text-[#78716C]",
+  fonds: "bg-indigo-tint text-indigo",
+  subfonds: "bg-verdigris-tint text-verdigris",
+  collection: "bg-verdigris-tint text-verdigris",
+  series: "bg-indigo-tint text-indigo",
+  subseries: "bg-saffron-tint text-saffron-deep",
+  section: "bg-saffron-tint text-saffron-deep",
+  volume: "bg-stone-100 text-stone-700",
+  file: "bg-stone-100 text-stone-700",
+  item: "bg-stone-100 text-stone-500",
 };
 
 // ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ export function MetadataPreview({
   if (item.kind === "repository") return null;
 
   const badgeStyle =
-    LEVEL_BADGE_STYLES[item.descriptionLevel] || "bg-[#F5F5F4] text-[#78716C]";
+    LEVEL_BADGE_STYLES[item.descriptionLevel] || "bg-stone-100 text-stone-500";
   const levelLabel = t(`level_${item.descriptionLevel}`, {
     defaultValue: item.descriptionLevel,
   });
@@ -107,20 +107,20 @@ export function MetadataPreview({
 
   return (
     <>
-      <div className="border-t border-[#E7E5E4] bg-[#FAFAF9] px-4 py-3">
+      <div className="border-t border-stone-200 bg-stone-50 px-4 py-3">
         <div className="grid grid-cols-[1fr_auto] gap-6">
           {/* Left: metadata fields */}
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
             <div>
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("field_referenceCode")}
               </span>
-              <p className="font-sans text-sm text-[#44403C]">
+              <p className="font-sans text-sm text-stone-700">
                 {item.referenceCode}
               </p>
             </div>
             <div>
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("field_descriptionLevel")}
               </span>
               <p className="mt-0.5">
@@ -132,29 +132,29 @@ export function MetadataPreview({
               </p>
             </div>
             <div>
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("field_dateExpression")}
               </span>
-              <p className="font-sans text-sm text-[#44403C]">
+              <p className="font-sans text-sm text-stone-700">
                 {item.dateExpression || "\u2014"}
               </p>
             </div>
             <div>
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("field_childCount")}
               </span>
-              <p className="font-sans text-sm text-[#44403C]">
+              <p className="font-sans text-sm text-stone-700">
                 {item.childCount}
               </p>
             </div>
             <div className="col-span-2">
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("field_scopeContent")}
               </span>
-              <p className="font-sans text-sm text-[#44403C]">{scopeContent}</p>
+              <p className="font-sans text-sm text-stone-700">{scopeContent}</p>
             </div>
             <div>
-              <span className="font-sans text-xs text-[#78716C]">
+              <span className="font-sans text-xs text-stone-500">
                 {t("published_badge")}
               </span>
               <p className="mt-0.5">
@@ -172,21 +172,21 @@ export function MetadataPreview({
             <Link
               to={`/admin/descriptions/${item.id}`}
               onClick={onNavigateAway}
-              className="inline-flex items-center justify-center rounded-lg bg-[#6B1F33] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="inline-flex items-center justify-center rounded-md bg-indigo px-3 py-1.5 text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("edit")}
             </Link>
             <Link
               to={`/admin/descriptions/new?parentId=${item.id}`}
               onClick={onNavigateAway}
-              className="inline-flex items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center justify-center rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               {t("add_child")}
             </Link>
             <button
               type="button"
               onClick={() => setShowMoveDialog(true)}
-              className="inline-flex items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="inline-flex items-center justify-center rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               {t("move_button")}
             </button>
@@ -196,7 +196,7 @@ export function MetadataPreview({
                 type="button"
                 onClick={() => handleReorder("up")}
                 aria-label={t("aria_move_up")}
-                className="inline-flex flex-1 items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="inline-flex flex-1 items-center justify-center rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 <ArrowUp className="h-4 w-4" />
               </button>
@@ -204,7 +204,7 @@ export function MetadataPreview({
                 type="button"
                 onClick={() => handleReorder("down")}
                 aria-label={t("aria_move_down")}
-                className="inline-flex flex-1 items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="inline-flex flex-1 items-center justify-center rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 <ArrowDown className="h-4 w-4" />
               </button>
@@ -220,8 +220,8 @@ export function MetadataPreview({
               }
               className={
                 hasChildren
-                  ? "inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-red-600 opacity-50"
-                  : "inline-flex items-center justify-center rounded-lg border border-[#E7E5E4] bg-white px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                  ? "inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-madder-deep opacity-50"
+                  : "inline-flex items-center justify-center rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-madder-deep hover:bg-madder-tint"
               }
             >
               {t("delete_description")}
@@ -249,25 +249,25 @@ export function MetadataPreview({
       {/* Delete confirmation dialog */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-[#44403C]">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-stone-700">
               {t("delete_description")}
             </h2>
-            <p className="mt-2 text-sm text-[#78716C]">
+            <p className="mt-2 font-serif text-[15px] text-stone-500 max-w-[36ch] mx-auto">
               {t("error_delete_confirm", { title: item.title })}
             </p>
             <div className="mt-4 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+                className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
               >
                 {t("delete_cancel")}
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
-                className="rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                className="rounded-md bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
               >
                 {t("delete_description")}
               </button>

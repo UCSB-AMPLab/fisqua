@@ -134,14 +134,14 @@ export function FlagResegmentationDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-[560px] overflow-y-auto rounded-xl bg-white shadow-lg">
         {/* Header */}
         <div className="flex items-start gap-3 p-6 pb-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-            <AlertTriangle className="h-5 w-5 text-amber-600" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-saffron-tint">
+            <AlertTriangle className="h-5 w-5 text-saffron-deep" />
           </div>
           <div className="flex-1">
-            <h2 className="font-['Cormorant_Garamond'] text-2xl font-semibold text-stone-800">
+            <h2 className="font-display text-2xl font-semibold text-stone-800">
               {t("resegmentation.reportar_problema")}
             </h2>
           </div>
@@ -154,13 +154,13 @@ export function FlagResegmentationDialog({
         </div>
 
         {/* Warning banner */}
-        <div className="mx-6 rounded-lg bg-[#FEF3C7] p-3 text-sm text-[#78350F]">
+        <div className="mx-6 rounded-lg bg-saffron-tint p-3 text-sm text-saffron-deep">
           {t("resegmentation.warning")}
         </div>
 
         <div className="space-y-5 p-6 pt-4">
           {/* Context card */}
-          <div className="rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-4">
+          <div className="rounded-lg border border-stone-200 bg-stone-50 p-4">
             <p className="text-sm font-medium text-stone-700">{entryTitle}</p>
             {entryRefCode && (
               <p className="font-mono text-xs text-stone-400">
@@ -184,7 +184,7 @@ export function FlagResegmentationDialog({
               {PROBLEM_TYPES.map((pt) => (
                 <label
                   key={pt.value}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
+                  className="font-medium flex cursor-pointer items-start gap-3 rounded-lg border border-stone-200 p-3 hover:bg-stone-50"
                 >
                   <input
                     type="radio"
@@ -192,7 +192,7 @@ export function FlagResegmentationDialog({
                     value={pt.value}
                     checked={problemType === pt.value}
                     onChange={() => setProblemType(pt.value)}
-                    className="mt-0.5 accent-[#D97706]"
+                    className="mt-0.5 accent-saffron"
                   />
                   <div>
                     <span className="text-sm font-medium text-stone-700">
@@ -219,7 +219,7 @@ export function FlagResegmentationDialog({
                 {neighbours.map((n) => (
                   <label
                     key={n.id}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-stone-50"
+                    className="font-medium flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-stone-50"
                   >
                     <input
                       type="checkbox"
@@ -251,14 +251,14 @@ export function FlagResegmentationDialog({
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+              className="flex-1 rounded-md border border-stone-200 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
             >
               {t("resegmentation.cancelar")}
             </button>
             <button
               onClick={handleSubmit}
               disabled={!isValid}
-              className="flex-1 rounded-lg bg-[#D97706] px-4 py-2 text-sm font-medium text-white hover:bg-[#B45309] disabled:opacity-50"
+              className="flex-1 rounded-md bg-saffron px-4 py-2 text-sm font-medium text-white hover:bg-saffron-deep disabled:opacity-50"
             >
               {t("resegmentation.enviar_reporte")}
             </button>

@@ -148,16 +148,16 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
   return (
     <nav
       aria-label="Main navigation"
-      className={`flex flex-col border-r border-[#E7E5E4] bg-[#FAFAF9] transition-all duration-300 ${
+      className={`flex flex-col border-r border-stone-200 bg-stone-50 transition-all duration-300 ${
         collapsed ? "w-16" : "w-60"
       }`}
     >
       <div className="flex flex-1 flex-col gap-1 py-4">
         {sections.map((section, si) => (
           <div key={section.labelKey ?? si}>
-            {si > 0 && <div className="mx-4 my-2 border-t border-[#E7E5E4]" />}
+            {si > 0 && <div className="mx-4 my-2 border-t border-stone-200" />}
             {section.labelKey && !collapsed && (
-              <p className="mx-6 mb-1 text-xs font-medium uppercase tracking-wider text-[#A8A29E]">
+              <p className="mx-6 mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-400">
                 {t(section.labelKey.replace("sidebar:", ""))}
               </p>
             )}
@@ -176,7 +176,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
         <div className="flex-1" />
 
         {/* Bottom divider + items */}
-        <div className="mx-4 my-2 border-t border-[#E7E5E4]" />
+        <div className="mx-4 my-2 border-t border-stone-200" />
         {BOTTOM_ITEMS.map((item) => (
           <SidebarNavItem
             key={item.path}
@@ -199,7 +199,7 @@ export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
         onClick={onToggle}
         aria-expanded={!collapsed}
         aria-label={collapsed ? t("expand") : t("collapse")}
-        className="flex justify-center border-t border-[#E7E5E4] py-3 text-[#78716C] hover:text-[#44403C]"
+        className="flex justify-center border-t border-stone-200 py-3 text-stone-500 hover:text-indigo"
       >
         {collapsed ? (
           <ChevronRight className="h-5 w-5" />
@@ -227,12 +227,12 @@ function SidebarNavItem({
       to={item.path}
       end={item.end}
       className={({ isActive }) =>
-        `mx-2 flex items-center gap-3 rounded px-4 py-3 ${
+        `relative mx-2 flex items-center gap-3 rounded-md px-4 py-2.5 ${
           collapsed ? "justify-center" : ""
         } ${
           isActive
-            ? "bg-white font-semibold text-[#44403C] shadow-sm"
-            : "text-[#78716C] hover:bg-white/50"
+            ? "bg-white font-semibold text-indigo before:absolute before:inset-y-1 before:left-0 before:w-[2px] before:rounded-full before:bg-indigo"
+            : "font-sans text-stone-700 hover:bg-white/50"
         }`
       }
     >
@@ -240,11 +240,13 @@ function SidebarNavItem({
         <>
           <Icon
             className={`h-5 w-5 flex-shrink-0 ${
-              isActive ? "text-[#8B2942]" : "text-[#78716C]"
+              isActive ? "text-indigo" : "text-stone-500"
             }`}
           />
           {!collapsed && (
-            <span className="text-sm">{t(item.labelKey.replace("sidebar:", ""))}</span>
+            <span className="font-sans text-sm">
+              {t(item.labelKey.replace("sidebar:", ""))}
+            </span>
           )}
         </>
       )}

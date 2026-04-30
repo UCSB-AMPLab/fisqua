@@ -66,7 +66,7 @@ export function LodLinkField({
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5">
-        <label className="text-xs font-normal text-[#78716C]">{label}</label>
+        <label className="text-xs font-medium text-indigo">{label}</label>
         {value && !hasError && (
           <a
             href={SERVICE_URLS[service](value)}
@@ -74,7 +74,7 @@ export function LodLinkField({
             rel="noopener noreferrer"
             aria-label={`Open ${service} record in new tab`}
           >
-            <ExternalLink className="h-3.5 w-3.5 text-[#6B1F33]" />
+            <ExternalLink className="h-3.5 w-3.5 text-indigo-deep" />
           </a>
         )}
       </div>
@@ -84,14 +84,10 @@ export function LodLinkField({
         onChange={(e) => onChange(e.target.value)}
         onBlur={handleBlur}
         disabled={disabled}
-        className={`w-full rounded-lg border px-3 py-2 font-sans text-sm text-[#44403C] focus:outline-none focus:ring-1 ${
-          hasError
-            ? "border-[#DC2626] focus:border-[#DC2626] focus:ring-[#DC2626]"
-            : "border-[#E7E5E4] focus:border-[#8B2942] focus:ring-[#8B2942]"
-        } disabled:cursor-not-allowed disabled:opacity-50`}
+        className={`w-full rounded-lg border px-3 py-2 font-sans text-sm text-stone-700 focus:outline-none focus:ring-1 ${ hasError ? "border-madder focus:border-madder focus:ring-madder" : "border-stone-200 focus:border-indigo focus:ring-indigo" } disabled:cursor-not-allowed disabled:opacity-50`}
       />
       {displayError && (
-        <p className="mt-1 text-xs text-[#DC2626]">{displayError}</p>
+        <p className="mt-1 text-xs text-madder">{displayError}</p>
       )}
     </div>
   );

@@ -69,8 +69,8 @@ function CompletionDot({ isComplete }: { isComplete: boolean }) {
     <span
       className={`inline-block h-2.5 w-2.5 rounded-full ${
         isComplete
-          ? "bg-[#2F6B45]"
-          : "border border-[#E7E5E4] bg-transparent"
+          ? "bg-verdigris"
+          : "border border-stone-200 bg-transparent"
       }`}
     />
   );
@@ -86,9 +86,7 @@ export function DescriptionSection({
 }: DescriptionSectionProps) {
   return (
     <div
-      className={`rounded-lg border ${
-        isExpanded ? "border-[#8B2942]" : "border-[#E7E5E4]"
-      } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
+      className={`rounded-lg border ${ isExpanded ? "border-indigo" : "border-stone-200" } ${isDisabled ? "cursor-not-allowed opacity-50" : ""}`}
     >
       {/* Header */}
       <button
@@ -101,20 +99,20 @@ export function DescriptionSection({
       >
         <span
           className={
-            isExpanded ? "text-[#8B2942]" : "text-[#44403C]"
+            isExpanded ? "text-indigo" : "text-stone-700"
           }
         >
           {isExpanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
         </span>
         <span
           className={`flex-1 font-display text-[1.125rem] font-semibold ${
-            isExpanded ? "text-[#8B2942]" : "text-[#44403C]"
+            isExpanded ? "text-indigo" : "text-stone-700"
           }`}
         >
           {title}
         </span>
         {isDisabled && (
-          <span className="text-[#78716C]">
+          <span className="text-stone-500">
             <LockIcon />
           </span>
         )}

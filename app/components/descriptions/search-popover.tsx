@@ -84,10 +84,10 @@ export function SearchPopover({
   return (
     <div
       ref={popoverRef}
-      className="absolute z-50 mt-1 w-96 rounded-lg border border-[#E7E5E4] bg-white p-4 shadow-lg"
+      className="absolute z-50 mt-1 w-96 rounded-lg border border-stone-200 bg-white p-4 shadow-lg"
     >
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A8A29E]" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
         <input
           ref={inputRef}
           type="text"
@@ -96,19 +96,19 @@ export function SearchPopover({
           placeholder={
             type === "entity" ? t("search_entity") : t("search_place")
           }
-          className="w-full rounded-lg border border-[#E7E5E4] py-2 pl-10 pr-3 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+          className="w-full rounded-lg border border-stone-200 py-2 pl-10 pr-3 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
       </div>
 
       <div className="mt-2 max-h-64 overflow-y-auto">
         {isLoading && (
           <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-[#A8A29E]" />
+            <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
           </div>
         )}
 
         {!isLoading && query.trim().length >= 2 && results.length === 0 && (
-          <p className="py-4 text-center text-sm text-[#78716C]">
+          <p className="py-4 text-center text-sm text-stone-500">
             {t("no_results")}
           </p>
         )}
@@ -125,13 +125,13 @@ export function SearchPopover({
                   code: item.code ?? "",
                 })
               }
-              className="flex w-full items-center justify-between rounded px-3 py-2 text-left hover:bg-[#FAFAF9]"
+              className="flex w-full items-center justify-between rounded px-3 py-2 text-left hover:bg-stone-50"
             >
-              <span className="text-sm text-[#44403C]">
+              <span className="text-sm text-stone-700">
                 {item.displayName}
               </span>
               {item.code && (
-                <span className="text-xs text-[#A8A29E]">{item.code}</span>
+                <span className="text-xs text-stone-400">{item.code}</span>
               )}
             </button>
           ))}

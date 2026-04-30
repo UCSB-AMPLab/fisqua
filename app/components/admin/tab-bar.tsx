@@ -25,7 +25,7 @@ export function TabBar({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const { t } = useTranslation("cataloguing_admin");
 
   return (
-    <nav className="flex border-b border-[#E7E5E4]">
+    <nav className="flex border-b border-stone-200">
       {TABS.map((tab) => {
         if ("superadminOnly" in tab && tab.superadminOnly && !isSuperAdmin) {
           return null;
@@ -37,8 +37,8 @@ export function TabBar({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             className={({ isActive }) =>
               `px-4 py-3 text-sm transition-colors duration-150 ${
                 isActive
-                  ? "border-b-2 border-[#8B2942] font-semibold text-[#44403C]"
-                  : "font-normal text-[#78716C] hover:text-[#44403C]"
+                  ? "border-b-2 border-indigo font-semibold text-stone-700"
+                  : "font-normal text-stone-500 hover:text-stone-700"
               }`
             }
           >

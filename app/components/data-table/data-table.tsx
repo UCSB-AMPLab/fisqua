@@ -84,12 +84,12 @@ export function DataTable<TData>({
   function getSortIcon(columnId: string) {
     const sorted = sorting.find((s) => s.id === columnId);
     if (!sorted) {
-      return <ArrowUpDown className="ml-1 inline h-4 w-4 text-[#78716C]" />;
+      return <ArrowUpDown className="ml-1 inline h-4 w-4 text-stone-500" />;
     }
     if (sorted.desc) {
-      return <ArrowDown className="ml-1 inline h-4 w-4 text-[#8B2942]" />;
+      return <ArrowDown className="ml-1 inline h-4 w-4 text-indigo" />;
     }
-    return <ArrowUp className="ml-1 inline h-4 w-4 text-[#8B2942]" />;
+    return <ArrowUp className="ml-1 inline h-4 w-4 text-indigo" />;
   }
 
   function getAriaSortValue(
@@ -101,10 +101,10 @@ export function DataTable<TData>({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
+    <div className="overflow-hidden rounded-lg border border-stone-200">
       <div className="overflow-x-auto">
         <table className="min-w-full">
-          <thead className="bg-[#FAFAF9]">
+          <thead className="bg-stone-50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
@@ -113,7 +113,7 @@ export function DataTable<TData>({
                     <th
                       key={header.id}
                       scope="col"
-                      className="px-4 py-3 text-left font-sans text-xs font-normal uppercase tracking-wide text-[#78716C]"
+                      className="px-4 py-3 text-left font-sans text-xs font-normal uppercase tracking-wide text-stone-500"
                       aria-sort={
                         canSort
                           ? getAriaSortValue(header.column.id)
@@ -149,7 +149,7 @@ export function DataTable<TData>({
               <tr>
                 <td
                   colSpan={table.getVisibleLeafColumns().length}
-                  className="px-4 py-8 text-center font-sans text-sm text-[#78716C]"
+                  className="px-4 py-8 text-center font-sans text-sm text-stone-500"
                 >
                   {emptyMessage}
                 </td>
@@ -158,12 +158,12 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-t border-[#E7E5E4] hover:bg-[#FAFAF9]"
+                  className="border-t border-stone-200 hover:bg-stone-50"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-4 py-3 font-sans text-sm text-[#44403C]"
+                      className="px-4 py-3 font-sans text-sm text-stone-700"
                     >
                       {flexRender(
                         cell.column.columnDef.cell,

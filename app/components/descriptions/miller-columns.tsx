@@ -342,7 +342,7 @@ export function MillerColumns({ onSelectItem }: MillerColumnsProps) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-lg border border-[#E7E5E4]"
+      className="relative overflow-hidden rounded-lg border border-stone-200"
       style={{ minHeight: 400, maxHeight: 600 }}
     >
       <div
@@ -367,8 +367,8 @@ export function MillerColumns({ onSelectItem }: MillerColumnsProps) {
 
         {/* Loading indicator */}
         {state.loading && (
-          <div className="flex w-[340px] flex-none items-center justify-center border-r border-[#E7E5E4]">
-            <Loader2 className="h-5 w-5 animate-spin text-[#78716C]" />
+          <div className="flex w-[340px] flex-none items-center justify-center border-r border-stone-200">
+            <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
           </div>
         )}
       </div>

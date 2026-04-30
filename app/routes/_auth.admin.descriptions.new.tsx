@@ -325,32 +325,32 @@ export default function NewDescriptionPage({
           <li>
             <Link
               to="/admin/descriptions"
-              className="text-[#78716C] hover:text-[#44403C]"
+              className="text-stone-500 hover:text-stone-700"
             >
               {t("page_title")}
             </Link>
           </li>
           <li>
-            <ChevronRight className="h-4 w-4 text-[#A8A29E]" />
+            <ChevronRight className="h-4 w-4 text-stone-400" />
           </li>
-          <li className="text-[#44403C]">{t("breadcrumb_new")}</li>
+          <li className="text-stone-700">{t("breadcrumb_new")}</li>
         </ol>
       </nav>
 
       {/* Title */}
-      <h1 className="font-serif text-2xl font-semibold text-[#44403C]">
+      <h1 className="font-serif text-2xl font-semibold text-stone-700">
         {t("new_description")}
       </h1>
 
       {/* Error banner */}
       {globalError && (
-        <div className="mt-4 rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {t("error_generic")}
         </div>
       )}
 
       {/* Form card */}
-      <div className="mt-6 rounded-lg border border-[#E7E5E4] bg-white p-6">
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
         <Form method="post">
           {parent && (
             <input type="hidden" name="parentId" value={parent.id} />
@@ -358,7 +358,7 @@ export default function NewDescriptionPage({
 
           {/* Parent helper text */}
           {parent && (
-            <p className="mb-4 text-xs text-[#78716C]">
+            <p className="mb-4 text-xs text-stone-500">
               {t("parent_helper", { parentTitle: parent.title })}
             </p>
           )}
@@ -376,16 +376,16 @@ export default function NewDescriptionPage({
             <div>
               <label
                 htmlFor="descriptionLevel"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field_descriptionLevel")}
-                <span className="text-[#DC2626]"> *</span>
+                <span className="text-madder"> *</span>
               </label>
               <select
                 id="descriptionLevel"
                 name="descriptionLevel"
                 aria-required="true"
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 <option value="">{""}</option>
                 {(allowedLevels as string[]).map((level) => (
@@ -395,7 +395,7 @@ export default function NewDescriptionPage({
                 ))}
               </select>
               {errors?.descriptionLevel?.[0] && (
-                <p className="mt-1 text-xs text-[#DC2626]">
+                <p className="mt-1 text-xs text-madder">
                   {errors?.descriptionLevel?.[0] === "invalid_level"
                     ? t("error_invalid_level")
                     : t("error_required")}
@@ -416,7 +416,7 @@ export default function NewDescriptionPage({
                     : errors?.referenceCode?.[0]
                 }
               />
-              <p className="mt-1 text-xs text-[#78716C]">
+              <p className="mt-1 text-xs text-stone-500">
                 {t("ref_code_helper")}
               </p>
             </div>
@@ -433,17 +433,17 @@ export default function NewDescriptionPage({
             <div>
               <label
                 htmlFor="repositoryId"
-                className="mb-1 block text-xs text-[#78716C]"
+                className="mb-1 block text-xs font-medium text-indigo"
               >
                 {t("field_repositoryId")}
-                <span className="text-[#DC2626]"> *</span>
+                <span className="text-madder"> *</span>
               </label>
               <select
                 id="repositoryId"
                 name="repositoryId"
                 aria-required="true"
                 defaultValue={parent?.repositoryId ?? ""}
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
                 <option value="">{""}</option>
                 {repositories.map((repo) => (
@@ -453,7 +453,7 @@ export default function NewDescriptionPage({
                 ))}
               </select>
               {errors?.repositoryId?.[0] && (
-                <p className="mt-1 text-xs text-[#DC2626]">
+                <p className="mt-1 text-xs text-madder">
                   {t("error_required")}
                 </p>
               )}
@@ -464,13 +464,13 @@ export default function NewDescriptionPage({
           <div className="mt-6 flex gap-3">
             <button
               type="submit"
-              className="rounded-lg bg-[#6B1F33] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("create_description")}
             </button>
             <Link
               to="/admin/descriptions"
-              className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-sm font-semibold text-[#44403C] hover:bg-[#FAFAF9]"
+              className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
             >
               {t("back_to_descriptions")}
             </Link>
@@ -501,9 +501,9 @@ function FieldInput({
   const errorId = error ? `${name}-error` : undefined;
   return (
     <div>
-      <label htmlFor={name} className="mb-1 block text-xs text-[#78716C]">
+      <label htmlFor={name} className="mb-1 block text-xs font-medium text-indigo">
         {label}
-        {required && <span className="text-[#DC2626]"> *</span>}
+        {required && <span className="text-madder"> *</span>}
       </label>
       <input
         type="text"
@@ -512,10 +512,10 @@ function FieldInput({
         defaultValue={defaultValue}
         aria-required={required ? "true" : undefined}
         aria-describedby={errorId}
-        className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+        className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
       />
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-[#DC2626]">
+        <p id={errorId} className="mt-1 text-xs text-madder">
           {error}
         </p>
       )}

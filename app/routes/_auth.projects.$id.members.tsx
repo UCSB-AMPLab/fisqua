@@ -176,9 +176,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#D6E8DB] text-[#2F6B45]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#CCF0EB] text-[#0D9488]",
+  lead: "bg-verdigris-tint text-verdigris",
+  cataloguer: "bg-indigo-tint text-indigo",
+  reviewer: "bg-verdigris-tint text-verdigris",
 };
 
 export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
@@ -193,37 +193,37 @@ export default function ProjectMembers({ loaderData }: Route.ComponentProps) {
     <div className="space-y-8">
       {/* Feedback messages */}
       {actionData?.ok && actionData?.message && (
-        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 text-sm text-[#44403C]">
+        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 text-sm text-stone-700">
           {actionData.message}
         </div>
       )}
       {actionData && !actionData.ok && actionData?.error && (
-        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 text-sm text-[#44403C]">
+        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {actionData.error}
         </div>
       )}
 
       {/* Members table */}
       <section>
-        <h2 className="font-sans text-[1.5rem] font-semibold text-[#44403C]">
+        <h2 className="font-sans text-[1.5rem] font-semibold text-stone-700">
           {t("project:heading.members")} ({members.length})
         </h2>
 
         {members.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-lg border border-[#E7E5E4]">
-            <table className="min-w-full divide-y divide-[#E7E5E4]">
-              <thead className="bg-[#FAFAF9]">
+          <div className="mt-4 overflow-hidden rounded-lg border border-stone-200">
+            <table className="min-w-full divide-y divide-stone-200">
+              <thead className="bg-stone-50">
                 <tr>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("admin:table.name")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("admin:table.email")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("admin:table.role")}
                   </th>
-                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
                     {t("admin:table.actions")}
                   </th>
                 </tr>
@@ -260,10 +260,10 @@ function MemberRow({
 
   return (
     <tr>
-      <td className="px-4 py-3 font-sans text-sm text-[#44403C]">
+      <td className="px-4 py-3 font-sans text-sm text-stone-700">
         {member.name || "\u2014"}
       </td>
-      <td className="px-4 py-3 font-sans text-sm text-[#78716C]">
+      <td className="px-4 py-3 font-sans text-sm text-stone-500">
         {member.email}
       </td>
       <td className="px-4 py-3">
@@ -277,7 +277,7 @@ function MemberRow({
               const form = e.target.closest("form");
               if (form) fetcher.submit(form);
             }}
-            className="rounded border border-[#E7E5E4] px-1.5 py-0.5 font-sans text-xs focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+            className="rounded border border-stone-200 px-1.5 py-0.5 font-sans text-xs focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
           >
             <option value="lead">{t("workflow:role.lead")}</option>
             <option value="cataloguer">{t("workflow:role.cataloguer")}</option>
@@ -292,7 +292,7 @@ function MemberRow({
             <input type="hidden" name="membershipId" value={member.membershipId} />
             <button
               type="submit"
-              className="font-sans text-xs font-medium text-[#8B2942] hover:underline"
+              className="font-sans text-xs font-medium text-indigo hover:underline"
               onClick={(e) => {
                 if (
                   !confirm(
@@ -327,14 +327,14 @@ function AddMemberForm({
     <fetcher.Form method="post" className="mt-4 flex items-end gap-3">
       <input type="hidden" name="_action" value="addMember" />
       <div>
-        <label className="block font-sans text-xs font-medium text-[#78716C]">
+        <label className="block font-sans text-xs font-medium text-indigo">
           {t("admin:table.user")}
         </label>
         <select
           name="userId"
           required
           disabled={noUsers}
-          className="mt-0.5 block w-56 rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none disabled:bg-[#FAFAF9] disabled:text-[#A8A29E]"
+          className="mt-0.5 block w-56 rounded-lg border border-stone-200 px-2 py-1.5 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none disabled:bg-stone-50 disabled:text-stone-400"
         >
           <option value="">
             {noUsers
@@ -349,14 +349,14 @@ function AddMemberForm({
         </select>
       </div>
       <div>
-        <label className="block font-sans text-xs font-medium text-[#78716C]">
+        <label className="block font-sans text-xs font-medium text-indigo">
           {t("admin:table.role")}
         </label>
         <select
           name="role"
           required
           disabled={noUsers}
-          className="mt-0.5 rounded-lg border border-[#E7E5E4] px-2 py-1.5 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none disabled:bg-[#FAFAF9] disabled:text-[#A8A29E]"
+          className="mt-0.5 rounded-lg border border-stone-200 px-2 py-1.5 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none disabled:bg-stone-50 disabled:text-stone-400"
         >
           <option value="cataloguer">{t("workflow:role.cataloguer")}</option>
           <option value="reviewer">{t("workflow:role.reviewer")}</option>
@@ -366,7 +366,7 @@ function AddMemberForm({
       <button
         type="submit"
         disabled={noUsers}
-        className="rounded-lg bg-[#8B2942] px-3 py-1.5 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md bg-indigo px-3 py-1.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t("admin:action.add_user")}
       </button>

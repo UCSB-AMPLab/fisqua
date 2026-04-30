@@ -103,21 +103,21 @@ function VocabularyCard({
   return (
     <Link
       to={href}
-      className="flex items-center justify-between rounded-lg border border-[#E7E5E4] p-4 hover:bg-[#FAFAF9]"
+      className="flex items-center justify-between rounded-lg border border-stone-200 p-4 hover:bg-stone-50"
     >
       <div>
-        <h3 className="text-sm font-semibold text-[#44403C]">{title}</h3>
-        <p className="mt-0.5 text-xs text-[#78716C]">{description}</p>
-        <p className="mt-1 text-xs text-[#78716C]">
+        <h3 className="text-sm font-semibold text-stone-700">{title}</h3>
+        <p className="mt-0.5 text-xs text-stone-500">{description}</p>
+        <p className="mt-1 text-xs text-stone-500">
           {t("n_terms", { count: termCount })}
           {proposedCount != null && proposedCount > 0 && (
-            <span className="ml-2 text-[#78350F]">
+            <span className="ml-2 text-saffron-deep">
               {t("n_proposed", { count: proposedCount })}
             </span>
           )}
         </p>
       </div>
-      <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#A8A29E]" />
+      <ChevronRight className="h-5 w-5 flex-shrink-0 text-stone-400" />
     </Link>
   );
 }
@@ -130,7 +130,7 @@ export default function AdminVocabulariesIndex({
 
   return (
     <div className="mx-auto max-w-7xl px-8 py-12">
-      <h1 className="font-serif text-lg font-semibold text-[#44403C]">
+      <h1 className="font-serif text-lg font-semibold text-stone-700">
         {t("page_title")}
       </h1>
 

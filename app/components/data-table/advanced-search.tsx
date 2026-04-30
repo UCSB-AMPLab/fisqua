@@ -54,7 +54,7 @@ export function AdvancedSearchPanel({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="text-sm text-[#6B1F33] hover:underline"
+          className="text-sm text-indigo-deep hover:underline"
           aria-expanded={isOpen}
           aria-controls={panelId}
           onClick={() => setIsOpen(!isOpen)}
@@ -62,7 +62,7 @@ export function AdvancedSearchPanel({
           {isOpen ? hideLabel : toggleLabel}
         </button>
         {active && !isOpen && (
-          <span className="text-xs text-[#78716C]">{activeLabel}</span>
+          <span className="text-xs text-stone-500">{activeLabel}</span>
         )}
       </div>
 
@@ -73,7 +73,7 @@ export function AdvancedSearchPanel({
               <div key={field.name}>
                 <label
                   htmlFor={`adv-${field.name}`}
-                  className="mb-1 block text-xs text-stone-500"
+                  className="mb-1 block text-xs font-medium text-indigo"
                 >
                   {field.label}
                 </label>
@@ -82,7 +82,7 @@ export function AdvancedSearchPanel({
                   type="text"
                   name={field.name}
                   defaultValue={searchParams.get(field.name) || ""}
-                  className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]"
+                  className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
             ))}
@@ -99,13 +99,13 @@ export function AdvancedSearchPanel({
                   form.requestSubmit();
                 }
               }}
-              className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm font-semibold text-[#44403C] hover:bg-white"
+              className="rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-white"
             >
               {clearLabel}
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-[#6B1F33] px-3 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="rounded-md bg-indigo px-3 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {searchLabel}
             </button>

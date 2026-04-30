@@ -154,7 +154,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (intent === "assignToProject") {
     const projectId = formData.get("projectId") as string;
-    const role = formData.get("role") as string;
+    const role = formData.get("role") as "lead" | "cataloguer" | "reviewer";
 
     if (!projectId || !["lead", "cataloguer", "reviewer"].includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
@@ -188,7 +188,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (intent === "changeRole") {
     const membershipId = formData.get("membershipId") as string;
-    const role = formData.get("role") as string;
+    const role = formData.get("role") as "lead" | "cataloguer" | "reviewer";
 
     if (!membershipId || !["lead", "cataloguer", "reviewer"].includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
@@ -220,10 +220,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 // Components
 // ---------------------------------------------------------------------------
 
+// Project-role chips follow the design system colour map: lead and cataloguer
+// share verdigris (brand / approved / lead); reviewer is madder (the only
+// system colour reserved for review and send-back actions). The previous
+// assignment had lead, cataloguer, and reviewer scrambled across saffron,
+// indigo, and verdigris and read inconsistently against the boundary markers
+// in the IIIF viewer, where cataloguer = verdigris and reviewer = madder.
 const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-[#F9EDD4] text-[#8B6914]",
-  cataloguer: "bg-[#E0E7F7] text-[#3B5A9A]",
-  reviewer: "bg-[#D6E8DB] text-[#2F6B45]",
+  lead: "bg-verdigris-tint text-verdigris-deep",
+  cataloguer: "bg-verdigris-tint text-verdigris-deep",
+  reviewer: "bg-madder-tint text-madder-deep",
 };
 
 function RoleCheckbox({
@@ -241,22 +247,20 @@ function RoleCheckbox({
 }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-lg border border-[#E7E5E4] px-4 py-3 ${
-        disabled ? "opacity-60" : "hover:bg-[#FAFAF9] cursor-pointer"
-      }`}
+      className={`font-medium flex items-start gap-3 rounded-lg border border-stone-200 px-4 py-3 ${ disabled ? "opacity-60" : "hover:bg-stone-50 cursor-pointer" }`}
     >
       <input
         type="checkbox"
         name={name}
         defaultChecked={checked}
         disabled={disabled}
-        className="mt-0.5 h-4 w-4 rounded border-[#E7E5E4] text-[#8B2942] focus:ring-[#8B2942]"
+        className="mt-0.5 h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
       />
       <div>
-        <div className="font-sans text-sm font-semibold text-[#44403C]">
+        <div className="font-sans text-sm font-semibold text-stone-700">
           {label}
         </div>
-        <div className="font-sans text-xs text-[#78716C]">{description}</div>
+        <div className="font-sans text-xs text-stone-500">{description}</div>
       </div>
     </label>
   );
@@ -278,12 +282,12 @@ export default function UserDetailPage({
   return (
     <div className="mx-auto max-w-3xl px-8 py-8 space-y-8">
       {/* Breadcrumb */}
-      <nav className="font-sans text-sm text-[#78716C]">
-        <Link to="/admin/users" className="hover:text-[#44403C]">
+      <nav className="font-sans text-sm text-stone-500">
+        <Link to="/admin/users" className="hover:text-stone-700">
           {t("breadcrumb_system_users")}
         </Link>
         <span className="mx-2">&rsaquo;</span>
-        <span className="text-[#44403C]">{u.name || u.email}</span>
+        <span className="text-stone-700">{u.name || u.email}</span>
       </nav>
 
       {/* Profile */}
@@ -293,7 +297,7 @@ export default function UserDetailPage({
           <div className="flex-1">
             <label
               htmlFor="user-name"
-              className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+              className="mb-1 block font-sans text-xs font-medium text-indigo"
             >
               {t("name_label")}
             </label>
@@ -302,13 +306,13 @@ export default function UserDetailPage({
               type="text"
               name="name"
               defaultValue={u.name || ""}
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             />
           </div>
           <div className="flex-1">
             <label
               htmlFor="user-email"
-              className="mb-1 block font-sans text-xs font-medium text-[#78716C]"
+              className="mb-1 block font-sans text-xs font-medium text-indigo"
             >
               {t("email_label")}
             </label>
@@ -318,19 +322,19 @@ export default function UserDetailPage({
               name="email"
               required
               defaultValue={u.email}
-              className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm text-[#44403C] focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             />
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <p className="font-sans text-xs text-[#A8A29E]">
+          <p className="font-sans text-xs text-stone-400">
             {t("last_login_label")}: {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("never")}
             {" · "}
             {t("created_label")}: {formatDate(u.createdAt)}
           </p>
           <button
             type="submit"
-            className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
           >
             {t("save_profile")}
           </button>
@@ -339,24 +343,24 @@ export default function UserDetailPage({
 
       {/* Feedback */}
       {result?.ok && result.message && (
-        <div className="rounded-lg border border-[#2F6B45] bg-[#D6E8DB] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
           {result.message}
         </div>
       )}
       {result && !result.ok && result.error && (
-        <div className="rounded-lg border border-[#8B2942] bg-[#F5E6EA] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
           {result.error}
         </div>
       )}
 
       {/* Role edit warnings */}
       {isSelf && (
-        <div className="rounded-lg border border-[#D4A843] bg-[#FEF9E7] px-4 py-3 font-sans text-sm text-[#44403C]">
+        <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3 font-sans text-sm text-stone-700">
           {t("self_warning")}
         </div>
       )}
       {!canEditRoles && !isSelf && (
-        <div className="rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] px-4 py-3 font-sans text-sm text-[#78716C]">
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
           {t("non_superadmin_notice")}
         </div>
       )}
@@ -368,7 +372,7 @@ export default function UserDetailPage({
         <div className="space-y-6">
           {/* System */}
           <div>
-            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
               {t("section_system")}
             </h2>
             <div className="space-y-2">
@@ -391,7 +395,7 @@ export default function UserDetailPage({
 
           {/* Cataloguing */}
           <div>
-            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
               {t("section_cataloguing")}
             </h2>
             <div className="space-y-2">
@@ -414,7 +418,7 @@ export default function UserDetailPage({
 
           {/* Records management */}
           <div>
-            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
               {t("section_records_management")}
             </h2>
             <div className="space-y-2">
@@ -438,7 +442,7 @@ export default function UserDetailPage({
           {canEditRoles && !isSelf && (
             <button
               type="submit"
-              className="rounded-lg bg-[#6B1F33] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#8B2942]"
+              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("save_roles")}
             </button>
@@ -449,14 +453,14 @@ export default function UserDetailPage({
       {/* Project memberships */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-sans text-xs font-semibold uppercase tracking-wider text-[#78716C]">
+          <h2 className="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
             {t("section_project_memberships")}
           </h2>
           {assignableProjects.length > 0 && (
             <button
               type="button"
               onClick={() => setShowAssignForm(!showAssignForm)}
-              className="font-sans text-xs font-semibold text-[#8B2942] hover:text-[#6B1F33]"
+              className="font-sans text-xs font-semibold text-indigo hover:text-indigo-deep"
             >
               {showAssignForm ? t("cancel") : t("assign_to_project")}
             </button>
@@ -466,18 +470,18 @@ export default function UserDetailPage({
         {showAssignForm && (
           <fetcher.Form
             method="post"
-            className="mb-4 flex items-end gap-2 rounded-lg border border-[#E7E5E4] bg-[#FAFAF9] p-3"
+            className="mb-4 flex items-end gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3"
             onSubmit={() => setTimeout(() => setShowAssignForm(false), 100)}
           >
             <input type="hidden" name="_action" value="assignToProject" />
             <div className="flex-1">
-              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
                 {t("project_label")}
               </label>
               <select
                 name="projectId"
                 required
-                className="w-full rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               >
                 <option value="">{t("select_project")}</option>
                 {assignableProjects.map((p) => (
@@ -488,13 +492,13 @@ export default function UserDetailPage({
               </select>
             </div>
             <div>
-              <label className="mb-1 block font-sans text-xs font-medium text-[#78716C]">
+              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
                 {t("role_label")}
               </label>
               <select
                 name="role"
                 required
-                className="rounded-lg border border-[#E7E5E4] px-3 py-2 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                className="rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
               >
                 <option value="">{t("select_role")}</option>
                 <option value="lead">{t("role_lead")}</option>
@@ -504,7 +508,7 @@ export default function UserDetailPage({
             </div>
             <button
               type="submit"
-              className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439]"
+              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("assign")}
             </button>
@@ -512,21 +516,21 @@ export default function UserDetailPage({
         )}
 
         {memberships.length === 0 ? (
-          <p className="rounded-lg border border-[#E7E5E4] px-4 py-6 text-center font-sans text-sm text-[#A8A29E]">
+          <p className="rounded-lg border border-stone-200 px-4 py-6 text-center font-sans text-sm text-stone-400">
             {t("no_memberships")}
           </p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-[#E7E5E4]">
-            <table className="min-w-full divide-y divide-[#E7E5E4]">
-              <thead className="bg-[#FAFAF9]">
+          <div className="overflow-hidden rounded-lg border border-stone-200">
+            <table className="min-w-full divide-y divide-stone-200">
+              <thead className="bg-stone-50">
                 <tr>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("project_label")}
                   </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
                     {t("role_label")}
                   </th>
-                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-[#78716C]">
+                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
                     &nbsp;
                   </th>
                 </tr>
@@ -534,7 +538,7 @@ export default function UserDetailPage({
               <tbody className="divide-y divide-stone-100">
                 {memberships.map((m) => (
                   <tr key={m.id}>
-                    <td className="px-4 py-3 font-sans text-sm font-semibold text-[#44403C]">
+                    <td className="px-4 py-3 font-sans text-sm font-semibold text-stone-700">
                       {m.projectName}
                     </td>
                     <td className="px-4 py-3">
@@ -553,7 +557,7 @@ export default function UserDetailPage({
                           name="role"
                           defaultValue={m.role}
                           onChange={(e) => e.target.form?.requestSubmit()}
-                          className="rounded-lg border border-[#E7E5E4] px-2 py-1 font-sans text-sm focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+                          className="rounded-lg border border-stone-200 px-2 py-1 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
                         >
                           <option value="lead">{t("role_lead")}</option>
                           <option value="cataloguer">{t("role_cataloguer")}</option>
@@ -575,7 +579,7 @@ export default function UserDetailPage({
                         />
                         <button
                           type="submit"
-                          className="font-sans text-xs text-[#A8A29E] hover:text-[#8B2942]"
+                          className="font-sans text-xs text-stone-400 hover:text-indigo"
                           onClick={(e) => {
                             if (
                               !confirm(

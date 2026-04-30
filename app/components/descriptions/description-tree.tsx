@@ -69,13 +69,13 @@ export function DescriptionTree({
 
   if (descriptionCount === 0) {
     return (
-      <p className="text-sm text-[#A8A29E]">{t("no_linked_descriptions")}</p>
+      <p className="text-sm text-stone-400">{t("no_linked_descriptions")}</p>
     );
   }
 
   if (roots.length === 0 && fetcher.state === "loading") {
     return (
-      <div className="flex items-center gap-2 text-sm text-[#A8A29E]">
+      <div className="flex items-center gap-2 text-sm text-stone-400">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span>{t("loading", { defaultValue: "Loading..." })}</span>
       </div>
@@ -170,7 +170,7 @@ function TreeNodeRow({
   return (
     <div>
       <div
-        className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-[#FAFAF9]"
+        className="flex items-center gap-1.5 rounded px-2 py-1 hover:bg-stone-50"
         style={{ paddingLeft: `${depth * 24 + 8}px` }}
       >
         {/* Expand/collapse chevron */}
@@ -178,7 +178,7 @@ function TreeNodeRow({
           <button
             type="button"
             onClick={() => onToggle(node.id)}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[#78716C] hover:text-[#44403C]"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-stone-500 hover:text-stone-700"
             aria-label={isExpanded ? "Collapse" : "Expand"}
           >
             {isLoading ? (
@@ -192,17 +192,17 @@ function TreeNodeRow({
         )}
 
         {/* Icon */}
-        <Icon className="h-4 w-4 shrink-0 text-[#A8A29E]" />
+        <Icon className="h-4 w-4 shrink-0 text-stone-400" />
 
         {/* Reference code */}
-        <span className="shrink-0 font-mono text-xs text-[#78716C]">
+        <span className="shrink-0 font-mono text-xs text-stone-500">
           {node.referenceCode}
         </span>
 
         {/* Title as link */}
         <Link
           to={`/admin/descriptions/${node.id}`}
-          className="truncate text-sm text-[#44403C] hover:text-[#6B1F33] hover:underline"
+          className="truncate text-sm text-stone-700 hover:text-indigo-deep hover:underline"
         >
           {node.title}
         </Link>

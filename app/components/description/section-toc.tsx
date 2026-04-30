@@ -20,7 +20,7 @@ export function SectionTOC({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
-    <div className="flex w-12 shrink-0 flex-col items-center gap-3 border-l border-[#E7E5E4] bg-[#FAFAF9] py-4">
+    <div className="flex w-12 shrink-0 flex-col items-center gap-3 border-l border-stone-200 bg-stone-50 py-4">
       {sections.map((section) => {
         const isActive = activeSectionId === section.id;
         return (
@@ -29,11 +29,11 @@ export function SectionTOC({
               type="button"
               className={`rounded-full ${
                 section.isComplete
-                  ? "bg-[#2F6B45]"
-                  : "border border-[#E7E5E4] bg-transparent"
+                  ? "bg-verdigris"
+                  : "border border-stone-200 bg-transparent"
               } ${
                 isActive
-                  ? "h-3 w-3 ring-2 ring-[#2F6B45] ring-offset-1"
+                  ? "h-3 w-3 ring-2 ring-verdigris ring-offset-1"
                   : "h-2.5 w-2.5"
               }`}
               onClick={() => onSectionClick(section.id)}
@@ -42,7 +42,7 @@ export function SectionTOC({
               aria-label={section.label}
             />
             {hoveredId === section.id && (
-              <div className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap rounded bg-[#44403C] px-2 py-1 font-sans text-[0.75rem] text-white">
+              <div className="pointer-events-none absolute right-full top-1/2 mr-2 -translate-y-1/2 whitespace-nowrap rounded bg-stone-700 px-2 py-1 font-sans text-[0.75rem] text-white">
                 {section.label}
               </div>
             )}

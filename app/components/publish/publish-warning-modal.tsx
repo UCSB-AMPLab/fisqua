@@ -65,10 +65,10 @@ export function PublishWarningModal({
       aria-modal="true"
       aria-labelledby="publish-warning-title"
     >
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg">
         <h2
           id="publish-warning-title"
-          className="font-display text-2xl font-semibold text-[#44403C]"
+          className="font-display text-2xl font-semibold text-stone-700"
         >
           {t("warning.title")}
         </h2>
@@ -84,14 +84,14 @@ export function PublishWarningModal({
             type="button"
             ref={cancelRef}
             onClick={onCancel}
-            className="rounded-lg border border-stone-300 bg-white px-4 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-400"
+            className="rounded-md border border-stone-300 bg-white px-4 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-400"
           >
             {t("warning.cancel")}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-[#8B2942] px-4 py-2 font-sans text-sm font-semibold text-white hover:bg-[#7a2439] focus:outline-none focus:ring-2 focus:ring-[#8B2942]"
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep focus:outline-none focus:ring-2 focus:ring-indigo"
           >
             {t("warning.confirm")}
           </button>

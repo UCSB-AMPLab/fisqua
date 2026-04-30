@@ -168,19 +168,19 @@ export function InlineCommentComposer({
 
   const wrapperClass =
  className ??
- "relative ml-9 mb-2 overflow-hidden rounded-lg border border-amber-500 bg-amber-50/40 shadow-sm";
+ "relative ml-9 mb-2 overflow-hidden rounded-lg border border-saffron bg-saffron-tint/40 shadow-sm";
 
   return (
  <div className={wrapperClass}>
  {/* Amber left connector bar signals draft state (matches the draft pin). */}
  <div
- className="absolute left-0 top-0 bottom-0 w-[3px] bg-amber-500"
+ className="absolute left-0 top-0 bottom-0 w-[3px] bg-saffron"
  aria-hidden
  />
  <div className="space-y-3 p-3 pl-4">
  {region && (
- <div className="inline-flex items-center gap-1.5 rounded border border-[#E7E5E4] bg-[#F5F5F4] px-2 py-0.5 font-['DM_Sans'] text-[10px] font-bold text-stone-600">
- <MapPin className="h-2.5 w-2.5 text-[#8B2942]" aria-hidden />
+ <div className="inline-flex items-center gap-1.5 rounded border border-stone-200 bg-stone-100 px-2 py-0.5 font-sans text-[10px] font-bold text-stone-600">
+ <MapPin className="h-2.5 w-2.5 text-indigo" aria-hidden />
  <span>
  {t("viewer:comment_prompt.region_label", {
  page: region.pageLabel ?? "?",
@@ -194,10 +194,10 @@ export function InlineCommentComposer({
  onChange={(e) => setBody(e.target.value)}
  onKeyDown={handleKeyDown}
  placeholder={t("viewer:comment_prompt.placeholder")}
- className="min-h-[72px] w-full rounded border border-stone-200 p-2 font-serif text-[0.9375rem] text-stone-700 placeholder:text-stone-400 focus:border-[#8B2942] focus:outline-none focus:ring-1 focus:ring-[#8B2942]/40"
+ className="min-h-[72px] w-full rounded border border-stone-200 p-2 font-serif text-[0.9375rem] text-stone-700 placeholder:text-stone-400 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo/40"
  />
  {serverError && (
- <p className="text-xs text-[#8B2942]">
+ <p className="text-xs text-indigo">
  {t("viewer:comment_prompt.error_server")}
  </p>
  )}
@@ -206,7 +206,7 @@ export function InlineCommentComposer({
  type="button"
  onClick={onCancel}
  disabled={submitting}
- className="rounded-md px-3 py-1.5 font-['DM_Sans'] text-xs font-medium text-stone-600 hover:bg-stone-100 disabled:opacity-50"
+ className="rounded-md px-3 py-1.5 font-sans text-xs font-medium text-stone-600 hover:bg-stone-100 disabled:opacity-50"
  >
  {t("viewer:comment_prompt.cancel")}
  </button>
@@ -214,7 +214,7 @@ export function InlineCommentComposer({
  type="button"
  onClick={handleSubmit}
  disabled={!canSubmit}
- className="rounded-md bg-[#8B2942] px-3 py-1.5 font-['DM_Sans'] text-xs font-semibold text-white hover:bg-[#722136] disabled:opacity-50"
+ className="rounded-md bg-indigo px-3 py-1.5 font-sans text-xs font-semibold text-parchment hover:bg-indigo-deep disabled:opacity-50"
  >
  {t("viewer:comment_prompt.submit")}
  </button>

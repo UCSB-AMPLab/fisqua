@@ -24,7 +24,7 @@ interface DashboardSectionProps {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-[#E7E5E4] bg-white p-6 text-center text-sm text-[#78716C]">
+    <div className="rounded-lg border border-stone-200 bg-white p-6 text-center text-sm text-stone-500">
       {message}
     </div>
   );
@@ -54,7 +54,7 @@ export function DashboardSection({
         <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* My work column */}
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-[#44403C]">
+            <h3 className="mb-3 text-sm font-semibold text-stone-700">
               {myWorkLabel}
             </h3>
             <div className="space-y-3">
@@ -64,7 +64,7 @@ export function DashboardSection({
 
           {/* To review column */}
           <div>
-            <h3 className="mb-3 text-sm font-semibold text-[#44403C]">
+            <h3 className="mb-3 text-sm font-semibold text-stone-700">
               {toReviewLabel}
             </h3>
             <div className="space-y-3">

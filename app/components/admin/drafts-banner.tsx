@@ -30,7 +30,7 @@ export function DraftsBanner({
   const { t } = useTranslation(namespace);
 
   return (
-    <div className="rounded-lg border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-sm text-[#78350F]">
+    <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3 text-sm text-saffron-deep">
       {t("conflict_banner", {
         name: userName,
         time: new Date(updatedAt).toLocaleString(),

@@ -88,9 +88,9 @@ export function CommentInput({
   if (target.kind === "resegFlag") return null;
 
   return (
- <div className={isReply ? "" : "rounded-lg bg-[#F5E6EA] p-3"}>
+ <div className={isReply ? "" : "rounded-lg bg-indigo-tint p-3"}>
  <textarea
- className={`w-full resize-y rounded border border-[#E7E5E4] bg-white p-2 font-serif text-[0.9375rem] italic text-[#44403C] placeholder:text-[#A8A29E] focus:border-[#8B2942] focus:outline-none ${minHeight}`}
+ className={`w-full resize-y rounded border border-stone-200 bg-white p-2 font-serif text-[0.9375rem] italic text-stone-700 placeholder:text-stone-400 focus:border-indigo focus:outline-none ${minHeight}`}
  value={text}
  onChange={(e) => setText(e.target.value)}
  onKeyDown={handleKeyDown}
@@ -100,7 +100,7 @@ export function CommentInput({
  <button
  type="button"
  disabled={!text.trim()}
- className="inline-flex items-center rounded bg-[#8B2942] px-3 py-1.5 font-['DM_Sans'] text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+ className="inline-flex items-center rounded bg-indigo px-3 py-1.5 font-sans text-xs font-semibold text-parchment transition-opacity hover:opacity-90 disabled:opacity-50"
  onClick={handleSubmit}
  >
  {isReply ? t("enviar") : t("comentar")}
@@ -109,7 +109,7 @@ export function CommentInput({
  {isReply && onCancel && (
  <button
  type="button"
- className="font-['DM_Sans'] text-xs font-medium text-[#78716C] hover:text-[#44403C]"
+ className="font-sans text-xs font-medium text-stone-500 hover:text-stone-700"
  onClick={onCancel}
  >
  {t("cancelar")}

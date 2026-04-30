@@ -274,14 +274,14 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
   return (
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Greeting */}
-      <h1 className="font-display text-4xl font-semibold text-[#44403C]">
+      <h1 className="font-display text-4xl font-semibold text-stone-700">
         {t("greeting", { name: user.name || user.email })}
       </h1>
-      <p className="mt-1 text-sm text-[#78716C]">{roleSubtitle}</p>
+      <p className="mt-1 text-sm text-stone-500">{roleSubtitle}</p>
 
       {/* Last login */}
       {lastLoginFormatted && (
-        <p className="mt-2 text-xs text-[#A8A29E]">
+        <p className="mt-2 text-xs text-stone-400">
           {t("last_login", { date: lastLoginFormatted })}
         </p>
       )}
@@ -318,7 +318,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
       {/* Superadmin announcement form */}
       {user.isSuperAdmin && (
         <div className="mt-4 space-y-2">
-          <p className="text-xs text-[#A8A29E]">
+          <p className="text-xs text-stone-400">
             {t("announcement_label")}
           </p>
           <setFetcher.Form method="post" className="flex items-end gap-2">
@@ -328,11 +328,11 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
               rows={2}
               maxLength={500}
               defaultValue={announcement ?? ""}
-              className="flex-1 rounded-lg border border-[#E7E5E4] px-3 py-2 text-sm text-[#44403C] focus:border-[#8B2942] focus:ring-1 focus:ring-[#8B2942] focus:outline-none"
+              className="flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
             />
             <button
               type="submit"
-              className="rounded-lg bg-[#8B2942] px-3 py-2 text-xs font-semibold text-white hover:bg-[#7a2439]"
+              className="rounded-md bg-indigo px-3 py-2 text-xs font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("set_announcement")}
             </button>
@@ -342,7 +342,7 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
               <input type="hidden" name="intent" value="clearAnnouncement" />
               <button
                 type="submit"
-                className="text-xs font-medium text-[#8B2942] hover:underline"
+                className="text-xs font-medium text-indigo hover:underline"
               >
                 {t("clear_announcement")}
               </button>
@@ -391,11 +391,11 @@ export default function HomePage({ loaderData }: Route.ComponentProps) {
             ))}
           </div>
         ) : (
-          <div className="rounded-lg border border-[#E7E5E4] bg-white p-8 text-center">
-            <p className="text-sm font-medium text-[#44403C]">
+          <div className="rounded-lg border border-stone-200 bg-white p-8 text-center">
+            <p className="text-sm font-medium text-stone-700">
               {t("empty.no_projects_assigned")}
             </p>
-            <p className="mt-1 text-sm text-[#78716C]">
+            <p className="mt-1 text-sm text-stone-500">
               {t("empty.no_projects_assigned_body")}
             </p>
           </div>
