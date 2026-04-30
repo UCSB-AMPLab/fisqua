@@ -58,6 +58,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     address,
     website,
     notes,
+    rightsText,
     enabled,
   });
 

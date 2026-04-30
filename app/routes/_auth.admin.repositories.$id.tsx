@@ -79,7 +79,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
         .all()
     : [];
 
-  // Check for another user's draft on this record  const { getConflictDraft } = await import("~/lib/drafts.server");
+  // Check for another user's draft on this record
+  const { getConflictDraft } = await import("~/lib/drafts.server");
   const { users } = await import("~/db/schema");
   const conflictRaw = await getConflictDraft(db, id, "repository", user.id);
   let conflictDraft: { userName: string; updatedAt: number } | null = null;
@@ -326,7 +327,8 @@ export default function RepositoryDetailPage({
     }
   }, [actionData]);
 
-  // Autosave via useFetcher  const draftFetcher = useFetcher();
+  // Autosave via useFetcher
+  const draftFetcher = useFetcher();
   const formRef = useRef<HTMLFormElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
