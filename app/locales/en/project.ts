@@ -107,7 +107,7 @@ export default {
   },
   volumes: {
     add: "Add",
-    add_volumes: "Add Volumes",
+    add_volumes: "Add volumes",
     manifest_urls: "IIIF manifest URLs",
     manifest_placeholder: "Paste IIIF manifest URLs, one per line",
     added: "Added <strong>{{name}}</strong> ({{count}} pages)",

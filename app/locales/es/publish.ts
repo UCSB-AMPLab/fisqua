@@ -76,7 +76,7 @@ export default {
   },
   detail: {
     title: "Ejecución de publicación",
-    backToPublish: "← Volver a publicar",
+    backToPublish: "Volver a publicar",
     overview: "Resumen",
     runId: "ID de ejecución",
     workflowInstanceId: "ID de instancia del workflow",
