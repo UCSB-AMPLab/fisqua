@@ -92,6 +92,10 @@ The viewer renders IIIF Image API tiles from existing Zasqua volumes on R2 — n
 
 **Fisqua** is a verb from the [Muisca language](https://es.wikipedia.org/wiki/Muysccubun) of Suba, roughly _"to gather scattered things"_ — related to forms for searching, gathering, and traversing. It names both the work the tool enables and the historical processes the resulting catalogues help document. The name pairs with Zasqua, _"to settle"_ or _"to remain in a given place"_.
 
+## Acknowledgements
+
+Thank you to [Jairo Melo Flórez](https://jairomelo.com), whose Django-based prosopographical work at Neogranadina and AMPL — developed for the UC MRPI Routes of Enslavement in the Americas project and now powering [Trayectorias Afro](https://trayectoriasafro.org) and the [Sondondo Parish Records Project](https://ampl.clair.ucsb.edu/sondondo) — first bore the name "[Fisqua](https://zenodo.org/records/16332384)".
+
 ## License
 
 To be determined.
