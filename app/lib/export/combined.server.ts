@@ -34,7 +34,7 @@ import type { ExportStorage } from "./r2-client.server";
  *
  * Decision: the exporter produces per-fonds files only. This module writes
  * a small `descriptions-index.json` enumerating the per-fonds keys and
- * their record counts. zasqua-frontend concatenates the per-fonds files at
+ * their record counts. zasqua concatenates the per-fonds files at
  * static-site build time, where memory and I/O are unconstrained.
  *
  * The `FondsBodyTooLargeError` class is retained as a named export so

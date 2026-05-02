@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { formatIsoDateTime } from "~/lib/format-date";
 
 const GITHUB_ACTIONS_URL =
-  "https://github.com/neogranadina/zasqua-frontend/actions/workflows/deploy.yml";
+  "https://github.com/neogranadina/zasqua/actions/workflows/deploy.yml";
 
 // 1 second — fast enough that a 12 second, 22 step publish run shows ~12
 // visible mid-run updates. D1 handles 1 req/s without sweating; the GET

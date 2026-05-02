@@ -117,7 +117,7 @@ export class PublishExportWorkflow extends WorkflowEntrypoint<
         // after Task 4 verification showed that R2 streaming put in
         // wrangler dev local deadlocks on large bodies AND production-scale
         // fonds exceed single-Worker memory even with a byte-level scanner.
-        // zasqua-frontend reads the per-fonds files + this index at build
+        // zasqua reads the per-fonds files + this index at build
         // time to produce the concatenated descriptions.json for its static
         // site.
         await step.do("descriptions:index", async () => {
