@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **License.** Fisqua is now licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). The `LICENSE` file ships in the repository root; the README licence section is updated to match. AGPL closes the SaaS loophole that GPL leaves open: anyone running a modified Fisqua as a network service for third parties must publish their modifications under the same license, while self-deploying partners have no additional obligation.
+- **Citation file.** The repo now ships a `CITATION.cff` file with author and project metadata, enabling GitHub's "Cite this repository" button. Authors are Juan Cobo Betancourt, with AMPL and Neogranadina credited as institutional contributors.
+- **Trademark notice.** README clarifies that AGPL covers the code, not the names "Fisqua", "Zasqua", or "AMPL".
+- **Author and license metadata in `package.json`.** `license`, `author`, and `contributors` fields populated to reflect the new licence and authorship.
+
 ## [0.3.2] - 2026-04-29
 
 ### Changed

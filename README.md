@@ -92,10 +92,22 @@ The viewer renders IIIF Image API tiles from existing Zasqua volumes on R2 — n
 
 **Fisqua** is a verb from the [Muisca language](https://es.wikipedia.org/wiki/Muysccubun) of Suba, roughly _"to gather scattered things"_ — related to forms for searching, gathering, and traversing. It names both the work the tool enables and the historical processes the resulting catalogues help document. The name pairs with Zasqua, _"to settle"_ or _"to remain in a given place"_.
 
-## Acknowledgements
-
-Thank you to [Jairo Melo Flórez](https://jairomelo.com), whose Django-based prosopographical work at Neogranadina and AMPL — developed for the UC MRPI Routes of Enslavement in the Americas project and now powering [Trayectorias Afro](https://trayectoriasafro.org) and the [Sondondo Parish Records Project](https://ampl.clair.ucsb.edu/sondondo) — first bore the name "[Fisqua](https://zenodo.org/records/16332384)".
-
 ## License
 
-To be determined.
+Fisqua is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+Anyone may use, modify, and self-host Fisqua under AGPL terms. If you run a modified version of Fisqua as a network service for others, you must publish your modifications under the same license — this protects the upstream commons that AMPL, Neogranadina, and partner archives depend on.
+
+The license governs the software. Catalogued data — the descriptions, authority records, and vocabularies you create using Fisqua — belongs to you and your institution.
+
+## Trademarks
+
+"Fisqua", "Zasqua", "AMPL", and the associated logos are not covered by the AGPL-3.0 license. Forks may use the code freely under AGPL terms but should not present themselves as official Fisqua, Zasqua, or AMPL releases.
+
+## Credits
+
+Fisqua is developed by Juan Cobo Betancourt at the [Archives, Memory, and Preservation Lab](https://ampl.clair.ucsb.edu) (AMPL) of the University of California, Santa Barbara, and [Neogranadina](https://neogranadina.org).
+
+## Acknowledgements
+
+Thank you to [Jairo Melo Flórez](https://jairomelo.com), whose Django-based prosopographical work at Neogranadina and AMPL — developed for the UC MRPI Routes of Enslavement in the Americas project and now powering [Trayectorias Afro](https://trayectoriasafro.org) and the [Sondondo Parish Records Project](https://ampl.clair.ucsb.edu/sondondo) — first bore the name "[Fisqua](https://zenodo.org/records/16332384)" within Neogranadina.

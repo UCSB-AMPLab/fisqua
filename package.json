@@ -4,6 +4,23 @@
   "private": true,
   "type": "module",
   "description": "Collaborative cataloguing and data-management platform for archival materials, built on Cloudflare Workers.",
+  "license": "AGPL-3.0-only",
+  "author": {
+    "name": "Juan Cobo Betancourt",
+    "email": "juan@neogranadina.org"
+  },
+  "contributors": [
+    { "name": "Archives, Memory, and Preservation Lab, University of California, Santa Barbara" },
+    { "name": "Neogranadina" }
+  ],
+  "homepage": "https://fisqua.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UCSB-AMPLab/fisqua.git"
+  },
+  "bugs": {
+    "url": "https://github.com/UCSB-AMPLab/fisqua/issues"
+  },
   "scripts": {
     "build": "react-router build",
     "cf-typegen": "wrangler types",
