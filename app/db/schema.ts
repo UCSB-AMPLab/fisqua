@@ -1,7 +1,8 @@
 /**
  * D1 Schema — Drizzle Definitions
  *
- * The TypeScript mirror of every table the app reads or writes. Drizzle
+ * This module deals with the TypeScript mirror of every table the app
+ * reads or writes. Drizzle
  * uses these declarations for two jobs: to produce type-safe query
  * builders so loaders and actions can `select({ title: entries.title })`
  * with full autocomplete, and to generate the SQL migration files under
@@ -43,6 +44,30 @@
  * tracking columns, and `vocabularyTerms` for the controlled vocabulary
  * hub that governs entity primary-function labels.
  *
+ * Fifth, the tenant layer (v0.4): `tenants` carries tenant identity,
+ * the four-boolean capability matrix, the descriptive_standard enum,
+ * quota fields, and a nullable `disabled_at` column carrying the
+ * soft-disable timestamp. `auditLog` records every operator action
+ * that touches tenant data — append-only by trigger (BEFORE UPDATE /
+ * BEFORE DELETE both RAISE ABORT), bounded by a CHECK enum on the
+ * `action` column. `impersonationHandoffs` is the single-use D1
+ * rendezvous between the operator's login-as action on the platform
+ * host and the target tenant subdomain's /handoff/impersonation route —
+ * mirrors `oauthHandoffs`'s single-use shape but is a separate table
+ * to keep the OAuth narrative pure and the role-based impersonation
+ * columns clean.
+ *
+ * Per-standard mandatoriness on `descriptions` runs in app-layer Zod
+ * validators (`app/lib/validation/descriptions/`) and is invoked at
+ * every write boundary: form submit handlers, `/api/description.save`
+ * action, and the bulk import path. SQLite CHECK cannot reference
+ * another table to test `tenants.descriptive_standard`, so the
+ * union-schema descriptions table holds every per-standard field as
+ * nullable, and the validator at the write boundary refuses payloads
+ * that omit a field mandatory for the tenant's active standard. Bulk
+ * import in particular MUST run the validator before INSERT to defend
+ * against malformed external data.
+ *
  * A handful of columns use deliberate anti-patterns that future
  * contributors should know about. Self-referencing tree columns
  * (`descriptions.parentId`, `entities.mergedInto`, `places.mergedInto`,
@@ -54,7 +79,7 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import {
@@ -75,9 +100,48 @@ import {
   PLACE_ROLES,
   VOCABULARY_STATUSES,
 } from "../lib/validation/enums";
+// AUDIT_LOG_ACTIONS lives in a tiny constants module so
+// `app/lib/audit.server.ts` (which imports the auditLog table from
+// here) can reuse the same source-of-truth array without creating a
+// circular dependency. The DB-level CHECK on `audit_log.action`
+// (migration 0037) remains the structural source of truth; this
+// runtime hint just gives Drizzle TypeScript narrowing.
+import { AUDIT_LOG_ACTIONS } from "../lib/audit-actions";
+
+export const tenants = sqliteTable(
+  "tenants",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["tenant", "platform"] }).notNull().default("tenant"),
+    descriptiveStandard: text("descriptive_standard", { enum: ["isadg", "dacs", "rad"] }),
+    status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
+    crowdsourcingEnabled: integer("crowdsourcing_enabled", { mode: "boolean" }).notNull().default(false),
+    vocabularyHubEnabled: integer("vocabulary_hub_enabled", { mode: "boolean" }).notNull().default(true),
+    publishPipelineEnabled: integer("publish_pipeline_enabled", { mode: "boolean" }).notNull().default(true),
+    multiRepositoryEnabled: integer("multi_repository_enabled", { mode: "boolean" }).notNull().default(false),
+    quotaStorageBytes: integer("quota_storage_bytes"),
+    // Soft-disable timestamp (migration 0039). Nullable — NULL means
+    // active. When set, getTenantFromRequest 404s the tenant subdomain
+    // unless the request pathname starts with /operator/ (the operator
+    // carve-out exists so a disabled tenant remains recoverable from
+    // the operator surface).
+    disabledAt: integer("disabled_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("tenants_slug_idx").on(table.slug),
+    index("tenants_kind_idx").on(table.kind),
+  ],
+);
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "restrict" }),
   email: text("email").notNull().unique(),
   name: text("name"),
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
@@ -91,6 +155,129 @@ export const users = sqliteTable("users", {
   updatedAt: integer("updated_at").notNull(),
   githubId: text("github_id").unique(),
 });
+
+// oauth_handoffs (migration 0038) is the ephemeral, single-use rendezvous
+// table that lets the apex GitHub OAuth callback hand a freshly
+// authenticated user off to a tenant subdomain. An earlier design tried
+// to register one callback URL per tenant in the GitHub OAuth App; that
+// model is structurally infeasible because GitHub OAuth Apps allow exactly
+// one Authorization callback URL (GitHub Apps — a different product —
+// allow multiple). The current design: apex completes OAuth at a single
+// registered callback URL, inserts a row here keyed by an opaque 256-bit
+// id, and 302s the browser to the tenant subdomain's /handoff?t= route,
+// which atomically consumes the row and finalises the session.
+//
+// Single-use semantics: the consume helper in app/lib/oauth-handoff.server.ts
+// issues a single UPDATE … RETURNING that flips consumed=0 to consumed=1
+// only when expires_at > now AND consumed = 0. Replay attempts fail at the
+// rowcount-zero branch and the route returns 410.
+//
+// TTL: rows expire 30s after creation. The browser hop is sub-second on
+// the happy path; 30s is generous slack for slow mobile networks while
+// keeping the replay window narrow if the token leaks via referer or
+// browser history.
+//
+// No foreign keys: the row is ephemeral and the email + return_to_slug
+// stored here are re-validated on consume against a fresh user lookup
+// and a fresh tenant resolution from the request host. FKs would only
+// add a delete-cascade hazard during tenant suspension or user deletion
+// without buying any safety the runtime checks don't already give us.
+export const oauthHandoffs = sqliteTable("oauth_handoffs", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  githubId: text("github_id").notNull(),
+  githubLogin: text("github_login").notNull(),
+  returnToSlug: text("return_to_slug").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  consumed: integer("consumed", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+});
+
+// audit_log (migration 0037) records every operator action that touches
+// tenant data. Append-only by trigger (BEFORE UPDATE / BEFORE DELETE
+// both RAISE ABORT) and bounded by a CHECK enum on the `action`
+// column. Drizzle does not model SQL CHECK constraints or triggers —
+// the bounded action enum is enforced via the `enum:` runtime hint
+// (TypeScript-level), and the actual CHECK + immutability triggers
+// live only in 0037.
+//
+// Mixed FK delete behaviours: actor_user_id ON DELETE SET NULL paired
+// with denormalised actor_user_id_text NOT NULL for forensic
+// continuity. actor_tenant_id and target_tenant_id ON DELETE RESTRICT
+// — no tenant deletion in v0.4.
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    createdAt: integer("created_at").notNull(),
+    actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorUserIdText: text("actor_user_id_text").notNull(),
+    actorTenantId: text("actor_tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    action: text("action", {
+      enum: AUDIT_LOG_ACTIONS,
+    }).notNull(),
+    targetTenantId: text("target_tenant_id").references(() => tenants.id, { onDelete: "restrict" }),
+    targetObjectKind: text("target_object_kind"),
+    targetObjectId: text("target_object_id"),
+    impersonationSessionId: text("impersonation_session_id"),
+    details: text("details"),
+  },
+  (table) => [
+    index("audit_log_target_tenant_idx").on(table.targetTenantId, table.createdAt),
+    index("audit_log_actor_user_idx").on(table.actorUserId, table.createdAt),
+    index("audit_log_created_idx").on(table.createdAt),
+  ],
+);
+
+// impersonation_handoffs (migration 0039) is the single-use D1 row the
+// operator login-as flow inserts on platform.fisqua.org and the tenant
+// subdomain's /handoff/impersonation route consumes. Mirrors
+// oauth_handoffs's single-use shape but is a separate table: keeps the
+// OAuth narrative pure, gives audit_log.impersonation_session_id a
+// clean FK-conceptual target, and lets the role-based impersonation
+// columns (target_tenant_id, target_role) shed the OAuth-shape pollution.
+//
+// Single-use semantics: consumeImpersonationHandoff in
+// app/lib/impersonation-handoff.server.ts issues a single
+// UPDATE … RETURNING that flips consumed=0 → consumed=1 only when
+// expires_at > now AND consumed = 0. Replay attempts fail at the
+// rowcount-zero branch and the handoff route returns 410.
+//
+// TTL: 30s (IMPERSONATION_HANDOFF_TTL_MS). Browser hop is sub-second on the
+// happy path; 30s slack for slow networks; narrow replay window if the
+// token leaks via referer or browser history.
+export const impersonationHandoffs = sqliteTable(
+  "impersonation_handoffs",
+  {
+    id: text("id").primaryKey(),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    targetTenantId: text("target_tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    targetRole: text("target_role", {
+      enum: [
+        "isAdmin",
+        "isSuperAdmin",
+        "isCollabAdmin",
+        "isArchiveUser",
+        "isUserManager",
+        "isCataloguer",
+      ],
+    }).notNull(),
+    reason: text("reason"),
+    expiresAt: integer("expires_at").notNull(),
+    consumed: integer("consumed", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("impersonation_handoffs_expires_idx").on(table.expiresAt),
+    index("impersonation_handoffs_actor_idx").on(table.actorUserId, table.createdAt),
+  ],
+);
 
 export const magicLinks = sqliteTable(
   "magic_links",
@@ -423,6 +610,9 @@ export const repositories = sqliteTable(
   "repositories",
   {
     id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     code: text("code").notNull(),
     name: text("name").notNull(),
     shortName: text("short_name"),
@@ -449,6 +639,9 @@ export const descriptions = sqliteTable(
   "descriptions",
   {
     id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     repositoryId: text("repository_id")
       .notNull()
       .references(() => repositories.id, { onDelete: "restrict" }),
@@ -466,7 +659,11 @@ export const descriptions = sqliteTable(
     genre: text("genre").default("[]"), // JSON array
     // Identity (ISAD 3.1)
     referenceCode: text("reference_code").notNull(),
-    localIdentifier: text("local_identifier").notNull(),
+    // local_identifier RELAXED to nullable in 0036 (was NOT NULL in v0.3).
+    // DACS and RAD do not mandate it; ISAD(G) does not mandate it. The
+    // Django export is 99.9% populated so back-filled rows all carry it;
+    // this is a forward-looking relaxation for future DACS/RAD tenants.
+    localIdentifier: text("local_identifier"),
     title: text("title").notNull(),
     translatedTitle: text("translated_title"),
     uniformTitle: text("uniform_title"),
@@ -486,6 +683,9 @@ export const descriptions = sqliteTable(
     volumeNumber: text("volume_number"),
     issueNumber: text("issue_number"),
     pages: text("pages"),
+    // Bibliographic-block "Title of the larger publication" (journal,
+    // series, source-edition); 13.6% populated in the legacy data.
+    publicationTitle: text("publication_title"),
     // Context (ISAD 3.2)
     provenance: text("provenance"),
     // Content (ISAD 3.3)
@@ -499,7 +699,7 @@ export const descriptions = sqliteTable(
     // Allied materials (ISAD 3.5)
     locationOfOriginals: text("location_of_originals"),
     locationOfCopies: text("location_of_copies"),
-    relatedMaterials: text("related_materials"),
+    // related_materials DROPPED in migration 0036 — 0% populated in audit.
     findingAids: text("finding_aids"),
     // Bibliographic continued
     sectionTitle: text("section_title"),
@@ -515,6 +715,18 @@ export const descriptions = sqliteTable(
     // Workflow
     isPublished: integer("is_published", { mode: "boolean" }).default(false),
     lastExportedAt: integer("last_exported_at"),
+    // Union-schema additions: DACS-only and RAD-only fields landed as
+    // nullable text columns. Per-standard mandatoriness is enforced at
+    // the app-layer Zod boundary, not at the DB layer (see file-level
+    // narrative).
+    adminBiogHistory: text("admin_biog_history"),         // DACS 5.1
+    preferredCitation: text("preferred_citation"),        // DACS 7.1.5
+    acquisitionInfo: text("acquisition_info"),            // DACS 5.2 (custodial history)
+    systemOfArrangement: text("system_of_arrangement"),   // RAD 1.7B
+    physicalCharacteristics: text("physical_characteristics"), // RAD 1.5B
+    // Legacy ids JSON column. Zod-validated at the loader/action layer
+    // via `app/lib/validation/legacy-ids.ts`.
+    legacyIds: text("legacy_ids").notNull().default("[]"),
     // Audit
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
@@ -534,6 +746,9 @@ export const entities = sqliteTable(
   "entities",
   {
     id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     entityCode: text("entity_code"), // ne-xxxxxx format
     displayName: text("display_name").notNull(),
     sortName: text("sort_name").notNull(),
@@ -548,12 +763,16 @@ export const entities = sqliteTable(
     dateStart: text("date_start"), // ISO date string
     dateEnd: text("date_end"), // ISO date string
     history: text("history"),
-    legalStatus: text("legal_status"),
+    // legal_status DROPPED in migration 0036 — 0% populated in audit.
     functions: text("functions"),
     sources: text("sources"),
     mergedInto: text("merged_into"), // self-ref; no .references()
     wikidataId: text("wikidata_id"),
     viafId: text("viaf_id"),
+    // dbe_id (Diccionario Biográfico Electrónico authority ref) +
+    // legacy_ids JSON column.
+    dbeId: text("dbe_id"),
+    legacyIds: text("legacy_ids").notNull().default("[]"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -569,6 +788,9 @@ export const places = sqliteTable(
   "places",
   {
     id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     placeCode: text("place_code"), // nl-xxxxxx format
     label: text("label").notNull(),
     displayName: text("display_name").notNull(),
@@ -578,18 +800,20 @@ export const places = sqliteTable(
     latitude: real("latitude"),
     longitude: real("longitude"),
     coordinatePrecision: text("coordinate_precision"),
-    historicalGobernacion: text("historical_gobernacion"),
-    historicalPartido: text("historical_partido"),
-    historicalRegion: text("historical_region"),
-    countryCode: text("country_code"),
-    adminLevel1: text("admin_level_1"),
-    adminLevel2: text("admin_level_2"),
+    // historical_gobernacion, historical_partido, historical_region,
+    // country_code, admin_level_1, admin_level_2, wikidata_id all
+    // DROPPED in migration 0036 — 0% populated in audit.
     needsGeocoding: integer("needs_geocoding", { mode: "boolean" }).default(true),
     mergedInto: text("merged_into"), // self-ref; no .references()
     tgnId: text("tgn_id"),
     hgisId: text("hgis_id"),
     whgId: text("whg_id"),
-    wikidataId: text("wikidata_id"),
+    // fclass (5-value GeoNames feature class) + legacy_ids JSON
+    // column. The DB-level CHECK on fclass
+    // (`IS NULL OR IN ('P','H','A','T','S')`) lives in the migration;
+    // Drizzle's `enum:` hint here is the TypeScript-side mirror.
+    fclass: text("fclass", { enum: ["P", "H", "A", "T", "S"] }),
+    legacyIds: text("legacy_ids").notNull().default("[]"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -635,6 +859,10 @@ export const descriptionEntities = sqliteTable(
       .references(() => entities.id, { onDelete: "restrict" }),
     role: text("role", { enum: [...ENTITY_ROLES] }).notNull(),
     roleNote: text("role_note"),
+    // Dual-track: verbatim Spanish (or original source string) preserved
+    // next to the canonical English `role`. Nullable, no CHECK — the
+    // migration is `0040_role_raw.sql`.
+    roleRaw: text("role_raw"),
     sequence: integer("sequence").notNull().default(0),
     honorific: text("honorific"), // documentary styling
     function: text("function"), // documentary styling
@@ -696,6 +924,9 @@ export const descriptionPlaces = sqliteTable(
       .references(() => places.id, { onDelete: "restrict" }),
     role: text("role", { enum: [...PLACE_ROLES] }).notNull(),
     roleNote: text("role_note"),
+    // Dual-track: verbatim Spanish preserved next to canonical English
+    // `role`. Nullable, no CHECK — see `drizzle/0040_role_raw.sql`.
+    roleRaw: text("role_raw"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
