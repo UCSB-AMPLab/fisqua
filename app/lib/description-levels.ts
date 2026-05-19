@@ -1,8 +1,11 @@
 /**
  * Description Level Helpers
  *
- * Pure helpers around the ISAD(G) description-level hierarchy: which
- * levels can parent which, display ordering, and i18n key resolution.
+ * This module deals with the pure helpers around the ISAD(G)
+ * description-level hierarchy: which levels can parent which, display
+ * ordering for level pickers, and i18n key resolution so a fonds is
+ * labelled "Fondo" in Spanish and "Fonds" in English without the
+ * caller wiring locale plumbing.
  *
  * @version v0.3.0
  */
