@@ -23,9 +23,13 @@
  * role-flag snapshot that `_auth.tsx` needs to populate
  * `userContext`. It mirrors the shape of the `User` type defined in
  * `app/context.ts` so loaders further down the tree can rely on every
- * role flag being present.
+ * role flag being present. The returned shape includes `tenantId`:
+ * the source of truth that `authMiddleware`
+ * asserts against the resolved tenant (`user.tenantId === tenant.id`)
+ * before letting any loader run, and downstream loaders read it from
+ * `userContext` to scope domain-table queries.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { eq, and, isNull } from "drizzle-orm";
@@ -125,6 +129,7 @@ export async function requireUser(
   userId: string
 ): Promise<{
   id: string;
+  tenantId: string;
   email: string;
   name: string | null;
   isAdmin: boolean;
@@ -148,6 +153,7 @@ export async function requireUser(
 
   return {
     id: user.id,
+    tenantId: user.tenantId,
     email: user.email,
     name: user.name,
     isAdmin: user.isAdmin as unknown as boolean,

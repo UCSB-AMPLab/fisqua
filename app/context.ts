@@ -1,8 +1,10 @@
 /**
  * User Context
  *
- * The typed slot that `authMiddleware` uses to hand the signed-in user to
- * every loader and action in the authenticated tree. Reading it in a
+ * This module deals with the typed slots that `authMiddleware` uses to
+ * hand the signed-in user, the resolved tenant, and the impersonation
+ * envelope to every loader and action in the authenticated tree.
+ * Reading them in a
  * loader or action looks like `const user = context.get(userContext)` --
  * the middleware guarantees it is populated, so route code can assume
  * the user exists without re-querying the database.
@@ -27,15 +29,38 @@
  * Plus `githubId` for users who signed in with GitHub OAuth, so the
  * profile UI can show the link and prevent accidental duplicate accounts.
  *
- * @version v0.3.0
+ * Multi-tenancy adds the `tenantId` field to `User`. Every authenticated
+ * request now resolves both the user and the tenant the request
+ * targets, and `authMiddleware` asserts `user.tenantId === tenant.id`
+ * at the request boundary -- the per-request invariant that downstream
+ * loaders rely on. The matching `tenantContext` slot below carries
+ * the resolved tenant row (capability flags, descriptive standard,
+ * status -- the full Drizzle inference of the `tenants` table)
+ * alongside the user; loaders in the `_auth` tree read both via
+ * `context.get(userContext)` and `context.get(tenantContext)`. The
+ * attachment point is `app/middleware/auth.server.ts`, which
+ * resolves the tenant from the request `Host` header right after
+ * the user lookup.
+ *
+ * `impersonationContext` is a third typed slot that carries the
+ * operator's impersonation state (role being impersonated, the handoff
+ * session id, and `lastActivityAt`) when the request is inside an
+ * impersonation envelope, or `null` otherwise. Layouts read it to
+ * render the persistent banner and routes that gate on role read it
+ * to honour the role-override semantics. The middleware populates it
+ * from the session payload's optional `impersonating` field.
+ *
+ * @version v0.4.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
 
 import { createContext } from "react-router";
+import type { tenants } from "./db/schema";
 
 export type User = {
   id: string;
+  tenantId: string;
   email: string;
   name: string | null;
   isAdmin: boolean;
@@ -48,4 +73,37 @@ export type User = {
   githubId: string | null;
 };
 
+/**
+ * The Drizzle-inferred row shape for a single `tenants` table row,
+ * including the four boolean capability flags
+ * (`crowdsourcingEnabled`, `vocabularyHubEnabled`,
+ * `publishPipelineEnabled`, `multiRepositoryEnabled`), the
+ * `kind` discriminator (`"tenant"` | `"platform"`), and
+ * descriptive-standard / status fields.
+ */
+export type Tenant = typeof tenants.$inferSelect;
+
 export const userContext = createContext<User>();
+export const tenantContext = createContext<Tenant>();
+
+/**
+ * Operator impersonation envelope state.
+ * Populated by `authMiddleware` from the session payload's optional
+ * `impersonating` field. `null` when the current request is NOT an
+ * impersonation envelope (the common case); a populated object when
+ * it is. Layouts read it to render the persistent banner; routes
+ * that gate on role read it to honour the role-override semantics.
+ */
+export type ImpersonatingState = {
+  role:
+    | "isAdmin"
+    | "isSuperAdmin"
+    | "isCollabAdmin"
+    | "isArchiveUser"
+    | "isUserManager"
+    | "isCataloguer";
+  sessionId: string;
+  lastActivityAt: number;
+};
+
+export const impersonationContext = createContext<ImpersonatingState | null>();
