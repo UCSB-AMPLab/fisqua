@@ -1,10 +1,11 @@
 /**
  * Status Badges
  *
- * Pill badges for description publish status (Live, Pending publish,
- * Pending removal) used across the descriptions list and edit pages.
+ * This module deals with the pill badges for description publish status
+ * (Live, Pending publish, Pending removal) used across the descriptions
+ * list and edit pages.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -33,7 +34,7 @@ export function getPublishStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Badge colour map per UI-SPEC
+// Badge colour map
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<PublishStatus, string> = {

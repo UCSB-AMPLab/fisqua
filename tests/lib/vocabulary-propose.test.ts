@@ -1,5 +1,22 @@
 /**
- * Tests — vocabulary propose
+ * Tests — propose-inline vocabulary workflow
+ *
+ * This suite pins the propose-inline behavioural contract — the
+ * workflow that lets a cataloguer add a fresh vocabulary term
+ * from the entity editor without leaving the form. A proposed
+ * term lands in `vocabulary_terms` with status=`proposed`
+ * (rather than `approved`), is immediately usable for tagging
+ * (the entity editor binds the new term to the entity in the
+ * same transaction), and surfaces in the vocabulary admin's
+ * review queue for a curator to approve / reject.
+ *
+ * The cases pin three behavioural rules: case-insensitive match
+ * before proposing (typing "Doctor" when "doctor" already exists
+ * reuses the existing term rather than creating a duplicate),
+ * the immediate-usability contract (the new term is bound
+ * atomically with its proposal), and the audit footprint (the
+ * `proposedBy` column records the originating user so curators
+ * can attribute the proposal).
  *
  * @version v0.3.0
  */

@@ -1,10 +1,10 @@
 /**
  * Comment Input
  *
- * Textarea composer for adding a post to a comment thread. Auto-
- * resizes to content, disables submit while the fetcher is flight,
- * and surfaces the mention-picker popover when the cataloguer types
- * an `@`.
+ * This component is the textarea composer for adding a post to a comment
+ * thread. Auto-resizes to content, disables submit while the fetcher is in
+ * flight, and surfaces the mention-picker popover when the cataloguer
+ * types an `@`.
  *
  * @version v0.3.0
  */

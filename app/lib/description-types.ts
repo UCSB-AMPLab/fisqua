@@ -1,11 +1,12 @@
 /**
  * Description Types
  *
- * Shared TypeScript types for the item-level description workflow --
- * entry shape, comment target kinds, and the denormalised data the
- * loader hands the editor component.
+ * This module deals with the shared TypeScript types for the
+ * item-level description workflow — entry shape, comment target
+ * kinds, and the denormalised data the loader hands the editor
+ * component.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import type { DescriptionStatus } from "./description-workflow";
@@ -105,14 +106,19 @@ export type ResegmentationFlag = {
 };
 
 /**
- * Section completion state for the description form.
+ * Section completion state for the cataloguing description form.
  * Each section is true when its required fields are filled.
+ *
+ * Property names align with the English column-name keys used in the
+ * cataloguing namespace (`identity`, `physical_description`,
+ * `content`, `notes`). The cataloguing form component and the entry
+ * route consume these names directly.
  */
 export type SectionCompletion = {
-  identificacion: boolean;
-  contenido: boolean;
-  fisica: boolean;
-  notas: boolean;
+  identity: boolean;
+  physical_description: boolean;
+  content: boolean;
+  notes: boolean;
 };
 
 /**
@@ -130,16 +136,16 @@ type DescriptionFields = {
 /**
  * Pure function to compute section completion state from entry fields.
  *
- * - Identificacion: title + resource_type + date_expression
- * - Contenido: scope_content + language
- * - Fisica: extent
- * - Notas: always complete (both fields optional)
+ * - identity: title + resourceType + dateExpression
+ * - content: scopeContent + language
+ * - physical_description: extent
+ * - notes: always complete (both fields optional)
  */
 export function getSectionCompletion(fields: DescriptionFields): SectionCompletion {
   return {
-    identificacion: Boolean(fields.title && fields.resourceType && fields.dateExpression),
-    contenido: Boolean(fields.scopeContent && fields.language),
-    fisica: Boolean(fields.extent),
-    notas: true,
+    identity: Boolean(fields.title && fields.resourceType && fields.dateExpression),
+    content: Boolean(fields.scopeContent && fields.language),
+    physical_description: Boolean(fields.extent),
+    notes: true,
   };
 }

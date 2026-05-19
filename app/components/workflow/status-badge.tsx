@@ -1,11 +1,20 @@
 /**
- * Reusable status badge components for workflow statuses.
+ * Workflow Status Badges
  *
- * StatusBadge: segmentation (volume) workflow statuses.
- * DescriptionStatusBadge: description (per-entry) workflow statuses.
+ * This module exports the pair of badge components that label every
+ * workflow status across the cataloguing surfaces. `StatusBadge`
+ * renders the segmentation (volume-level) statuses — unstarted,
+ * in_progress, segmented, sent_back, reviewed, approved — while
+ * `DescriptionStatusBadge` renders the parallel description (per-entry)
+ * statuses. The two variants pick deliberately different mappings of
+ * the same six colour pairs from `app.css`, so a segmentation badge
+ * never reads as a description badge or the other way around even
+ * when both sit on the same screen (assignments page, dashboards,
+ * outline). Both badges resolve their colour pair from a shared
+ * `--*-bg` / `--*-fg` token set; this keeps the palette swappable
+ * from one design pass without having to chase every badge call site.
  *
- * Each variant has its own colour palette to avoid confusion between the
- * two parallel workflows.
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

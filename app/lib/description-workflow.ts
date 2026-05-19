@@ -1,9 +1,24 @@
 /**
- * Description status workflow state machine (pure functions).
+ * Description Workflow State Machine
  *
- * Parallel to the segmentation workflow in workflow.ts but with per-entry
- * granularity and its own status set. No side effects -- server-side
- * transition execution lives separately.
+ * This module deals with the per-entry workflow that governs how a
+ * description moves from `unassigned` through cataloguing, review, and
+ * approval — the description-side analogue of the volume-level
+ * segmentation workflow in `./workflow.ts`. Where segmentation tracks
+ * whole volumes through their digitisation lifecycle, this state
+ * machine tracks each individual entry inside a volume as a cataloguer
+ * drafts a description, hands it to a reviewer, and either lands it as
+ * approved or bounces it back for another pass.
+ *
+ * The functions exported here are pure: they decide whether a given
+ * role may move an entry from one `DescriptionStatus` to another, and
+ * enumerate the legal next states for the workflow UI. They do not
+ * touch the database — server-side transition execution (audit
+ * writes, denormalised-field updates, notification triggers) lives in
+ * `./description.server.ts`, which calls into this module for the
+ * validity decision before mutating any rows.
+ *
+ * @version v0.3.0
  */
 
 import type { WorkflowRole } from "./workflow";

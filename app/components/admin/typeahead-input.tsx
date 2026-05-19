@@ -1,10 +1,10 @@
 /**
  * Typeahead Input
  *
- * Debounced autocomplete input used across the admin surfaces. Fires
- * a controlled fetcher on change, renders the current suggestions as
- * a keyboard-navigable popover, and emits the selected record to the
- * parent form.
+ * This component is the debounced autocomplete input used across the admin
+ * surfaces. Fires a controlled fetcher on change, renders the current
+ * suggestions as a keyboard-navigable popover, and emits the selected
+ * record to the parent form.
  *
  * @version v0.3.0
  */

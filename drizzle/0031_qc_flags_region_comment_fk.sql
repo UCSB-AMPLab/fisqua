@@ -1,13 +1,13 @@
 -- Link QC flags to their region-anchored comment
 --
+-- This migration adds a nullable `region_comment_id` foreign key on
+-- `qc_flags`, referencing `comments(id)` with ON DELETE SET NULL.
 -- When a cataloguer raises a QC flag from the viewer's "Vincular a
 -- region" affordance, they can either pick an existing region comment
 -- on the page or draw a fresh region alongside the flag. Either way,
 -- the flag needs a durable pointer back to the comment that holds
 -- the region coordinates so that future views of the flag can jump
--- straight to the exact location on the page. This migration adds a
--- nullable `region_comment_id` foreign key on `qc_flags`, referencing
--- `comments(id)` with ON DELETE SET NULL.
+-- straight to the exact location on the page.
 --
 -- ON DELETE SET NULL -- not CASCADE -- for two reasons. First, a lead
 -- may delete the placeholder region comment to tidy up the page

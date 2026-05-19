@@ -1,9 +1,16 @@
 /**
  * Tests — auth
  *
- * @version v0.3.0
+ * This helper module wraps user-row creation for the test suite.
+ * Every user row carries a tenant_id NOT NULL FK to tenants(id), so
+ * tests must call `seedTenants()` in beforeEach before invoking
+ * createTestUser. The helper defaults to DEFAULT_TEST_TENANT_ID
+ * (= NEOGRANADINA_TENANT_ID); pass `tenantId` to assign a different
+ * tenant for cross-tenant test scenarios.
+ *
+ * @version v0.4.0
  */
-import { getTestDb } from "./db";
+import { DEFAULT_TEST_TENANT_ID, getTestDb } from "./db";
 import { users } from "../../app/db/schema";
 
 /**
@@ -11,6 +18,7 @@ import { users } from "../../app/db/schema";
  */
 export async function createTestUser(overrides: {
   id?: string;
+  tenantId?: string;
   email?: string;
   name?: string;
   isAdmin?: boolean;
@@ -20,6 +28,7 @@ export async function createTestUser(overrides: {
 
   const user = {
     id: overrides.id ?? crypto.randomUUID(),
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email ?? `test-${crypto.randomUUID()}@example.com`,
     name: overrides.name ?? "Test User",
     isAdmin: overrides.isAdmin ?? false,

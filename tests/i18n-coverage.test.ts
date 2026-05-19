@@ -1,5 +1,22 @@
 /**
- * Tests — i18n coverage
+ * Tests — i18n coverage (hardcoded-string grep)
+ *
+ * This suite is the structural backstop against hardcoded English
+ * strings creeping into the routes and components surface. It uses
+ * Vite's `import.meta.glob` to slurp every `.tsx` file under
+ * `app/routes/` and `app/components/` at test time, then runs a
+ * heuristic grep against the JSX content looking for plausible
+ * user-facing English text (proper-cased phrases, sentence-ending
+ * punctuation, common English words) that is not inside a `t(...)`
+ * call.
+ *
+ * The check is deliberately a heuristic — false positives are
+ * expected and triaged by hand. The contract is "no new hardcoded
+ * strings", not "zero hardcoded strings": legacy components carrying
+ * known-allowed bare strings are listed in an allowlist inside this
+ * file. A regression here surfaces as a new file in the violation
+ * list, which the contributor either translates or adds to the
+ * allowlist with a justification.
  *
  * @version v0.3.0
  */

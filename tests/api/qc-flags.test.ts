@@ -1,7 +1,22 @@
 /**
- * Tests — qc flags
+ * Tests — QC flags API
  *
- * @version v0.3.0
+ * This suite pins the `api.qc-flags` route — the cataloguing-side
+ * surface that lets a reviewer raise a quality-control flag against
+ * a description. A QC flag is a typed concern (e.g. wrong reference
+ * code, missing date, suspected duplicate) with an optional comment
+ * thread; flags carry `status` (`open` → `resolved`) plus
+ * `resolved_at` / `resolved_by` audit columns.
+ *
+ * The action exercises create + resolve + reopen intents; the
+ * loader exercises the list-by-description path the description
+ * detail view and the cataloguing dashboard both consume. Tenant
+ * isolation is asserted on every path — a flag raised on a
+ * description belonging to another tenant rejects with the same
+ * 404 shape an unknown description would produce, so probe traffic
+ * cannot enumerate cross-tenant ids.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,16 +24,18 @@ import { drizzle } from "drizzle-orm/d1";
 import { and, eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action, loader } from "../../app/routes/api.qc-flags";
 
 type Db = ReturnType<typeof drizzle>;
 
-function buildUser(overrides: { id: string; email: string; isAdmin?: boolean }): User {
+function buildUser(overrides: { id: string; email: string; isAdmin?: boolean; tenantId?: string }): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: null,
     isAdmin: overrides.isAdmin ?? false,
@@ -35,6 +52,7 @@ function buildUser(overrides: { id: string; email: string; isAdmin?: boolean }):
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

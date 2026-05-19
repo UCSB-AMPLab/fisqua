@@ -1,12 +1,12 @@
 /**
  * Admin IIIF Viewer
  *
- * The OpenSeadragon viewer embedded in the admin description editor.
- * Renders IIIF tiles at the manifest URL stored on the description and
- * provides basic zoom and page controls. Lighter than the main
- * cataloguing viewer -- no boundary editing, no virtualised continuous
- * scroll -- because the admin editor only needs to browse the images
- * that back a single ISAD(G) record.
+ * This component is the OpenSeadragon viewer embedded in the admin
+ * description editor. Renders IIIF tiles at the manifest URL stored on the
+ * description and provides basic zoom and page controls. Lighter than the
+ * main cataloguing viewer — no boundary editing, no virtualised continuous
+ * scroll — because the admin editor only needs to browse the images that
+ * back a single ISAD(G) record.
  *
  * @version v0.3.0
  */

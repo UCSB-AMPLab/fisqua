@@ -1,8 +1,8 @@
 /**
  * Resizable Pane
  *
- * Two-pane split layout with a draggable divider. Used to balance the
- * IIIF viewer and the description form in the editor.
+ * This component is the two-pane split layout with a draggable divider.
+ * Used to balance the IIIF viewer and the description form in the editor.
  *
  * @version v0.3.0
  */

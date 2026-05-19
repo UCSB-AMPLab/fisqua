@@ -1,7 +1,22 @@
 /**
- * Tests — comments
+ * Tests — comments API (description target)
  *
- * @version v0.3.0
+ * This suite pins the description-target half of the shared
+ * `api.comments` route — the most common comment shape, where a
+ * cataloguer leaves a remark attached to a whole description rather
+ * than a pin or QC flag. The route validates the payload, asserts
+ * the description belongs to the caller's tenant, writes the
+ * comment row, and returns the saved shape. The loader paginates
+ * comments by description id with a stable ORDER BY (createdAt
+ * DESC, id ASC) so the viewer's comment column renders in a
+ * deterministic order.
+ *
+ * Cases also pin the resolution lifecycle: `resolved_at` / `resolved_by`
+ * fields toggle through a separate intent on the action, and the
+ * loader's filter (`unresolved=true`) hides resolved threads
+ * without DELETEing them so the audit history stays intact.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,9 +24,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action, loader } from "../../app/routes/api.comments";
 
 type Db = ReturnType<typeof drizzle>;
@@ -19,6 +35,7 @@ type Db = ReturnType<typeof drizzle>;
 function buildUser(overrides: Partial<User> & { id: string; email: string }): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: overrides.name ?? "Tester",
     isAdmin: overrides.isAdmin ?? false,
@@ -35,6 +52,7 @@ function buildUser(overrides: Partial<User> & { id: string; email: string }): Us
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

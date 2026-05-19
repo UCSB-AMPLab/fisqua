@@ -1,5 +1,20 @@
 /**
- * Tests — description import
+ * Tests — descriptions import command
+ *
+ * This suite pins `importDescriptions` — the import-side command
+ * that reads the Neogranadina legacy descriptions JSON dump,
+ * normalises the row shape (legacy id → fresh UUID, parent
+ * reference lookup, reference-code regex validation), emits per-row
+ * INSERT SQL into `.import/` so the operator can `wrangler d1
+ * execute` it later, and returns an `IdMap` so downstream
+ * commands (entities, places, junctions) can resolve their
+ * description-side foreign keys.
+ *
+ * The cases exercise the full row-count + IdMap shape, the
+ * parent-reference resolution (a description whose `parent_id`
+ * points to another row in the same dump links via the IdMap, not
+ * the legacy id), and the failure surfacing — a malformed row
+ * lands in the failure report rather than aborting the run.
  *
  * @version v0.3.0
  */

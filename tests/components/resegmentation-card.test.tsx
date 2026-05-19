@@ -1,5 +1,20 @@
 /**
- * Tests — resegmentation cardx
+ * Tests — resegmentation card formatter
+ *
+ * This suite pins `formatReporterLine`, the pure helper that renders
+ * the "reporter · timestamp" subtitle on a resegmentation-request
+ * card. The contract: the reporter name, a U+00B7 middle-dot
+ * separator, and a deterministic timestamp produced by the shared
+ * `formatIsoDateTime` helper. The helper accepts both epoch-ms
+ * numbers and ISO strings so it can be called against either the
+ * raw D1 row or a serialised loader payload without a normalisation
+ * step.
+ *
+ * The exact ISO-style suffix is owned by `formatIsoDateTime` and
+ * deliberately not hard-pinned here; only the name, separator, and
+ * four-digit year are asserted. That keeps this file from
+ * double-pinning the date-format contract that lives in
+ * `tests/lib/format-date.test.ts`.
  *
  * @version v0.3.0
  */

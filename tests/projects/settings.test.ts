@@ -1,5 +1,20 @@
 /**
- * Tests — settings
+ * Tests — project settings update + role gate
+ *
+ * This suite pins the per-project settings-edit surface plus the
+ * `requireProjectRole` gate that backstops the settings route. The
+ * settings blob is JSON-shaped (read/write via the helpers in
+ * `tests/lib/project-settings.test.ts`); this file exercises the
+ * route-side semantics: only `lead` and `admin` project roles can
+ * change settings, `viewer` and `cataloguer` 403, and the
+ * settings-write path emits an `audit_log` row so settings drift
+ * has an attribution trail.
+ *
+ * The role gate uses a 403 (not 404) here because the path is
+ * known-existing — a cataloguer trying to update settings hits a
+ * legitimate URL with the wrong role. The 404-vs-403 pattern is
+ * applied selectively across the app; this file pins the 403
+ * choice for the project-internal surface.
  *
  * @version v0.3.0
  */

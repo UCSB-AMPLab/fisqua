@@ -1,5 +1,19 @@
 /**
- * Tests — assignment
+ * Tests — description assignment (DESC-02)
+ *
+ * This suite pins the three lifecycle helpers that move a volume's
+ * entries through the description workflow:
+ * `assignDescriber` (sets `describerId` and bumps the entry's
+ * description_status from `unassigned` to `assigned`),
+ * `assignDescriptionReviewer` (sets `descriptionReviewerId`), and
+ * `promoteVolumeToDescription` (the bulk-flip used when a whole
+ * volume's entries are ready to enter description).
+ *
+ * The helpers run inside `app/lib/description.server` and back the
+ * cataloguer-side staffing surface. Cases pin the row-level effect
+ * (column writes), the idempotency contract (re-assigning the same
+ * user is a no-op), and the cascade to dependent rows (assignment
+ * triggers an `activity_log` event consumed by the dashboard feed).
  *
  * @version v0.3.0
  */

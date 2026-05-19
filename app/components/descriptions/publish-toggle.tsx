@@ -1,8 +1,8 @@
 /**
  * Publish Toggle
  *
- * Switch that flips a description's `isPublished` flag inline without
- * leaving the edit page.
+ * This toggle is the switch that flips a description's `isPublished` flag
+ * inline without leaving the edit page.
  *
  * @version v0.3.0
  */

@@ -1,9 +1,9 @@
 /**
  * Comment Thread
  *
- * Stack of comment cards for one thread plus the composer below.
- * Handles optimistic rendering when the user submits a new post and
- * surfaces the inline region-pin affordance when the thread is
+ * This component is the stack of comment cards for one thread plus the
+ * composer below. Handles optimistic rendering when the user submits a new
+ * post and surfaces the inline region-pin affordance when the thread is
  * anchored to a region on the page.
  *
  * @version v0.3.0

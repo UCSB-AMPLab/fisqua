@@ -1,6 +1,13 @@
 /**
- * Team progress summary with member cards.
- * Shows per-member volume counts by status and headline metrics.
+ * Team Progress
+ *
+ * This component is the per-member breakdown rendered at the bottom of
+ * the assignments page — one card per project member showing their
+ * volume counts grouped by workflow status plus the headline totals
+ * (volumes assigned, entries touched). Used so a lead can see, at a
+ * glance, which member of the team is sitting on which load.
+ *
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

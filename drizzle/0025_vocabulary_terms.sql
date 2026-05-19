@@ -1,10 +1,12 @@
 -- Controlled vocabulary for entity functions
 --
--- Entities in the authority pipeline carry a free-text `primary_function`
--- -- escribano, alcalde, cabildo, oidor -- which started life as a
--- cataloguer-typed label and drifted into dozens of near-duplicates over
--- time. This migration introduces `vocabulary_terms` as the canonical
--- list: each row captures one approved function label with an optional
+-- This migration introduces `vocabulary_terms` as the canonical list
+-- backing the entities' `primary_function` field. Entities in the
+-- authority pipeline carry a free-text `primary_function` —
+-- escribano, alcalde, cabildo, oidor — which started life as a
+-- cataloguer-typed label and drifted into dozens of near-duplicates
+-- over time. Each row in the new table captures one approved function
+-- label with an optional
 -- category, a review workflow (`approved`, `proposed`, `deprecated`, etc.),
 -- a `merged_into` pointer that lets curators redirect a wrong term to
 -- its canonical sibling, and a running `entity_count` that the

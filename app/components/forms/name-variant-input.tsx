@@ -1,9 +1,9 @@
 /**
  * Name Variant Input
  *
- * Editable chip list for an entity's or place's known name variants.
- * Users type a new variant and press Enter to append; each chip
- * carries a close button to remove it.
+ * This component is the editable chip list for an entity's or place's
+ * known name variants. Users type a new variant and press Enter to append;
+ * each chip carries a close button to remove it.
  *
  * @version v0.3.0
  */

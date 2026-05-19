@@ -1,5 +1,20 @@
 /**
- * Tests — undo reducer
+ * Tests — undoable reducer wrapper
+ *
+ * This suite pins the `createUndoableDispatch` higher-order helper
+ * that wraps the boundary reducer with an undo/redo history stack.
+ * The wrapper intercepts every dispatched action, pushes the
+ * pre-action state onto the undo stack, and exposes `undo()` /
+ * `redo()` operations that restore prior states without re-running
+ * the action chain.
+ *
+ * The wrapper deliberately treats some actions as non-undoable
+ * (`LOAD_ENTRIES` and similar bootstrap-only actions clear the
+ * stack rather than push to it — undoing a fresh load would
+ * dump the editor back to an empty state). The cases here pin
+ * that allow/skip discrimination plus the standard stack
+ * semantics (push on dispatch, pop on undo, redo-stack cleared
+ * on new dispatch).
  *
  * @version v0.3.0
  */

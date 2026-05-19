@@ -1,7 +1,22 @@
 /**
- * Tests — comments region
+ * Tests — comments attached to region pins
  *
- * @version v0.3.0
+ * This suite pins the comment ↔ region-pin attachment contract on
+ * the shared `api.comments` route. A region pin is the
+ * `(page, xPct, yPct, wPct, hPct)` bounding box a cataloguer drops
+ * on a IIIF canvas; comments attached to a pin carry the parent
+ * description id plus the four-coordinate region payload, so the
+ * viewer can render the comment chip at the exact pin location on
+ * any future load.
+ *
+ * Cases pin the action's payload shape (region coords required
+ * when `target_kind="region"`), the tenant-isolation behaviour (a
+ * region pin belonging to another tenant's description rejects),
+ * and the loader's return shape (region coords round-trip on read).
+ * The route exercises its real middleware-attachment surface through
+ * a `RouterContextProvider` carrying user + tenant + env contexts.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,9 +24,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action } from "../../app/routes/api.comments";
 
 type Db = ReturnType<typeof drizzle>;
@@ -21,6 +37,7 @@ function buildUser(
 ): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: overrides.name ?? "Tester",
     isAdmin: overrides.isAdmin ?? false,
@@ -37,6 +54,7 @@ function buildUser(
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

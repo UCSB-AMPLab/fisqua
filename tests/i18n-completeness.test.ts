@@ -1,7 +1,23 @@
 /**
- * Tests — i18n completeness
+ * Tests — i18n locale completeness
  *
- * @version v0.3.0
+ * This suite is the structural backstop that pins the two-locale
+ * symmetry between `app/locales/en` and `app/locales/es`: every
+ * leaf key path in the English bundle must exist in the Spanish
+ * bundle and vice versa. A regression here means a translation key
+ * was added on one side without its counterpart, which would render
+ * the i18n key (e.g. `viewer.toolbar.regiones`) literally to the
+ * user on the missing-locale side.
+ *
+ * The recursive `extractKeys` helper walks the nested locale
+ * objects and emits dot-notation paths so the diff between the two
+ * bundles surfaces as a small, readable list of missing keys
+ * rather than a structural-mismatch error. This file lives at the
+ * top level (not under `tests/i18n/`) because it cuts across
+ * every namespace — adding a `tests/i18n/` directory would imply a
+ * narrower scope.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import es from "../app/locales/es";
@@ -65,6 +81,8 @@ const NAMESPACES = [
   "volume_admin",
   "user_admin",
   "qc_flags",
+  "landing",
+  "operator",
 ] as const;
 
 describe("translation completeness", () => {

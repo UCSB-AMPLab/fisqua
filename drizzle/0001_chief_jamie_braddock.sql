@@ -1,3 +1,20 @@
+-- Volumes and volume pages, plus the cataloguer-role rename
+--
+-- This migration introduces the digitised-volume layer that
+-- cataloguers work against. `volumes` represents one bound book,
+-- ledger, or expediente inside a project: it carries the IIIF
+-- manifest URL, the total page count, an assignment slot for the
+-- cataloguer and reviewer, and a workflow status string. Its child
+-- `volume_pages` holds one row per canvas — image URL, pixel
+-- dimensions, position within the volume — and is the substrate the
+-- viewer reads when rendering a book.
+--
+-- A leading UPDATE renames the legacy `member` value in
+-- `project_members.role` to `cataloguer`, aligning the live data
+-- with the role vocabulary the application code now uses.
+--
+-- Version: v0.3.0
+
 -- Rename 'member' role to 'cataloguer' in existing data
 UPDATE `project_members` SET `role` = 'cataloguer' WHERE `role` = 'member';
 --> statement-breakpoint

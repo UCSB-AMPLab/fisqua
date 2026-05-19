@@ -1,10 +1,10 @@
 /**
  * Link Reassignment List
  *
- * Side-panel list that shows every link the operator has queued for
- * reassignment during a merge or split. Each row carries the source,
- * the proposed new target, and an undo button so the batch can be
- * tweaked before commit.
+ * This component is the side-panel list that shows every link the operator
+ * has queued for reassignment during a merge or split. Each row carries
+ * the source, the proposed new target, and an undo button so the batch can
+ * be tweaked before commit.
  *
  * @version v0.3.0
  */

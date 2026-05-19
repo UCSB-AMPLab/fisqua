@@ -1,8 +1,8 @@
 /**
  * Promoted Badge
  *
- * Small pill shown next to a volume entry once it has been promoted
- * into a published description. Makes the promotion status
+ * This badge is the small pill shown next to a volume entry once it has
+ * been promoted into a published description. Makes the promotion status
  * scannable at a glance in the promotion table.
  *
  * @version v0.3.0

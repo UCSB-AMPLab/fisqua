@@ -1,8 +1,9 @@
 /**
  * Route Manifest
  *
- * The single source of truth for every URL the app answers. React Router
- * reads this file at build time to generate the type-safe route table,
+ * This file deals with the single source of truth for every URL the
+ * app answers. React Router reads this file at build time to generate
+ * the type-safe route table,
  * the server-side loader manifest, and the client-side code-split
  * bundles. Anything that should be reachable over HTTP has to be listed
  * here; anything not listed is a hard 404.
@@ -28,7 +29,18 @@
  * viewer and description editor routes break out of the chrome via a
  * path check in `_auth.tsx`.
  *
- * @version v0.3.0
+ * The `_operator` layout is a SIBLING of `_auth`, not a child: the
+ * operator surface runs on the platform host with its own gate
+ * (`operatorAuthMiddleware` calling `assertOperator(tenant)`) and its
+ * own thin top-bar chrome. Nesting under `_auth` would leak the staff
+ * sidebar + the cross-tenant default-deny logic into the operator UI;
+ * siblinging keeps the two surfaces structurally distinct. The route
+ * prefix `/operator/*` is only reachable on the platform host because
+ * `OPERATOR_ROUTE_PREFIXES` includes `/operator`; the same path on a
+ * tenant subdomain falls through to React Router's no-match 404
+ * because no `/operator/*` route is registered on `_auth`.
+ *
+ * @version v0.4.0
  */
 
 import {
@@ -39,17 +51,34 @@ import {
 } from "@react-router/dev/routes";
 
 export default [
+  // Marketing landing + workspace picker (apex)
+  index("routes/_index.tsx"),
+
   // Public routes
   route("login", "routes/login.tsx"),
   route("auth/verify", "routes/auth.verify.tsx"),
   route("auth/github", "routes/auth.github.tsx"),
   route("auth/github/callback", "routes/auth.github.callback.tsx"),
+  route("auth/github/handoff", "routes/auth.github.handoff.tsx"),
   route("auth/logout", "routes/auth.logout.tsx"),
+  // Interstitial shown when a user lands on a tenant subdomain that
+  // doesn't match their account's tenant. Public route, no auth
+  // middleware: the callers (auth.verify, auth.github.handoff,
+  // authMiddleware) 302 here with ?home=<home-slug> after clearing or
+  // refusing to mint the wrong-tenant session.
+  route("wrong-workspace", "routes/wrong-workspace.tsx"),
+  // Tenant-subdomain handoff for operator login-as.
+  route("handoff/impersonation", "routes/handoff.impersonation.tsx"),
+  // Clears the impersonating envelope. Top-level
+  // (NOT under `_auth`) so the cleanup is reachable both with AND
+  // without an active envelope; nesting under `_auth` would route the
+  // request through `requireTenantUser`'s default-deny and 403 a stale
+  // banner-driven POST.
+  route("end-impersonation", "routes/end-impersonation.tsx"),
   route("invite/accept", "routes/invite.accept.tsx"),
 
   // Authenticated routes
   layout("routes/_auth.tsx", [
-    index("routes/_auth._index.tsx"),
     route("dashboard", "routes/_auth.dashboard.tsx"),
     route("proyectos", "routes/_auth.proyectos.tsx"),
     route("no-access", "routes/_auth.no-access.tsx"),
@@ -133,5 +162,14 @@ export default [
       route("admin/vocabularies/enums", "routes/_auth.admin.vocabularies.enums.tsx"),
       route("admin/vocabularies/review", "routes/_auth.admin.vocabularies.review.tsx"),
     ]),
+  ]),
+
+  // Operator surface — platform-host-only top-level layout.
+  // Sibling of `_auth`; gated by `operatorAuthMiddleware`.
+  layout("routes/_operator.tsx", [
+    { path: "operator/tenants", file: "routes/_operator.tenants._index.tsx" },
+    { path: "operator/tenants/new", file: "routes/_operator.tenants.new.tsx" },
+    { path: "operator/tenants/:slug", file: "routes/_operator.tenants.$slug.tsx" },
+    { path: "operator/tenants/:slug/login-as", file: "routes/_operator.tenants.$slug.login-as.tsx" },
   ]),
 ] satisfies RouteConfig;

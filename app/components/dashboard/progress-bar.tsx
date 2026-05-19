@@ -1,7 +1,19 @@
 /**
- * Stacked progress bar showing volume counts by workflow status.
- * Renders coloured segments proportional to counts.
- * Reusable across assignments page and lead dashboard.
+ * Stacked Progress Bar
+ *
+ * This component is the horizontal segmented bar that summarises a
+ * collection of volumes by their workflow status — one coloured segment
+ * per status, sized proportionally to the volume count in that bucket.
+ * The status colour palette is pulled from the same `--*-bg` design
+ * tokens the status badges use, so a project card and an assignment
+ * filter chip stay in chromatic sync. The bar takes a flat `counts`
+ * record keyed by status name, which keeps it reusable across the
+ * assignments page (lead-side, per-project) and the lead dashboard
+ * (multi-project overview) without any per-caller adaptation. Empty
+ * counts render as a single muted track so the layout never collapses
+ * to zero height.
+ *
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

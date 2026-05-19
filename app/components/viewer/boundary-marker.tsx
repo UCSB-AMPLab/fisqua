@@ -1,8 +1,8 @@
 /**
  * Entry Boundary Marker
  *
- * Vertical marker drawn between pages in the IIIF viewer to show
- * where one entry ends and the next begins. Colour-coded by
+ * This component is the vertical marker drawn between pages in the IIIF
+ * viewer to show where one entry ends and the next begins. Colour-coded by
  * segmentation status so the cataloguer can see at a glance which
  * boundaries are still provisional.
  *

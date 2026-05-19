@@ -1,11 +1,21 @@
 /**
- * Tests — repeatable
+ * Tests -- repeatable
  *
- * @version v0.3.0
+ * This suite pins the current shape of the import clear + FTS rebuild
+ * surfaces. Earlier tests here exercised an unscoped `generateClearSql` and a
+ * two-table FTS rebuild. Both surfaces were rewritten: clear is now
+ * tenant-scoped to Neogranadina and the FTS rebuild covers all
+ * three FTS5 tables. This test file pins the current shape. Each
+ * (a)-(g) assertion is its own `expect(...)` so a regression
+ * pinpoints the missing/extra DELETE rather than collapsing into
+ * one uninformative failure.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { NEOGRANADINA_TENANT_ID } from "../../app/lib/tenant";
 
 const OUTPUT_DIR = ".import";
 
@@ -17,69 +27,88 @@ async function cleanOutput() {
   }
 }
 
-describe("generateClearSql", () => {
+describe("generateTenantScopedClearSql -- explicit shape assertions", () => {
   beforeEach(cleanOutput);
   afterEach(cleanOutput);
 
-  it("produces DELETE statements in reverse FK order", async () => {
-    const { generateClearSql } = await import(
+  it("emits exactly the five tenant-scoped DELETEs and no unscoped ones", async () => {
+    const { generateTenantScopedClearSql } = await import(
       "../../scripts/commands/clear"
     );
 
-    const sqlFiles = await generateClearSql();
-
+    const sqlFiles = await generateTenantScopedClearSql();
     expect(sqlFiles.length).toBeGreaterThan(0);
     const content = await fs.readFile(sqlFiles[0], "utf8");
 
-    // Verify reverse FK order: junctions first, then leaf tables, then root tables
-    const dpIdx = content.indexOf("DELETE FROM description_places");
-    const deIdx = content.indexOf("DELETE FROM description_entities");
-    const efIdx = content.indexOf("DELETE FROM entity_functions");
-    const dIdx = content.indexOf("DELETE FROM descriptions");
-    const pIdx = content.indexOf("DELETE FROM places");
-    const eIdx = content.indexOf("DELETE FROM entities");
-    const rIdx = content.indexOf("DELETE FROM repositories");
+    // (a) exactly one tenant-scoped DELETE on descriptions
+    expect(
+      (content.match(/DELETE FROM descriptions WHERE tenant_id =/g) ?? [])
+        .length,
+    ).toBe(1);
 
-    // All should be present
-    expect(dpIdx).toBeGreaterThanOrEqual(0);
-    expect(deIdx).toBeGreaterThanOrEqual(0);
-    expect(efIdx).toBeGreaterThanOrEqual(0);
-    expect(dIdx).toBeGreaterThanOrEqual(0);
-    expect(pIdx).toBeGreaterThanOrEqual(0);
-    expect(eIdx).toBeGreaterThanOrEqual(0);
-    expect(rIdx).toBeGreaterThanOrEqual(0);
+    // (b) exactly one tenant-scoped DELETE on entities
+    expect(
+      (content.match(/DELETE FROM entities WHERE tenant_id =/g) ?? [])
+        .length,
+    ).toBe(1);
 
-    // Order: description_places before descriptions
-    expect(dpIdx).toBeLessThan(dIdx);
-    // description_entities before descriptions
-    expect(deIdx).toBeLessThan(dIdx);
-    // entity_functions before entities
-    expect(efIdx).toBeLessThan(eIdx);
-    // descriptions before repositories
-    expect(dIdx).toBeLessThan(rIdx);
-    // entities before repositories (or at least after descriptions)
-    expect(eIdx).toBeLessThan(rIdx);
-    // places before repositories (or at least after descriptions)
-    expect(pIdx).toBeLessThan(rIdx);
+    // (c) exactly one tenant-scoped DELETE on places
+    expect(
+      (content.match(/DELETE FROM places WHERE tenant_id =/g) ?? [])
+        .length,
+    ).toBe(1);
+
+    // (d) exactly one tenant-scoped DELETE on repositories
+    expect(
+      (content.match(/DELETE FROM repositories WHERE tenant_id =/g) ?? [])
+        .length,
+    ).toBe(1);
+
+    // (e) exactly one JOIN-DELETE on entity_functions
+    //     (entity_functions has no tenant_id column; it inherits via
+    //      entity_id FK with ON DELETE CASCADE)
+    expect(
+      (
+        content.match(/DELETE FROM entity_functions WHERE entity_id IN/g) ??
+        []
+      ).length,
+    ).toBe(1);
+
+    // (f) the NEOGRANADINA tenant id literal appears at least 5 times --
+    //     once per tenant-scoped DELETE plus once inside the
+    //     entity_functions JOIN-subquery (covers all five DELETE
+    //     statements + the SELECT id FROM entities WHERE tenant_id = ...)
+    const neoCount = (
+      content.match(new RegExp(NEOGRANADINA_TENANT_ID, "g")) ?? []
+    ).length;
+    expect(neoCount).toBeGreaterThanOrEqual(5);
+
+    // (g) no unscoped DELETE survives -- regex catches a bare
+    //     `DELETE FROM <table>;` on any of the five tables on its own
+    //     line. A single missed WHERE clause here is the structural
+    //     failure mode this assertion exists to catch.
+    expect(content).not.toMatch(
+      /^\s*DELETE\s+FROM\s+(descriptions|entities|places|repositories|entity_functions)\s*;/m,
+    );
   });
 
   it("includes PRAGMA defer_foreign_keys", async () => {
-    const { generateClearSql } = await import(
+    const { generateTenantScopedClearSql } = await import(
       "../../scripts/commands/clear"
     );
 
-    const sqlFiles = await generateClearSql();
+    const sqlFiles = await generateTenantScopedClearSql();
     const content = await fs.readFile(sqlFiles[0], "utf8");
 
     expect(content).toContain("PRAGMA defer_foreign_keys = true");
   });
 });
 
-describe("generateFtsRebuild", () => {
+describe("generateFtsRebuild -- three FTS5 tables", () => {
   beforeEach(cleanOutput);
   afterEach(cleanOutput);
 
-  it("produces rebuild commands for entities_fts and places_fts", async () => {
+  it("produces rebuild commands for entities_fts, places_fts, and descriptions_fts", async () => {
     const { generateFtsRebuild } = await import(
       "../../scripts/commands/clear"
     );
@@ -90,10 +119,13 @@ describe("generateFtsRebuild", () => {
     const content = await fs.readFile(sqlFiles[0], "utf8");
 
     expect(content).toContain(
-      "INSERT INTO entities_fts(entities_fts) VALUES('rebuild')"
+      "INSERT INTO entities_fts(entities_fts) VALUES('rebuild')",
     );
     expect(content).toContain(
-      "INSERT INTO places_fts(places_fts) VALUES('rebuild')"
+      "INSERT INTO places_fts(places_fts) VALUES('rebuild')",
+    );
+    expect(content).toContain(
+      "INSERT INTO descriptions_fts(descriptions_fts) VALUES('rebuild')",
     );
   });
 });

@@ -1,7 +1,21 @@
 /**
- * Tests — repositories
+ * Tests — repositories CRUD
  *
- * @version v0.3.0
+ * This suite pins the substrate contract on the `repositories`
+ * table — the ISDIAH-shape institutional authority that every
+ * description hangs off via `repositoryId`. Cases cover the minimum
+ * insert shape (`code`, `displayName`, `tenantId`), the per-tenant
+ * uniqueness of `code`, partial update preservation, and the
+ * delete-cascade behaviour against orphaned descriptions.
+ *
+ * Repositories are the top of the archival hierarchy in this
+ * codebase: a description without a `repositoryId` is structurally
+ * incomplete, so the foreign key is NOT NULL and the cascade on
+ * repository deletion intentionally takes the descriptions with it.
+ * That destructive cascade is also exercised here so a future
+ * migration that softens it (e.g. SET NULL) breaks loud.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +28,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestUser } from "../helpers/auth";
 
@@ -33,6 +47,7 @@ describe("repository CRUD", () => {
     const id = crypto.randomUUID();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       code: "AGN",
       name: "Archivo General de la Nacion",
@@ -126,6 +141,7 @@ describe("cascade protection", () => {
     const descId = crypto.randomUUID();
     const now = Date.now();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "fonds",
@@ -185,6 +201,7 @@ describe("display metadata fields", () => {
     const id = crypto.randomUUID();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       code: "TEST-DM",
       name: "Test Repo",

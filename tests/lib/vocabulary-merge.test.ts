@@ -1,5 +1,19 @@
 /**
- * Tests — vocabulary merge
+ * Tests — vocabulary management behavioural contracts
+ *
+ * This suite pins the behavioural contracts for the vocabulary
+ * management operations — merge, split, deprecate, rename, and
+ * propose — that operate on the `vocabulary_terms` table. The
+ * tests stub the storage helpers and exercise the business-rule
+ * surface independently of D1: a merge into a deprecated term is
+ * rejected, a merge of a term into itself is a no-op, the
+ * `entityCount` denormalisation transfers on merge, and the
+ * `mergedInto` pointer is followed transitively on lookup.
+ *
+ * The stub-based pattern keeps these tests fast (no migrations,
+ * no D1 setup) and focuses them on the rule layer rather than
+ * the storage layer; the matching storage-layer test lives
+ * adjacent in the suite and exercises the SQL round-trip.
  *
  * @version v0.3.0
  */

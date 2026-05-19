@@ -1,10 +1,10 @@
 /**
  * Project Card
  *
- * Card rendering one project on the member dashboard: name, short
- * description, the caller's role in the project, and the headline
- * counts (volumes / entries / open items). Clicking the card deep-
- * links into the project overview.
+ * This card renders one project on the member dashboard — name, short
+ * description, the caller's role in the project, and the headline counts
+ * (volumes / entries / open items). Clicking the card deep-links into the
+ * project overview.
  *
  * @version v0.3.0
  */

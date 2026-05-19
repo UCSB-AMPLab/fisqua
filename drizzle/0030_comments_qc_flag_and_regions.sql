@@ -1,6 +1,6 @@
 -- Unified comments: QC-flag threads and image-region pins
 --
--- Extends the `comments` table twice over to fold QC-flag triage and
+-- This migration extends the `comments` table twice over to fold QC-flag triage and
 -- image-region annotation into a single conversation model.
 --
 -- First: comments can now attach to a `qc_flag` so that a flag stops

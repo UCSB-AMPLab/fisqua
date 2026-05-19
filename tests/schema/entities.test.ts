@@ -1,7 +1,22 @@
 /**
- * Tests — entities
+ * Tests — entities schema
  *
- * @version v0.3.0
+ * This suite pins the structural shape of the `entities` table — the
+ * authority spine for persons, families, and corporate bodies referenced
+ * across descriptions. Four columns carry load-bearing invariants and
+ * each gets its own pin: required fields on insert (`entityCode`,
+ * `displayName`, `sortName`, `entityType`), the unique constraint on
+ * `entityCode` that the public URL space depends on, the nullable
+ * `mergedInto` column that authority-deduplication uses to redirect
+ * stale references, and the `nameVariants` JSON column that defaults
+ * to `'[]'` so consumers can `JSON.parse` blindly without nullguards.
+ *
+ * The `entityCode` uniqueness test mirrors the same posture as the
+ * `descriptions.referenceCode` test — every entity code becomes a
+ * stable external identifier in the entity browser, so collisions
+ * would silently overwrite authority work.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,9 +29,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 
-describe("entities table (SCHEMA-03)", () => {
+describe("entities table", () => {
   let db: ReturnType<typeof drizzle>;
 
   beforeAll(async () => {
@@ -33,6 +48,7 @@ describe("entities table (SCHEMA-03)", () => {
     const now = Date.now();
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       entityCode: "ne-abc234",
       displayName: "Juan de Castellanos",
@@ -58,6 +74,7 @@ describe("entities table (SCHEMA-03)", () => {
     const now = Date.now();
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: crypto.randomUUID(),
       entityCode: "ne-xxxxxx",
       displayName: "First Entity",
@@ -69,6 +86,7 @@ describe("entities table (SCHEMA-03)", () => {
 
     await expect(
       db.insert(schema.entities).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         entityCode: "ne-xxxxxx",
         displayName: "Second Entity",
@@ -86,6 +104,7 @@ describe("entities table (SCHEMA-03)", () => {
     const now = Date.now();
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: mainId,
       entityCode: "ne-main01",
       displayName: "Main Entity",
@@ -96,6 +115,7 @@ describe("entities table (SCHEMA-03)", () => {
     });
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: mergedId,
       entityCode: "ne-mrgd01",
       displayName: "Merged Entity",
@@ -119,6 +139,7 @@ describe("entities table (SCHEMA-03)", () => {
     const now = Date.now();
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       entityCode: "ne-defvar",
       displayName: "Default Variants",

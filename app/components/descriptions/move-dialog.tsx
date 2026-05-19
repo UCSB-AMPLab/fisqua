@@ -1,10 +1,10 @@
 /**
  * Move Dialog
  *
- * Modal for moving a description from one parent to another within the
- * tree, with a destination picker and cascade preview.
+ * This dialog deals with moving a description from one parent to another
+ * within the tree, with a destination picker and cascade preview.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -249,7 +249,7 @@ export function MoveDialog({
         {selectedTarget && (
           <div className="mt-3 rounded bg-stone-50 px-3 py-2 text-sm text-stone-700">
             <span className="text-stone-500">
-              {isCurrentParent ? `(${t("field_parentId")})` : ""}{" "}
+              {isCurrentParent ? `(${t("fields.parentId")})` : ""}{" "}
             </span>
             {selectedTarget.title}{" "}
             <span className="text-xs text-stone-500">

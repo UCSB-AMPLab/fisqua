@@ -1,9 +1,9 @@
 /**
  * Quick Stat Badge
  *
- * Inline pill that pairs a small icon with a number and label. Used
- * inside project cards, dashboard sections, and anywhere a terse
- * count needs its own visual footprint.
+ * This badge is the inline pill that pairs a small icon with a number and
+ * label. Used inside project cards, dashboard sections, and anywhere a
+ * terse count needs its own visual footprint.
  *
  * @version v0.3.0
  */

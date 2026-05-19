@@ -1,9 +1,9 @@
 /**
  * Page Gap Marker
  *
- * Small marker drawn between adjacent IIIF pages to make the
- * virtualised scroll feel less seamless-to-the-point-of-confusion.
- * Purely presentational.
+ * This component is the small marker drawn between adjacent IIIF pages to
+ * make the virtualised scroll feel less seamless-to-the-point-of-
+ * confusion. Purely presentational.
  *
  * @version v0.3.0
  */

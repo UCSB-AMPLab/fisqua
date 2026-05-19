@@ -1,6 +1,20 @@
 /**
  * Tests — descriptions tree
  *
+ * This suite pins the hierarchy-fetch contract that backs the admin
+ * tree view and the public archival browser. The view is built on
+ * an adjacency model (`parentId` foreign key) plus a denormalised
+ * `depth` + `position` pair maintained on insert/move, so a single
+ * level of the tree can be rendered without recursive walks.
+ *
+ * Cases pin the three reads the tree UI issues per expand: (1) the
+ * `depth=0` roots ordered by `position` ASC, (2) the immediate
+ * children of a given parent (filter by `parentId` + ORDER BY
+ * `position` ASC), and (3) the `childCount` denormalisation — set on
+ * insert and decremented on delete — so the UI can decide whether
+ * to render a disclosure triangle without an extra COUNT query per
+ * row.
+ *
  * @version v0.3.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";

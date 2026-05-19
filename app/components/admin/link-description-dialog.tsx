@@ -1,9 +1,9 @@
 /**
  * Link Description Dialog
  *
- * Modal used on the entities, places, and vocabularies admin surfaces
- * to link a record to one or more archival descriptions. Wraps a
- * typeahead that queries the descriptions FTS index and renders the
+ * This dialog deals with linking a record on the entities, places, and
+ * vocabularies admin surfaces to one or more archival descriptions. Wraps
+ * a typeahead that queries the descriptions FTS index and renders the
  * current link list as chips the operator can remove before saving.
  *
  * @version v0.3.0

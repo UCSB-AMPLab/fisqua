@@ -1,7 +1,7 @@
 /**
  * Split Dialog
  *
- * Modal that drives the split-one-record-into-two flow for vocabulary
+ * This dialog deals with splitting one record into two for vocabulary
  * terms. Walks the operator through picking which linked descriptions
  * follow which side of the split, validates both halves are non-empty,
  * and emits the split payload.

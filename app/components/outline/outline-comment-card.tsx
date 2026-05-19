@@ -1,9 +1,9 @@
 /**
  * Outline Comment Card
  *
- * Compact comment card rendered inside an outline entry. Shares the
- * card chrome with `CommentCard` but adapts spacing and truncation
- * to the narrower outline column.
+ * This card is the compact comment surface rendered inside an outline
+ * entry. Shares the card chrome with `CommentCard` but adapts spacing and
+ * truncation to the narrower outline column.
  *
  * @version v0.3.0
  */
@@ -206,7 +206,6 @@ export function OutlineCommentCard({
   // compatibility but no longer invoked from this component. TanStack
   // Virtual's ResizeObserver (installed via `measureElement` on the row
   // wrapper in OutlinePanel) catches every height change automatically.
-  // See .planning/debug/resolved/outline-scroll-snaps-back.md.
   void onHeightChange;
 
   const hasRegion = comment.regionX != null && comment.regionY != null;

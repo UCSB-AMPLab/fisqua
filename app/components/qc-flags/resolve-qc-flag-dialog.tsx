@@ -1,12 +1,11 @@
 /**
  * Resolve QC Flag Dialog
  *
- * Modal that leads use to close out an open QC flag. Collects the
- * resolution action, an optional resolver note (required when the
- * action is "other"), and submits with the encType that keeps the
- * React Router loader on the other side readable. The role guard
- * on the parent mirrors the server guard so a cataloguer never
- * sees an unauthorised button.
+ * This dialog deals with leads closing out an open QC flag. Collects the
+ * resolution action, an optional resolver note (required when the action
+ * is "other"), and submits with the encType that keeps the React Router
+ * loader on the other side readable. The role guard on the parent mirrors
+ * the server guard so a cataloguer never sees an unauthorised button.
  *
  * @version v0.3.0
  */

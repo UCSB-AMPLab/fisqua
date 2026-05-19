@@ -1,8 +1,8 @@
 /**
  * Coordinate Input
  *
- * Paired latitude/longitude number input with optional precision.
- * Used on the place edit form.
+ * This component is the paired latitude/longitude number input with
+ * optional precision. Used on the place edit form.
  *
  * @version v0.3.0
  */

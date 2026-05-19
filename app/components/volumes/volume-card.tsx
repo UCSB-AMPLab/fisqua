@@ -1,10 +1,10 @@
 /**
  * Volume Card
  *
- * Per-volume card used on the project volumes page and on the lead
- * dashboard. Surfaces the volume name, status, assigned cataloguer
- * and reviewer, entry counts by status, and any open QC flag count.
- * Clicking the card opens the viewer at the first unresolved page.
+ * This card is the per-volume tile used on the project volumes page and
+ * on the lead dashboard. Surfaces the volume name, status, assigned
+ * cataloguer and reviewer, entry counts by status, and any open QC flag
+ * count. Clicking the card opens the viewer at the first unresolved page.
  *
  * @version v0.3.0
  */

@@ -1,5 +1,21 @@
 /**
- * Tests — validation
+ * Tests — import-side validation primitives
+ *
+ * This suite pins the pure helpers shared across every import
+ * command: `generateUniqueCodes` (produces `<prefix>-<6char>`
+ * authority codes with collision avoidance against the
+ * 32-character `ALPHABET` — lowercase letters minus the
+ * confusable `0/o`/`1/l`), `validateRows` (the row-by-row Zod
+ * runner that aggregates failures into a structured report rather
+ * than throwing on the first invalid row), and the transform trio
+ * `toEpochSeconds` / `toIsoDate` / `stringifyJsonArray` that
+ * normalises legacy date and array shapes for D1 storage.
+ *
+ * The `generateUniqueCodes` cases pin the alphabet contract
+ * (no confusables — a cataloguer reading "ne-abc1de" from a
+ * printed catalogue must not mistype "1" for "l"), the uniqueness
+ * property across larger batches (1000 codes still distinct), and
+ * the per-prefix isolation (`ne-*` for entities, `nl-*` for places).
  *
  * @version v0.3.0
  */

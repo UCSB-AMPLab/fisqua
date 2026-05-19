@@ -1,10 +1,10 @@
 /**
  * Publish Export Controls
  *
- * The fonds and data-type pickers plus the Publish button on the
- * dashboard. Holds selection state locally and routes the Publish
- * click through the `PublishWarningModal` so a careless click never
- * kicks off a multi-minute run.
+ * This component is the fonds and data-type pickers plus the Publish
+ * button on the dashboard. Holds selection state locally and routes the
+ * Publish click through the `PublishWarningModal` so a careless click
+ * never kicks off a multi-minute run.
  *
  * @version v0.3.0
  */

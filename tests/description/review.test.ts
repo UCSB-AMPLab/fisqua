@@ -1,5 +1,20 @@
 /**
- * Tests — review
+ * Tests — reviewer approve / send-back (DESC-07)
+ *
+ * This suite pins the two reviewer-side transitions that close out
+ * a description's review cycle: `approveDescription` (flips
+ * description_status from `under_review` to `approved` and records
+ * the reviewer + timestamp) and `sendBackDescription` (flips to
+ * `sent_back` and attaches a reviewer comment via the entry-level
+ * comments thread).
+ *
+ * The send-back path is tested through both the status update AND
+ * the comment thread — `getCommentsForEntry` is exercised so the
+ * test confirms the reviewer's note actually reaches the cataloguer
+ * via the normal comment loader, not a side channel. Cases also pin
+ * the role gate (only `reviewer` or `lead` can drive these
+ * transitions; cataloguers calling the helper directly throw), and
+ * the audit-log row each transition emits.
  *
  * @version v0.3.0
  */

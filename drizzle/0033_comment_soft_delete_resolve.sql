@@ -1,6 +1,6 @@
 -- Comment soft-delete, resolve, and edit markers
 --
--- Extends the `comments` table with five nullable columns so that a
+-- This migration extends the `comments` table with five nullable columns so that a
 -- comment can record soft-delete state, resolve state, and a last-edit
 -- timestamp without a separate history table. Every column is
 -- nullable; existing rows get NULL on arrival with no backfill.

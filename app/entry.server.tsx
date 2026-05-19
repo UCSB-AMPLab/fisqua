@@ -1,3 +1,19 @@
+/**
+ * Server Entry Point
+ *
+ * This file deals with the SSR entry hook React Router calls on every
+ * request after the middleware chain has run. It pulls the
+ * request-scoped i18next instance off the load context (attached by
+ * `i18nextMiddleware`), wraps the `<ServerRouter>` tree in
+ * `<I18nextProvider>` so loaders, components, and `t()` calls all
+ * resolve against the same language, and streams the result through
+ * `renderToReadableStream`. For bots and SPA-mode renders the stream
+ * is awaited to completion before the response is returned, which
+ * ensures crawlers see the fully rendered page instead of an early
+ * shell.
+ *
+ * @version v0.3.0
+ */
 import type { EntryContext } from "react-router";
 import type { RouterContextProvider } from "react-router";
 import { ServerRouter } from "react-router";

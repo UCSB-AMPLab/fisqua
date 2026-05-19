@@ -1,5 +1,19 @@
 /**
- * Tests — children
+ * Tests — children map builder
+ *
+ * This suite pins `generateChildrenMap` — the pure helper that turns
+ * a flat list of description rows into the `{ parentId → child[] }`
+ * map the static export pipeline consumes when rendering the public
+ * tree view. The map shape is what the frontend's `children.json`
+ * file carries, and the map ordering (children sorted by `position`
+ * ASC within each parent) is what makes the rendered tree
+ * deterministic.
+ *
+ * Cases pin the empty-input edge (`[]` returns `{}`), the
+ * roots-only case (rows with `parentId=null` collect under the
+ * sentinel root key), and the deep-hierarchy case (a three-level
+ * fonds > series > file tree builds the expected three keys with
+ * the right children at each).
  *
  * @version v0.3.0
  */

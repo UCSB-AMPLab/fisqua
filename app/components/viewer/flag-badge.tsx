@@ -1,9 +1,9 @@
 /**
  * Flag Badge
  *
- * Per-page badge that surfaces the count of open QC flags on that
- * page. Clicking the badge opens the per-page QC panel; the badge
- * hides when there are no open flags.
+ * This badge is the per-page indicator that surfaces the count of open QC
+ * flags on that page. Clicking the badge opens the per-page QC panel; the
+ * badge hides when there are no open flags.
  *
  * @version v0.3.0
  */

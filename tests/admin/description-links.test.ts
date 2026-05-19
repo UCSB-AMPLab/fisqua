@@ -1,6 +1,23 @@
 /**
  * Tests — description links
  *
+ * This suite pins the two junction tables that hang authority records
+ * off a description — `descriptionEntities` (people, families, corporate
+ * bodies) and `descriptionPlaces` (geographic authorities). The link
+ * rows carry role + sequence + display overrides (`honorific`,
+ * `function`, `nameAsRecorded` for entities; `placeRole`,
+ * `placeAsRecorded` for places) so each appearance of an authority
+ * inside a description can disambiguate from the canonical authority
+ * record without breaking the foreign key back to it.
+ *
+ * The cases exercise the create path end-to-end (insert + read-back
+ * + role/sequence/override round-trip), confirm cascade semantics on
+ * authority deletion, and pin the ordering invariant — `sequence`
+ * ASC determines display order in both the admin UI and exports.
+ * No route-level coverage here; that lives in the matching
+ * `_admin.descriptions.*` route tests. This file is the substrate
+ * regression net.
+ *
  * @version v0.3.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";

@@ -1,6 +1,6 @@
 -- Collaborative cataloguing admin and archive-user role flags
 --
--- Adds two boolean flags to `users` for the evolving permission model.
+-- This migration adds two boolean flags to `users` for the evolving permission model.
 -- `is_collab_admin` grants a user the ability to run the collaborative
 -- cataloguing surfaces -- creating projects, inviting cataloguers and
 -- reviewers, assigning volumes -- without needing full superadmin

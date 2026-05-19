@@ -1,6 +1,6 @@
 -- Rights statement on repositories
 --
--- Adds a free-form `rights_text` column to `repositories` so the
+-- This migration adds a free-form `rights_text` column to `repositories` so the
 -- display page for each archive can surface the institution's own
 -- licensing or reuse statement next to its description. Stored as
 -- plain text to accept anything from a short CC-BY line to a long

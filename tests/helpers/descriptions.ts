@@ -1,15 +1,22 @@
 /**
  * Tests — descriptions
  *
- * @version v0.3.0
+ * This helper module wraps description-row creation for the test
+ * suite. Every description row carries a tenant_id NOT NULL FK to
+ * tenants(id), so tests must call seedTenants() before invoking this
+ * helper. Defaults to DEFAULT_TEST_TENANT_ID.
+ *
+ * @version v0.4.0
  */
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:test";
 import * as schema from "../../app/db/schema";
+import { DEFAULT_TEST_TENANT_ID } from "./db";
 
 export async function createTestDescription(
   overrides: Partial<{
     id: string;
+    tenantId: string;
     repositoryId: string;
     parentId: string | null;
     position: number;
@@ -31,6 +38,7 @@ export async function createTestDescription(
   const id = overrides.id ?? crypto.randomUUID();
   const values = {
     id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     repositoryId: overrides.repositoryId ?? "repo-test",
     parentId: overrides.parentId ?? null,
     position: overrides.position ?? 0,

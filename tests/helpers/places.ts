@@ -1,26 +1,33 @@
 /**
  * Tests — places
  *
- * @version v0.3.0
+ * This helper module wraps place-row creation for the test suite.
+ * Every place row carries a tenant_id NOT NULL FK to tenants(id),
+ * so tests must call seedTenants() before invoking this helper.
+ * Defaults to DEFAULT_TEST_TENANT_ID.
+ *
+ * historical_* columns, country_code, admin_level_1, admin_level_2,
+ * and wikidata_id were dropped from the places table (0% populated
+ * in production audit). The new `fclass` column (5-value GeoNames
+ * feature class with CHECK constraint) is exposed on the helper.
+ *
+ * @version v0.4.0
  */
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:test";
 import * as schema from "../../app/db/schema";
+import { DEFAULT_TEST_TENANT_ID } from "./db";
 
 export async function createTestPlace(overrides: Partial<{
   id: string;
+  tenantId: string;
   placeCode: string;
   label: string;
   displayName: string;
   placeType: string;
   nameVariants: string;
   parentId: string;
-  historicalGobernacion: string;
-  historicalPartido: string;
-  historicalRegion: string;
-  countryCode: string;
-  adminLevel1: string;
-  adminLevel2: string;
+  fclass: "P" | "H" | "A" | "T" | "S";
   latitude: number;
   longitude: number;
   coordinatePrecision: string;
@@ -28,13 +35,13 @@ export async function createTestPlace(overrides: Partial<{
   tgnId: string;
   hgisId: string;
   whgId: string;
-  wikidataId: string;
 }> = {}) {
   const db = drizzle(env.DB);
   const now = Date.now();
   const id = overrides.id ?? crypto.randomUUID();
   const values = {
     id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     placeCode: overrides.placeCode ?? "nl-test01",
     label: overrides.label ?? "Test Place",
     displayName: overrides.displayName ?? "Test Place",
@@ -42,12 +49,7 @@ export async function createTestPlace(overrides: Partial<{
       (typeof schema.places.$inferInsert)["placeType"],
     nameVariants: overrides.nameVariants ?? "[]",
     parentId: overrides.parentId ?? undefined,
-    historicalGobernacion: overrides.historicalGobernacion ?? undefined,
-    historicalPartido: overrides.historicalPartido ?? undefined,
-    historicalRegion: overrides.historicalRegion ?? undefined,
-    countryCode: overrides.countryCode ?? undefined,
-    adminLevel1: overrides.adminLevel1 ?? undefined,
-    adminLevel2: overrides.adminLevel2 ?? undefined,
+    fclass: overrides.fclass ?? undefined,
     latitude: overrides.latitude ?? undefined,
     longitude: overrides.longitude ?? undefined,
     coordinatePrecision: overrides.coordinatePrecision ?? undefined,
@@ -55,7 +57,6 @@ export async function createTestPlace(overrides: Partial<{
     tgnId: overrides.tgnId ?? undefined,
     hgisId: overrides.hgisId ?? undefined,
     whgId: overrides.whgId ?? undefined,
-    wikidataId: overrides.wikidataId ?? undefined,
     createdAt: now,
     updatedAt: now,
   };

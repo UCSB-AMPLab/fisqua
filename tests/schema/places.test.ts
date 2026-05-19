@@ -1,7 +1,23 @@
 /**
- * Tests — places
+ * Tests — places schema
  *
- * @version v0.3.0
+ * This suite pins the structural shape of the `places` table — the
+ * geographic authority spine for locations referenced across descriptions.
+ * Five pins cover the column shape: required fields on insert, the
+ * unique constraint on `placeCode` (the stable external identifier
+ * mirroring `entities.entityCode`), floating-point storage for the
+ * `latitude`/`longitude` pair, the nullable `mergedInto` column for
+ * deduplication redirects, and the `needsGeocoding` flag defaulting
+ * to `true`.
+ *
+ * The geocoding default is deliberate — most place records start as
+ * a name string with no coordinates, so `needsGeocoding = true` is
+ * the honest stance. A nightly geocoding pass picks up everything
+ * with the flag set, fills in coordinates, and flips the flag off.
+ * If the default were `false`, the geocoder would silently skip new
+ * records and place data would degrade over time.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,9 +30,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 
-describe("places table (SCHEMA-04)", () => {
+describe("places table", () => {
   let db: ReturnType<typeof drizzle>;
 
   beforeAll(async () => {
@@ -33,6 +49,7 @@ describe("places table (SCHEMA-04)", () => {
     const now = Date.now();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       placeCode: "nl-abc234",
       label: "Tunja",
@@ -56,6 +73,7 @@ describe("places table (SCHEMA-04)", () => {
     const now = Date.now();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: crypto.randomUUID(),
       placeCode: "nl-xxxxxx",
       label: "Place A",
@@ -66,6 +84,7 @@ describe("places table (SCHEMA-04)", () => {
 
     await expect(
       db.insert(schema.places).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         placeCode: "nl-xxxxxx",
         label: "Place B",
@@ -81,6 +100,7 @@ describe("places table (SCHEMA-04)", () => {
     const now = Date.now();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       placeCode: "nl-coords",
       label: "Tunja",
@@ -106,6 +126,7 @@ describe("places table (SCHEMA-04)", () => {
     const now = Date.now();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: mainId,
       placeCode: "nl-main01",
       label: "Main Place",
@@ -115,6 +136,7 @@ describe("places table (SCHEMA-04)", () => {
     });
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: mergedId,
       placeCode: "nl-mrgd01",
       label: "Merged Place",
@@ -137,6 +159,7 @@ describe("places table (SCHEMA-04)", () => {
     const now = Date.now();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       placeCode: "nl-geoco",
       label: "Ungeocoded Place",

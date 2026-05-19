@@ -1,10 +1,16 @@
 /**
- * Cataloguer description tab for the dashboard.
- * Shows description entries assigned to the current user, grouped by status:
- * 1. Necesita atencion (sent_back) -- with reviewer feedback
- * 2. En curso (in_progress) -- grouped by volume
- * 3. Listo para comenzar (assigned)
- * 4. Completados (described/reviewed/approved)
+ * Cataloguer Description Tab
+ *
+ * This component is the description-side of the cataloguer's dashboard.
+ * It surfaces the description entries currently assigned to the
+ * cataloguer grouped by their workflow status — Necesita atención
+ * (sent_back, carrying reviewer feedback), En curso (in_progress, kept
+ * grouped by their parent volume so context is preserved), Listo para
+ * comenzar (assigned but untouched), and Completados (described,
+ * reviewed, or approved). The grouping mirrors the cataloguer dashboard
+ * tab on the segmentation side so the two registers feel like siblings.
+ *
+ * @version v0.3.0
  */
 
 import { Link } from "react-router";

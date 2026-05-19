@@ -1,10 +1,10 @@
 /**
  * App Root
  *
- * The outermost React Router component. Renders the HTML document
- * scaffold, hydrates the i18next instance attached by the middleware,
- * and mounts the fall-back error boundary that catches uncaught
- * errors from loaders, actions, and components.
+ * This file deals with the outermost React Router component. It
+ * renders the HTML document scaffold, hydrates the i18next instance
+ * attached by the middleware, and mounts the fall-back error boundary
+ * that catches uncaught errors from loaders, actions, and components.
  *
  * @version v0.3.0
  */

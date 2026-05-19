@@ -1,6 +1,6 @@
 -- Full-text search for archival descriptions
 --
--- Adds an FTS5 virtual table that indexes description reference codes
+-- This migration adds an FTS5 virtual table that indexes description reference codes
 -- and titles so the admin and the column-view explorer can search
 -- across the 100,000+ record tree without scanning the whole
 -- `descriptions` table on every keystroke. The `unicode61` tokeniser

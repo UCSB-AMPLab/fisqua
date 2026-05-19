@@ -6,12 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-18
+
 ### Added
 
-- **License.** Fisqua is now licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). The `LICENSE` file ships in the repository root; the README licence section is updated to match. AGPL closes the SaaS loophole that GPL leaves open: anyone running a modified Fisqua as a network service for third parties must publish their modifications under the same license, while self-deploying partners have no additional obligation.
-- **Citation file.** The repo now ships a `CITATION.cff` file with author and project metadata, enabling GitHub's "Cite this repository" button. Authors are Juan Cobo Betancourt, with AMPL and Neogranadina credited as institutional contributors.
-- **Trademark notice.** README clarifies that AGPL covers the code, not the names "Fisqua", "Zasqua", or "AMPL".
+- **Multi-tenant workspaces.** A single Fisqua deployment now serves multiple partner institutions, each at its own subdomain (e.g. `<slug>.fisqua.org`). Each tenant has an independent capability matrix — controlled vocabularies, crowdsourcing promotion, multi-standard cataloguing, and other features can be enabled or disabled per institution without affecting the others. AMPL ships alongside Neogranadina as a second institutional tenant.
+- **Apex workspace picker.** The apex domain `fisqua.org` renders a landing page that lists active workspaces and routes signed-in users to their own. Unauthenticated visitors can choose a workspace before signing in.
+- **Wrong-workspace interstitial.** Signing in on a tenant subdomain where the account does not exist now lands a clear explanation and a link to the workspace the user actually belongs to, rather than a generic auth error. The login screen also shows the workspace name as a subtitle so it is unambiguous which institution a sign-in attempt is targeting.
+- **Multi-standard cataloguing.** Archival descriptions can be written against ISAD(G), DACS, or RAD; tenants pick a descriptive standard at provisioning time. Forms render the right field set, label text, and validation rules for the chosen standard, with parallel English and Spanish strings for every per-standard field name and section heading.
+- **Operator administration.** A platform-host surface at `fisqua.org/operator` lets authorised operators provision new tenants, edit per-tenant capabilities, soft-disable a workspace, and impersonate any tenant role for support purposes. Every operator action lands an immutable audit-log row alongside the work itself, in a single atomic write.
+- **Operator login-as.** Operators can sign in as any role inside any tenant (cataloguer, reviewer, lead) without holding a per-tenant user account. The impersonating session renders a banner that names the operator and the role they are acting as, and a one-click `/end-impersonation` returns them to the operator surface. Login-as is role-based, not user-based — operators never assume a specific named user's identity.
+- **Audit log.** A new `audit_log` table records every operator action with database-level immutability triggers; rows cannot be updated or deleted once written. Operator routes are wrapped in a helper that enforces atomic work-batch plus audit-row writes.
+- **GitHub OAuth on the apex.** GitHub sign-in now flows through `fisqua.org/auth/github/callback`, with a per-tenant handoff that delivers the authenticated session to the user's workspace subdomain. Replaces the previous per-tenant callback model, which required reconfiguring the GitHub OAuth App for every new tenant.
+- **Production import pipeline.** A new bulk-import toolchain takes Neogranadina's existing MySQL catalogue — archival descriptions, repositories, people, places, and the links between them — and lands it in Fisqua's D1, tenant-scoped, in a reproducible run. The pipeline includes a standalone MySQL→JSON exporter, a tenant-scoped clear step that snapshots row counts before and after, byte-budget batching to fit D1's 100 KB statement cap, OCR-text truncation at 90 KB word boundaries, and a run manifest that records what landed and what was skipped.
+- **Dual-track role mapping for imports.** Imported entity-description links preserve both their Spanish and English role labels — *fiador* and *apoderado* join the canonical entity-role set.
+- **EAD3 export.** The publish pipeline emits per-fonds EAD3 XML alongside the existing data exports, validated against the canonical Society of American Archivists RelaxNG grammar. EAD3 emission respects the source tenant's descriptive standard (ISAD(G), DACS, or RAD).
+- **Dublin Core export.** The publish pipeline emits a Dublin Core bulk record set per fonds, suitable for OAI-PMH and other harvest-driven consumers.
+- **License, citation, trademark.** Fisqua is now licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). The `LICENSE` file ships in the repository root and the README licence section is updated to match. AGPL closes the SaaS loophole that GPL leaves open: anyone running a modified Fisqua as a network service for third parties must publish their modifications under the same license, while self-deploying partners have no additional obligation. The repo also ships a `CITATION.cff` with author and institutional metadata (Juan Cobo Betancourt as author; AMPL and Neogranadina as institutional contributors), enabling GitHub's "Cite this repository" button. README clarifies that AGPL covers the code, not the names "Fisqua", "Zasqua", or "AMPL".
+- **Manual save and unsaved-changes dialog.** Both the description editor and the segmentation viewer accept `⌘/Ctrl+S` and surface a "Save now" button as a manual escape hatch from autosave. Closing or navigating away with unsaved changes opens a custom unsaved-changes dialog (replacing the browser's native `confirm()`) on both surfaces.
+
+### Changed
+
+- **Canonical URL pattern.** Workspaces live at `<slug>.fisqua.org`; the apex `fisqua.org` is the landing and workspace-picker surface.
 - **Author and license metadata in `package.json`.** `license`, `author`, and `contributors` fields populated to reflect the new licence and authorship.
+- **Save-status indicator.** The autosave indicator now distinguishes four states (saved, saving, error, retrying) with distinct colours; previously two states shared a colour, so transient failures were invisible.
+- **Autosave reliability.** Description-editor autosave now uses a bounded retry strategy and exposes a `flush()` hook that the dirty-navigation blocker and `beforeunload` handlers call before the user leaves the page. Pending writes are flushed via `sendBeacon` on unload.
+- **Staging is apex-only.** `staging.fisqua.org` is the staging landing; there are no per-tenant staging subdomains. Sandbox flows run locally.
+
+### Fixed
+
+- **Description-editor field destruction.** Editing a description sent only the touched fields to the server, so concurrent fields edited in a different session could be silently overwritten with `null`. The editor now always sends the full fields object, and the server's save action only updates the fields it received.
+- **Volume-status drift.** The transition that moves a volume between workflow statuses was making the `volumes` row update and the `activity_log` row insert as two independent statements; one could land while the other failed, leaving the database in a drifted state until a cataloguer noticed. The two writes are now in a single atomic batch. A read-only reconciliation script ships under `scripts/` for diagnosing pre-existing drift.
+- **Editor dirty-navigation safety.** The description editor and the segmentation viewer now block both in-app (React Router) and external (`beforeunload`) navigation when there are unsaved changes, in addition to flushing pending autosave on the way out.
+- **Description title persistence.** The description title field is in the autosave payload's allowlist, so title edits persist alongside the rest of the form; previously they could be wiped on the next save.
+- **Path-traversal hardening on publish keys.** The reference-code sanitiser now rejects path-traversal characters before they reach R2 keys, and the EAD3 emitter validates legacy-id shape via Zod before emission.
+- **Cross-tenant read leak in publish loaders.** Publish-route loaders now enforce the same tenant predicate as the main admin loaders; an audit found loaders that read across tenants when called with a slug that did not match the requester's session.
+- **Apostrophe escaping in XML emit.** The shared XML-escape helper now covers apostrophes; previously single-quote characters in titles could break downstream consumers.
+
+### Removed
+
+- **Per-tenant GitHub OAuth callbacks.** The previous model required a fresh `/<slug>/auth/github/callback` URL registered on the GitHub OAuth App per tenant. The apex callback handoff supersedes this.
 
 ## [0.3.2] - 2026-04-29
 

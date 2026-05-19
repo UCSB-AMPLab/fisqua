@@ -1,6 +1,17 @@
 /**
  * Tests for Repository Formatter
  *
+ * This suite deals with pinning the output shape of
+ * `formatRepositories` — the helper that builds the repositories
+ * index the static frontend reads. The cases cover the precedence
+ * order between the row-level `rightsText` column and the seeded
+ * defaults, the nested `root_descriptions` projection (only formatted
+ * root rows are passed in, never the full description set), and the
+ * way pre-computed description counts flow into each entry. The
+ * suite uses small inline fixtures rather than a seeded D1 so the
+ * formatter's pure-function contract stays visible: a row in, a row
+ * out, no side effects.
+ *
  * @version v0.3.0
  */
 

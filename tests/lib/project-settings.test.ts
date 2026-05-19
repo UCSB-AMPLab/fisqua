@@ -1,5 +1,21 @@
 /**
- * Tests — project settings
+ * Tests — project settings JSON codec
+ *
+ * This suite pins the read/write helpers for the per-project
+ * settings JSON blob stored on the `projects.settings` column.
+ * `readProjectSettings` is intentionally defensive: it must never
+ * throw, because a malformed settings blob in production would
+ * lock every cataloguer out of the project until an admin
+ * intervened. Instead the helper returns the empty-settings shape
+ * `{}` for every malformed input (null, undefined, empty string,
+ * non-JSON, JSON-but-wrong-shape).
+ *
+ * The cases enumerate every malformed-input variant plus the
+ * happy-path round-trip via `writeProjectSettings`. The
+ * `getDocumentSubtypes` / `setDocumentSubtypes` pair builds on
+ * read/write to expose a typed accessor for the most-edited
+ * settings key, with a fallback to `DEFAULT_DOCUMENT_SUBTYPES`
+ * when the project has not customised the list.
  *
  * @version v0.3.0
  */

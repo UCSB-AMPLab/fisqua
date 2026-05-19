@@ -1,5 +1,21 @@
 /**
- * Tests — iiif viewer pin modex
+ * Tests — IIIF viewer pin-mode routing
+ *
+ * This suite pins the two pure helpers that route a click on the
+ * IIIF page surface to the correct downstream intent depending on
+ * which pin-mode the toolbar has set: `routePageClick` (decides
+ * boundary vs region vs ignored) and `computeBoxRegion` (turns a
+ * pointerdown/move/up gesture into the four-coordinate region
+ * payload used by region pins).
+ *
+ * The three pin modes are `off` (raw clicks become boundary intents
+ * for the page-segmentation editor), `point` (a click becomes a
+ * zero-size region — a pin at a coordinate), and `box` (raw clicks
+ * are deliberately ignored — only the full pointerdown/move/up
+ * gesture commits a region, so a stray click doesn't drop a tiny
+ * accidental box). Each branch is one `it(...)` here so a future
+ * refactor that collapses two modes into a shared branch fails
+ * loud at the exact regression.
  *
  * @version v0.3.0
  */

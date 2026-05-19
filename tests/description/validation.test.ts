@@ -1,5 +1,21 @@
 /**
- * Tests — validation
+ * Tests — description field validation (DESC-08)
+ *
+ * This suite pins the field-level validation gate on the
+ * `saveDescription` and `submitForReview` helpers. `saveDescription`
+ * is intentionally permissive — it writes any subset of the
+ * description columns the editor passes, so an in-progress entry
+ * can park half-typed values across multiple sessions. The strict
+ * gate lives on `submitForReview`: before flipping the status from
+ * `in_progress` to `under_review`, the helper runs the standard-aware
+ * validator factory against the row and refuses on missing
+ * mandatory fields.
+ *
+ * Cases pin both halves: a save with partial data writes the row
+ * (no errors), but a submit on the same row surfaces a
+ * `MissingFieldsError` carrying the list of unfilled mandatory
+ * columns. The error shape is what the editor's "submit blocked"
+ * UI consumes to render per-field hints.
  *
  * @version v0.3.0
  */

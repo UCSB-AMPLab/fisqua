@@ -1,5 +1,21 @@
 /**
- * Tests — i18n accents
+ * Tests — Spanish locale accents
+ *
+ * This suite is the structural backstop that catches the
+ * accent-stripping regression mode: a copy-paste from an
+ * unaccented source, an editor whose UTF-8 handling is off, or a
+ * cataloguer typing on a US keyboard layout without the dead-key
+ * combinations can land in the Spanish locale namespaces as bare
+ * ASCII where a vowel + acute or n + tilde was intended. The
+ * `recursive extract + grep against expected diacritical patterns`
+ * approach pins every leaf string in every Spanish namespace
+ * against a small list of known-required accent occurrences.
+ *
+ * The check is deliberately narrow — it does NOT try to validate
+ * every accent that *could* appear, only the ones that historically
+ * regressed. Adding namespaces is the maintenance path: when a new
+ * `es/<namespace>` module is added, it gets imported here and its
+ * leaf strings folded into the same string set.
  *
  * @version v0.3.0
  */

@@ -1,11 +1,26 @@
 /**
  * Tests for Sidebar Navigation
  *
- * @version v0.3.0
+ * This test suite is the capability-aware coverage layered on the existing
+ * role-permutation cases. The signature of `getSidebarSections` grows a
+ * second parameter — a `SidebarTenant` carrying the four capability-flag
+ * booleans — so the sidebar can hide whole nav branches whose capability
+ * is off on the requesting tenant. Each existing case here passes a
+ * default `makeTenant()` (all four capabilities ON, mirroring
+ * Neogranadina) so existing assertions stay byte-identical; new cases
+ * pair `crowdsourcingEnabled: false` etc. with a maximally-capable user
+ * (superadmin) and assert the gated section / path is absent from the
+ * rendered list.
+ *
+ * @version v0.4.0
  */
 
 import { describe, it, expect } from "vitest";
-import { getSidebarSections, type SidebarUser } from "./sidebar";
+import {
+  getSidebarSections,
+  type SidebarUser,
+  type SidebarTenant,
+} from "./sidebar";
 
 function makeUser(overrides: Partial<SidebarUser> = {}): SidebarUser {
   return {
@@ -20,6 +35,21 @@ function makeUser(overrides: Partial<SidebarUser> = {}): SidebarUser {
   };
 }
 
+/**
+ * Build a `SidebarTenant` with all four capabilities ON by default
+ * — the Neogranadina shape. Override individual flags to flip a
+ * single capability off in a test case.
+ */
+function makeTenant(overrides: Partial<SidebarTenant> = {}): SidebarTenant {
+  return {
+    crowdsourcingEnabled: true,
+    vocabularyHubEnabled: true,
+    publishPipelineEnabled: true,
+    multiRepositoryEnabled: true,
+    ...overrides,
+  };
+}
+
 function labels(sections: ReturnType<typeof getSidebarSections>) {
   return sections.map((s) => s.labelKey ?? "<home>");
 }
@@ -29,9 +59,16 @@ function paths(sections: ReturnType<typeof getSidebarSections>, labelKey: string
   return section ? section.items.map((i) => i.path) : [];
 }
 
+function allPaths(sections: ReturnType<typeof getSidebarSections>): string[] {
+  return sections.flatMap((s) => s.items.map((i) => i.path));
+}
+
 describe("getSidebarSections", () => {
   it("superadmin sees all sections including Promote and Publish", () => {
-    const sections = getSidebarSections(makeUser({ isSuperAdmin: true }));
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant(),
+    );
     expect(labels(sections)).toEqual([
       "<home>",
       "sidebar:collaborative_cataloguing",
@@ -54,7 +91,10 @@ describe("getSidebarSections", () => {
   });
 
   it("archive admin only (isAdmin) sees Home + Collab Cat + Records Management (no Publish), no manage items", () => {
-    const sections = getSidebarSections(makeUser({ isAdmin: true }));
+    const sections = getSidebarSections(
+      makeUser({ isAdmin: true }),
+      makeTenant(),
+    );
     expect(labels(sections)).toEqual([
       "<home>",
       "sidebar:collaborative_cataloguing",
@@ -73,7 +113,10 @@ describe("getSidebarSections", () => {
   });
 
   it("collab admin only sees Home + Collab Cat (with manage items, no Promote)", () => {
-    const sections = getSidebarSections(makeUser({ isCollabAdmin: true }));
+    const sections = getSidebarSections(
+      makeUser({ isCollabAdmin: true }),
+      makeTenant(),
+    );
     expect(labels(sections)).toEqual([
       "<home>",
       "sidebar:collaborative_cataloguing",
@@ -88,7 +131,8 @@ describe("getSidebarSections", () => {
 
   it("member-only user sees Home + Collab Cat (only My projects)", () => {
     const sections = getSidebarSections(
-      makeUser({ hasAnyProjectMembership: true })
+      makeUser({ hasAnyProjectMembership: true }),
+      makeTenant(),
     );
     expect(labels(sections)).toEqual([
       "<home>",
@@ -100,13 +144,14 @@ describe("getSidebarSections", () => {
   });
 
   it("no-access user sees only Home", () => {
-    const sections = getSidebarSections(makeUser());
+    const sections = getSidebarSections(makeUser(), makeTenant());
     expect(labels(sections)).toEqual(["<home>"]);
   });
 
   it("isAdmin + isCollabAdmin sees merged section with manage items", () => {
     const sections = getSidebarSections(
-      makeUser({ isAdmin: true, isCollabAdmin: true })
+      makeUser({ isAdmin: true, isCollabAdmin: true }),
+      makeTenant(),
     );
     expect(labels(sections)).toEqual([
       "<home>",
@@ -124,6 +169,122 @@ describe("getSidebarSections", () => {
       "/admin/places",
       "/admin/repositories",
       "/admin/vocabularies",
+    ]);
+  });
+
+  // ---------------------------------------------------------------------
+  // Capability-off cases
+  //
+  // For every disabled capability, pair a maximally-capable user
+  // (superadmin, all six role flags) with a tenant that has just that
+  // one capability turned off, and assert the corresponding nav surface
+  // disappears entirely. The other three capabilities stay on so we
+  // know the gate is precise — flipping one capability does not
+  // collateral-damage another.
+  // ---------------------------------------------------------------------
+
+  it("hides Collaborative Cataloguing section when crowdsourcing is off", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true, isCataloguer: true }),
+      makeTenant({ crowdsourcingEnabled: false }),
+    );
+    // The whole cataloguing branch is hidden. Records management still
+    // renders because vocabulary_hub / publish_pipeline / multi_repository
+    // remain ON.
+    expect(labels(sections)).not.toContain(
+      "sidebar:collaborative_cataloguing",
+    );
+    expect(allPaths(sections)).not.toContain("/proyectos");
+    expect(allPaths(sections)).not.toContain("/admin/cataloguing/projects");
+    expect(allPaths(sections)).not.toContain("/admin/cataloguing/team");
+    expect(allPaths(sections)).not.toContain("/admin/cataloguing/promote");
+    // Records management is intact.
+    expect(paths(sections, "sidebar:records_management")).toContain(
+      "/admin/descriptions",
+    );
+  });
+
+  it("hides /admin/vocabularies when vocabulary_hub is off", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant({ vocabularyHubEnabled: false }),
+    );
+    expect(allPaths(sections)).not.toContain("/admin/vocabularies");
+    // The other records-management entries still render.
+    expect(paths(sections, "sidebar:records_management")).toEqual([
+      "/admin/descriptions",
+      "/admin/entities",
+      "/admin/places",
+      "/admin/repositories",
+      "/admin/publish",
+    ]);
+  });
+
+  it("hides /admin/publish and /admin/promote when publish_pipeline is off", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant({ publishPipelineEnabled: false }),
+    );
+    expect(allPaths(sections)).not.toContain("/admin/publish");
+    expect(allPaths(sections)).not.toContain("/admin/cataloguing/promote");
+    // Records management still has its non-publish entries.
+    expect(paths(sections, "sidebar:records_management")).toEqual([
+      "/admin/descriptions",
+      "/admin/entities",
+      "/admin/places",
+      "/admin/repositories",
+      "/admin/vocabularies",
+    ]);
+    // Collaborative cataloguing keeps its non-promote entries.
+    expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
+      "/proyectos",
+      "/admin/cataloguing/projects",
+      "/admin/cataloguing/team",
+    ]);
+  });
+
+  it("hides /admin/repositories when multi_repository is off", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant({ multiRepositoryEnabled: false }),
+    );
+    expect(allPaths(sections)).not.toContain("/admin/repositories");
+    // The other records-management entries still render.
+    expect(paths(sections, "sidebar:records_management")).toEqual([
+      "/admin/descriptions",
+      "/admin/entities",
+      "/admin/places",
+      "/admin/vocabularies",
+      "/admin/publish",
+    ]);
+  });
+
+  it("Neogranadina (all caps on) renders byte-identical sidebar to v0.3 for a superadmin", () => {
+    // Regression case: the four-capabilities-ON default tenant must
+    // produce exactly the same sections + paths a v0.3 superadmin saw,
+    // i.e. no behaviour change for the seeded production tenant.
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant(),
+    );
+    expect(labels(sections)).toEqual([
+      "<home>",
+      "sidebar:collaborative_cataloguing",
+      "sidebar:records_management",
+    ]);
+    expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
+      "/proyectos",
+      "/admin/cataloguing/projects",
+      "/admin/cataloguing/team",
+      "/admin/cataloguing/promote",
+    ]);
+    expect(paths(sections, "sidebar:records_management")).toEqual([
+      "/admin/descriptions",
+      "/admin/entities",
+      "/admin/places",
+      "/admin/repositories",
+      "/admin/vocabularies",
+      "/admin/publish",
     ]);
   });
 });

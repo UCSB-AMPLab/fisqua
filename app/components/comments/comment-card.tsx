@@ -1,10 +1,10 @@
 /**
  * Comment Card
  *
- * Presentational card for one comment thread post: author, timestamp,
- * body, and — when the current user owns the comment — the kebab
- * menu with edit and delete actions. Renders the resolved badge when
- * the thread has been closed.
+ * This card is the presentational surface for one comment thread post —
+ * author, timestamp, body, and, when the current user owns the comment,
+ * the kebab menu with edit and delete actions. Renders the resolved badge
+ * when the thread has been closed.
  *
  * @version v0.3.0
  */

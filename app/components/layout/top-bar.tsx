@@ -1,10 +1,10 @@
 /**
  * App Top Bar
  *
- * Horizontal bar that sits above every authenticated page. Holds the
- * mobile hamburger that opens the sidebar drawer, the global search
- * input, the locale switcher, and the user-menu popover with sign-out
- * and configuration links.
+ * This component is the horizontal bar that sits above every authenticated
+ * page. Holds the mobile hamburger that opens the sidebar drawer, the
+ * global search input, the locale switcher, and the user-menu popover
+ * with sign-out and configuration links.
  *
  * @version v0.3.0
  */

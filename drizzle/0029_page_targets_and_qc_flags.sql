@@ -1,6 +1,6 @@
 -- Page-level annotations and digitisation quality-control flags
 --
--- Extends the annotation model in two directions. First, comments can
+-- This migration extends the annotation model in two directions. First, comments can
 -- now attach to either an entry (as before) or a specific page of a
 -- volume -- but never both and never neither. A new `volume_id` column
 -- on `comments` denormalises the owning volume so the viewer can

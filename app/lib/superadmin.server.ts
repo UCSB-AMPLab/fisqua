@@ -1,9 +1,10 @@
 /**
  * Superadmin Route Guard
  *
- * Throws a React Router redirect from route loaders and actions whenever
- * the current user is not flagged as a superadmin. Used on the publish
- * dashboard and other routes that must be off-limits to ordinary admins.
+ * This guard deals with throwing a React Router redirect from route
+ * loaders and actions whenever the current user is not flagged as a
+ * superadmin. Used on the publish dashboard and other routes that
+ * must be off-limits to ordinary admins.
  *
  * @version v0.3.0
  */

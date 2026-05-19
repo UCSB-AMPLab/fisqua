@@ -1,6 +1,6 @@
 -- One-time wipe of project-scoped data
 --
--- Resets every row in the project-scoped tables so the app can switch
+-- This migration resets every row in the project-scoped tables so the app can switch
 -- from 36-character UUID project identifiers to the shorter
 -- 8-character alphanumeric identifiers produced by
 -- `generateProjectId` in `app/lib/projects.server.ts`. The testing

@@ -1,6 +1,6 @@
 -- Track last publish time per description
 --
--- Adds a nullable `last_exported_at` timestamp to `descriptions` so the
+-- This migration adds a nullable `last_exported_at` timestamp to `descriptions` so the
 -- admin publish dashboard can show a Live, Pending publish, or Pending
 -- removal badge against every record. A record that has never been
 -- exported carries NULL; once the publish pipeline writes a snapshot to

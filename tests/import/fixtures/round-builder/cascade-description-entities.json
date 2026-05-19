@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1001,
+    "description_id": 501,
+    "entity_id": 10,
+    "role": "creator",
+    "role_note": null,
+    "sequence": 0,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1002,
+    "description_id": 501,
+    "entity_id": 10,
+    "role": "subject",
+    "role_note": null,
+    "sequence": 1,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1003,
+    "description_id": 501,
+    "entity_id": 11,
+    "role": "creator",
+    "role_note": null,
+    "sequence": 2,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1004,
+    "description_id": 501,
+    "entity_id": 11,
+    "role": "subject",
+    "role_note": null,
+    "sequence": 3,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1005,
+    "description_id": 501,
+    "entity_id": 10,
+    "role": "witness",
+    "role_note": null,
+    "sequence": 4,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1006,
+    "description_id": 500,
+    "entity_id": 10,
+    "role": "Testigo",
+    "role_note": null,
+    "sequence": 0,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1007,
+    "description_id": 500,
+    "entity_id": 11,
+    "role": "creator",
+    "role_note": null,
+    "sequence": 1,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 1008,
+    "description_id": 500,
+    "entity_id": 10,
+    "role": "Apoderado",
+    "role_note": null,
+    "sequence": 2,
+    "created_at": "2023-06-15T14:30:00Z"
+  }
+]

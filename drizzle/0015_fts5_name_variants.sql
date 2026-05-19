@@ -1,12 +1,14 @@
 -- Add `name_variants` to the entity and place FTS indexes
 --
--- The entity and place authority records carry a JSON array of spelling
--- variants alongside the canonical display name -- "Maria", "María",
--- and "Mariana" may all point at the same person, and searchers in the
--- admin often type the variant they remember from a document rather
--- than the canonical form. This migration rebuilds both FTS5 virtual
--- tables to include `name_variants` as a third indexed column so those
--- variants are reachable from the search box without a separate query.
+-- This migration rebuilds the entity and place FTS5 virtual tables
+-- to add `name_variants` as a third indexed column. The authority
+-- records already carry a JSON array of spelling variants alongside
+-- the canonical display name — "Maria", "María", and "Mariana" may
+-- all point at the same person, and searchers in the admin often
+-- type the variant they remember from a document rather than the
+-- canonical form. Indexing the variants alongside display and sort
+-- names makes them reachable from the search box without a separate
+-- query.
 --
 -- SQLite FTS5 cannot add a column in place, so both tables are dropped
 -- and recreated with the new column list, and the sync triggers are

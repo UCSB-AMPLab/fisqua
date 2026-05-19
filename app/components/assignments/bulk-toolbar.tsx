@@ -1,6 +1,14 @@
 /**
- * Bulk assignment toolbar. Appears when volumes are selected.
- * Provides cataloguer/reviewer dropdowns and Apply/Clear buttons.
+ * Bulk Assignment Toolbar
+ *
+ * This toolbar is the sticky strip that surfaces above the assignment
+ * table the moment a lead ticks one or more row checkboxes. It carries a
+ * pair of cataloguer / reviewer dropdowns plus Apply and Clear buttons,
+ * so the lead can fan out the same pair of assignees across the whole
+ * selection in one submission. The selection set lives on the parent
+ * page; this component is purely the affordance.
+ *
+ * @version v0.3.0
  */
 
 import { useFetcher } from "react-router";

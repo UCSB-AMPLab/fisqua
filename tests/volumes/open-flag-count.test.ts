@@ -1,5 +1,19 @@
 /**
- * Tests — open flag count
+ * Tests — `getProjectVolumes` open-QC-flag count
+ *
+ * This test pins the `openQcFlagCount` field that `getProjectVolumes`
+ * returns alongside each volume row. The count drives the QC badge in
+ * the project dashboard, so it has to be correct per-volume, has to
+ * drop when a flag is resolved, and must not leak across projects.
+ *
+ * Three pins cover the surface: a fixture with two open flags on
+ * volume A, one open plus one resolved on volume B, and zero on
+ * volume C — the returned counts match (`2`, `1`, `0`); resolving an
+ * open flag on the same volume drops the count by one; and an open
+ * flag in a sibling project does not appear in the queried project's
+ * counts. The cross-project pin is the load-bearing one — the count
+ * is computed by a SQL JOIN, and a missing project-scope predicate
+ * would silently surface every other tenant's open work.
  *
  * @version v0.3.0
  */

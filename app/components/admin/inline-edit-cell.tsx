@@ -1,9 +1,10 @@
 /**
  * Inline Edit Cell
  *
- * Table cell that flips between read and edit modes in place.
- * Optimised for single-field edits: submit-on-blur, escape-to-cancel,
- * and a pending state that echoes what the fetcher is about to POST.
+ * This component is the table cell that flips between read and edit modes
+ * in place. Optimised for single-field edits: submit-on-blur,
+ * escape-to-cancel, and a pending state that echoes what the fetcher is
+ * about to POST.
  *
  * @version v0.3.0
  */

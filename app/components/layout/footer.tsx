@@ -1,12 +1,12 @@
 /**
  * App Footer
  *
- * Floating attribution at the bottom of the authenticated shell. The
- * version link sits at the bottom-left, the partner logos at the
- * bottom-right, both pinned to the content slot's corners so page
- * content scrolls underneath without a footer bar reserving its own
- * row of vertical space. The pointer-events-none wrapper keeps the
- * gap between the two clusters click-through so users can still
+ * This component is the floating attribution at the bottom of the
+ * authenticated shell. The version link sits at the bottom-left, the
+ * partner logos at the bottom-right, both pinned to the content slot's
+ * corners so page content scrolls underneath without a footer bar
+ * reserving its own row of vertical space. The pointer-events-none wrapper
+ * keeps the gap between the two clusters click-through so users can still
  * interact with anything below.
  *
  * @version v0.3.2

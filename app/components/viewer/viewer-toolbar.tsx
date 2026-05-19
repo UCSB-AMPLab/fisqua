@@ -1,10 +1,10 @@
 /**
  * Viewer Toolbar
  *
- * Three-zone toolbar that sits above the IIIF viewer: zoom controls
- * on the left, per-volume metadata in the centre, and the segment /
- * comment / flag affordances on the right. Single entry point for
- * every user-triggered viewer action.
+ * This toolbar is the three-zone strip that sits above the IIIF viewer —
+ * zoom controls on the left, per-volume metadata in the centre, and the
+ * segment / comment / flag affordances on the right. Single entry point
+ * for every user-triggered viewer action.
  *
  * @version v0.3.0
  */

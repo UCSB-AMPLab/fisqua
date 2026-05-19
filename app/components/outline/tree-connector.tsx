@@ -1,9 +1,9 @@
 /**
  * Outline Tree Connector
  *
- * SVG connector that draws the tree-style guideline between parent
- * and child outline entries. Purely presentational; sizing is
- * computed from the surrounding flex layout.
+ * This component is the SVG connector that draws the tree-style guideline
+ * between parent and child outline entries. Purely presentational; sizing
+ * is computed from the surrounding flex layout.
  *
  * @version v0.3.0
  */

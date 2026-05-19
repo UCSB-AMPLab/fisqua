@@ -1,5 +1,20 @@
 /**
- * Tests — i18n plurals
+ * Tests — Spanish pluralisation
+ *
+ * This suite pins the i18next pluralisation contract on the Spanish
+ * locale: every key carrying a `_one` / `_other` variant in the
+ * `es/` bundle resolves through `t(key, { count })` to the right
+ * variant. Spanish uses a simple two-form plural rule (count===1 vs
+ * count!==1), and the cases here pin both forms for representative
+ * keys across the namespaces (document_count, comment_count,
+ * volume_count, ...).
+ *
+ * The suite spins up a real i18next instance via `i18next.init` so
+ * the test exercises the actual resolution path the app uses at
+ * runtime, not a stubbed translator. A regression here usually
+ * means a pluralisation suffix was misnamed (e.g. `_plural` instead
+ * of `_other`) — i18next then silently falls back to the bare key
+ * and the count parameter never substitutes.
  *
  * @version v0.3.0
  */

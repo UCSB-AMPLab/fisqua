@@ -1,7 +1,21 @@
 /**
- * Tests — descriptions
+ * Tests — description export formatter
  *
- * @version v0.3.0
+ * This suite pins the three pure helpers that shape a D1 description
+ * row into the public-export JSON payload: `formatDescription` (the
+ * field-level transformer), `publicationTitle` (the
+ * "title + dateExpression" composite string the public view renders
+ * as the page heading), and `childrenLevel` (computes the level
+ * label for the next hierarchy tier so the public breadcrumb /
+ * navigation can show "Files" or "Items" rather than the raw
+ * descriptive standard's level token).
+ *
+ * The formatter strips internal-only columns (e.g. `legacyIds`,
+ * `pathCache`), preserves the ISAD(G) elements, and collapses
+ * empty strings to `null` so the frontend's JSON consumers don't
+ * have to discriminate "" vs missing.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -56,7 +70,7 @@ function makeDescriptionRow(overrides: Record<string, unknown> = {}) {
     language: "192",
     locationOfOriginals: null as string | null,
     locationOfCopies: null as string | null,
-    relatedMaterials: null as string | null,
+    // related_materials dropped in 0036 (0% populated).
     findingAids: null as string | null,
     sectionTitle: null as string | null,
     notes: null as string | null,

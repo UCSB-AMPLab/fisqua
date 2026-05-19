@@ -1,5 +1,20 @@
 /**
- * Tests — entry ownership
+ * Tests — entry ownership lookup
+ *
+ * This suite pins `findCurrentEntry` — the pure helper that, given
+ * a volume's entry list plus a `(page, y)` cursor position, returns
+ * the entry whose boundary range covers that position. The viewer
+ * consults this helper on every page change to decide which entry
+ * card to highlight in the outline column.
+ *
+ * The cases pin the inclusive-start / exclusive-end convention
+ * (`startPage`/`startY` is the inclusive lower bound,
+ * `endPage`/`endY` is the exclusive upper bound), the
+ * open-ended-final-entry case (the last entry on a volume often
+ * has a null `endPage` meaning "runs to the end"), and the
+ * nested-entry tie-break — when a child entry's range falls
+ * inside its parent's, the helper returns the most-specific
+ * (deepest) entry, mirroring the way the outline visually nests.
  *
  * @version v0.3.0
  */

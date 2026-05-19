@@ -1,10 +1,10 @@
 /**
  * Data Table
  *
- * Generic TanStack-Table wrapper shared by the admin list surfaces.
- * Handles column definitions, sticky headers, sort and filter state,
- * and keyboard navigation between rows. Presentational only — data
- * comes from the hosting route loader.
+ * This component is the generic TanStack-Table wrapper shared by the admin
+ * list surfaces. Handles column definitions, sticky headers, sort and
+ * filter state, and keyboard navigation between rows. Presentational
+ * only — data comes from the hosting route loader.
  *
  * @version v0.3.0
  */

@@ -1,7 +1,23 @@
 /**
- * Tests — promote
+ * Tests — promotion server orchestrator
  *
- * @version v0.3.0
+ * This suite pins the three top-level orchestrator helpers behind
+ * promotion: `promoteEntries` (the bulk-promote action that drives
+ * a list of approved entries through field-mapping, manifest
+ * generation, and R2 upload all in one batch), `getPromotableEntries`
+ * (the loader the operator's promote-volume page consumes to
+ * surface entries with `description_status='approved'`), and
+ * `getVolumesWithPromotableEntries` (the dashboard-side roll-up).
+ *
+ * The atomicity contract here is what backstops the operator's
+ * mental model: promoting a volume either fully promotes every
+ * approved entry on it or none, so the operator never has to
+ * reason about a partial state. The cases mock the R2 bucket
+ * binding (no real network) and exercise the batch composition,
+ * with one mocked failure scenario pinning the all-or-nothing
+ * rollback.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -9,6 +25,7 @@ import {
   getPromotableEntries,
   getVolumesWithPromotableEntries,
 } from "../../app/lib/promote/promote.server";
+import { DEFAULT_TEST_TENANT_ID } from "../helpers/db";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,7 +118,7 @@ function makeParentDescription(overrides: Record<string, unknown> = {}) {
     language: null,
     locationOfOriginals: null,
     locationOfCopies: null,
-    relatedMaterials: null,
+    // related_materials dropped in 0036 (0% populated).
     findingAids: null,
     sectionTitle: null,
     notes: null,
@@ -295,6 +312,8 @@ describe("promoteEntries", () => {
       entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
       volumeId: "vol-001",
       userId: "user-001",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
       manifestBaseUrl: "https://manifests.zasqua.org",
     });
 
@@ -321,6 +340,8 @@ describe("promoteEntries", () => {
       entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
       volumeId: "vol-001",
       userId: "user-001",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
       manifestBaseUrl: "https://manifests.zasqua.org",
     });
 
@@ -345,6 +366,8 @@ describe("promoteEntries", () => {
       entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
       volumeId: "vol-001",
       userId: "user-001",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
       manifestBaseUrl: "https://manifests.zasqua.org",
     });
 
@@ -359,6 +382,8 @@ describe("promoteEntries", () => {
       entries: [{ entryId: "e1", referenceCode: "invalid code!@#" }],
       volumeId: "vol-001",
       userId: "user-001",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
       manifestBaseUrl: "https://manifests.zasqua.org",
     });
 
@@ -379,6 +404,8 @@ describe("promoteEntries", () => {
         entries: largeEntries,
         volumeId: "vol-001",
         userId: "user-001",
+        tenantId: DEFAULT_TEST_TENANT_ID,
+        standard: "isadg",
         manifestBaseUrl: "https://manifests.zasqua.org",
       })
     ).rejects.toThrow("exceeds maximum");
@@ -399,6 +426,8 @@ describe("promoteEntries", () => {
       entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
       volumeId: "vol-001",
       userId: "user-001",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
       manifestBaseUrl: "https://manifests.zasqua.org",
     });
 

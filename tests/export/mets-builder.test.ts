@@ -1,5 +1,21 @@
 /**
- * Tests — mets builder
+ * Tests — METS builder
+ *
+ * This suite pins `buildMetsXml` — the pure helper that produces a
+ * METS-shape XML document for a description's archival unit. METS
+ * (Metadata Encoding and Transmission Standard) is the wrapper
+ * format that bundles descriptive metadata (Dublin Core), structural
+ * metadata (file hierarchy), and digital-object links (IIIF
+ * manifests) into one document so a partner archive can ingest the
+ * full record set in a single payload.
+ *
+ * The builder is exercised end-to-end against fixture inputs that
+ * cover the four shape variations the cataloguer can produce: with
+ * and without a digital surrogate, with and without a parent
+ * reference code. The output is asserted against expected XML
+ * fragments rather than full-document diff so a future namespace or
+ * attribute reorder doesn't trip the suite without an actual shape
+ * change.
  *
  * @version v0.3.0
  */

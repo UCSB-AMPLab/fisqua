@@ -1,9 +1,10 @@
 /**
  * Reject Inline Panel
  *
- * Inline panel shown when a reviewer rejects a draft record. Captures
- * the rejection reason, lets the reviewer pin the record for a later
- * pass, and forwards the payload to the parent form for commit.
+ * This panel is the inline surface shown when a reviewer rejects a draft
+ * record. Captures the rejection reason, lets the reviewer pin the record
+ * for a later pass, and forwards the payload to the parent form for
+ * commit.
  *
  * @version v0.3.0
  */

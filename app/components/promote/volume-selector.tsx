@@ -1,10 +1,10 @@
 /**
  * Promotion Volume Selector
  *
- * Dropdown of volumes that currently contain at least one promotable
- * entry. Drives the rest of the promotion surface: picking a volume
- * loads its manifest URL into the placeholder IIIF viewer and pulls
- * the promotable-entries list into the table below.
+ * This component is the dropdown of volumes that currently contain at
+ * least one promotable entry. Drives the rest of the promotion surface:
+ * picking a volume loads its manifest URL into the placeholder IIIF viewer
+ * and pulls the promotable-entries list into the table below.
  *
  * @version v0.3.0
  */

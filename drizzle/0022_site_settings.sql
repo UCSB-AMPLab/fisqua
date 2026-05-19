@@ -1,6 +1,6 @@
 -- Site-wide key/value settings table
 --
--- A simple `(key, value)` store for settings that are edited by
+-- This migration introduces a simple `(key, value)` store for settings that are edited by
 -- superadmins rather than developers -- site announcements, flags
 -- that gate experimental features, default copy for landing pages.
 -- Keys are plain strings; values are stored as text (typically JSON

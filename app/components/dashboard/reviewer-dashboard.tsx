@@ -1,9 +1,19 @@
 /**
- * Reviewer dashboard view.
- * Shows assigned volumes grouped by review status:
- * 1. Awaiting review (segmented) with waiting-time badges
- * 2. Reviewed
- * 3. Approved
+ * Reviewer Dashboard
+ *
+ * This component is the role-specific dashboard a reviewer lands on when
+ * they sign in. It groups the volumes assigned to them as a reviewer
+ * into three review-side buckets — Awaiting review (segmented by the
+ * cataloguer and waiting on the reviewer's first pass, each carrying a
+ * waiting-time badge so the longest-waiting volume reads first),
+ * Reviewed (the reviewer has signed off but the volume is not yet
+ * approved), and Approved (terminal state on the segmentation track).
+ * The ordering of the buckets is deliberately weighted toward what
+ * needs the reviewer's hand: the most urgent items always sit at the
+ * top of the page. Like the other dashboard views, this component is
+ * pure render; loaders on the parent route handle the database access.
+ *
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

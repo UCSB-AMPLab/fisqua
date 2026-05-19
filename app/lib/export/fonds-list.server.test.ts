@@ -1,15 +1,33 @@
 /**
  * Tests for Fonds List Lookup
  *
- * @version v0.3.0
+ * This suite deals with pinning the multi-tenant scoping contract of
+ * `getFondsList` — the helper that powers the publish dashboard's
+ * fonds selector dropdown and the validation layer in the
+ * `api.publish` action. The single behaviour under test is that the
+ * `tenant: ExportTenant` argument is honoured at the SQL boundary:
+ * cataloguers on Tenant A must never see Tenant B's fonds in their
+ * selector dropdown, regardless of how the underlying tables are
+ * joined or filtered. The suite seeds rows under
+ * `DEFAULT_TEST_TENANT_ID` plus a second tenant id, then asserts that
+ * each tenant's call returns only its own root reference codes.
+ *
+ * @version v0.4.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../../db/schema";
-import { applyMigrations, cleanDatabase } from "../../../tests/helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../../../tests/helpers/db";
 import { getFondsList } from "./fonds-list.server";
+import type { ExportTenant } from "./types";
+
+const TEST_TENANT: ExportTenant = {
+  id: DEFAULT_TEST_TENANT_ID,
+  slug: "neogranadina",
+  descriptiveStandard: "isadg",
+};
 
 describe("getFondsList", () => {
   let db: ReturnType<typeof drizzle>;
@@ -25,6 +43,7 @@ describe("getFondsList", () => {
 
     repositoryId = crypto.randomUUID();
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: repositoryId,
       code: "test-repo",
       name: "Test Repository",
@@ -39,6 +58,7 @@ describe("getFondsList", () => {
     // Insert root descriptions (parentId = null)
     await db.insert(schema.descriptions).values([
       {
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         repositoryId,
         descriptionLevel: "fonds",
@@ -49,6 +69,7 @@ describe("getFondsList", () => {
         updatedAt: now,
       },
       {
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         repositoryId,
         descriptionLevel: "fonds",
@@ -59,6 +80,7 @@ describe("getFondsList", () => {
         updatedAt: now,
       },
       {
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         repositoryId,
         descriptionLevel: "fonds",
@@ -70,12 +92,12 @@ describe("getFondsList", () => {
       },
     ]);
 
-    const result = await getFondsList(db);
+    const result = await getFondsList(db, TEST_TENANT);
     expect(result).toEqual(["co-ahr-gob", "co-ahr-jud", "co-ahr-not"]);
   });
 
   it("returns empty array when no root descriptions exist", async () => {
-    const result = await getFondsList(db);
+    const result = await getFondsList(db, TEST_TENANT);
     expect(result).toEqual([]);
   });
 
@@ -85,6 +107,7 @@ describe("getFondsList", () => {
 
     // Insert a root description
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: rootId,
       repositoryId,
       descriptionLevel: "fonds",
@@ -97,6 +120,7 @@ describe("getFondsList", () => {
 
     // Insert a child description (has parentId)
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: crypto.randomUUID(),
       repositoryId,
       parentId: rootId,
@@ -108,7 +132,7 @@ describe("getFondsList", () => {
       updatedAt: now,
     });
 
-    const result = await getFondsList(db);
+    const result = await getFondsList(db, TEST_TENANT);
     expect(result).toEqual(["co-ahr-gob"]);
   });
 });

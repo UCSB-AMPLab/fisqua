@@ -1,9 +1,10 @@
 /**
  * Viewer Bar (Legacy)
  *
- * Original zoom-only toolbar kept in the tree for tests that pin
- * the legacy layout. New code routes through `ViewerToolbar`; this
- * file will be removed once every test site has migrated.
+ * This component is the original zoom-only toolbar kept in the tree for
+ * tests that pin the legacy layout. New code routes through
+ * `ViewerToolbar`; this file will be removed once every test site has
+ * migrated.
  *
  * @version v0.3.0
  */

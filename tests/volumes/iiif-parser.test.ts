@@ -1,5 +1,24 @@
 /**
- * Tests — iiif parser
+ * Tests — IIIF manifest parser
+ *
+ * This suite pins the three exports that gate IIIF manifest ingestion:
+ * `getAllowedManifestHosts` (parses the host allow-list from env),
+ * `validateManifestUrl` (rejects URLs that aren't HTTPS, aren't on
+ * the allow-list, or don't end in `/manifest.json`), and `parseManifest`
+ * (fetches a manifest and extracts the volume metadata Fisqua needs).
+ *
+ * The host allow-list is a security boundary — operators paste manifest
+ * URLs into the volume-creation flow, and without the host check a
+ * malicious URL could be used to probe internal networks. The HTTPS
+ * pin is the same posture in another form. The path-suffix check
+ * (`/manifest.json`) protects against pasting a viewer URL by mistake.
+ *
+ * The `parseManifest` block exercises label-fallback order: Fisqua is
+ * a Spanish-language platform, so it tries `label.es` first, then
+ * `label.none`, then `label.en` — pinning this order keeps the
+ * Spanish UI honest when manifests come from English-language sources.
+ * Canvas labels follow the same fallback chain, with a final fallback
+ * to a sequential page number if no label is present.
  *
  * @version v0.3.0
  */

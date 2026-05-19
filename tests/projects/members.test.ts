@@ -1,7 +1,21 @@
 /**
- * Tests — members
+ * Tests — project member management + invite flow
  *
- * @version v0.3.0
+ * This suite pins the invite lifecycle that adds a new member to a
+ * project: `createInvite` (writes an invitation row with a
+ * single-use token, target role, and TTL) and `acceptInvite` (the
+ * accept-handoff helper that atomically consumes the token,
+ * resolves it to the inviting project, and writes a fresh
+ * `project_members` row for the accepting user).
+ *
+ * The single-use semantic is enforced atomically — `acceptInvite`
+ * issues one UPDATE ... RETURNING that flips the invite's
+ * `consumed = 0` to `1` only when the row is unconsumed and
+ * unexpired. Cases pin the happy path, the replay rejection
+ * (second accept returns null), and the expired-token rejection
+ * (TTL guard returns null).
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +28,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { createInvite, acceptInvite } from "../../app/lib/invites.server";
 
@@ -61,6 +75,7 @@ describe("member management and invite flow", () => {
 
       const result = await createInvite(
         db,
+        DEFAULT_TEST_TENANT_ID,
         projectId,
         "member@example.com",
         ["cataloguer", "reviewer"],
@@ -95,6 +110,7 @@ describe("member management and invite flow", () => {
 
       const result = await createInvite(
         db,
+        DEFAULT_TEST_TENANT_ID,
         projectId,
         "newuser@example.com",
         ["cataloguer"],
@@ -140,6 +156,7 @@ describe("member management and invite flow", () => {
       // First invite adds member role
       await createInvite(
         db,
+        DEFAULT_TEST_TENANT_ID,
         projectId,
         "member@example.com",
         ["cataloguer"],
@@ -151,6 +168,7 @@ describe("member management and invite flow", () => {
       // Second invite adds reviewer role
       const result = await createInvite(
         db,
+        DEFAULT_TEST_TENANT_ID,
         projectId,
         "member@example.com",
         ["reviewer", "cataloguer"],
@@ -188,6 +206,7 @@ describe("member management and invite flow", () => {
       const userId = crypto.randomUUID();
       const now = Date.now();
       await db.insert(schema.users).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: userId,
         email: "invited@example.com",
         isAdmin: false,
@@ -247,6 +266,7 @@ describe("member management and invite flow", () => {
       const userId = crypto.randomUUID();
       const now = Date.now();
       await db.insert(schema.users).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: userId,
         email: "expired@example.com",
         isAdmin: false,
@@ -281,6 +301,7 @@ describe("member management and invite flow", () => {
       const userId = crypto.randomUUID();
       const now = Date.now();
       await db.insert(schema.users).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: userId,
         email: "used@example.com",
         isAdmin: false,

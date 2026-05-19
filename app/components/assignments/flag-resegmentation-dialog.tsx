@@ -1,10 +1,10 @@
 /**
  * Flag Resegmentation Dialog
  *
- * Modal reviewers use to request that a lead re-segment an entry.
- * Collects the reason and routes it to the outline through the
- * shared fetcher; resolution happens in the `ResegmentationCard`
- * on the outline side.
+ * This dialog deals with reviewers requesting that a lead re-segment an
+ * entry. Collects the reason and routes it to the outline through the
+ * shared fetcher; resolution happens in the `ResegmentationCard` on the
+ * outline side.
  *
  * @version v0.3.0
  */

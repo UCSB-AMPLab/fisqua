@@ -1,15 +1,35 @@
 /**
  * Sidebar Navigation
  *
- * Primary left-hand navigation for the authenticated app. Renders
- * the active project section, the cataloguing / description / admin
- * link groups, and the footer with the signed-in user pill. Item
+ * This component is the primary left-hand navigation for the authenticated
+ * app. Renders the active project section, the cataloguing / description
+ * / admin link groups, and the footer with the signed-in user pill. Item
  * visibility is computed from the caller's role flags via
- * `getSidebarSections`, which keeps sidebar composition testable
- * and free of inline role checks. Supports both a desktop collapsed
- * state and a mobile drawer.
+ * `getSidebarSections`, which keeps sidebar composition testable and free
+ * of inline role checks. Supports both a desktop collapsed state and a
+ * mobile drawer.
  *
- * @version v0.3.0
+ * `getSidebarSections(user, tenant)` takes a second argument carrying
+ * the request tenant's four capability booleans
+ * (`crowdsourcingEnabled`, `vocabularyHubEnabled`,
+ * `publishPipelineEnabled`, `multiRepositoryEnabled`). When a
+ * capability is off, the corresponding nav surface is omitted
+ * entirely — no greyed-out, no "coming soon", no tooltip — matching
+ * the platform's immutable-capability posture. The gate map is:
+ *
+ *   - `crowdsourcingEnabled` → entire `Collaborative Cataloguing`
+ *     section (My projects, All projects, Manage users, Promote)
+ *   - `vocabularyHubEnabled` → `/admin/vocabularies`
+ *   - `publishPipelineEnabled` → `/admin/publish` and
+ *     `/admin/cataloguing/promote`
+ *   - `multiRepositoryEnabled` → `/admin/repositories`
+ *
+ * For Neogranadina (all four capabilities ON) the rendered tree is
+ * byte-identical to v0.3 — the gating is invisible to existing
+ * users. The `<Sidebar>` component grew a matching `tenant` prop
+ * which the `_auth` layout populates from `tenantContext`.
+ *
+ * @version v0.4.0
  */
 
 import { NavLink } from "react-router";
@@ -56,10 +76,30 @@ export interface SidebarUser {
 }
 
 /**
- * Pure function that returns the sidebar sections visible to a given user.
- * Single source of truth for sidebar visibility, fully unit-testable.
+ * Capability-flag surface the sidebar reads. Structurally compatible
+ * with the full `Tenant` row from `app/context.ts` — the layout
+ * loader can pass the tenant straight through — but narrow enough
+ * that unit tests don't need to seed every column of a `tenants`
+ * row to exercise the gating logic.
  */
-export function getSidebarSections(user: SidebarUser): NavSection[] {
+export interface SidebarTenant {
+  crowdsourcingEnabled: boolean;
+  vocabularyHubEnabled: boolean;
+  publishPipelineEnabled: boolean;
+  multiRepositoryEnabled: boolean;
+}
+
+/**
+ * Pure function that returns the sidebar sections visible to a given
+ * user on a given tenant. Single source of truth for sidebar
+ * visibility, fully unit-testable. Capability gates per the map in
+ * the file header — sections / items disappear entirely when the
+ * matching tenant capability is off.
+ */
+export function getSidebarSections(
+  user: SidebarUser,
+  tenant: SidebarTenant,
+): NavSection[] {
   const sections: NavSection[] = [
     {
       items: [
@@ -68,13 +108,21 @@ export function getSidebarSections(user: SidebarUser): NavSection[] {
     },
   ];
 
-  // Collaborative cataloguing — visible if member OR any collab/admin flag
+  // Collaborative cataloguing — visible if member OR any collab/admin
+  // flag, AND the tenant has crowdsourcing enabled. When
+  // `crowdsourcingEnabled` is false the entire section (including
+  // /proyectos) is omitted; dormant role flags on the user
+  // (`isCataloguer`, `isCollabAdmin` set from before crowdsourcing
+  // was disabled) become no-ops because the section that would
+  // surface them is gone and the route-level capability gate 404s
+  // any direct hit.
   if (
-    user.hasAnyProjectMembership ||
-    user.isCollabAdmin ||
-    user.isSuperAdmin ||
-    user.isAdmin ||
-    user.isCataloguer
+    tenant.crowdsourcingEnabled &&
+    (user.hasAnyProjectMembership ||
+      user.isCollabAdmin ||
+      user.isSuperAdmin ||
+      user.isAdmin ||
+      user.isCataloguer)
   ) {
     const collabItems: NavItem[] = [
       { path: "/proyectos", icon: FolderOpen, labelKey: "sidebar:my_projects" },
@@ -93,7 +141,12 @@ export function getSidebarSections(user: SidebarUser): NavSection[] {
         },
       );
     }
-    if (user.isSuperAdmin) {
+    // Promote sits under the cataloguing section but is gated on
+    // BOTH the cataloguing capability (crowdsourcing) and the
+    // publish pipeline — promotion is the bridge between the two.
+    // The outer crowdsourcing branch already passed; check publish
+    // here for the per-item gate.
+    if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
       collabItems.push(
         {
           path: "/admin/cataloguing/promote",
@@ -108,16 +161,31 @@ export function getSidebarSections(user: SidebarUser): NavSection[] {
     });
   }
 
-  // Records management — archive admin side
+  // Records management — archive admin side. Per-item gating for
+  // the three capability-bound entries (repositories, vocabularies,
+  // publish); descriptions / entities / places are always available
+  // when the user has the role.
   if (user.isAdmin || user.isSuperAdmin) {
     const items: NavItem[] = [
       { path: "/admin/descriptions", icon: FileText, labelKey: "sidebar:descriptions" },
       { path: "/admin/entities", icon: Users, labelKey: "sidebar:entities" },
       { path: "/admin/places", icon: MapPin, labelKey: "sidebar:places" },
-      { path: "/admin/repositories", icon: Building2, labelKey: "sidebar:repositories" },
-      { path: "/admin/vocabularies", icon: BookOpen, labelKey: "sidebar:vocabularies" },
     ];
-    if (user.isSuperAdmin) {
+    if (tenant.multiRepositoryEnabled) {
+      items.push({
+        path: "/admin/repositories",
+        icon: Building2,
+        labelKey: "sidebar:repositories",
+      });
+    }
+    if (tenant.vocabularyHubEnabled) {
+      items.push({
+        path: "/admin/vocabularies",
+        icon: BookOpen,
+        labelKey: "sidebar:vocabularies",
+      });
+    }
+    if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
       items.push({
         path: "/admin/publish",
         icon: Upload,
@@ -136,14 +204,15 @@ const BOTTOM_ITEMS: NavItem[] = [
 
 interface SidebarProps {
   user: SidebarUser;
+  tenant: SidebarTenant;
   collapsed: boolean;
   onToggle: () => void;
 }
 
-export function Sidebar({ user, collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ user, tenant, collapsed, onToggle }: SidebarProps) {
   const { t } = useTranslation("sidebar");
 
-  const sections = getSidebarSections(user);
+  const sections = getSidebarSections(user, tenant);
 
   return (
     <nav

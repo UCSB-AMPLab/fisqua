@@ -1,6 +1,18 @@
 /**
  * Tests — logout
  *
+ * This suite pins the cookie-side of the logout path: `destroySession`
+ * must emit a `Set-Cookie` header that clears `userId` (the cookie
+ * round-trips empty) and carries an expiry in the past so the browser
+ * actively discards it rather than waiting for the session-cookie
+ * default. The route-side coverage lives elsewhere; this file isolates
+ * the storage primitive that backs every signout entry point.
+ *
+ * The cases run against `createSessionStorage` with a real 32-byte
+ * test secret (the helper rejects shorter secrets at construction),
+ * so the round-trip exercises actual HMAC signing rather than a
+ * stubbed signer.
+ *
  * @version v0.3.0
  */
 import { describe, it, expect } from "vitest";

@@ -1,9 +1,9 @@
 /**
  * Linked Open Data Link Field
  *
- * Input for an external authority identifier (Wikidata, VIAF, TGN)
- * with a click-through link icon that opens the resolved URL in a
- * new tab.
+ * This component is the input for an external authority identifier
+ * (Wikidata, VIAF, TGN) with a click-through link icon that opens the
+ * resolved URL in a new tab.
  *
  * @version v0.3.0
  */

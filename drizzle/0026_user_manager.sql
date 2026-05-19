@@ -1,6 +1,6 @@
 -- User manager role flag
 --
--- Adds `is_user_manager` to `users` so that a subset of staff can
+-- This migration adds `is_user_manager` to `users` so that a subset of staff can
 -- handle day-to-day account administration -- inviting new users,
 -- editing profiles, assigning accounts to projects -- without
 -- holding full superadmin rights over the publish pipeline or

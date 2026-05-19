@@ -1,5 +1,19 @@
 /**
- * Tests — comment kebab menu
+ * Tests — comment kebab-menu rules
+ *
+ * This suite pins `getKebabItems` — the pure helper that decides
+ * which actions appear in the kebab (⋮) menu on a comment card,
+ * given a flag bag (`isAuthor`, `isLead`, `isResolved`, `isRoot`,
+ * `isDeleted`). The menu is role-aware: the author of a comment
+ * gets edit + delete + resolve; a lead gets resolve on any
+ * comment; a deleted comment gets no menu at all (the kebab
+ * itself hides); a resolved root comment gets a reopen action
+ * instead of resolve.
+ *
+ * The cases enumerate every meaningful flag combination as its own
+ * `it(...)` so a future role addition or rule change surfaces as
+ * a precise failure rather than a collapsed truth-table mismatch.
+ * Pure-function pattern — no React, no DOM.
  *
  * @version v0.3.0
  */

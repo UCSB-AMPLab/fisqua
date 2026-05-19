@@ -1,9 +1,9 @@
 /**
  * Pipeline Card
  *
- * Single card in the pipeline kanban: entry reference code, current
- * status, describer and reviewer avatars, open QC flags, and the
- * lead-only assignment affordance. Draggable between columns to move
+ * This card is a single tile in the pipeline kanban — entry reference
+ * code, current status, describer and reviewer avatars, open QC flags, and
+ * the lead-only assignment affordance. Draggable between columns to move
  * the entry through the workflow.
  *
  * @version v0.3.0

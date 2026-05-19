@@ -1,13 +1,13 @@
 /**
  * Miller Columns Explorer
  *
- * A left-to-right column view for browsing the description hierarchy.
- * Each column renders the children of the selection in the previous
- * column, so a cataloguer can drill from fonds into a specific item in
- * a fluid horizontal sweep. Uses `@tanstack/react-virtual` to keep
- * each column snappy even on a fonds with tens of thousands of
- * children. State lives in a reducer so history (back/forward) stays
- * consistent with what the user sees.
+ * This component is the left-to-right column view for browsing the
+ * description hierarchy. Each column renders the children of the selection
+ * in the previous column, so a cataloguer can drill from fonds into a
+ * specific item in a fluid horizontal sweep. Uses
+ * `@tanstack/react-virtual` to keep each column snappy even on a fonds
+ * with tens of thousands of children. State lives in a reducer so history
+ * (back/forward) stays consistent with what the user sees.
  *
  * @version v0.3.0
  */

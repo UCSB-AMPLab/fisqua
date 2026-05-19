@@ -1,7 +1,14 @@
 /**
  * Tests — pipeline
  *
- * @version v0.3.0
+ * This suite pins the export pipeline's per-step contract: every
+ * pipeline step takes a `tenant: ExportTenant` argument. The
+ * mock-DB tests below pass a fixed test tenant (`TEST_TENANT`) and
+ * assert the slug-prefixed key shape; the cross-tenant data-leak
+ * coverage lives in `tests/export/cross-tenant.test.ts` against a
+ * real D1 binding.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as descriptionsServer from "../../app/lib/export/descriptions.server";
@@ -15,6 +22,13 @@ import {
   recordStepEnd,
 } from "../../app/lib/export/pipeline.server";
 import type { ExportStorage } from "../../app/lib/export/r2-client.server";
+import type { ExportTenant } from "../../app/lib/export/types";
+
+const TEST_TENANT: ExportTenant = {
+  id: "test-tenant-id",
+  slug: "neogranadina",
+  descriptiveStandard: "isadg",
+};
 
 /**
  * Tests for the per-step pure functions introduced in 23-06.
@@ -77,7 +91,7 @@ function makeDescRow(overrides: Record<string, unknown> = {}) {
     language: "192",
     locationOfOriginals: null,
     locationOfCopies: null,
-    relatedMaterials: null,
+    // related_materials dropped in 0036 (0% populated).
     findingAids: null,
     sectionTitle: null,
     notes: null,
@@ -154,13 +168,13 @@ describe("exportFondsDescriptions", () => {
       { code: "co-ahr", country: "Colombia" }, // repo lookup
     ]);
 
-    const result = await exportFondsDescriptions(db, storage, "co-ahr-gob");
+    const result = await exportFondsDescriptions(db, storage, "co-ahr-gob", TEST_TENANT);
 
     expect(result.recordCount).toBe(1);
     expect(result.byteSize).toBeGreaterThan(0);
     const calls = (storage.putObject as any).mock.calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0][0]).toBe("descriptions-co-ahr-gob.json");
+    expect(calls[0][0]).toBe("neogranadina/descriptions-co-ahr-gob.json");
     const body = JSON.parse(calls[0][1]);
     expect(body).toHaveLength(1);
     expect(body[0].reference_code).toBe("co-ahr-gob-001");
@@ -168,12 +182,12 @@ describe("exportFondsDescriptions", () => {
 
   it("uploads an empty array and returns recordCount=0 when the fonds root does not exist", async () => {
     const db = createMockDb([null]); // root lookup returns null
-    const result = await exportFondsDescriptions(db, storage, "missing");
+    const result = await exportFondsDescriptions(db, storage, "missing", TEST_TENANT);
 
     expect(result.recordCount).toBe(0);
     expect(result.byteSize).toBe(2); // "[]"
     expect((storage.putObject as any).mock.calls[0][0]).toBe(
-      "descriptions-missing.json"
+      "neogranadina/descriptions-missing.json"
     );
     expect((storage.putObject as any).mock.calls[0][1]).toBe("[]");
   });
@@ -186,13 +200,13 @@ describe("exportFondsDescriptions", () => {
     const db1 = createMockDb([{ id: "root-1" }, [desc], { code: "co-ahr", country: "Colombia" }]);
     const db2 = createMockDb([{ id: "root-2" }, [desc], { code: "co-ahr", country: "Colombia" }]);
 
-    await exportFondsDescriptions(db1, storage, "co-ahr-gob");
-    await exportFondsDescriptions(db2, storage, "co-ahr-jud");
+    await exportFondsDescriptions(db1, storage, "co-ahr-gob", TEST_TENANT);
+    await exportFondsDescriptions(db2, storage, "co-ahr-jud", TEST_TENANT);
 
     const keys = (storage.putObject as any).mock.calls.map((c: any[]) => c[0]);
     expect(keys).toEqual([
-      "descriptions-co-ahr-gob.json",
-      "descriptions-co-ahr-jud.json",
+      "neogranadina/descriptions-co-ahr-gob.json",
+      "neogranadina/descriptions-co-ahr-jud.json",
     ]);
     expect(keys).not.toContain("descriptions.json");
   });
@@ -239,11 +253,11 @@ describe("exportFondsChildren", () => {
       [...parents, ...children], // fonds rows
     ]);
 
-    const result = await exportFondsChildren(db, storage, "co-ahr-gob");
+    const result = await exportFondsChildren(db, storage, "co-ahr-gob", TEST_TENANT);
 
     const keys = (storage.putObject as any).mock.calls.map((c: any[]) => c[0]);
-    // Every PUT must be a children/* key
-    expect(keys.every((k: string) => k.startsWith("children/"))).toBe(true);
+    // Every PUT must be a slug-prefixed children/* key
+    expect(keys.every((k: string) => k.startsWith("neogranadina/children/"))).toBe(true);
     // No more PUTs than parents
     expect(keys.length).toBeLessThanOrEqual(parents.length);
     expect(result.parentCount).toBeLessThanOrEqual(parents.length);
@@ -252,7 +266,7 @@ describe("exportFondsChildren", () => {
 
   it("returns 0/0 when the fonds root is missing and issues no PUTs", async () => {
     const db = createMockDb([null]);
-    const result = await exportFondsChildren(db, storage, "missing");
+    const result = await exportFondsChildren(db, storage, "missing", TEST_TENANT);
     expect(result).toEqual({ parentCount: 0, putCount: 0 });
     expect((storage.putObject as any).mock.calls).toHaveLength(0);
   });
@@ -288,11 +302,11 @@ describe("exportRepositories", () => {
       [makeDescRow({ id: "root-1", referenceCode: "co-ahr-gob", parentId: null })],
     ]);
 
-    const result = await exportRepositories(db, storage);
+    const result = await exportRepositories(db, storage, TEST_TENANT);
 
     expect(result.count).toBe(1);
     const call = (storage.putObject as any).mock.calls.find(
-      (c: any[]) => c[0] === "repositories.json"
+      (c: any[]) => c[0] === "neogranadina/repositories.json"
     );
     expect(call).toBeDefined();
     const body = JSON.parse(call[1]);
@@ -332,7 +346,6 @@ describe("exportEntities", () => {
           dateStart: null,
           dateEnd: null,
           history: null,
-          legalStatus: null,
           functions: null,
           sources: null,
           wikidataId: null,
@@ -342,10 +355,10 @@ describe("exportEntities", () => {
       ],
     ]);
 
-    const result = await exportEntities(db, storage);
+    const result = await exportEntities(db, storage, TEST_TENANT);
     expect(result.count).toBe(1);
     const call = (storage.putObject as any).mock.calls.find(
-      (c: any[]) => c[0] === "entities.json"
+      (c: any[]) => c[0] === "neogranadina/entities.json"
     );
     expect(call).toBeDefined();
     expect(JSON.parse(call[1])[0].entity_code).toBe("ne-000001");
@@ -353,10 +366,10 @@ describe("exportEntities", () => {
 
   it("uploads an empty array when no entities are linked", async () => {
     const db = createMockDb([[]]);
-    const result = await exportEntities(db, storage);
+    const result = await exportEntities(db, storage, TEST_TENANT);
     expect(result.count).toBe(0);
     const call = (storage.putObject as any).mock.calls.find(
-      (c: any[]) => c[0] === "entities.json"
+      (c: any[]) => c[0] === "neogranadina/entities.json"
     );
     expect(call[1]).toBe("[]");
   });
@@ -383,25 +396,21 @@ describe("exportPlaces", () => {
           latitude: 6.15,
           longitude: -75.37,
           coordinatePrecision: "exact",
-          historicalGobernacion: "Antioquia",
-          historicalPartido: null,
-          historicalRegion: null,
-          countryCode: "COL",
-          adminLevel1: "Antioquia",
-          adminLevel2: "Rionegro",
+          // historical_*, country_code, admin_level_*, wikidata_id all
+          // dropped on places in 0036.
+          fclass: "P" as "P" | "H" | "A" | "T" | "S" | null,
           tgnId: null,
           hgisId: null,
           whgId: null,
-          wikidataId: null,
           mergedInto: null,
         },
       ],
     ]);
 
-    const result = await exportPlaces(db, storage);
+    const result = await exportPlaces(db, storage, TEST_TENANT);
     expect(result.count).toBe(1);
     const call = (storage.putObject as any).mock.calls.find(
-      (c: any[]) => c[0] === "places.json"
+      (c: any[]) => c[0] === "neogranadina/places.json"
     );
     expect(JSON.parse(call[1])[0].place_code).toBe("nl-000001");
   });

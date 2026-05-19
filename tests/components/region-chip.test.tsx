@@ -1,5 +1,20 @@
 /**
- * Tests — region chipx
+ * Tests — region chip i18n + class helpers
+ *
+ * This suite pins the two pure helpers that back the region-chip
+ * display: `computeChipLabelArgs` (builds the `t(...)` invocation
+ * shape — key, vars, defaultValue) and `computeChipClassName` (the
+ * Tailwind class composition that carries the chip's status
+ * variant). The label helper carries a Colombian-Spanish
+ * `defaultValue` ("Región · p. N" with the U+00B7 middle dot) so
+ * the chip renders correctly even before the locale key is
+ * registered upstream.
+ *
+ * No React rendering — the helpers are pure functions returning
+ * scalars or struct args, and the i18n contract (key + vars +
+ * defaultValue) is exactly what's pinned here so a future refactor
+ * cannot silently drop the middle-dot separator or change the page
+ * interpolation contract.
  *
  * @version v0.3.0
  */

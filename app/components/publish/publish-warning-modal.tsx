@@ -1,8 +1,8 @@
 /**
  * Publish Confirmation Modal
  *
- * The confirm-before-kicking-off dialog for the Publish button.
- * Autofocus lands on Cancel — requiring a deliberate commit — and
+ * This dialog is the confirm-before-kicking-off step for the Publish
+ * button. Autofocus lands on Cancel — requiring a deliberate commit — and
  * Escape dismisses. Surfaces the total record count so operators can
  * sanity-check the scope of what they are about to regenerate.
  *

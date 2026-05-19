@@ -1,14 +1,22 @@
 /**
  * Tests — repositories
  *
- * @version v0.3.0
+ * This helper module wraps repository-row creation for the test
+ * suite. Every repository row carries a tenant_id NOT NULL FK to
+ * tenants(id), so tests must call seedTenants() before invoking
+ * this helper. Defaults to DEFAULT_TEST_TENANT_ID; pass `tenantId` for
+ * cross-tenant scenarios.
+ *
+ * @version v0.4.0
  */
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:test";
 import * as schema from "../../app/db/schema";
+import { DEFAULT_TEST_TENANT_ID } from "./db";
 
 export async function createTestRepository(overrides: Partial<{
   id: string;
+  tenantId: string;
   code: string;
   name: string;
   shortName: string | null;
@@ -29,6 +37,7 @@ export async function createTestRepository(overrides: Partial<{
   const id = overrides.id ?? crypto.randomUUID();
   const values = {
     id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     code: overrides.code ?? `REPO-${id.slice(0, 4)}`,
     name: overrides.name ?? "Test Repository",
     shortName: overrides.shortName ?? null,

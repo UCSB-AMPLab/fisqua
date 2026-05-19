@@ -1,5 +1,19 @@
 /**
- * Tests — reference codes
+ * Tests — reference code generator
+ *
+ * This suite pins the two pure helpers behind the cataloguer-side
+ * reference-code generator: `generateRefCode` (builds a single
+ * entry's reference code from its parent chain plus position) and
+ * `computeAllRefCodes` (the bulk variant that walks an entire
+ * entry tree in one pass for the segmentation editor).
+ *
+ * Reference codes follow the ISAD(G) hierarchical-position
+ * convention: each level appends its position-within-parent to the
+ * parent's code (e.g. `AHRB-001/02/03`). The generator must handle
+ * orphan entries (no parent → bare entry-code), gaps in `position`
+ * (positions are not necessarily contiguous after deletes), and
+ * the cycle-safety contract (a malformed parent chain returns a
+ * partial code rather than recursing forever).
  *
  * @version v0.3.0
  */

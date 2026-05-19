@@ -1,5 +1,21 @@
 /**
- * Tests — vocabulary terms
+ * Tests — vocabulary terms import command
+ *
+ * This suite pins `importVocabularyTerms` — the import-side command
+ * that reads the upstream `canonical_functions_v2.json` clustering
+ * output (built by a Python pass over the Neogranadina entities
+ * dataset) and emits per-term INSERT SQL for the
+ * `vocabulary_terms` table. Each term carries a canonical label,
+ * a category (e.g. `military_rank`, `civil_office`), an
+ * `entity_count` for relative frequency display, and a `source`
+ * tag tracking which clustering pass produced it.
+ *
+ * The cases exercise the row-count contract, the deterministic
+ * UUID generation, and the alias-row emission — a single
+ * canonical term may surface multiple variant spellings in the
+ * upstream JSON, and each variant becomes its own
+ * `vocabulary_term_aliases` row so the entity-migration step can
+ * resolve any of them to the same canonical id.
  *
  * @version v0.3.0
  */

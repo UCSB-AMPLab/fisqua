@@ -1,0 +1,26 @@
+[
+  {
+    "id": 20,
+    "ca_place_ids": [200, 201],
+    "label": "Bogotá",
+    "display_name": "Bogotá, Cundinamarca",
+    "place_type": "city",
+    "fclass": "P",
+    "latitude": null,
+    "longitude": null,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 21,
+    "ca_place_ids": null,
+    "label": "Antioquia",
+    "display_name": "Antioquia (región)",
+    "place_type": "region",
+    "fclass": "A",
+    "latitude": null,
+    "longitude": null,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z"
+  }
+]

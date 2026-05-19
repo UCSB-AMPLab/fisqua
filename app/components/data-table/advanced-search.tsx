@@ -1,10 +1,10 @@
 /**
  * Advanced Search Panel
  *
- * Reusable multi-field search panel for the admin data tables. Emits
- * a structured filter payload on submit that the hosting route can
- * translate into query parameters; controls are rendered declaratively
- * from a field definition array.
+ * This panel is the reusable multi-field search surface for the admin data
+ * tables. Emits a structured filter payload on submit that the hosting
+ * route can translate into query parameters; controls are rendered
+ * declaratively from a field definition array.
  *
  * @version v0.3.0
  */
