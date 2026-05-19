@@ -1,8 +1,9 @@
 /**
  * No Access Page
  *
- * Terminal surface shown when an authenticated user does not hold
- * any role that would grant access to the app. Explains the state
+ * This page is the terminal surface shown when an authenticated user
+ * does not hold any role that would grant access to the app. It
+ * explains the state
  * in both English and Spanish and offers the operator a sign-out
  * link. Never rendered through normal navigation — only reached
  * via a redirect from role-aware loaders.
