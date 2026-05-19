@@ -275,7 +275,7 @@ export const authMiddleware: MiddlewareFunction = async (
       lastActivityAt: now,
     });
     const cookie = await commitSession(session);
-    const response = await next();
+    const response = (await next()) as Response;
     response.headers.append("Set-Cookie", cookie);
     return response;
   }

@@ -25,7 +25,7 @@
  * @version v0.4.0
  */
 
-import type { Standard } from "../standards/types";
+import type { Standard, DescriptionLevel } from "../standards/types";
 
 /**
  * Resolved tenant context threaded through every export step. The
@@ -197,7 +197,7 @@ export interface ExportProgress {
 export type EadProfile = {
   standard: Standard;
   /** Reference into the form-side single-source-of-truth — do NOT duplicate. */
-  requiredFieldsForLevel: (level: string) => ReadonlyArray<string>;
+  requiredFieldsForLevel: (level: DescriptionLevel) => ReadonlyArray<string>;
   /**
    * Where biographical/admin history goes in the EAD3 tree.
    *  - "context" — emitted as `<bioghist>` directly under `<archdesc>` (DACS § 2.7, RAD).

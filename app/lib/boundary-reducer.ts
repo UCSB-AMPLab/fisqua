@@ -112,6 +112,7 @@ export function boundaryReducer(
         entries: renumberSiblings(entries),
         isDirty: true,
         saveStatus: "unsaved",
+        lastError: state.lastError,
         version: state.version + 1,
       };
     }
@@ -162,6 +163,7 @@ export function boundaryReducer(
         entries: renumberSiblings(entries),
         isDirty: true,
         saveStatus: "unsaved",
+        lastError: state.lastError,
         version: state.version + 1,
       };
     }
@@ -192,6 +194,7 @@ export function boundaryReducer(
         entries: renumberSiblings(entries),
         isDirty: true,
         saveStatus: "unsaved",
+        lastError: state.lastError,
         version: state.version + 1,
       };
     }
@@ -226,6 +229,7 @@ export function boundaryReducer(
         entries: renumberSiblings(entries),
         isDirty: true,
         saveStatus: "unsaved",
+        lastError: state.lastError,
         version: state.version + 1,
       };
     }
@@ -255,6 +259,7 @@ export function boundaryReducer(
         entries: renumberSiblings(entries),
         isDirty: true,
         saveStatus: "unsaved",
+        lastError: state.lastError,
         version: state.version + 1,
       };
     }

@@ -51,7 +51,7 @@
  * @version v0.4.0
  */
 
-import { Form, redirect, useTranslation as _ } from "react-router";
+import { Form, redirect } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { useTranslation } from "react-i18next";

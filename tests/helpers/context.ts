@@ -75,6 +75,7 @@ export function makeTenantContext(overrides: Partial<Tenant> = {}): Tenant {
     publishPipelineEnabled: overrides.publishPipelineEnabled ?? true,
     multiRepositoryEnabled: overrides.multiRepositoryEnabled ?? true,
     quotaStorageBytes: overrides.quotaStorageBytes ?? null,
+    disabledAt: overrides.disabledAt ?? null,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
   };
