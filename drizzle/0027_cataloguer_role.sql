@@ -1,6 +1,6 @@
 -- Cataloguer role flag
 --
--- Adds `is_cataloguer` to `users` as a system-level marker for
+-- This migration adds `is_cataloguer` to `users` as a system-level marker for
 -- cataloguing staff. The flag controls two surfaces: it reveals the
 -- Cataloguing section of the sidebar to the user, and it makes the
 -- user pickable in the project team picker so a collab admin can

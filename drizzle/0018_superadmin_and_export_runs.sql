@@ -1,6 +1,6 @@
 -- Superadmin flag and export-run bookkeeping
 --
--- Adds two pieces of infrastructure that the publish pipeline relies
+-- This migration adds two pieces of infrastructure that the publish pipeline relies
 -- on. First, a boolean `is_super_admin` on `users` gates the publish
 -- and promote surfaces behind a distinct role; regular admins cannot
 -- trigger an export or promote a volume until a superadmin grants

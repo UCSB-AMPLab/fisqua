@@ -1,6 +1,6 @@
 -- Display metadata for repository landing pages
 --
--- Adds three columns to `repositories` so each archive can present a
+-- This migration adds three columns to `repositories` so each archive can present a
 -- richer landing page on the public frontend: a `display_title` that
 -- overrides the short institutional code, a `subtitle` for a one-line
 -- framing beneath it, and a `hero_image_url` for the header banner.

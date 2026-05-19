@@ -1,3 +1,23 @@
+-- Comments, resegmentation flags, and entry-level description fields
+--
+-- This migration extends the cataloguing surface in three directions
+-- at once. `comments` introduces a threaded conversation against any
+-- entry — author, author role, parent for replies — so reviewers and
+-- cataloguers can discuss a boundary without leaving the viewer.
+-- `resegmentation_flags` lets a cataloguer report a segmentation
+-- problem (overlap, gap, mistype) against one or more entries with a
+-- description and a resolution workflow.
+--
+-- The trailing ALTER block widens `entries` into the early
+-- description-editor shape: a per-entry workflow status, assigned
+-- describer and review slots, and a fan of ISAD(G)-shaped fields
+-- (resource type, date range, scope and content, languages, extent,
+-- internal notes, description level). All additive, all nullable,
+-- with `description_status` defaulting to `unassigned` and
+-- `description_level` to `item`.
+--
+-- Version: v0.3.0
+
 CREATE TABLE `comments` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entry_id` text NOT NULL,

@@ -1,6 +1,6 @@
 -- Entry subtypes and the `test_images` boundary type
 --
--- Two small, forward-compatible additions to the segmentation model.
+-- This migration makes two small, forward-compatible additions to the segmentation model.
 --
 -- First: a new nullable `entries.subtype` column lets cataloguers tag
 -- an `item` entry with a Colombian Spanish document subtype drawn

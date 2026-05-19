@@ -1,3 +1,24 @@
+-- Drop transitional note and reviewer-comment columns from entries
+--
+-- This migration rebuilds the `entries` table to remove the four
+-- transitional columns added by 0007 (`note`, `note_updated_by`,
+-- `note_updated_at`, `reviewer_comment`, `reviewer_comment_updated_by`,
+-- `reviewer_comment_updated_at`) and consolidate annotation onto the
+-- dedicated `comments` table introduced by 0008. The note workflow
+-- never shipped to cataloguers; consolidating it before any volume
+-- received notes in production keeps the data model lean.
+--
+-- SQLite cannot DROP COLUMN on a table that other foreign keys
+-- reference, so this uses the canonical "make-other-kinds-of-schema-
+-- change" recipe: temporarily disable FK enforcement, build
+-- `__new_entries` with the desired shape, copy every row across,
+-- drop the old table, rename the new one into place, re-enable FK
+-- checks, and rebuild the three indexes. No data is lost: every
+-- column the new shape carries is copied verbatim from the old
+-- `entries` row.
+--
+-- Version: v0.3.0
+
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_entries` (
 	`id` text PRIMARY KEY NOT NULL,

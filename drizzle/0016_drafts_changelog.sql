@@ -1,6 +1,6 @@
 -- Drafts and changelog for description editing
 --
--- Adds two tables that together give the description editor a safe
+-- This migration adds two tables that together give the description editor a safe
 -- autosave-and-audit cycle. `drafts` stores the in-progress snapshot of
 -- a record as a JSON blob so that a cataloguer's unsaved edits survive a
 -- page reload, a session timeout, or a switch to another machine -- the

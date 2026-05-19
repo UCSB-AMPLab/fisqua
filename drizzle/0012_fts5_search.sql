@@ -1,6 +1,6 @@
 -- Full-text search for entities and places
 --
--- Adds SQLite's FTS5 virtual tables on top of entities and places so the
+-- This migration adds SQLite's FTS5 virtual tables on top of entities and places so the
 -- admin UI can do accent-insensitive search against display and sort
 -- names without scanning the whole table. The `unicode61` tokeniser
 -- folds diacritics so that typing `muzo` matches both `Muzo` and
