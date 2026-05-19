@@ -1,7 +1,22 @@
 /**
- * Tests — entities
+ * Tests — entities CRUD
  *
- * @version v0.3.0
+ * This suite pins the substrate contract on the `entities` table —
+ * the authority records for people, families, and corporate bodies
+ * (ISAAR(CPF) shape). The cases exercise insert with the minimum
+ * required fields (`displayName`, `entityCode`, `tenantId`), the
+ * uniqueness invariant on `entityCode` within a tenant, partial
+ * update preservation, and the cascade behaviour against
+ * `descriptionEntities` link rows when the authority is deleted.
+ *
+ * Tenant-id is carried explicitly on every insert because the
+ * cross-tenant grep keystone (`tests/db/cross-tenant-coverage.test.ts`)
+ * refuses any write to a tenanted table without an explicit
+ * tenant-id clause. The helper `createTestEntity` defaults to
+ * `DEFAULT_TEST_TENANT_ID` so test bodies stay focused on the
+ * field-level contract.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +29,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestEntity } from "../helpers/entities";
 import { createTestUser } from "../helpers/auth";
 import { createTestRepository } from "../helpers/repositories";
@@ -34,6 +49,7 @@ describe("entity CRUD", () => {
     const id = crypto.randomUUID();
 
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       entityCode: "ne-abc123",
       displayName: "Juan de Castellanos",
@@ -48,7 +64,7 @@ describe("entity CRUD", () => {
       dateStart: "1522",
       dateEnd: "1607",
       history: "Chronicler of the New Kingdom of Granada",
-      legalStatus: null,
+      // legal_status dropped in 0036 (0% populated in production audit).
       functions: "Writing, clergy",
       sources: "BNC ms. 001",
       createdAt: now,
@@ -152,6 +168,7 @@ describe("entity CRUD", () => {
     const descId = crypto.randomUUID();
     const now = Date.now();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "fonds",
@@ -327,6 +344,7 @@ describe("entity merge and split", () => {
     // Create description and link to source
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -393,6 +411,7 @@ describe("entity merge and split", () => {
     // Create description and link
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -420,6 +439,7 @@ describe("entity merge and split", () => {
     // Split: create new entity, move the link
     const newEntityId = crypto.randomUUID();
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: newEntityId,
       entityCode: "ne-splt01",
       displayName: "Split Entity",
@@ -480,6 +500,7 @@ describe("entity description link CRUD", () => {
     // Create a description
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -528,6 +549,7 @@ describe("entity description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -577,6 +599,7 @@ describe("entity description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -637,6 +660,7 @@ describe("entity description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -684,6 +708,7 @@ describe("entity description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",

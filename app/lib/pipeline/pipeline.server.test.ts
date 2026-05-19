@@ -1,6 +1,17 @@
 /**
  * Tests — Description Workflow Pipeline
  *
+ * This suite deals with the pure-function side of the description
+ * workflow pipeline — the column groupers that bin volumes and
+ * entries into the kanban-style columns the pipeline board renders.
+ * The DB-touching engine (`promoteVolumeIntoDescription`, the per-
+ * entry transition writers) is mocked out so the suite can run
+ * without Cloudflare bindings and so a failing test isolates a
+ * grouping bug from a Drizzle bug. The cases pin the column-id ↔
+ * status mapping, the entry/volume disambiguation in
+ * `PIPELINE_COLUMNS`, and the fall-through behaviour when an unknown
+ * status arrives.
+ *
  * @version v0.3.0
  */
 import { describe, it, expect, vi } from "vitest";

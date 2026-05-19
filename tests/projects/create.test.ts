@@ -1,7 +1,21 @@
 /**
- * Tests — create
+ * Tests — project creation
  *
- * @version v0.3.0
+ * This suite pins the project-creation path — the three helpers
+ * that compose the create flow: `validateProjectForm` (the Zod
+ * validation gate on the create form), `generateProjectId` (the
+ * deterministic id generator that turns a project name into a
+ * URL-safe slug + UUID composite), and `createProject` (the D1
+ * write that lands the project row plus the founding lead's
+ * `project_members` row in a single batch).
+ *
+ * The atomicity of the create-with-founder pattern matters: a
+ * project that exists without a lead member is unrecoverable from
+ * the UI (no one can act as project admin), so the founder
+ * insertion runs in the same batch as the project insert. The
+ * cases pin both halves of the batch landing or neither.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +28,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { requireAdmin, requireProjectRole } from "../../app/lib/permissions.server";
 import { createProject, generateProjectId, validateProjectForm } from "../../app/lib/projects.server";
@@ -32,6 +46,7 @@ describe("project creation", () => {
     it("allows admin users", () => {
       const admin = {
         id: "1",
+        tenantId: DEFAULT_TEST_TENANT_ID,
         email: "admin@test.com",
         name: "Admin",
         isAdmin: true,
@@ -49,6 +64,7 @@ describe("project creation", () => {
     it("throws 403 for non-admin users", () => {
       const user = {
         id: "2",
+        tenantId: DEFAULT_TEST_TENANT_ID,
         email: "user@test.com",
         name: "User",
         isAdmin: false,

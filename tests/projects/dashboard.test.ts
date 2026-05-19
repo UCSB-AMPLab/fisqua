@@ -1,5 +1,18 @@
 /**
- * Tests — dashboard
+ * Tests — dashboard project listing
+ *
+ * This suite pins `getUserProjects` — the loader the dashboard
+ * consumes to render the signed-in user's project list. The
+ * helper joins `projects` against `project_members` filtered by
+ * the user's id, so a user only sees projects they are a member
+ * of (not every project in the tenant).
+ *
+ * Cases pin the membership join (a project the user is NOT a
+ * member of doesn't appear, even within the same tenant), the
+ * tenant isolation (a project belonging to another tenant is
+ * never returned), and the ordering invariant (most-recently-
+ * active projects first, by `updatedAt` DESC) so the dashboard
+ * surfaces the projects the user is most likely to want next.
  *
  * @version v0.3.0
  */

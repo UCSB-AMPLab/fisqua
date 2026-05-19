@@ -1,5 +1,19 @@
 /**
- * Tests — comment partition
+ * Tests — comment partition by entry / page
+ *
+ * This suite pins `partitionComments` — the pure helper that takes
+ * a flat array of comments plus the entry and page lists for a
+ * volume and partitions the comments into per-entry, per-page,
+ * and orphan buckets. The viewer's comment column uses the
+ * partition to render comments under their owning entry (or page,
+ * if the comment is page-anchored but no entry covers that page)
+ * rather than as one undifferentiated list.
+ *
+ * The orphan bucket catches comments whose `entryId` no longer
+ * exists in the volume (an entry was deleted after the comment was
+ * left); rather than dropping those comments silently, the
+ * partition surfaces them in an "orphaned" bucket the UI can
+ * render with an explanation.
  *
  * @version v0.3.0
  */

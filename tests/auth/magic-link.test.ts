@@ -1,6 +1,19 @@
 /**
  * Tests — magic link
  *
+ * This suite pins the email-based passwordless login flow. The
+ * `generateMagicLink` helper writes a single-use token row, hands the
+ * tokenised URL to `sendMagicLinkEmail` (mocked here — Resend is not
+ * exercised from the test pool), and the `verifyMagicLink` helper
+ * consumes the row atomically so the same link cannot be replayed.
+ *
+ * Cases pin the happy path (issue → verify → session ready), the
+ * single-use semantic (second verify returns null), the TTL
+ * enforcement (expired row returns null), and the unknown-token
+ * shape (no information leak — same null return as expired). The
+ * Resend mock keeps the side effect inert; the assertion is that
+ * the helper was called once with the expected tokenised URL.
+ *
  * @version v0.3.0
  */
 import {

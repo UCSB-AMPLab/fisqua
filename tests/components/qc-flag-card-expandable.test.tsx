@@ -1,5 +1,18 @@
 /**
- * Tests — qc flag card expandablex
+ * Tests — QC flag card resolve gate
+ *
+ * This suite pins the pure predicate `shouldForwardResolve` that
+ * gates the "Resolve" affordance on an expandable QC-flag card.
+ * The gate is two-dimensional: the viewer must be a `lead` (only
+ * leads close flags — cataloguer and reviewer roles see the
+ * card without the resolve action), AND the flag must be in
+ * `open` status (re-resolving a resolved or wontfix flag is a
+ * no-op, so the affordance hides).
+ *
+ * No React rendering — the predicate is a boolean over
+ * `(role, status)` and the truth table is what this file pins.
+ * Same Workers-pool / pure-function pattern as the rest of
+ * `tests/components/*.test.tsx`.
  *
  * @version v0.3.0
  */

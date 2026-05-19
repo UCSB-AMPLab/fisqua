@@ -1,7 +1,22 @@
 /**
- * Tests — resegmentation
+ * Tests — resegmentation API
  *
- * @version v0.3.0
+ * This suite pins the `api.resegmentation` route — the
+ * cataloguing-side surface a reviewer uses to request that an
+ * automatically-segmented volume be re-segmented (the page-boundary
+ * detector ran but its output is wrong enough that a manual rerun
+ * is warranted). The request carries `volumeId` plus an optional
+ * `reason`; the action validates the volume belongs to the
+ * caller's tenant, writes a `resegmentation_requests` row, and
+ * surfaces it on the operator's volumes dashboard.
+ *
+ * Cases pin the action's tenant-isolation contract (cross-tenant
+ * volume id → 404 in the same shape as unknown), the dedupe
+ * behaviour (one open request per volume — the action returns the
+ * existing row rather than inserting a duplicate), and the
+ * cancel-by-requester path.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,9 +24,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action } from "../../app/routes/api.resegmentation";
 
 type Db = ReturnType<typeof drizzle>;
@@ -20,9 +36,11 @@ function buildUser(overrides: {
   id: string;
   email: string;
   isAdmin?: boolean;
+  tenantId?: string;
 }): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: null,
     isAdmin: overrides.isAdmin ?? false,
@@ -39,6 +57,7 @@ function buildUser(overrides: {
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

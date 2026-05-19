@@ -1,5 +1,20 @@
 /**
- * Tests — qc flags
+ * Tests — QC flags storage server helpers
+ *
+ * This suite pins the five server-side helpers in
+ * `app/lib/qc-flags.server.ts` that back the QC-flag surface:
+ * `createQcFlag`, `resolveQcFlag`, `getOpenQcFlags` (the
+ * dashboard's list of unresolved flags), `getOpenQcFlagCount`
+ * (the counter used in nav badges), and `getQcFlagsForVolume`
+ * (the per-volume listing).
+ *
+ * These helpers operate at the storage layer — tenant resolution
+ * and authorisation are the route handler's job — so this file
+ * pins SQL-level behaviour: the `(status, volumeId)` index path,
+ * the resolve-then-list ordering (resolved rows drop out of
+ * `getOpenQcFlags` but stay visible to `getQcFlagsForVolume`),
+ * and the cascade against the comment thread (comments attached
+ * to a flag survive resolution; only the flag's status changes).
  *
  * @version v0.3.0
  */

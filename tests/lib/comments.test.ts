@@ -1,5 +1,22 @@
 /**
- * Tests — comments
+ * Tests — comments storage server helpers
+ *
+ * This suite pins the nine server-side helpers in
+ * `app/lib/comments.server.ts` that back every comment surface:
+ * `createComment`, the four read paths
+ * (`getCommentsForEntry`, `getCommentsForPage`,
+ * `getCommentsForQcFlag`, `getCommentsForVolume`), the three
+ * mutation paths (`resolveComment`, `softDeleteComment`,
+ * `updateCommentBody`, `updateCommentRegion`).
+ *
+ * The helpers operate at the storage layer — they assume the
+ * route handlers have already done tenant resolution and FK
+ * checks, so the tests here pin the SQL-level behaviour: ordering,
+ * cascade semantics on `parentId` (reply threads), soft-delete
+ * preservation (the row stays, only `deletedAt` toggles, so the
+ * audit history survives), and the region-update path that
+ * lets a lead reposition a region pin without recreating the
+ * comment.
  *
  * @version v0.3.0
  */

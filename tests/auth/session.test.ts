@@ -1,5 +1,19 @@
 /**
- * Tests — session
+ * Tests — session management
+ *
+ * This suite pins the two storage primitives that back every
+ * authenticated route in the app: `createSessionStorage` (the
+ * cookie-backed session factory) and `requireUser` (the loader-side
+ * gate that resolves the cookie's `userId` to a real `users` row or
+ * throws a redirect to `/login`). Together they enforce the
+ * single-source-of-truth identity contract — a request without a
+ * valid session cookie has no user; a session whose `userId` no
+ * longer exists in D1 is equivalent to no session.
+ *
+ * Cases pin cookie commit / round-trip, the round-trip across a
+ * fresh `createSessionStorage` instance (signature verifies with
+ * the same secret), and the `requireUser` failure paths (missing
+ * cookie → throw redirect, unknown userId → throw redirect).
  *
  * @version v0.3.0
  */

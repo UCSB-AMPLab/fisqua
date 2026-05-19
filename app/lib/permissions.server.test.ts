@@ -1,8 +1,9 @@
 /**
  * Permission Guard Tests
  *
- * Pins the behaviour of the user-level permission guards in
- * `permissions.server.ts`. The current suite focuses on
+ * This suite deals with pinning the behaviour of the user-level
+ * permission guards in `permissions.server.ts`. The current suite
+ * focuses on
  * `requireCollabAdmin`, which is the canonical example of a two-tier
  * role wall: it accepts superadmin and collab-admin users and rejects
  * every other flag combination, including archive admins -- the

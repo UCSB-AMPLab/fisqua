@@ -1,7 +1,23 @@
 /**
- * Tests — descriptions
+ * Tests — descriptions schema
  *
- * @version v0.3.0
+ * This suite pins the structural shape of the `descriptions` table — the
+ * primary archival-description spine that holds every ISAD(G)-style record.
+ * Each `it` block backstops a specific column or constraint the rest of the
+ * platform assumes is present and well-typed: required fields on insert,
+ * the hierarchy triple (`parentId`, `position`, `rootDescriptionId`), the
+ * denormalized cache columns (`depth`, `childCount`, `pathCache`), the
+ * unique constraint on `referenceCode`, the default-false `isPublished`
+ * flag, and the date columns' ISO-string storage shape.
+ *
+ * The reference-code uniqueness test is load-bearing: the import pipeline,
+ * EAD exporter, and public viewer all key off `referenceCode` as a stable
+ * external identifier, so silently allowing duplicates would let two
+ * fonds collide on the same URL. The date-string test pins Pitfall 5 —
+ * historical dates predate the Unix epoch, so they must round-trip as
+ * ISO strings, never as integer timestamps.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,10 +30,10 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { applyMigrations, cleanDatabase, DEFAULT_TEST_TENANT_ID } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 
-describe("descriptions table (SCHEMA-01)", () => {
+describe("descriptions table", () => {
   let db: ReturnType<typeof drizzle>;
   let repositoryId: string;
 
@@ -32,6 +48,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     // Create a repository for FK reference
     repositoryId = crypto.randomUUID();
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: repositoryId,
       code: "test-repo",
       name: "Test Repository",
@@ -45,6 +62,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const now = Date.now();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       repositoryId,
       descriptionLevel: "fonds",
@@ -74,6 +92,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const now = Date.now();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: rootId,
       repositoryId,
       descriptionLevel: "fonds",
@@ -86,6 +105,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     });
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: childId,
       repositoryId,
       descriptionLevel: "series",
@@ -114,6 +134,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const now = Date.now();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       repositoryId,
       descriptionLevel: "fonds",
@@ -142,6 +163,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const refCode = "CO-TEST-UNIQUE";
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: crypto.randomUUID(),
       repositoryId,
       descriptionLevel: "fonds",
@@ -154,6 +176,7 @@ describe("descriptions table (SCHEMA-01)", () => {
 
     await expect(
       db.insert(schema.descriptions).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         repositoryId,
         descriptionLevel: "fonds",
@@ -171,6 +194,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const now = Date.now();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       repositoryId,
       descriptionLevel: "item",
@@ -194,6 +218,7 @@ describe("descriptions table (SCHEMA-01)", () => {
     const now = Date.now();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       repositoryId,
       descriptionLevel: "item",

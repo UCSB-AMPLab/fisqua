@@ -1,5 +1,18 @@
 /**
- * Tests — format date
+ * Tests — ISO date-time formatter
+ *
+ * This suite pins `formatIsoDateTime` — the pure helper that
+ * renders a JavaScript epoch-ms timestamp as a deterministic
+ * `YYYY-MM-DD HH:MM:SS` string in UTC. The function is the
+ * canonical formatter for every audit-log / timestamp display
+ * surface in the app (operator dashboard, audit panel, comment
+ * footers, reseg-card subtitles) so the format stays
+ * locale-independent and copy-paste-friendly.
+ *
+ * The cases pin the canonical happy path, the epoch-zero edge,
+ * and the null / undefined / NaN contract — every malformed
+ * input returns the U+2014 em dash so the UI renders a visible
+ * placeholder rather than "Invalid Date" or "NaN".
  *
  * @version v0.3.0
  */

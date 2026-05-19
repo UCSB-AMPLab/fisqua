@@ -1,14 +1,32 @@
 /**
- * Tests — descriptions crud
+ * Tests — descriptions CRUD
  *
- * @version v0.3.0
+ * This suite pins the substrate-level CRUD contract on the
+ * `descriptions` table — the four-operation regression net that backs
+ * every admin and cataloguing-side editor. It exercises the minimal
+ * insert shape (reference code, level, repository foreign key, tenant
+ * id), the read shape via `select().where(eq(id))`, the partial
+ * update contract (`title` and `descriptionLevel` move, sibling
+ * columns are left untouched), and the delete + cascade behaviour
+ * against `description_entities` / `description_places` junction
+ * rows.
+ *
+ * The level-hierarchy helpers (`LEVEL_HIERARCHY`,
+ * `getAllowedChildLevels`, `isValidChildLevel`) are exercised
+ * inline because the CRUD path consults them on every parent
+ * assignment to refuse impossible parent/child level pairings (e.g.
+ * an `item` cannot host a `fonds` child). The helpers belong to
+ * `app/lib/description-levels` and are tested at the unit layer too;
+ * here they are pinned in the context of an actual D1 round-trip.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
 import {
@@ -33,6 +51,7 @@ describe("description CRUD", () => {
     const id = crypto.randomUUID();
 
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       repositoryId: repo.id,
       title: "Notaria Primera de Bogota",

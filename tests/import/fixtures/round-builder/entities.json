@@ -1,0 +1,28 @@
+[
+  {
+    "id": 10,
+    "ca_entity_id": 99,
+    "dbe_id": "12345",
+    "display_name": "Persona Uno",
+    "sort_name": "Uno, Persona",
+    "entity_type": "person",
+    "date_start": null,
+    "date_end": null,
+    "history": null,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 11,
+    "ca_entity_id": null,
+    "dbe_id": null,
+    "display_name": "Persona Dos",
+    "sort_name": "Dos, Persona",
+    "entity_type": "person",
+    "date_start": null,
+    "date_end": null,
+    "history": null,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z"
+  }
+]

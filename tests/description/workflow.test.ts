@@ -1,5 +1,19 @@
 /**
- * Tests — workflow
+ * Tests — description workflow state machine (DESC-03)
+ *
+ * This suite pins the pure state-machine helpers
+ * `getValidDescriptionTransitions` and `canDescriptionTransition`
+ * from `app/lib/description-workflow`. The state machine carries
+ * five statuses (`unassigned`, `assigned`, `in_progress`,
+ * `described`, `under_review`, `sent_back`, `approved`) and the
+ * permitted transitions are role-gated: cataloguers drive the
+ * forward path through `in_progress` → `described`, reviewers drive
+ * the cycle through `under_review` → `approved` / `sent_back`.
+ *
+ * Pure-function tests — no D1, no async, no fixtures. The truth
+ * table is exercised exhaustively per role so a future role
+ * addition (e.g. `lead`) needs an explicit allow-list rather than
+ * silently inheriting a broader set.
  *
  * @version v0.3.0
  */

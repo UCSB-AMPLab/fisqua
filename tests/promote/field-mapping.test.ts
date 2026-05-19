@@ -1,12 +1,33 @@
 /**
- * Tests — field mapping
+ * Tests — entry-to-description field mapping
  *
- * @version v0.3.0
+ * This suite pins `mapEntryToDescription` — the pure helper that
+ * shapes a segmentation `entries` row into a `descriptions` row
+ * during promotion. Promotion is the operation that turns a
+ * cataloguer's segmentation + description work on a volume into
+ * a permanent description record on the public-facing archival
+ * tree.
+ *
+ * The mapping is asymmetric: entries carry per-page positional
+ * fields (`startPage`, `endPage`, `startY`, `endY`) that
+ * descriptions do not, and descriptions carry hierarchy fields
+ * (`parentId`, `depth`, `position`) the entry doesn't know about.
+ * The helper handles the gap — positional fields collapse into
+ * the description's `extent` and `manifest_url`, and the hierarchy
+ * fields default to a sensible root-level placement that the
+ * promotion route then re-parents under the volume's owning fonds.
+ *
+ * The `RESOURCE_TYPE_MAP` is exercised here to pin the enum
+ * conversion between the cataloguer-side `resource_type` values
+ * and the archival-standard equivalents.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import { mapEntryToDescription } from "../../app/lib/promote/field-mapping";
 import { RESOURCE_TYPE_MAP } from "../../app/lib/promote/types";
 import type { PromotionInput } from "../../app/lib/promote/types";
+import { DEFAULT_TEST_TENANT_ID } from "../helpers/db";
 
 /** Minimal valid entry with all required fields populated */
 function makeEntry(overrides: Record<string, unknown> = {}) {
@@ -58,6 +79,7 @@ function makePromotionInput(
     parentDepth: 2,
     parentPathCache: "Fonds > Volume",
     userId: "user-001",
+    tenantId: DEFAULT_TEST_TENANT_ID,
     ...contextOverrides,
   };
 }
@@ -79,7 +101,7 @@ describe("mapEntryToDescription", () => {
       descriptionLevel: "file",
     });
 
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
 
     expect(result.description.title).toBe("Carta de Juan");
     expect(result.description.translatedTitle).toBe("Letter from Juan");
@@ -97,49 +119,49 @@ describe("mapEntryToDescription", () => {
 
   it("translates resourceType 'texto' to 'text'", () => {
     const input = makePromotionInput({ resourceType: "texto" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.resourceType).toBe("text");
   });
 
   it("translates resourceType 'imagen' to 'still_image'", () => {
     const input = makePromotionInput({ resourceType: "imagen" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.resourceType).toBe("still_image");
   });
 
   it("translates resourceType 'cartografico' to 'cartographic'", () => {
     const input = makePromotionInput({ resourceType: "cartografico" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.resourceType).toBe("cartographic");
   });
 
   it("translates resourceType 'mixto' to 'mixed'", () => {
     const input = makePromotionInput({ resourceType: "mixto" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.resourceType).toBe("mixed");
   });
 
   it("handles null resourceType by passing through as undefined", () => {
     const input = makePromotionInput({ resourceType: null });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.resourceType).toBeUndefined();
   });
 
   it("sets descriptionLevel to 'item' regardless of entry value", () => {
     const input = makePromotionInput({ descriptionLevel: "file" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.descriptionLevel).toBe("item");
   });
 
   it("sets isPublished to false", () => {
     const input = makePromotionInput();
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.isPublished).toBe(false);
   });
 
   it("sets hasDigital to true", () => {
     const input = makePromotionInput();
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.hasDigital).toBe(true);
   });
 
@@ -150,7 +172,7 @@ describe("mapEntryToDescription", () => {
       endPage: 7,
       endY: 0.8,
     });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.manifestSpec).toEqual({
       referenceCode: "AHRB-001-d001",
       title: "Test Document",
@@ -163,20 +185,20 @@ describe("mapEntryToDescription", () => {
 
   it("uses 'Untitled' for null entry title", () => {
     const input = makePromotionInput({ title: null });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.title).toBe("Untitled");
     expect(result.manifestSpec.title).toBe("Untitled");
   });
 
   it("maps descriptionNotes to notes field", () => {
     const input = makePromotionInput({ descriptionNotes: "Field notes" });
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     expect(result.description.notes).toBe("Field notes");
   });
 
   it("leaves all non-mapped ISAD(G) fields as undefined", () => {
     const input = makePromotionInput();
-    const result = mapEntryToDescription(input);
+    const result = mapEntryToDescription(input, "isadg");
     // These ISAD(G) fields should not be populated by the mapping
     expect(result.description.uniformTitle).toBeUndefined();
     expect(result.description.dateCertainty).toBeUndefined();
@@ -189,7 +211,7 @@ describe("mapEntryToDescription", () => {
     expect(result.description.reproductionConditions).toBeUndefined();
     expect(result.description.locationOfOriginals).toBeUndefined();
     expect(result.description.locationOfCopies).toBeUndefined();
-    expect(result.description.relatedMaterials).toBeUndefined();
+    // relatedMaterials dropped in 0036 (0% populated).
     expect(result.description.findingAids).toBeUndefined();
   });
 });

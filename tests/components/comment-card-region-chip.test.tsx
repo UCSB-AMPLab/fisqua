@@ -1,5 +1,20 @@
 /**
- * Tests — comment card region chipx
+ * Tests — comment card region chip
+ *
+ * This suite pins the pure predicate `shouldRenderRegionChip` that
+ * the comment-card component consults to decide whether to show the
+ * small region-pin chip (e.g. "p. 12, region") next to a comment
+ * body. The chip only renders when both a `pageId` is present (the
+ * comment is anchored to a specific page) AND the loader resolved
+ * the page to a human-readable `pageNumber`; missing either side
+ * suppresses the chip entirely rather than rendering a half-broken
+ * label like "p. ?, region".
+ *
+ * No React rendering — the helper is a pure boolean over
+ * `(comment, pageNumber)` and the truth table is what this file
+ * pins. The pattern mirrors `flag-badge.test.tsx` and the wider
+ * `tests/components/*.test.tsx` convention of pure-function tests
+ * under the Workers pool.
  *
  * @version v0.3.0
  */

@@ -1,7 +1,21 @@
 /**
- * Tests — places
+ * Tests — places CRUD
  *
- * @version v0.3.0
+ * This suite pins the substrate contract on the `places` table — the
+ * geographic authority records that descriptions link to via the
+ * `descriptionPlaces` junction. The cases cover insert with the
+ * minimum required shape (`displayName`, `placeCode`, `tenantId`),
+ * the per-tenant uniqueness invariant on `placeCode`, partial
+ * update preservation, and cascade semantics on delete.
+ *
+ * Places live in their own table (not collapsed into `entities`)
+ * because the description-side link rows carry place-specific
+ * display overrides (`placeRole`, `placeAsRecorded`) that do not
+ * apply to person/family/corporate authorities. Separating the
+ * two also keeps the future geocoding fields (`lat`, `lon`,
+ * `geonamesId`) off the entities shape.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +28,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestPlace } from "../helpers/places";
 import { createTestUser } from "../helpers/auth";
 import { createTestRepository } from "../helpers/repositories";
@@ -34,18 +48,16 @@ describe("place CRUD", () => {
     const id = crypto.randomUUID();
 
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       placeCode: "nl-abc123",
       label: "Santa Fe de Bogota",
       displayName: "Santa Fe de Bogota",
       placeType: "city",
       nameVariants: '["Bogota", "Santafe"]',
-      historicalGobernacion: "Santa Fe",
-      historicalPartido: "Bogota",
-      historicalRegion: "C",
-      countryCode: "COL",
-      adminLevel1: "Cundinamarca",
-      adminLevel2: "Bogota D.C.",
+      // historical_*, country_code, admin_level_* dropped in 0036
+      // (0% populated). fclass added (5-value GeoNames feature class).
+      fclass: "P",
       latitude: 4.6097,
       longitude: -74.0817,
       coordinatePrecision: "exact",
@@ -65,12 +77,7 @@ describe("place CRUD", () => {
     expect(place!.displayName).toBe("Santa Fe de Bogota");
     expect(place!.placeType).toBe("city");
     expect(place!.nameVariants).toBe('["Bogota", "Santafe"]');
-    expect(place!.historicalGobernacion).toBe("Santa Fe");
-    expect(place!.historicalPartido).toBe("Bogota");
-    expect(place!.historicalRegion).toBe("C");
-    expect(place!.countryCode).toBe("COL");
-    expect(place!.adminLevel1).toBe("Cundinamarca");
-    expect(place!.adminLevel2).toBe("Bogota D.C.");
+    expect(place!.fclass).toBe("P");
     expect(place!.latitude).toBeCloseTo(4.6097);
     expect(place!.longitude).toBeCloseTo(-74.0817);
     expect(place!.coordinatePrecision).toBe("exact");
@@ -93,18 +100,21 @@ describe("place CRUD", () => {
     }
   });
 
-  it("updates place fields including historical context", async () => {
+  it("updates place fields (fclass / displayName)", async () => {
+    // historical_* columns dropped in drizzle/0036; this test
+    // exercises the surviving column-update path via fclass
+    // (5-value GeoNames feature class).
     const db = drizzle(env.DB);
     const place = await createTestPlace({
-      historicalGobernacion: "Popayan",
+      fclass: "P",
     });
 
     const newUpdatedAt = Date.now() + 1000;
     await db
       .update(schema.places)
       .set({
-        historicalGobernacion: "Santa Fe",
-        historicalPartido: "Tunja",
+        fclass: "H",
+        displayName: "Updated displayName",
         updatedAt: newUpdatedAt,
       })
       .where(eq(schema.places.id, place.id));
@@ -115,8 +125,8 @@ describe("place CRUD", () => {
       .where(eq(schema.places.id, place.id))
       .get();
 
-    expect(updated!.historicalGobernacion).toBe("Santa Fe");
-    expect(updated!.historicalPartido).toBe("Tunja");
+    expect(updated!.fclass).toBe("H");
+    expect(updated!.displayName).toBe("Updated displayName");
     expect(updated!.updatedAt).toBe(newUpdatedAt);
   });
 
@@ -167,6 +177,7 @@ describe("place CRUD", () => {
     // Create a description
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "fonds",
@@ -332,6 +343,7 @@ describe("place merge and split", () => {
     // Create description and link to source
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -391,12 +403,13 @@ describe("place merge and split", () => {
     const original = await createTestPlace({
       label: "Original Place",
       placeCode: "nl-orig01",
-      historicalGobernacion: "Santa Fe",
+      fclass: "P",
     });
 
     // Create description and link
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -423,18 +436,18 @@ describe("place merge and split", () => {
     // Split: create new place (copy fields, clear LOD), move the link
     const newPlaceId = crypto.randomUUID();
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: newPlaceId,
       placeCode: "nl-splt01",
       label: "Split Place",
       displayName: "Split Place",
       placeType: "city",
-      historicalGobernacion: "Santa Fe",
+      fclass: "P",
       nameVariants: "[]",
       // LOD identifiers cleared on split
       tgnId: null,
       hgisId: null,
       whgId: null,
-      wikidataId: null,
       createdAt: now,
       updatedAt: now,
     });
@@ -459,10 +472,9 @@ describe("place merge and split", () => {
       .get();
     expect(splitPlace).toBeTruthy();
     expect(splitPlace!.label).toBe("Split Place");
-    expect(splitPlace!.historicalGobernacion).toBe("Santa Fe");
+    expect(splitPlace!.fclass).toBe("P");
     // LOD should be null
     expect(splitPlace!.tgnId).toBeNull();
-    expect(splitPlace!.wikidataId).toBeNull();
 
     // Verify link points to new place
     const link = await db
@@ -492,6 +504,7 @@ describe("place description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -536,6 +549,7 @@ describe("place description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -581,6 +595,7 @@ describe("place description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -628,6 +643,7 @@ describe("place description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "item",
@@ -673,6 +689,7 @@ describe("place description link CRUD", () => {
 
     const descId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descId,
       repositoryId: repo.id,
       descriptionLevel: "fonds",
@@ -735,13 +752,15 @@ describe("place schema verification", () => {
     await cleanDatabase();
   });
 
-  it("historical column names in schema", async () => {
+  it("fclass column accepts the GeoNames feature class enum", async () => {
+    // Earlier this test verified the historical_* columns. Those
+    // columns were dropped in drizzle/0036 (0% populated in
+    // production audit). Replaced with a column round-trip on the
+    // new `fclass` column (bounded 5-value GeoNames feature class).
     const db = drizzle(env.DB);
     const place = await createTestPlace({
-      historicalGobernacion: "Popayan",
-      historicalPartido: "Buga",
-      historicalRegion: "SW",
-      placeCode: "nl-hist01",
+      fclass: "P",
+      placeCode: "nl-fclas1",
     });
 
     const fetched = await db
@@ -750,19 +769,14 @@ describe("place schema verification", () => {
       .where(eq(schema.places.id, place.id))
       .get();
 
-    // Confirm the field name is historicalGobernacion (not colonialGobernacion)
-    expect(fetched!.historicalGobernacion).toBe("Popayan");
-    expect(fetched!.historicalPartido).toBe("Buga");
-    expect(fetched!.historicalRegion).toBe("SW");
+    expect(fetched!.fclass).toBe("P");
 
-    // Verify via raw SQL that the DB columns are historical_*
+    // Verify via raw SQL that the DB column name is fclass.
     const rawResult = await env.DB.prepare(
-      "SELECT historical_gobernacion, historical_partido, historical_region FROM places WHERE id = ?"
+      "SELECT fclass FROM places WHERE id = ?",
     ).bind(place.id).first();
 
-    expect(rawResult!.historical_gobernacion).toBe("Popayan");
-    expect(rawResult!.historical_partido).toBe("Buga");
-    expect(rawResult!.historical_region).toBe("SW");
+    expect(rawResult!.fclass).toBe("P");
   });
 });
 

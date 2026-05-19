@@ -1,7 +1,7 @@
 /**
  * cloudflare:test ambient declaration
  *
- * Augments the `ProvidedEnv` interface that
+ * This module augments the `ProvidedEnv` interface that
  * `@cloudflare/vitest-pool-workers` exposes from `cloudflare:test` so
  * that `env.DB`, `env.BUCKET`, and the rest of our worker bindings are
  * typed inside test files. Without this, every `env.DB` access in a

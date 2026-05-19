@@ -1,5 +1,20 @@
 /**
- * Tests — access
+ * Tests — `requireVolumeAccess` role-based gate
+ *
+ * This suite pins the access-control gate that every volume-scoped
+ * route consults before allowing read or write. Three role surfaces
+ * get coverage: lead/admin (unrestricted access to any volume in
+ * their project), cataloguer (access only to their own assigned
+ * volumes and only at appropriate workflow stages), and reviewer
+ * (access only to volumes in `segmented` or `reviewed` states).
+ *
+ * The split matters because the workflow state machine and the access
+ * gate together produce the permission matrix — neither alone is
+ * sufficient. A cataloguer trying to edit a volume already in review
+ * has to be blocked even though the state machine would let them
+ * transition it back; conversely, a reviewer can't touch a volume
+ * that's still in cataloguing because there's nothing to review yet.
+ * Each `it` block backstops one cell of that matrix.
  *
  * @version v0.3.0
  */

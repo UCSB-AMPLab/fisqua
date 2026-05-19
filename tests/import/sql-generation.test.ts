@@ -1,5 +1,22 @@
 /**
- * Tests — sql generation
+ * Tests — SQL generation primitives
+ *
+ * This suite pins the three pure SQL-building helpers shared across
+ * every import command: `escapeSql` (the value-to-SQL-literal
+ * formatter handling null, undefined, numbers, strings with quotes,
+ * booleans), `generateInserts` (turns a row array into a batched
+ * `INSERT INTO ... VALUES (...), (...)` statement), and
+ * `writeSqlFiles` (the disk-side helper that splits a large batch
+ * into ~100 KB chunks so each emitted file stays under D1's
+ * per-statement limit).
+ *
+ * `escapeSql` is the security-sensitive primitive — every value
+ * that lands in the emitted SQL flows through it, and a single
+ * unescaped quote is enough to corrupt the entire import. The
+ * cases here pin the double-quote escape (single quotes become
+ * two single quotes, the standard SQL string-literal escape) and
+ * the null/undefined → `NULL` mapping so empty cells in the legacy
+ * dump round-trip cleanly.
  *
  * @version v0.3.0
  */

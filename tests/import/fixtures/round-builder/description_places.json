@@ -1,0 +1,20 @@
+[
+  {
+    "id": 8001,
+    "description_id": 42,
+    "place_id": 20,
+    "role": "subject",
+    "role_note": null,
+    "sequence": 0,
+    "created_at": "2023-06-15T14:30:00Z"
+  },
+  {
+    "id": 8002,
+    "description_id": 43,
+    "place_id": 21,
+    "role": "created",
+    "role_note": null,
+    "sequence": 0,
+    "created_at": "2023-06-15T14:30:00Z"
+  }
+]

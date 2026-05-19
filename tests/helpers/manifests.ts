@@ -1,5 +1,20 @@
 /**
- * Tests — manifests
+ * Test fixture — IIIF manifests
+ *
+ * This module deals with the canned IIIF Presentation v3 manifest
+ * payloads the test suite uses whenever it needs to exercise a
+ * manifest-consuming code path (the viewer's loader, the
+ * import-time `manifest-url-rewrite` step, the publish pipeline's
+ * METS builder). The exported `sampleManifestUrl` and
+ * `sampleManifest` are deliberately small — one canvas, one
+ * annotation — so the test bodies stay readable, but the JSON-LD
+ * shape (`@context`, `type: "Manifest"`, the
+ * canvas/annotation-page/annotation/painting nesting) is the real
+ * Presentation v3 shape a v3 viewer expects.
+ *
+ * Helpers are pure exports — no async setup, no D1 — so test
+ * bodies can import the fixture and mutate a clone for case-specific
+ * variations without affecting other tests.
  *
  * @version v0.3.0
  */

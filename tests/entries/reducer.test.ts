@@ -1,7 +1,23 @@
 /**
- * Tests — reducer
+ * Tests — boundary reducer
  *
- * @version v0.3.0
+ * This suite pins the pure reducer behind the segmentation editor's
+ * boundary state — the in-memory model of where entries start and
+ * end across a volume's pages. The reducer accepts a discriminated
+ * union of actions (`PLACE_BOUNDARY`, `MOVE_BOUNDARY`,
+ * `DELETE_ENTRY`, `UPDATE_ENTRY`, `LOAD_ENTRIES`, ...) and produces
+ * an immutable next state. No D1, no async — every effect is
+ * synchronous and lives in this file.
+ *
+ * The reducer is the forcing function for the segmentation
+ * editor's autosave + undo paths: every UI gesture dispatches an
+ * action, the reducer reduces, the post-reduce state is diffed
+ * against the previous, and the diff is queued for autosave. So
+ * pinning the reducer's truth table is what backstops the entire
+ * editor's correctness — a regression here is a regression
+ * everywhere downstream.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import type { Entry, BoundaryState } from "../../app/lib/boundary-types";
@@ -49,6 +65,7 @@ function makeState(overrides: Partial<BoundaryState> = {}): BoundaryState {
     entries: [],
     isDirty: false,
     saveStatus: "saved",
+    lastError: null,
     version: 0,
     ...overrides,
   };

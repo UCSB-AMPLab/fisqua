@@ -1,7 +1,23 @@
 /**
- * Tests — migrations
+ * Tests — migration files
  *
- * @version v0.3.0
+ * This suite pins the on-disk shape of the Drizzle migration files in
+ * `drizzle/` — the SQL definitions that build every Fisqua D1 from
+ * scratch. The tests read raw migration files rather than introspecting
+ * a live database, so they catch drift in the migration source itself:
+ * a missing entry in `_journal.json`, a renumbered file, or a CREATE
+ * TABLE statement that got accidentally dropped during a refactor.
+ *
+ * Specific pins: the `0010_github_login` entry is present in the
+ * journal (the OAuth login feature depends on the column being there);
+ * the schema-tables migration (`0011_*.sql`) exists and contains
+ * CREATE TABLE for all seven core tables; the FTS5 migration
+ * (`0012_*.sql`) exists and creates the virtual tables for `entities_fts`
+ * and `places_fts` with the `unicode61` tokenizer. The tokenizer pin
+ * is load-bearing — Spanish-language authority work breaks if the
+ * default ASCII tokenizer is used, because diacritics fragment terms.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -12,7 +28,7 @@ const __dirname = join(fileURLToPath(import.meta.url), "..");
 const DRIZZLE_DIR = resolve(__dirname, "../../drizzle");
 const META_DIR = join(DRIZZLE_DIR, "meta");
 
-describe("migration files (SCHEMA-07)", () => {
+describe("migration files", () => {
   it("migration journal contains entry for 0010_github_login", () => {
     const journalPath = join(META_DIR, "_journal.json");
     expect(existsSync(journalPath)).toBe(true);

@@ -1,5 +1,19 @@
 /**
- * Tests — r2 client
+ * Tests — R2 export-storage client
+ *
+ * This suite pins `ExportStorage`, the thin wrapper around the
+ * Cloudflare R2 bucket binding that the publish pipeline calls to
+ * upload generated JSON and XML payloads. The wrapper exists so the
+ * pipeline can stay agnostic about R2's exact `put` shape (content
+ * type, custom metadata, conditional headers) and so the test pool
+ * can swap a mocked bucket in place of the real binding.
+ *
+ * The cases exercise content-type tagging (JSON → application/json,
+ * XML → application/xml), the cache-control header the public CDN
+ * consumes to decide TTL, the delete path used when republishing
+ * supersedes prior objects, and the error-surfacing contract — R2
+ * exceptions surface as structured errors rather than the raw
+ * binding error.
  *
  * @version v0.3.0
  */

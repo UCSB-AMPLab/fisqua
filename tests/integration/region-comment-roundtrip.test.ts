@@ -1,16 +1,34 @@
 /**
- * Tests — region comment roundtrip
+ * Tests — region-comment round-trip (integration)
  *
- * @version v0.3.0
+ * This suite is the end-to-end regression net for region-anchored
+ * comments. It drives a region comment through the real
+ * `api.comments` action and then asserts the comment surfaces on
+ * the three read paths the viewer and dashboard consume:
+ * `getCommentsForVolume` (the viewer's per-volume comment column),
+ * `getCommentsForQcFlag` (used when the comment is also attached
+ * to a QC flag — the same comment can have a region pin AND a
+ * flag reference), and `getOpenResegFlags` (the resegmentation
+ * dashboard's count, which counts comments whose region payload
+ * carries a `proposed_boundary` flag).
+ *
+ * The round-trip is what backstops the four-coordinate region
+ * payload (`xPct`, `yPct`, `wPct`, `hPct`): a regression that
+ * silently drops a coordinate on the write path would let the
+ * comment "save" but render the pin at a wrong location on the
+ * read path. The full round-trip catches that.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action as commentsAction } from "../../app/routes/api.comments";
 import {
   getCommentsForVolume,
@@ -25,6 +43,7 @@ function buildUser(
 ): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: overrides.name ?? "Tester",
     isAdmin: overrides.isAdmin ?? false,
@@ -41,6 +60,7 @@ function buildUser(
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

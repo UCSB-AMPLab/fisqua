@@ -1,5 +1,21 @@
 /**
- * Tests — comments panel url
+ * Tests — comments panel URL codec
+ *
+ * This suite pins the two pure helpers behind the viewer's
+ * deep-linkable comment selection state: `parseCommentsParam`
+ * (turns a `?comments=<value>` query-string segment into a typed
+ * `CommentsPanelSelection`) and `encodeCommentsParam` (the inverse).
+ * The codec carries three selection kinds — `entry:<id>` for an
+ * entry-anchored comment, `page:<id>` for a page-anchored
+ * comment, and `region:<commentId>` for a region pin (the
+ * commentId disambiguates because multiple region pins can sit on
+ * one page).
+ *
+ * The round-trip property (`encode(parse(s)) === s` and
+ * `parse(encode(sel)) === sel`) is what makes the deep links
+ * survive copy-paste sharing among cataloguers — a regression
+ * that breaks the codec breaks every shared comment URL across
+ * the workspace.
  *
  * @version v0.3.0
  */

@@ -1,5 +1,21 @@
 /**
- * Tests — vocabulary status
+ * Tests — vocabulary status transitions
+ *
+ * This suite pins the behavioural contract for vocabulary term
+ * status transitions — the approve / reject / deprecate workflow
+ * a curator drives from the vocabulary admin. A `proposed` term
+ * moves to `approved` on approval (the curator's user id and
+ * timestamp land in `reviewedBy` / `reviewedAt`), to `deprecated`
+ * on rejection (the term survives so historical references
+ * stay valid), and a `deprecated` term hides from the
+ * cataloguer-side autocomplete but stays readable in admin
+ * review surfaces.
+ *
+ * The cases pin the audit footprint on each transition, the
+ * autocomplete-filter contract (autocomplete reads only
+ * status=`approved`), and the soft-delete semantics —
+ * `deprecated` rows survive so a future un-deprecate operation
+ * can restore them without losing entity link history.
  *
  * @version v0.3.0
  */

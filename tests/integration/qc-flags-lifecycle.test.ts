@@ -1,7 +1,22 @@
 /**
- * Tests — qc flags lifecycle
+ * Tests — QC flags lifecycle (integration)
  *
- * @version v0.3.0
+ * This suite is the end-to-end regression net for the QC-flag
+ * lifecycle. It exercises the full raise → comment → resolve loop
+ * through the real `api.qc-flags` action plus the dashboard-side
+ * read path (`getProjectVolumes` — the loader the volumes
+ * dashboard consumes to count open vs resolved flags per
+ * volume).
+ *
+ * The integration shape matters because the dashboard's flag
+ * counters are denormalised in a separate computation; unit-level
+ * tests of the action alone would not catch a regression where
+ * the action writes the row correctly but the dashboard read path
+ * misses it. The cases here drive the full round-trip and assert
+ * both the row-level state and the dashboard-visible counter at
+ * each lifecycle stage.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,9 +24,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { and, eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action } from "../../app/routes/api.qc-flags";
 import { getProjectVolumes } from "../../app/lib/volumes.server";
 
@@ -21,9 +37,11 @@ function buildUser(overrides: {
   id: string;
   email: string;
   isAdmin?: boolean;
+  tenantId?: string;
 }): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: null,
     isAdmin: overrides.isAdmin ?? false,
@@ -40,6 +58,7 @@ function buildUser(overrides: {
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

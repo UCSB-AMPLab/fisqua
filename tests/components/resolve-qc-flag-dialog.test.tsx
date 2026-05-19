@@ -1,5 +1,20 @@
 /**
- * Tests — resolve qc flag dialogx
+ * Tests — resolve QC flag dialog gate
+ *
+ * This suite pins the pure predicate `isValidResolve` that gates the
+ * Confirm button on the resolve-QC-flag dialog. The gate refuses
+ * submit unless: a target `status` is picked, a `resolutionAction`
+ * is picked, and — when the action is `other` — a non-whitespace
+ * `resolverNote` was supplied. The "other" branch is the only one
+ * that requires a free-text note because the four canonical actions
+ * (`fixed`, `wontfix`, `duplicate`, `retake_requested`) are
+ * self-describing; `other` would otherwise close the flag without
+ * any explanation in the audit trail.
+ *
+ * No React rendering — the predicate is a boolean over three
+ * scalar inputs and the truth table is what this file pins. Same
+ * Workers-pool / pure-function pattern as the rest of
+ * `tests/components/*.test.tsx`.
  *
  * @version v0.3.0
  */

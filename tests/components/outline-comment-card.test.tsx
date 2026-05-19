@@ -1,5 +1,17 @@
 /**
- * Tests — outline comment cardx
+ * Tests — outline comment card helpers
+ *
+ * This suite pins the three pure helpers behind the comment card on
+ * the description-outline view: `shouldShowRegionChip` (mirror of
+ * the comment-card-region-chip predicate but for the outline
+ * surface, where layout constraints differ), `computeReplyCountLabel`
+ * (the "3 replies" / "1 reply" / "" pluralisation helper), and
+ * `formatCommentHeader` (the author + timestamp display string).
+ *
+ * No React rendering — the helpers are pure functions over a
+ * `CommentWithAuthor` shape and a small set of scalar inputs; the
+ * truth tables are what this file pins. Same Workers-pool /
+ * pure-function pattern as the rest of `tests/components/*.test.tsx`.
  *
  * @version v0.3.0
  */

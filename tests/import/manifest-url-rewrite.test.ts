@@ -1,5 +1,19 @@
 /**
- * Tests — manifest url rewrite
+ * Tests — manifest URL rewrite
+ *
+ * This suite pins `rewriteManifestUrl` — the import-side helper that
+ * normalises legacy IIIF manifest URLs into the canonical Zasqua
+ * pattern (`https://manifests.zasqua.org/<reference-code>/manifest.json`).
+ * The Neogranadina dump carries manifest URLs pointing at the old
+ * preservation-server hostname; the importer rewrites them so the
+ * description's `manifest_url` column points at the production CDN
+ * after the cutover.
+ *
+ * Cases pin the canonical-pattern shape against a representative
+ * reference code, the null-input contract (no manifest →
+ * null result, no rewrite), and the idempotency property (passing
+ * an already-canonical URL through the helper returns it unchanged
+ * so re-running the importer doesn't corrupt the URL).
  *
  * @version v0.3.0
  */

@@ -1,5 +1,20 @@
 /**
- * Tests — publish route
+ * Tests — publish route schema + auth gate
+ *
+ * This suite pins the request-shape validation and authorisation
+ * gate behind the `api.publish` route. The route's
+ * `PublishRequestSchema` is built dynamically at runtime against the
+ * DB-derived fonds list, so this file rebuilds an equivalent schema
+ * with a sample list and exercises the same constraints: a publish
+ * request must name at least one selected fonds, every fonds must
+ * exist in the tenant's fonds list, and the `types` array must be
+ * a subset of the four export kinds (`descriptions`, `repositories`,
+ * `entities`, `places`).
+ *
+ * The auth gate is exercised through `requireSuperAdmin` — only a
+ * superadmin can trigger a publish run, because the action writes
+ * to R2 (the public CDN bucket) and a misfire would push the wrong
+ * tenant's data live.
  *
  * @version v0.3.0
  */

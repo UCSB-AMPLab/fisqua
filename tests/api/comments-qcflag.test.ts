@@ -1,7 +1,23 @@
 /**
- * Tests — comments qcflag
+ * Tests — comments attached to QC flags
  *
- * @version v0.3.0
+ * This suite pins the comment ↔ QC-flag attachment contract on the
+ * shared `api.comments` route. Comments can be attached to a parent
+ * description, to a specific region pin on a description, or — what
+ * this file covers — to a quality-control flag raised against a
+ * description. The route discriminates on `target_kind` (`flag`) and
+ * `target_id` (`qc_flags.id`), validates the FK against the same
+ * tenant, and emits a row whose `getCommentsForQcFlag` loader can
+ * find via the `(target_kind='flag', target_id=?)` index.
+ *
+ * The cases run the action against a full `RouterContextProvider`
+ * carrying `userContext`, `tenantContext`, and `cloudflare.env` so
+ * the route exercises its real middleware-attachment surface; no
+ * stubbed request objects. The loader is exercised through
+ * `getCommentsForQcFlag` to keep this file scoped to the QC-flag
+ * thread rather than the global comments fetch path.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -9,9 +25,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { and, eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { userContext, type User } from "../../app/context";
+import { tenantContext, userContext, type User } from "../../app/context";
+import { makeTenantContext } from "../helpers/context";
 import { action } from "../../app/routes/api.comments";
 import { getCommentsForQcFlag } from "../../app/lib/comments.server";
 
@@ -22,6 +39,7 @@ function buildUser(
 ): User {
   return {
     id: overrides.id,
+    tenantId: overrides.tenantId ?? DEFAULT_TEST_TENANT_ID,
     email: overrides.email,
     name: overrides.name ?? "Tester",
     isAdmin: overrides.isAdmin ?? false,
@@ -38,6 +56,7 @@ function buildUser(
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
+  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
   (ctx as any).cloudflare = { env };
   return ctx;
 }

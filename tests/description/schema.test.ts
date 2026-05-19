@@ -1,15 +1,33 @@
 /**
- * Tests — schema
+ * Tests — description schema (DESC-01)
  *
- * @version v0.3.0
+ * This suite is the migration-shape regression net for the entries
+ * table's description-side columns. It runs `applyMigrations`
+ * end-to-end and then inspects D1's `PRAGMA table_info(entries)` to
+ * assert that the eleven description metadata columns and the
+ * `description_status` enum column are present after migration.
+ *
+ * Pinning the post-migration shape this way catches two failure
+ * modes a Drizzle-only test would miss: a migration that defines
+ * the column in the schema definition but forgets to emit the ALTER
+ * TABLE, and a migration that runs but lands the column on the
+ * wrong table. Both have happened in earlier iterations of the
+ * description pipeline; this file is the structural backstop.
+ *
+ * @version v0.4.0
  */
-import { describe, test, expect, beforeAll } from "vitest";
+import { describe, test, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { applyMigrations } from "../helpers/db";
+import { applyMigrations, seedTenants } from "../helpers/db";
+import { NEOGRANADINA_TENANT_ID } from "../../app/lib/tenant";
 
 describe("Description schema (DESC-01)", () => {
   beforeAll(async () => {
     await applyMigrations();
+  });
+
+  beforeEach(async () => {
+    await seedTenants();
   });
 
   test("entries table has description status column", async () => {
@@ -93,6 +111,10 @@ describe("schema (page targets + qc_flags)", () => {
     await applyMigrations();
   });
 
+  beforeEach(async () => {
+    await seedTenants();
+  });
+
   // --- comments table shape ---
 
   test("comments table has volume_id, entry_id, page_id columns", async () => {
@@ -142,8 +164,8 @@ describe("schema (page targets + qc_flags)", () => {
     // Fixture: user, project, volume, volume_page, entry
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-both", "u-both@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-both", NEOGRANADINA_TENANT_ID, "u-both@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-both", "p", "u-both", now, now).run();
@@ -167,8 +189,8 @@ describe("schema (page targets + qc_flags)", () => {
   test("comments CHECK rejects rows with neither entry_id nor page_id set", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-neither", "u-neither@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-neither", NEOGRANADINA_TENANT_ID, "u-neither@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-neither", "p", "u-neither", now, now).run();
@@ -228,8 +250,8 @@ describe("schema (page targets + qc_flags)", () => {
   test("qc_flags CHECK rejects problem_type='other' with empty description", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-qc1", "u-qc1@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-qc1", NEOGRANADINA_TENANT_ID, "u-qc1@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-qc1", "p", "u-qc1", now, now).run();
@@ -250,8 +272,8 @@ describe("schema (page targets + qc_flags)", () => {
   test("qc_flags CHECK rejects status='resolved' with NULL resolution_action", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-qc2", "u-qc2@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-qc2", NEOGRANADINA_TENANT_ID, "u-qc2@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-qc2", "p", "u-qc2", now, now).run();
@@ -272,8 +294,8 @@ describe("schema (page targets + qc_flags)", () => {
   test("qc_flags CHECK rejects status='open' with resolution_action set", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-qc3", "u-qc3@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-qc3", NEOGRANADINA_TENANT_ID, "u-qc3@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-qc3", "p", "u-qc3", now, now).run();
@@ -294,8 +316,8 @@ describe("schema (page targets + qc_flags)", () => {
   test("qc_flags accepts a valid open flag", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-qc4", "u-qc4@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-qc4", NEOGRANADINA_TENANT_ID, "u-qc4@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-qc4", "p", "u-qc4", now, now).run();
@@ -327,13 +349,17 @@ describe("schema (qc_flag target + image regions)", () => {
     await applyMigrations();
   });
 
+  beforeEach(async () => {
+    await seedTenants();
+  });
+
   // Shared fixture helper -- FK-safe setup inserting user, project,
   // volume, volume_page, entry, and an open qc_flag keyed by `tag`.
   async function seedFixture(tag: string) {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind(`u-${tag}`, `u-${tag}@example.com`, now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(`u-${tag}`, NEOGRANADINA_TENANT_ID, `u-${tag}@example.com`, now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind(`p-${tag}`, "p", `u-${tag}`, now, now).run();
@@ -575,6 +601,10 @@ describe("schema (entries.subtype + test_images EntryType)", () => {
     await applyMigrations();
   });
 
+  beforeEach(async () => {
+    await seedTenants();
+  });
+
   test("entries.subtype column exists as nullable TEXT", async () => {
     const result = await env.DB.prepare("PRAGMA table_info(entries)").all();
     const row = result.results.find((r: any) => r.name === "subtype") as any;
@@ -586,8 +616,8 @@ describe("schema (entries.subtype + test_images EntryType)", () => {
   test("entries.type CHECK accepts 'test_images'", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-ti", "u-ti@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-ti", NEOGRANADINA_TENANT_ID, "u-ti@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-ti", "p", "u-ti", now, now).run();
@@ -611,8 +641,8 @@ describe("schema (entries.subtype + test_images EntryType)", () => {
   test("entries.type CHECK rejects a bogus value", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-bogus", "u-bogus@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-bogus", NEOGRANADINA_TENANT_ID, "u-bogus@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-bogus", "p", "u-bogus", now, now).run();
@@ -630,8 +660,8 @@ describe("schema (entries.subtype + test_images EntryType)", () => {
   test("entries.subtype round-trips a Colombian Spanish label", async () => {
     const now = Date.now();
     await env.DB.prepare(
-      "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind("u-st", "u-st@example.com", now, now).run();
+      "INSERT INTO users (id, tenant_id, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind("u-st", NEOGRANADINA_TENANT_ID, "u-st@example.com", now, now).run();
     await env.DB.prepare(
       "INSERT INTO projects (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
     ).bind("p-st", "p", "u-st", now, now).run();

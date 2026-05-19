@@ -1,5 +1,19 @@
 /**
- * Tests — place import
+ * Tests — places import command
+ *
+ * This suite pins `importPlaces` — the import-side command that
+ * reads the Neogranadina places (geographic authority) JSON dump,
+ * normalises the row shape (legacy id → fresh UUID, `placeCode`
+ * generation, parent-place resolution for hierarchical entries like
+ * `Rionegro → Antioquia → Colombia`), and emits per-row INSERT
+ * SQL plus an `IdMap` for downstream junction-table generation.
+ *
+ * The cases exercise the row-count + IdMap shape, the parent-place
+ * resolution (a place whose `parent_id` is another row in the same
+ * dump links through the IdMap, mirroring the descriptions
+ * import's behaviour), and the deterministic UUID generation
+ * (same input → same UUIDs across runs) so the SQL diff stays small
+ * on re-runs.
  *
  * @version v0.3.0
  */

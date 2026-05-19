@@ -1,5 +1,21 @@
 /**
- * Tests — manifest builder
+ * Tests — promotion manifest builder
+ *
+ * This suite pins `buildDocumentManifest` — the helper that
+ * generates a IIIF Presentation v3 manifest for a single promoted
+ * document. The manifest carries one Canvas per volume page in the
+ * document's page range, with IIIF image-service URLs pointing at
+ * the static tile pyramid on `iiif.zasqua.org`. Each canvas
+ * carries its label (e.g. "f. 12r"), real pixel dimensions
+ * (`width`, `height`), and an Annotation Page with one painting
+ * annotation pointing at the image service.
+ *
+ * The cases pin the canvas-per-page mapping (a document spanning
+ * three pages produces three canvases in order), the
+ * label-preservation invariant (the cataloguer's per-page labels
+ * survive into the manifest verbatim), and the start-page /
+ * end-page slicing — a partial-volume document only includes its
+ * own page range, not every page in the volume.
  *
  * @version v0.3.0
  */

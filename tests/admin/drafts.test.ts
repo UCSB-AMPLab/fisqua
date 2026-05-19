@@ -1,5 +1,21 @@
 /**
- * Tests — drafts
+ * Tests — drafts and changelog
+ *
+ * This suite pins the autosave-draft substrate plus the post-save
+ * changelog computation. The draft side covers `saveDraft` (upsert on
+ * `recordId + recordType`), `getDraft` (per-user fetch by record
+ * pair), `getConflictDraft` (any-user fetch surfacing concurrent
+ * edits), and `deleteDraft` (cleanup on successful save). The
+ * changelog side exercises `computeDiff` (structural JSON diff
+ * collapsing unchanged keys) and `createChangelogEntry` (writes the
+ * diff to `changelog` so the description detail page can render an
+ * audit trail of substantive field-level edits).
+ *
+ * The two surfaces share this file because they run in sequence on
+ * the save path: the editor autosaves into `drafts`, and on commit
+ * the route diffs current vs draft, writes a `changelog` row, and
+ * clears the draft. The end-to-end ordering is implicit in the test
+ * sequence here even though each describe block is independent.
  *
  * @version v0.3.0
  */

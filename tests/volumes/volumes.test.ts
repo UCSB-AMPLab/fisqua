@@ -1,5 +1,22 @@
 /**
- * Tests — volumes
+ * Tests — volume CRUD operations
+ *
+ * This suite pins the three repository functions that drive the volume
+ * lifecycle: `createVolume` (mints a volume row plus all its page rows
+ * in one transaction), `getProjectVolumes` (returns volumes for a
+ * project with the first-page thumbnail attached), and `deleteVolume`
+ * (only allowed when status is `unstarted`, since deleting in-progress
+ * work would drop QC history).
+ *
+ * The chunked-insert test on `createVolume` is load-bearing — D1
+ * caps a single SQL statement at a fixed number of bound parameters,
+ * so a 50-page volume has to split its page inserts into chunks. The
+ * test pins the chunking behaviour by asserting all 50 page rows
+ * land with correct positions. The `deleteVolume` status guard pins
+ * the structural protection against accidental destruction of
+ * cataloguing work — only volumes that haven't yet been touched can
+ * be removed; once cataloguing has begun, deletion requires a
+ * separate workflow path.
  *
  * @version v0.3.0
  */

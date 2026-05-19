@@ -1,5 +1,19 @@
 /**
- * Tests — outline items
+ * Tests — outline items builder
+ *
+ * This suite pins the three pure helpers that back the description
+ * outline column: `buildOutlineItems` (flattens the entry tree
+ * plus its attached comments into a linear render-ready list with
+ * stable indentation), `findOutlineItemIndex` (the helper used by
+ * keyboard navigation to find the focused item's index for
+ * arrow-key cycling), and `outlineItemKey` (the React `key` prop
+ * formula — a deterministic composite that survives reorder).
+ *
+ * The render-ready list is built once per loader payload and
+ * reused across re-renders, so the `key` formula matters: an
+ * unstable key would force React to drop + remount every row on
+ * each keystroke. The cases pin the deterministic shape and the
+ * navigation index contract.
  *
  * @version v0.3.0
  */

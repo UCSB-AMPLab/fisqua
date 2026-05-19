@@ -1,5 +1,19 @@
 /**
- * Tests — inline comment composerx
+ * Tests — inline comment composer
+ *
+ * This suite pins the two pure helpers behind the inline comment
+ * composer: `shouldEnableSubmit` (the submit-button gate — body
+ * non-empty after trim AND no request in flight) and
+ * `buildCommentSubmitPayload` (the form-data shape the composer
+ * posts to `api.comments`). The submit-gate cases pin the
+ * whitespace-only rejection so users can't accidentally post empty
+ * comments, and the in-flight guard prevents double-submit on
+ * fast keyboard mashing.
+ *
+ * The payload-builder cases pin the discriminator field
+ * (`target_kind`) and the region-coord branch shape, so a future
+ * refactor that splits the composer per target shape can't drift
+ * the wire format silently.
  *
  * @version v0.3.0
  */

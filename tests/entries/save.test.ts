@@ -1,5 +1,21 @@
 /**
- * Tests — save
+ * Tests — entries save round-trip
+ *
+ * This suite pins the `loadEntries` + `saveEntries` pair from
+ * `app/lib/entries.server` — the storage primitives behind the
+ * segmentation editor's autosave path. `saveEntries` is the bulk
+ * upsert: it accepts the editor's full entry list, diffs against
+ * the existing volume rows, and emits INSERT + UPDATE + DELETE
+ * statements in one D1 batch so the volume's entry set transitions
+ * atomically from one state to the next.
+ *
+ * Cases pin the round-trip (save, then load, then assert the read
+ * shape matches the write shape), the position-preservation
+ * invariant (saving an out-of-order array still lands in
+ * `position` ASC order on read), and the tenant isolation
+ * contract — `saveEntries` refuses a payload whose volume belongs
+ * to another tenant rather than partially writing across the
+ * boundary.
  *
  * @version v0.3.0
  */

@@ -1,7 +1,21 @@
 /**
- * Tests — entities places
+ * Tests — entities + places export formatters
  *
- * @version v0.3.0
+ * This suite pins the parallel pair of helpers that shape the
+ * authority-record export payloads: `formatEntity` / `formatPlace`
+ * (the field-level transformers) and `filterLinkedEntities` /
+ * `filterLinkedPlaces` (the linkage-aware filters that keep only
+ * authorities actually referenced by at least one description being
+ * exported — orphan authorities are dropped from the public
+ * payload).
+ *
+ * The linkage filter is what makes a partial fonds export feasible:
+ * exporting one repository shouldn't drag every entity in the
+ * tenant along with it. The filter computes the transitive closure
+ * from the description set's link rows and intersects against the
+ * authority set; only authorities inside the closure survive.
+ *
+ * @version v0.4.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -33,7 +47,7 @@ function makeEntityRow(overrides: Record<string, unknown> = {}) {
     dateStart: "1750-01-01",
     dateEnd: "1820-12-31",
     history: "Notable notary of Rionegro.",
-    legalStatus: null as string | null,
+    // legal_status dropped in 0036 (0% populated).
     functions: null as string | null,
     sources: "Parish records",
     mergedInto: null as string | null,
@@ -57,18 +71,14 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
     latitude: 6.15,
     longitude: -75.37,
     coordinatePrecision: "exact",
-    historicalGobernacion: "Antioquia",
-    historicalPartido: "Rionegro",
-    historicalRegion: "Nuevo Reino de Granada",
-    countryCode: "COL",
-    adminLevel1: "Antioquia",
-    adminLevel2: "Rionegro",
+    // historical_*, country_code, admin_level_*, wikidata_id all
+    // dropped on places in 0036. fclass added (5-value GeoNames).
+    fclass: "P" as "P" | "H" | "A" | "T" | "S" | null,
     needsGeocoding: false,
     mergedInto: null as string | null,
     tgnId: "7005074",
     hgisId: "hgis-001",
     whgId: "whg-001",
-    wikidataId: "Q864637",
     createdAt: 1700000000,
     updatedAt: 1700000000,
     ...overrides,
@@ -210,21 +220,28 @@ describe("formatPlace", () => {
     expect(result.label).toBe("Rionegro");
   });
 
-  it("maps placeType to both place_type and fclass (legacy alias)", () => {
+  it("maps placeType to place_type and fclass to fclass", () => {
+    // fclass is sourced from the dedicated column added in
+    // drizzle/0036 (5-value GeoNames feature class) rather than
+    // aliased from placeType.
     const result = formatPlace(makePlaceRow());
     expect(result.place_type).toBe("city");
-    expect(result.fclass).toBe("city");
+    expect(result.fclass).toBe("P");
   });
 
-  it("maps historicalGobernacion to historical_gobernacion", () => {
+  it("emits null for the dropped historical_* fields (0036)", () => {
     const result = formatPlace(makePlaceRow());
-    expect(result.historical_gobernacion).toBe("Antioquia");
-  });
-
-  it("maps historicalPartido and historicalRegion", () => {
-    const result = formatPlace(makePlaceRow());
-    expect(result.historical_partido).toBe("Rionegro");
-    expect(result.historical_region).toBe("Nuevo Reino de Granada");
+    // historical_gobernacion, historical_partido, historical_region,
+    // country_code, admin_level_*, wikidata_id all dropped from the
+    // places table; the formatter preserves the public-export shape
+    // by emitting null for snapshot continuity.
+    expect(result.historical_gobernacion).toBeNull();
+    expect(result.historical_partido).toBeNull();
+    expect(result.historical_region).toBeNull();
+    expect(result.country_code).toBeNull();
+    expect(result.admin_level_1).toBeNull();
+    expect(result.admin_level_2).toBeNull();
+    expect(result.wikidata_id).toBeNull();
   });
 
   it("parses nameVariants JSON string into array", () => {
@@ -237,19 +254,15 @@ describe("formatPlace", () => {
     expect(result.name_variants).toEqual([]);
   });
 
-  it("maps all coordinate and LOD fields", () => {
+  it("maps coordinate and LOD fields that survived 0036", () => {
     const result = formatPlace(makePlaceRow());
     expect(result.latitude).toBe(6.15);
     expect(result.longitude).toBe(-75.37);
     expect(result.coordinate_precision).toBe("exact");
     expect(result.place_code).toBe("nl-000001");
-    expect(result.country_code).toBe("COL");
-    expect(result.admin_level_1).toBe("Antioquia");
-    expect(result.admin_level_2).toBe("Rionegro");
     expect(result.tgn_id).toBe("7005074");
     expect(result.hgis_id).toBe("hgis-001");
     expect(result.whg_id).toBe("whg-001");
-    expect(result.wikidata_id).toBe("Q864637");
   });
 });
 

@@ -1,5 +1,20 @@
 /**
- * Tests — outline entryx
+ * Tests — outline entry helpers
+ *
+ * This suite pins the four pure helpers behind a row on the
+ * description-outline view: `shouldShowResegPill` (decides whether
+ * the orange "resegmentation requested" pill renders on a volume
+ * row), `computeCardClassName` (the Tailwind class composition that
+ * carries the row's status visually), `shouldHideTitle` (the
+ * collapse-noisy-title rule for rows whose title equals their
+ * reference code), and `buildDeleteWarningLines` (the multi-line
+ * confirmation copy shown before a destructive cascade).
+ *
+ * Pure-function inspection — no React rendering, no jsdom; the
+ * helpers cover the entire branching surface of an outline row, so
+ * the truth tables here back the rendered behaviour without needing
+ * a DOM. Same Workers-pool pattern as the rest of
+ * `tests/components/*.test.tsx`.
  *
  * @version v0.3.0
  */

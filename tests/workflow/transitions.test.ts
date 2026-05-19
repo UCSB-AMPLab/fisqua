@@ -1,5 +1,24 @@
 /**
- * Tests — transitions
+ * Tests — workflow state machine
+ *
+ * This suite pins the full transition graph of the volume workflow
+ * state machine, broken down by role. Cataloguers have exactly three
+ * legal transitions (`unstarted -> in_progress`, `in_progress ->
+ * segmented`, `sent_back -> in_progress`) — every other edge raises
+ * a structural error. Reviewers have a different three (`segmented
+ * -> reviewed`, `reviewed -> approved`, `reviewed -> sent_back`).
+ * Leads/admins can transition between any two states, since they
+ * own the entire workflow and need an override path for stuck
+ * volumes.
+ *
+ * The "has exactly N valid transitions total" pins are load-bearing —
+ * they prevent silent expansion of the role's allowed edges if
+ * someone adds a new status or a new transition without updating
+ * the role's transition table. `getValidTransitions` returns the
+ * forward edges available from a given state for a given role, and
+ * `canTransition` returns a boolean; both functions get coverage
+ * because they're consumed from different sites (the UI surfaces
+ * the available actions; the server enforces the boolean gate).
  *
  * @version v0.3.0
  */

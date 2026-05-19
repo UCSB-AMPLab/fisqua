@@ -1,5 +1,21 @@
 /**
- * Tests — vocabulary migration
+ * Tests — vocabulary migration command
+ *
+ * This suite pins `migrateEntityFunctions` — the
+ * one-off migration command that walks the entities JSON dump and
+ * rewrites each entity's free-text `primaryFunction` field into a
+ * controlled-vocabulary `vocabularyTermId` foreign key. The
+ * mapping is driven by a `vocabulary-term-lookup.json` file the
+ * migration consumes (built upstream by a Python clustering pass
+ * on the Neogranadina entities dataset).
+ *
+ * The lookup supports three outcomes per source term:
+ * direct mapping (`doctor` → term UUID), alias mapping
+ * (`dr.` → same UUID — abbreviations and variant spellings
+ * collapse to one canonical term), and explicit pass-through
+ * (`gobernador y capitán general` → null, meaning "compound
+ * function, leave as free text"). The cases here pin all three
+ * outcomes plus the missing-key failure surfacing.
  *
  * @version v0.3.0
  */

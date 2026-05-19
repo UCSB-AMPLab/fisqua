@@ -1,7 +1,22 @@
 /**
- * Tests — junctions
+ * Tests — junction-table schemas
  *
- * @version v0.3.0
+ * This suite pins the structural shape of the three junction tables that
+ * thread the description spine to authority records: `descriptionEntities`
+ * (description ↔ entity, with role), `descriptionPlaces` (description ↔
+ * place, with role), and `entityFunctions` (entity ↔ function term, with
+ * certainty). Each junction gets a basic insert test plus a constraint
+ * test on the composite key that prevents duplicate role assignments.
+ *
+ * The composite-uniqueness pins matter because cataloguers can legitimately
+ * link the same entity to the same description twice under different roles
+ * (author + subject, for instance), but linking under the same role twice
+ * is data corruption — the unique index is the structural guard. The
+ * `entityFunctions.certainty` default of `'probable'` is also pinned here
+ * because authority work rarely produces certain attributions, and the
+ * default has to match the field's epistemic stance.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,9 +29,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 
-describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
+describe("junction tables", () => {
   let db: ReturnType<typeof drizzle>;
   let repositoryId: string;
   let descriptionId: string;
@@ -35,6 +50,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
     // Create prerequisite records
     repositoryId = crypto.randomUUID();
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: repositoryId,
       code: "test-repo",
       name: "Test Repository",
@@ -44,6 +60,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
 
     descriptionId = crypto.randomUUID();
     await db.insert(schema.descriptions).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: descriptionId,
       repositoryId,
       descriptionLevel: "item",
@@ -56,6 +73,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
 
     entityId = crypto.randomUUID();
     await db.insert(schema.entities).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: entityId,
       entityCode: "ne-jnct01",
       displayName: "Test Entity",
@@ -67,6 +85,7 @@ describe("junction tables (SCHEMA-05, SCHEMA-06)", () => {
 
     placeId = crypto.randomUUID();
     await db.insert(schema.places).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: placeId,
       placeCode: "nl-jnct01",
       label: "Test Place",

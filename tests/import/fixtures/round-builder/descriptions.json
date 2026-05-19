@@ -1,0 +1,65 @@
+[
+  {
+    "id": 42,
+    "ca_object_id": 100,
+    "ca_collection_id": 7,
+    "parent_id": null,
+    "title": "Root",
+    "reference_code": "co-test-01",
+    "local_identifier": "co-test-01",
+    "description_level": "fonds",
+    "language": "es",
+    "is_published": 1,
+    "has_digital": 0,
+    "date_start": "1800-01-01",
+    "date_end": "1850-12-31",
+    "iiif_manifest_url": "https://example.org/m/old.json",
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z",
+    "repository_id": 1
+  },
+  {
+    "id": 43,
+    "ca_object_id": null,
+    "ca_collection_id": null,
+    "parent_id": 42,
+    "title": "Child",
+    "reference_code": "co-test-01-01",
+    "local_identifier": "co-test-01-01",
+    "description_level": "series",
+    "language": "es",
+    "is_published": 1,
+    "has_digital": 0,
+    "date_start": null,
+    "date_end": null,
+    "iiif_manifest_url": null,
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z",
+    "repository_id": 1
+  },
+  {
+    "id": 44,
+    "ca_object_id": null,
+    "ca_collection_id": null,
+    "parent_id": 42,
+    "title": "Malformed legacy_ids row",
+    "reference_code": "co-test-01-02",
+    "local_identifier": "co-test-01-02",
+    "description_level": "item",
+    "language": "es",
+    "is_published": 1,
+    "has_digital": 0,
+    "date_start": null,
+    "date_end": null,
+    "iiif_manifest_url": null,
+    "legacy_ids_seed": [
+      {
+        "provider": "",
+        "id": 99
+      }
+    ],
+    "created_at": "2023-06-15T14:30:00Z",
+    "updated_at": "2023-06-15T14:30:00Z",
+    "repository_id": 1
+  }
+]

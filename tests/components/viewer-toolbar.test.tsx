@@ -1,5 +1,20 @@
 /**
- * Tests — viewer toolbarx
+ * Tests — viewer toolbar helpers
+ *
+ * This suite pins the three pure helpers behind the viewer toolbar:
+ * `computeNextPinMode` (the cycle the "Regiones" button drives —
+ * off → point, point → off, box → off, since the box sub-tool only
+ * activates from the dropdown), `isMoveMode` (the toolbar's
+ * inline-style discriminator for the move sub-tool), and
+ * `shouldEnableCreateButtons` (the access-gated affordance for the
+ * pin-creation buttons — only `edit` access enables them).
+ *
+ * The off-on cycle is deliberately asymmetric: re-clicking the
+ * "Regiones" button always returns to `off` regardless of which
+ * sub-tool is active, because the toolbar treats the parent button
+ * as a master toggle for region mode. No React rendering — the
+ * helpers cover the entire decision surface, exercised here as
+ * pure-function truth tables.
  *
  * @version v0.3.0
  */

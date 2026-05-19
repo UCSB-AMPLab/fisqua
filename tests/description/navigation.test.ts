@@ -1,5 +1,20 @@
 /**
- * Tests — navigation
+ * Tests — entry navigation (DESC-05)
+ *
+ * This suite pins `loadVolumeEntriesForDescription` — the loader
+ * helper that returns the ordered list of entries the description
+ * editor's prev/next navigation walks. The contract: entries are
+ * filtered to a single volume, ordered by (`startPage` ASC,
+ * `position` ASC), and carry only the columns the navigation
+ * shell needs (id, title, description_status), keeping the
+ * payload small enough to round-trip on every page change.
+ *
+ * Cases pin the ordering invariant (a multi-page entry with
+ * positions 0..3 lands in deterministic order), the tenant
+ * isolation (entries from another tenant's volume are not
+ * surfaced), and the empty-volume edge case (the helper returns
+ * `[]` rather than throwing, so the editor renders a clean empty
+ * state).
  *
  * @version v0.3.0
  */

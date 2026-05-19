@@ -1,7 +1,23 @@
 /**
- * Tests — users
+ * Tests — admin users + access control
  *
- * @version v0.3.0
+ * This suite pins the admin-side user management surface plus the
+ * `requireAdmin` gate that backstops every `_auth.admin.*` route. The
+ * access-control section asserts the gate's two failure modes — no
+ * session (anon) and authenticated-but-non-admin — both throw bare
+ * `Response(null, {status: 404})` rather than 403 so probe traffic
+ * cannot distinguish "you exist but lack rights" from "this route
+ * doesn't exist", which would otherwise leak admin URL surface area.
+ *
+ * The user-CRUD section covers the substrate shape: insert with the
+ * mandatory fields (`email`, `tenantId`, `isAdmin`), the
+ * per-tenant uniqueness on `email`, role-flag round-trips
+ * (`isAdmin`, `isCataloguer`), and the deletion path. The
+ * `requireAdmin` import is exercised through the access-control
+ * cases — the user-CRUD cases are pure D1 round-trips, not route
+ * exercises, so they stay focused on the table contract.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,7 +30,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { requireAdmin } from "../../app/lib/permissions.server";
 
@@ -31,6 +47,7 @@ describe("admin area", () => {
     it("allows admin users", () => {
       const admin = {
         id: "1",
+        tenantId: DEFAULT_TEST_TENANT_ID,
         email: "admin@test.com",
         name: "Admin",
         isAdmin: true,
@@ -48,6 +65,7 @@ describe("admin area", () => {
     it("rejects non-admin users with 403", () => {
       const user = {
         id: "2",
+        tenantId: DEFAULT_TEST_TENANT_ID,
         email: "user@test.com",
         name: "User",
         isAdmin: false,
@@ -75,6 +93,7 @@ describe("admin area", () => {
       const now = Date.now();
 
       await db.insert(schema.users).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         email: "newuser@example.com",
         isAdmin: false,
@@ -98,6 +117,7 @@ describe("admin area", () => {
       const now = Date.now();
 
       await db.insert(schema.users).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         email: "duplicate@example.com",
         isAdmin: false,
@@ -108,6 +128,7 @@ describe("admin area", () => {
       // Attempt duplicate insert should fail
       try {
         await db.insert(schema.users).values({
+          tenantId: DEFAULT_TEST_TENANT_ID,
           id: crypto.randomUUID(),
           email: "duplicate@example.com",
           isAdmin: false,

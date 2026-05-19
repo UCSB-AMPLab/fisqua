@@ -1,5 +1,24 @@
 /**
- * Tests — validation
+ * Tests — Zod validation schemas
+ *
+ * This suite pins the Zod schemas that gate every write into the database —
+ * `descriptionSchema`, `entitySchema`, `placeSchema`, `repositorySchema`,
+ * and the two junction schemas (`descriptionEntitySchema`,
+ * `descriptionPlaceSchema`). The schemas sit at the boundary between
+ * untrusted HTTP payloads and the Drizzle layer, so any drift between
+ * the Zod shape and the underlying table is a structural break that
+ * lets invalid data through.
+ *
+ * Specific pins worth flagging: `createDescriptionSchema` strips the
+ * `id` field from output (the server mints UUIDs, never the client);
+ * `updateDescriptionSchema` allows partial objects but requires `id`
+ * (you can't update without saying what to update); `importDescriptionSchema`
+ * keeps `id` (the import pipeline carries legacy identifiers across);
+ * the `entityCode` and `placeCode` formats follow the `xx-xxxxxx`
+ * pattern with a 32-character alphabet (the same alphabet the ID
+ * minter uses); and the junction role enums (`ENTITY_ROLES`,
+ * `PLACE_ROLES`) gate the only values that can appear in junction
+ * rows.
  *
  * @version v0.3.0
  */

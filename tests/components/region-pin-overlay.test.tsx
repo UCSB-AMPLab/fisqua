@@ -1,5 +1,20 @@
 /**
- * Tests — region pin overlayx
+ * Tests — region pin overlay helpers
+ *
+ * This suite pins the six pure helpers that back the region-pin
+ * overlay on the IIIF viewer: `isPointPin` (zero-size region →
+ * point), `computePinInlineStyle` (the `left`/`top`/`width`/`height`
+ * percent-based style payload), `computePinClassName` (the variant
+ * class composition for point vs box, hover vs active),
+ * `canMovePin` (the role + status predicate gating drag), and the
+ * `computeMoveDelta` / `applyMoveDelta` pair that turns pointer
+ * deltas into clamped normalised coordinates.
+ *
+ * The clamp behaviour is what makes the move path safe: a pin
+ * cannot leave the page surface (0..1 on both axes), so dragging
+ * past the edge saturates rather than wrapping. No React rendering
+ * — the overlay is pure SVG positioning whose entire decision
+ * surface is the six functions exercised here.
  *
  * @version v0.3.0
  */

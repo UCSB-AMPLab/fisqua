@@ -1,11 +1,29 @@
 /**
  * Tests — db
  *
- * @version v0.3.0
+ * This helper is the hand-built test-DB harness. It mirrors the
+ * production schema by
+ * replaying `db.exec("CREATE TABLE ...")` statements against a fresh
+ * in-Worker D1 binding so the existing 2520+ test suite can run
+ * without invoking `wrangler d1 migrations apply`. Updates land
+ * lock-step with each Drizzle migration.
+ *
+ * The `DEFAULT_TEST_TENANT_ID` export and the seed helpers
+ * (`seedTenants`, `seedDisabledTenant`, `seedOperatorUser`) live
+ * here so downstream test files share a single import surface for
+ * tenant-aware fixtures.
+ *
+ * @version v0.4.0
  */
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../../app/db/schema";
+import {
+  NEOGRANADINA_TENANT_ID,
+  PLATFORM_TENANT_ID,
+  DACS_TEST_TENANT_ID,
+  RAD_TEST_TENANT_ID,
+} from "../../app/lib/tenant";
 
 /**
  * Creates a Drizzle instance bound to the test D1 database.
@@ -21,11 +39,142 @@ export function getTestDb() {
 export async function applyMigrations() {
   const db = env.DB;
 
-  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
+  // tenants table mirrors drizzle/0034_tenants_table.sql verbatim --
+  // same columns, same CHECK constraints, same indexes. Declared
+  // before every table that carries a tenant_id FK so the FK
+  // reference resolves at harness load.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS tenants (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "slug TEXT NOT NULL UNIQUE, " +
+      "name TEXT NOT NULL, " +
+      "kind TEXT NOT NULL DEFAULT 'tenant' CHECK (kind IN ('tenant','platform')), " +
+      "descriptive_standard TEXT, " +
+      "status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended')), " +
+      "crowdsourcing_enabled INTEGER NOT NULL DEFAULT 0, " +
+      "vocabulary_hub_enabled INTEGER NOT NULL DEFAULT 1, " +
+      "publish_pipeline_enabled INTEGER NOT NULL DEFAULT 1, " +
+      "multi_repository_enabled INTEGER NOT NULL DEFAULT 0, " +
+      "quota_storage_bytes INTEGER, " +
+      // Nullable soft-disable timestamp.
+      "disabled_at INTEGER, " +
+      "created_at INTEGER NOT NULL, " +
+      "updated_at INTEGER NOT NULL, " +
+      // SQLite CHECK only rejects on FALSE (not NULL). The second
+      // branch must explicitly guard descriptive_standard IS NOT NULL
+      // so that `kind='tenant', descriptive_standard=NULL` does not
+      // slip through (NULL IN (...) is NULL, not FALSE).
+      "CHECK ((kind = 'platform' AND descriptive_standard IS NULL) OR (kind = 'tenant' AND descriptive_standard IS NOT NULL AND descriptive_standard IN ('isadg','dacs','rad'))), " +
+      "CHECK (slug GLOB '[a-z][a-z0-9-]*[a-z0-9]' OR slug GLOB '[a-z]')" +
+    ")",
+  );
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS tenants_slug_idx ON tenants(slug)");
+  await db.exec("CREATE INDEX IF NOT EXISTS tenants_kind_idx ON tenants(kind)");
+
+  // users carries tenant_id NOT NULL FK to tenants(id) ON DELETE
+  // RESTRICT, immediately after id (mirrors drizzle/0035 column
+  // order).
+  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
+
+  // audit_log table mirrors drizzle/0037 verbatim — same 12 columns,
+  // mixed FK delete behaviours (actor_user_id ON DELETE SET NULL
+  // paired with denormalised actor_user_id_text NOT NULL for
+  // forensic continuity; actor_tenant_id and target_tenant_id ON
+  // DELETE RESTRICT), bounded action CHECK enum, 3 indexes with
+  // created_at DESC ordering, and 2 BEFORE UPDATE / BEFORE DELETE
+  // immutability triggers using the bare RAISE form (a
+  // workers-sdk #4326 trigger-parser quirk avoidance).
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS audit_log (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "created_at INTEGER NOT NULL, " +
+      "actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL, " +
+      "actor_user_id_text TEXT NOT NULL, " +
+      "actor_tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "action TEXT NOT NULL CHECK (action IN (" +
+        "'create_tenant','soft_disable_tenant','reset_superadmin','login_as'," +
+        "'edit_on_behalf','set_capability','set_quota'" +
+      ")), " +
+      "target_tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "target_object_kind TEXT, " +
+      "target_object_id TEXT, " +
+      "impersonation_session_id TEXT, " +
+      "details TEXT" +
+    ")",
+  );
+  await db.exec("CREATE INDEX IF NOT EXISTS audit_log_target_tenant_idx ON audit_log(target_tenant_id, created_at DESC)");
+  await db.exec("CREATE INDEX IF NOT EXISTS audit_log_actor_user_idx ON audit_log(actor_user_id, created_at DESC)");
+  await db.exec("CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log(created_at DESC)");
+  // Immutability triggers — bare RAISE form to dodge the
+  // workers-sdk #4326 trigger-parser quirk. The append-only trigger
+  // has a WHEN clause that allows the single FK-cascade transition
+  // (actor_user_id going from non-null to NULL when the referenced
+  // user is deleted). Every other UPDATE path still hits the trigger.
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log " +
+      "WHEN NOT (" +
+        "OLD.actor_user_id IS NOT NULL " +
+        "AND NEW.actor_user_id IS NULL " +
+        "AND OLD.id IS NEW.id " +
+        "AND OLD.created_at IS NEW.created_at " +
+        "AND OLD.actor_user_id_text IS NEW.actor_user_id_text " +
+        "AND OLD.actor_tenant_id IS NEW.actor_tenant_id " +
+        "AND OLD.action IS NEW.action " +
+        "AND OLD.target_tenant_id IS NEW.target_tenant_id " +
+        "AND OLD.target_object_kind IS NEW.target_object_kind " +
+        "AND OLD.target_object_id IS NEW.target_object_id " +
+        "AND OLD.impersonation_session_id IS NEW.impersonation_session_id " +
+        "AND OLD.details IS NEW.details" +
+      ") " +
+      "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log " +
+      "BEGIN SELECT RAISE(ABORT, 'audit_log is immutable'); END",
+  );
 
   await db.exec("CREATE TABLE IF NOT EXISTS magic_links (id TEXT PRIMARY KEY NOT NULL, token TEXT NOT NULL UNIQUE, user_id TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS magic_links_token_idx ON magic_links(token)");
   await db.exec("CREATE INDEX IF NOT EXISTS magic_links_expires_idx ON magic_links(expires_at)");
+
+  // oauth_handoffs is the ephemeral, single-use rendezvous between
+  // the apex GitHub OAuth callback and a tenant subdomain. No FKs
+  // (rows are ephemeral; email + slug are re-validated at consume
+  // time). 30s TTL bound is enforced by the helper, not the schema.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS oauth_handoffs (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "email TEXT NOT NULL, " +
+      "github_id TEXT NOT NULL, " +
+      "github_login TEXT NOT NULL, " +
+      "return_to_slug TEXT NOT NULL, " +
+      "expires_at INTEGER NOT NULL, " +
+      "consumed INTEGER NOT NULL DEFAULT 0, " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+
+  // impersonation_handoffs mirrors the single-use shape but is a
+  // separate table (clean role-based columns; clean target for
+  // audit_log.impersonation_session_id). FK delete behaviour:
+  // actor_user_id and target_tenant_id both ON DELETE RESTRICT
+  // (forensic continuity > orphan cleanup; rows are short-lived).
+  // target_role CHECK enforces the six role-flag literal names
+  // exactly.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS impersonation_handoffs (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "actor_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, " +
+      "target_tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "target_role TEXT NOT NULL CHECK (target_role IN ('isAdmin','isSuperAdmin','isCollabAdmin','isArchiveUser','isUserManager','isCataloguer')), " +
+      "reason TEXT, " +
+      "expires_at INTEGER NOT NULL, " +
+      "consumed INTEGER NOT NULL DEFAULT 0, " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec("CREATE INDEX IF NOT EXISTS impersonation_handoffs_expires_idx ON impersonation_handoffs(expires_at)");
+  await db.exec("CREATE INDEX IF NOT EXISTS impersonation_handoffs_actor_idx ON impersonation_handoffs(actor_user_id, created_at)");
 
   await db.exec("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, description TEXT, conventions TEXT, settings TEXT, created_by TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER)");
 
@@ -93,11 +242,18 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS al_project_idx ON activity_log(project_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS al_created_idx ON activity_log(created_at)");
 
-  // Phase 17: archival management tables
-  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // Archival management tables. repositories carries tenant_id NOT
+  // NULL FK after id.
+  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS repo_code_idx ON repositories(code)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS descriptions (id TEXT PRIMARY KEY NOT NULL, repository_id TEXT NOT NULL REFERENCES repositories(id), parent_id TEXT, position INTEGER DEFAULT 0 NOT NULL, root_description_id TEXT, depth INTEGER DEFAULT 0 NOT NULL, child_count INTEGER DEFAULT 0 NOT NULL, path_cache TEXT DEFAULT '', description_level TEXT NOT NULL, resource_type TEXT, genre TEXT DEFAULT '[]', reference_code TEXT NOT NULL, local_identifier TEXT NOT NULL, title TEXT NOT NULL, translated_title TEXT, uniform_title TEXT, date_expression TEXT, date_start TEXT, date_end TEXT, date_certainty TEXT, extent TEXT, dimensions TEXT, medium TEXT, imprint TEXT, edition_statement TEXT, series_statement TEXT, volume_number TEXT, issue_number TEXT, pages TEXT, provenance TEXT, scope_content TEXT, ocr_text TEXT DEFAULT '', arrangement TEXT, access_conditions TEXT, reproduction_conditions TEXT, language TEXT, location_of_originals TEXT, location_of_copies TEXT, related_materials TEXT, finding_aids TEXT, section_title TEXT, notes TEXT, internal_notes TEXT, creator_display TEXT, place_display TEXT, iiif_manifest_url TEXT, has_digital INTEGER DEFAULT 0, is_published INTEGER DEFAULT 0, last_exported_at INTEGER, created_by TEXT REFERENCES users(id), updated_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // descriptions carries the union-schema column set: 9 dead
+  // columns dropped (related_materials), 6 new + 3 legacy_ids JSON
+  // columns added (publication_title, legacy_ids), DACS/RAD
+  // additions (admin_biog_history, preferred_citation,
+  // acquisition_info, system_of_arrangement,
+  // physical_characteristics), local_identifier nullable.
+  await db.exec("CREATE TABLE IF NOT EXISTS descriptions (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, repository_id TEXT NOT NULL REFERENCES repositories(id), parent_id TEXT, position INTEGER DEFAULT 0 NOT NULL, root_description_id TEXT, depth INTEGER DEFAULT 0 NOT NULL, child_count INTEGER DEFAULT 0 NOT NULL, path_cache TEXT DEFAULT '', description_level TEXT NOT NULL, resource_type TEXT, genre TEXT DEFAULT '[]', reference_code TEXT NOT NULL, local_identifier TEXT, title TEXT NOT NULL, translated_title TEXT, uniform_title TEXT, date_expression TEXT, date_start TEXT, date_end TEXT, date_certainty TEXT, extent TEXT, dimensions TEXT, medium TEXT, imprint TEXT, edition_statement TEXT, series_statement TEXT, volume_number TEXT, issue_number TEXT, pages TEXT, publication_title TEXT, provenance TEXT, scope_content TEXT, ocr_text TEXT DEFAULT '', arrangement TEXT, access_conditions TEXT, reproduction_conditions TEXT, language TEXT, location_of_originals TEXT, location_of_copies TEXT, finding_aids TEXT, section_title TEXT, notes TEXT, internal_notes TEXT, creator_display TEXT, place_display TEXT, iiif_manifest_url TEXT, has_digital INTEGER DEFAULT 0, is_published INTEGER DEFAULT 0, last_exported_at INTEGER, admin_biog_history TEXT, preferred_citation TEXT, acquisition_info TEXT, system_of_arrangement TEXT, physical_characteristics TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', created_by TEXT REFERENCES users(id), updated_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS desc_parent_pos_idx ON descriptions(parent_id, position)");
   await db.exec("CREATE INDEX IF NOT EXISTS desc_root_idx ON descriptions(root_description_id)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS desc_ref_code_idx ON descriptions(reference_code)");
@@ -109,7 +265,9 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS vt_category_idx ON vocabulary_terms(category)");
   await db.exec("CREATE INDEX IF NOT EXISTS vt_status_idx ON vocabulary_terms(status)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, legal_status TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // entities loses legal_status (dropped — 0% populated) and gains
+  // dbe_id + legacy_ids JSON column.
+  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS entity_code_idx ON entities(entity_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_sort_name_idx ON entities(sort_name)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_wikidata_idx ON entities(wikidata_id)");
@@ -118,7 +276,12 @@ export async function applyMigrations() {
   await db.exec("CREATE TABLE IF NOT EXISTS entity_functions (id TEXT PRIMARY KEY NOT NULL, entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE, honorific TEXT, function TEXT NOT NULL, date_start TEXT, date_end TEXT, date_note TEXT, certainty TEXT DEFAULT 'probable', source TEXT, notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS ef_entity_idx ON entity_functions(entity_id)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, historical_gobernacion TEXT, historical_partido TEXT, historical_region TEXT, country_code TEXT, admin_level_1 TEXT, admin_level_2 TEXT, needs_geocoding INTEGER DEFAULT 1, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, wikidata_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // places loses 7 dead columns (historical_gobernacion,
+  // historical_partido, historical_region, country_code,
+  // admin_level_1, admin_level_2, wikidata_id — all 0% populated)
+  // and gains fclass (5-value GeoNames feature class with CHECK
+  // enforcement at the DB layer) + legacy_ids JSON.
+  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, needs_geocoding INTEGER DEFAULT 1, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, fclass TEXT CHECK (fclass IS NULL OR fclass IN ('P','H','A','T','S')), legacy_ids TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS place_code_idx ON places(place_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_label_idx ON places(label)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_tgn_idx ON places(tgn_id)");
@@ -140,16 +303,74 @@ export async function applyMigrations() {
   await db.exec("CREATE TABLE IF NOT EXISTS changelog (id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL, record_type TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), note TEXT, diff TEXT NOT NULL, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS changelog_record_idx ON changelog(record_id, record_type, created_at)");
 
-  await db.exec("CREATE TABLE IF NOT EXISTS export_runs (id TEXT PRIMARY KEY NOT NULL, triggered_by TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'pending', selected_fonds TEXT NOT NULL, selected_types TEXT NOT NULL, current_step TEXT, steps_completed INTEGER NOT NULL DEFAULT 0, total_steps INTEGER NOT NULL DEFAULT 0, record_counts TEXT, error_message TEXT, started_at INTEGER, completed_at INTEGER, created_at INTEGER NOT NULL)");
+  // export_runs carries four Cloudflare Workflows tracking columns
+  // added in drizzle/0019_export_workflow.sql; this harness mirrors
+  // them so the test pool stays in sync with app/db/schema.ts.
+  await db.exec("CREATE TABLE IF NOT EXISTS export_runs (id TEXT PRIMARY KEY NOT NULL, triggered_by TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'pending', selected_fonds TEXT NOT NULL, selected_types TEXT NOT NULL, current_step TEXT, steps_completed INTEGER NOT NULL DEFAULT 0, total_steps INTEGER NOT NULL DEFAULT 0, record_counts TEXT, workflow_instance_id TEXT, current_step_started_at INTEGER, current_step_completed_at INTEGER, last_heartbeat_at INTEGER, error_message TEXT, started_at INTEGER, completed_at INTEGER, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS export_runs_status_idx ON export_runs(status)");
   await db.exec("CREATE INDEX IF NOT EXISTS export_runs_created_idx ON export_runs(created_at)");
+
+  // The 5 domain tables carry a NOT NULL FK to tenants(id). Seed
+  // the two locked tenants here so any suite that calls
+  // applyMigrations() but doesn't manage tenant rows itself can
+  // still INSERT into users/repositories/etc. Tests that need a
+  // tenants-empty state DELETE FROM tenants explicitly after
+  // applyMigrations(); cleanDatabase() also re-seeds these rows
+  // after wiping every domain table.
+  await seedTenants();
 }
 
 /**
- * Cleans all data from tables (order matters due to foreign keys).
+ * Cleans all data from tables (order matters due to foreign keys)
+ * and re-seeds the two tenant rows so the NOT NULL FKs on
+ * users/repositories/descriptions/entities/places resolve
+ * immediately.
+ *
+ * Re-seeding here (rather than asking every test to call
+ * seedTenants() in its own beforeEach) keeps the harness backwards-
+ * compatible with the 2520+ existing pre-v0.4 tests; they were
+ * written against a schema where tenants did not exist, and adding
+ * a manual seed call to each one is mechanical churn that adds no
+ * signal. Tests that genuinely need a tenants-empty state call
+ * seedTenants() themselves; tests that need additional tenants
+ * (cross-tenant scenarios) insert them on top of the two seeded
+ * rows.
  */
 export async function cleanDatabase() {
   const db = env.DB;
+
+  // audit_log immutability triggers prevent DELETE — DROP
+  // both, DELETE the rows, then re-CREATE the triggers. This keeps
+  // test isolation while honouring the schema-level append-only
+  // invariant in production. audit_log is wiped first because its FK
+  // to users(id) ON DELETE SET NULL would otherwise quietly clear
+  // actor_user_id during the users delete, leaving stale rows.
+  await db.exec("DROP TRIGGER IF EXISTS audit_log_no_update");
+  await db.exec("DROP TRIGGER IF EXISTS audit_log_no_delete");
+  await db.exec("DELETE FROM audit_log");
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log " +
+      "WHEN NOT (" +
+        "OLD.actor_user_id IS NOT NULL " +
+        "AND NEW.actor_user_id IS NULL " +
+        "AND OLD.id IS NEW.id " +
+        "AND OLD.created_at IS NEW.created_at " +
+        "AND OLD.actor_user_id_text IS NEW.actor_user_id_text " +
+        "AND OLD.actor_tenant_id IS NEW.actor_tenant_id " +
+        "AND OLD.action IS NEW.action " +
+        "AND OLD.target_tenant_id IS NEW.target_tenant_id " +
+        "AND OLD.target_object_kind IS NEW.target_object_kind " +
+        "AND OLD.target_object_id IS NEW.target_object_id " +
+        "AND OLD.impersonation_session_id IS NEW.impersonation_session_id " +
+        "AND OLD.details IS NEW.details" +
+      ") " +
+      "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log " +
+      "BEGIN SELECT RAISE(ABORT, 'audit_log is immutable'); END",
+  );
+
   const tables = [
     "export_runs",
     "changelog",
@@ -173,10 +394,195 @@ export async function cleanDatabase() {
     "repositories",
     "projects",
     "magic_links",
+    "oauth_handoffs",
+    // impersonation_handoffs has FKs to users + tenants ON DELETE
+    // RESTRICT, so it MUST be wiped before users and tenants below.
+    "impersonation_handoffs",
     "users",
+    // tenants last -- every child row must already be gone before
+    // tenants can drop with the NOT NULL FKs in place.
+    "tenants",
   ];
 
   for (const table of tables) {
     await db.exec(`DELETE FROM ${table}`);
   }
+
+  // Re-seed the two locked tenant rows so subsequent helper inserts
+  // against the 5 domain tables satisfy the tenant_id FK without
+  // every existing test having to opt in. Tests that want to verify
+  // tenants-empty behaviour must DELETE FROM tenants explicitly after
+  // cleanDatabase().
+  await seedTenants();
+}
+
+/**
+ * Locked test tenant id — equal to the seeded `neogranadina` row.
+ * Use as the `tenant_id` value on every domain-table insert in
+ * tests; the 5 domain tables carry a NOT NULL FK to tenants(id).
+ */
+export const DEFAULT_TEST_TENANT_ID: string = NEOGRANADINA_TENANT_ID;
+
+/**
+ * Second tenant id used by cross-tenant negative tests.
+ * Deterministic literal so test fixtures are stable across runs and
+ * across files; kept distinct from the production-locked PLATFORM
+ * and NEOGRANADINA UUIDs. The seed in `seedTenants()` deliberately
+ * gives this tenant a mixed capability profile
+ * (`crowdsourcing_enabled=0`, `vocabulary_hub_enabled=1`,
+ * `publish_pipeline_enabled=0`, `multi_repository_enabled=0`) so
+ * capability-off paths can be exercised without flipping the
+ * Neogranadina seed row.
+ */
+export const SECOND_TEST_TENANT_ID = "22222222-2222-4222-8222-222222222222" as const;
+
+/**
+ * Seed the two tenant rows (platform + neogranadina) into the test
+ * `tenants` table created by `applyMigrations()`. Mirrors the seed
+ * INSERTs in drizzle/0034_tenants_table.sql byte-for-byte on UUIDs,
+ * kind, descriptive_standard, and capability flags. Uses the current
+ * wall clock for created_at/updated_at instead of the migration's
+ * fixed timestamp because tests can run repeatedly against a stable
+ * harness; the migration's fixed timestamp is for production journal
+ * determinism, not for harness behaviour.
+ */
+export async function seedTenants(): Promise<void> {
+  const now = Date.now();
+  // Platform tenant -- operator-gate target. All capabilities OFF;
+  // descriptive_standard NULL (enforced by the conditional CHECK).
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      PLATFORM_TENANT_ID, "platform", "Platform", "platform", null, "active",
+      0, 0, 0, 0,
+      null, now, now,
+    )
+    .run();
+  // Neogranadina tenant -- the initial production tenant. All
+  // capabilities ON; descriptive_standard='isadg'.
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      NEOGRANADINA_TENANT_ID, "neogranadina", "Neogranadina", "tenant", "isadg", "active",
+      1, 1, 1, 1,
+      null, now, now,
+    )
+    .run();
+  // Second test tenant -- cross-tenant fixture. Mixed
+  // capabilities (crowdsourcing OFF, vocabulary_hub ON, publish OFF,
+  // multi_repository OFF) so capability-off code paths can be
+  // exercised without mutating the Neogranadina row.
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      SECOND_TEST_TENANT_ID, "second-tenant", "Second Test Tenant", "tenant", "isadg", "active",
+      0, 1, 0, 0,
+      null, now, now,
+    )
+    .run();
+  // DACS test tenant -- standard-toggle integration tests. All
+  // four capability flags ON; descriptive_standard 'dacs'.
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      DACS_TEST_TENANT_ID, "dacs-test", "DACS Test Tenant", "tenant", "dacs", "active",
+      1, 1, 1, 1,
+      null, now, now,
+    )
+    .run();
+  // RAD test tenant -- standard-toggle integration tests. Same
+  // shape as DACS test tenant; descriptive_standard 'rad'.
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      RAD_TEST_TENANT_ID, "rad-test", "RAD Test Tenant", "tenant", "rad", "active",
+      1, 1, 1, 1,
+      null, now, now,
+    )
+    .run();
+}
+
+// Re-export DACS/RAD test tenant ids for convenience so test files
+// that already import from `tests/helpers/db` get the new fixtures
+// without hopping through `app/lib/tenant`.
+export { DACS_TEST_TENANT_ID, RAD_TEST_TENANT_ID } from "../../app/lib/tenant";
+
+/**
+ * Disabled-tenant fixture: a tenant row with `disabled_at` set.
+ * Opt-in via explicit `await seedDisabledTenant()` so the
+ * five-tenant count assertion in `seedTenants()` is preserved
+ * (this helper only inserts when called explicitly).
+ *
+ * Use this fixture from tests that exercise the
+ * `getTenantFromRequest` disabled-tenant 404 branch, the
+ * `/operator/*` carve-out, or the tenant-detail re-enable path.
+ */
+export const DISABLED_TEST_TENANT_ID = "33333333-3333-4333-8333-333333333333" as const;
+export const DISABLED_TEST_TENANT_SLUG = "disabled-tenant" as const;
+
+export async function seedDisabledTenant(): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, disabled_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      DISABLED_TEST_TENANT_ID,
+      DISABLED_TEST_TENANT_SLUG,
+      "Disabled Test Tenant",
+      "tenant",
+      "isadg",
+      "active",
+      0, 1, 1, 0,
+      null,
+      now - 1000, // disabled 1 second ago
+      now,
+      now,
+    )
+    .run();
+}
+
+/**
+ * Operator-user fixture: a user living in the platform tenant.
+ * Mirrors the shape the login-as flow writes for production
+ * operator accounts: tenantId=PLATFORM_TENANT_ID,
+ * isSuperAdmin=true, isUserManager=true. The fixture is opt-in via
+ * explicit `await seedOperatorUser()` so user-count assertions in
+ * tests that don't care about operators stay green.
+ */
+export const OPERATOR_TEST_USER_ID = "44444444-4444-4444-8444-444444444444" as const;
+export const OPERATOR_TEST_EMAIL = "operator@example.test" as const;
+
+export async function seedOperatorUser(): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO users (id, tenant_id, email, name, is_admin, is_super_admin, " +
+      "is_collab_admin, is_archive_user, is_user_manager, is_cataloguer, " +
+      "last_active_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      OPERATOR_TEST_USER_ID,
+      PLATFORM_TENANT_ID,
+      OPERATOR_TEST_EMAIL,
+      "Test Operator",
+      1, 1, 0, 0, 1, 0,
+      null, now, now,
+    )
+    .run();
 }

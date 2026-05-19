@@ -1,5 +1,21 @@
 /**
- * Tests — activity events
+ * Tests — `activity_log.event` literal acceptance
+ *
+ * This suite pins the runtime and compile-time acceptance of two
+ * QC-related activity-log event literals: `qc_flag_raised` and
+ * `qc_flag_resolved`. The `activity_log.event` column carries a
+ * CHECK constraint that enumerates every legal event name, so the
+ * runtime tests insert rows with each literal and assert the insert
+ * succeeds without a CHECK rejection. The compile-time test asserts
+ * the `ActivityEvent` union type accepts the same two literals, so
+ * the TypeScript and SQL definitions cannot drift apart.
+ *
+ * The reason both layers get pinned: the QC-flag feature is the only
+ * consumer of these two literals, and a missing CHECK update during
+ * a migration would silently send writes into a corrupt state at
+ * runtime even though TypeScript compiled clean. The CHECK is the
+ * structural source of truth; the union type is the developer-facing
+ * mirror.
  *
  * @version v0.3.0
  */

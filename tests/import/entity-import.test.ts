@@ -1,5 +1,21 @@
 /**
- * Tests — entity import
+ * Tests — entities import command
+ *
+ * This suite pins `importEntities` — the import-side command that
+ * reads the Neogranadina entities (authority records for people,
+ * families, corporate bodies) JSON dump, normalises the row shape
+ * (legacy id → fresh UUID, `entityCode` generation, vocabulary-term
+ * lookup for the `primaryFunction` field), and emits per-row
+ * INSERT SQL plus an `IdMap` for downstream junction-table
+ * generation.
+ *
+ * The cases exercise the row-count + IdMap shape against a small
+ * fixture (`fixtures/entities.json` — five entities exercising the
+ * person/family/corporate variants), and pin the determinism
+ * contract: the same input + the same vocabulary lookup must
+ * produce the same UUIDs across runs (the importer seeds its UUID
+ * source from a stable hash of the legacy id), so the SQL diff
+ * stays small on re-runs.
  *
  * @version v0.3.0
  */

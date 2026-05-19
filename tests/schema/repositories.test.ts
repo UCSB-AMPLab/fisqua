@@ -1,7 +1,20 @@
 /**
- * Tests — repositories
+ * Tests — repositories schema
  *
- * @version v0.3.0
+ * This suite pins the structural shape of the `repositories` table — the
+ * top-level grouping unit that every description hangs off. Four pins:
+ * required fields on insert, the unique constraint on `code` (the
+ * stable external identifier used in URLs and EAD exports), the
+ * `countryCode` default of `'COL'` reflecting Fisqua's Colombian
+ * archival focus, and the `enabled` default of `true` so newly created
+ * repositories are visible without an extra activation step.
+ *
+ * The `countryCode = 'COL'` default is a deliberate stance, not a
+ * technical default — Fisqua's primary deployment is Colombian
+ * archives, and the dominant case should require no override. Repos
+ * outside Colombia override it explicitly.
+ *
+ * @version v0.4.0
  */
 import {
   describe,
@@ -14,9 +27,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 
-describe("repositories table (SCHEMA-02)", () => {
+describe("repositories table", () => {
   let db: ReturnType<typeof drizzle>;
 
   beforeAll(async () => {
@@ -33,6 +46,7 @@ describe("repositories table (SCHEMA-02)", () => {
     const now = Date.now();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       code: "ahrb",
       name: "Archivo Historico Regional de Boyaca",
@@ -54,6 +68,7 @@ describe("repositories table (SCHEMA-02)", () => {
     const now = Date.now();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id: crypto.randomUUID(),
       code: "unique-code",
       name: "First Repository",
@@ -63,6 +78,7 @@ describe("repositories table (SCHEMA-02)", () => {
 
     await expect(
       db.insert(schema.repositories).values({
+        tenantId: DEFAULT_TEST_TENANT_ID,
         id: crypto.randomUUID(),
         code: "unique-code",
         name: "Second Repository",
@@ -77,6 +93,7 @@ describe("repositories table (SCHEMA-02)", () => {
     const now = Date.now();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       code: "default-country",
       name: "Colombian Repo",
@@ -97,6 +114,7 @@ describe("repositories table (SCHEMA-02)", () => {
     const now = Date.now();
 
     await db.insert(schema.repositories).values({
+      tenantId: DEFAULT_TEST_TENANT_ID,
       id,
       code: "enabled-default",
       name: "Enabled Repo",

@@ -1,5 +1,21 @@
 /**
- * Tests — i18n setup
+ * Tests — i18n bootstrap configuration
+ *
+ * This suite pins the i18n configuration values that the
+ * `app/middleware/i18next.ts` module passes to
+ * `createI18nextMiddleware` at request time. The middleware itself
+ * cannot be imported directly under the Workers vitest pool because
+ * it uses the `~/locales` alias which the test pool does not
+ * resolve; instead, this suite verifies the building blocks (the
+ * resources barrel, the `initReactI18next` plugin, the structural
+ * tuple the middleware re-exports) so a refactor that drifts any
+ * of those pieces surfaces here.
+ *
+ * The narrow scope is intentional — this file is the structural
+ * contract check, not a runtime exercise. Runtime behaviour
+ * (actual translation resolution) is covered by
+ * `tests/i18n-plurals.test.ts` and the namespace-specific
+ * completeness suite.
  *
  * @version v0.3.0
  */
