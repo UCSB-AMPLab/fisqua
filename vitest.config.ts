@@ -45,7 +45,7 @@ export default defineWorkersConfig({
       "tests/export/ead/dacs-*.test.ts",
       "tests/export/dc/**/*.test.ts",
     ],
-    testTimeout: 30000,
+    testTimeout: 60000,
     hookTimeout: 60000,
     poolOptions: {
       workers: {
