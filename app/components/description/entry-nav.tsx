@@ -1,3 +1,23 @@
+/**
+ * Entry Nav
+ *
+ * This component is the small horizontal navigation strip the description
+ * editor pins above the form, letting the cataloguer step from one entry
+ * to the next inside a volume without leaving the editor. It carries a
+ * pair of previous / next chevrons, a positional readout (`3 / 27`), the
+ * current entry's reference code and title, and a status pill driven by
+ * the shared `DESCRIPTION_STATUS_STYLES` / `DESCRIPTION_STATUS_LABELS`
+ * map — so the colour and label vocabulary matches every other surface
+ * that shows description statuses (assignments, dashboards, outline).
+ * The component is purely an affordance; the parent route handles the
+ * actual navigation by mutating the URL, so the back / forward buttons
+ * in the browser remain in step. Disabling the chevrons at the edges of
+ * the volume keeps the cataloguer from triggering no-op transitions
+ * that would clear unsaved changes for nothing.
+ *
+ * @version v0.3.0
+ */
+
 import { useTranslation } from "react-i18next";
 import {
   DESCRIPTION_STATUS_STYLES,

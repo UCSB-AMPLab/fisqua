@@ -1,9 +1,9 @@
 /**
  * Comment Kebab Menu
  *
- * Three-dot menu attached to a comment the current user owns. Exposes
- * edit and delete actions, closes on outside click, and restores focus
- * to the originating button on dismiss.
+ * This menu is the three-dot affordance attached to a comment the current
+ * user owns. Exposes edit and delete actions, closes on outside click, and
+ * restores focus to the originating button on dismiss.
  *
  * @version v0.3.0
  */

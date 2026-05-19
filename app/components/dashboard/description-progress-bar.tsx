@@ -1,6 +1,14 @@
 /**
- * Stacked progress bar for description workflow statuses.
- * Parallel to StackedProgressBar but uses description status colours.
+ * Description Progress Bar
+ *
+ * This component is the description-workflow counterpart to the
+ * segmentation-workflow `StackedProgressBar`. Same visual idiom — a
+ * single horizontal bar split into coloured segments proportional to
+ * status counts — but it draws from the description-workflow palette so
+ * the two progress bars never collide visually on a dashboard that
+ * surfaces both pipelines side by side.
+ *
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

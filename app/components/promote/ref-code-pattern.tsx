@@ -1,10 +1,10 @@
 /**
  * Reference Code Pattern Input
  *
- * Controlled input that lets the superadmin define the reference-code
- * template applied to every entry in a promotion batch. Validates the
- * template against the allowed character set (alphanumerics and
- * hyphens) before the parent enables the Promote button.
+ * This component is the controlled input that lets the superadmin define
+ * the reference-code template applied to every entry in a promotion batch.
+ * Validates the template against the allowed character set (alphanumerics
+ * and hyphens) before the parent enables the Promote button.
  *
  * @version v0.3.0
  */

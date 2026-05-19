@@ -1,3 +1,22 @@
+/**
+ * Section TOC
+ *
+ * This component is the slim vertical rail that runs alongside the
+ * description form, one dot per ISAD(G) section. Each dot reflects the
+ * section's completion state — filled verdigris for sections that
+ * already carry data, hollow stone-bordered for those still empty —
+ * and the active dot grows slightly with a ring so the cataloguer's
+ * current focus is unambiguous at a glance. Hovering a dot reveals the
+ * full section label in a tooltip; clicking it raises `onSectionClick`
+ * with the section's id, which the parent uses to scroll the form to
+ * that anchor. The rail is intentionally narrow (twelve units wide) so
+ * it reads as a navigational accent rather than a competing column,
+ * which matters because the description editor already balances the
+ * IIIF viewer, the form, and the entry nav across the same screen.
+ *
+ * @version v0.3.0
+ */
+
 import { useState, useCallback } from "react";
 
 type TocSection = {

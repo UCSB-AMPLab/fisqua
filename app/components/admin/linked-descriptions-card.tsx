@@ -1,10 +1,10 @@
 /**
  * Linked Descriptions Card
  *
- * Read-only card that lists the descriptions currently linked to an
- * entity, place, or vocabulary term. Collapses to a summary count
- * when long and expands on click; each row deep-links into the
- * description detail page.
+ * This card is the read-only list of descriptions currently linked to an
+ * entity, place, or vocabulary term. Collapses to a summary count when
+ * long and expands on click; each row deep-links into the description
+ * detail page.
  *
  * @version v0.3.0
  */

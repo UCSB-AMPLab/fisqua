@@ -1,16 +1,17 @@
 /**
  * Fisqua design system — application stylesheet
  *
- * Imports Tailwind, defines the CSS custom properties from the Fisqua
- * design system (indigo + verdigris + madder palette, Spectral +
- * Bricolage Grotesque + JetBrains Mono typography), and exposes them
- * as Tailwind v4 theme tokens so utilities like `bg-indigo`,
+ * This stylesheet imports Tailwind, defines the CSS custom properties
+ * from the Fisqua design system (indigo + verdigris + madder palette,
+ * Spectral + Bricolage Grotesque + JetBrains Mono typography), and
+ * exposes them as Tailwind v4 theme tokens so utilities like
+ * `bg-indigo`,
  * `text-verdigris`, `border-madder`, and `font-serif` resolve. Source
  * of truth for every value is the design-system project's
  * `colors_and_type.css`; do not introduce values that aren't in that
  * file.
  *
- * @version v0.3.2
+ * @version v0.4.0
  */
 @import "tailwindcss" source(".");
 
@@ -308,7 +309,7 @@ body {
 /* The system's one custom transition: comments collapse/expand on a
    grid-template-rows track so the height is animated by the browser
    without measuring content. Do not replace with a height-based
-   transition — see Phase 4.9 in the design-system handoff. */
+   transition — measuring content would cause layout thrash. */
 .comments-collapse {
   display: grid;
   grid-template-rows: 0fr;

@@ -1,11 +1,11 @@
 /**
  * Flag QC Dialog
  *
- * Modal that lets a cataloguer or reviewer raise a QC flag against a
- * page. Uses the six-item QC taxonomy shared with the volume-manage
- * page so problem types stay consistent across the app, and submits
- * through a React Router fetcher so the viewer keeps state while the
- * request lands.
+ * This dialog deals with letting a cataloguer or reviewer raise a QC flag
+ * against a page. Uses the six-item QC taxonomy shared with the
+ * volume-manage page so problem types stay consistent across the app, and
+ * submits through a React Router fetcher so the viewer keeps state while
+ * the request lands.
  *
  * @version v0.3.0
  */

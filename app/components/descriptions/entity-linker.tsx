@@ -1,8 +1,9 @@
 /**
  * Entity Linker
  *
- * Dialog for linking an entity authority record to the current description,
- * with typeahead search, role picker, and inline create-new flow.
+ * This dialog deals with linking an entity authority record to the current
+ * description, with typeahead search, role picker, and inline create-new
+ * flow.
  *
  * @version v0.3.0
  */

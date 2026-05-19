@@ -1,9 +1,9 @@
 /**
  * Vocabulary Status Badge
  *
- * Colour-coded status pill for vocabulary-term rows: active, draft,
- * pending review, rejected, or deprecated. Keeps the colour map in
- * one place so every vocabularies admin surface shows the same
+ * This badge is the colour-coded status pill for vocabulary-term rows:
+ * active, draft, pending review, rejected, or deprecated. Keeps the colour
+ * map in one place so every vocabularies admin surface shows the same
  * visual vocabulary.
  *
  * @version v0.3.0

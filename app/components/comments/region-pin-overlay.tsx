@@ -1,9 +1,9 @@
 /**
  * Region Pin Overlay
  *
- * Absolute-positioned overlay that sits on top of a IIIF page and
- * renders one pin per region-anchored comment. Pins respond to
- * hover and click by surfacing the thread and by broadcasting the
+ * This component is the absolute-positioned overlay that sits on top of a
+ * IIIF page and renders one pin per region-anchored comment. Pins respond
+ * to hover and click by surfacing the thread and by broadcasting the
  * selected comment id through the search params.
  *
  * @version v0.3.0

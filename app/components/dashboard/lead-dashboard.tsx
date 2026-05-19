@@ -1,10 +1,21 @@
 /**
- * Lead dashboard view.
- * Shows cross-project overview with:
- * - Attention items at top (volumes waiting >3d, inactive members, unassigned,
- *   description-review, resegmentation)
- * - Project cards with stacked progress bars for segmentation and description
- * - Team lists with avatar initials and role badges
+ * Lead Dashboard
+ *
+ * This component is the project-lead landing surface — a cross-project
+ * overview that opens with an attention strip and falls back to a roster
+ * of project cards. The attention strip carries five kinds of items
+ * (volumes waiting on review for more than three days, inactive team
+ * members, unassigned volumes, description reviews waiting too long, and
+ * re-segmentation requests from reviewers), all rendered as deep links
+ * so the lead can jump straight to the surface that needs a hand. Below
+ * the strip, each project card stacks a segmentation progress bar and a
+ * description progress bar — the same components the assignments page
+ * uses, so the visual language stays continuous — and lists the team
+ * with avatar initials and role badges. The component is purely a view;
+ * all loaders run on the parent route, which keeps this file safe to
+ * mount under SSR without round-tripping the database.
+ *
+ * @version v0.3.0
  */
 
 import { Link } from "react-router";

@@ -1,10 +1,10 @@
 /**
  * Expandable QC Flag Card
  *
- * Thin wrapper around `QcFlagCard` that adds the inline comments
- * thread when the user expands the card. Keeps role-based visibility
- * in sync with the server-side guard so a cataloguer never sees the
- * resolver affordance even briefly.
+ * This component is the thin wrapper around `QcFlagCard` that adds the
+ * inline comments thread when the user expands the card. Keeps role-based
+ * visibility in sync with the server-side guard so a cataloguer never sees
+ * the resolver affordance even briefly.
  *
  * @version v0.3.0
  */

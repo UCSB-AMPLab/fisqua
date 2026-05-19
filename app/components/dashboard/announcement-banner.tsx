@@ -1,11 +1,10 @@
 /**
  * Announcement Banner
  *
- * Dismissable banner shown at the top of the member dashboard for
- * ops-wide announcements — maintenance windows, policy changes, new
- * feature call-outs. Dismissal is per-user and persists in
- * localStorage so returning visitors do not see the same banner
- * twice.
+ * This banner is the dismissable notice shown at the top of the member
+ * dashboard for ops-wide announcements — maintenance windows, policy
+ * changes, new feature call-outs. Dismissal is per-user and persists in
+ * localStorage so returning visitors do not see the same banner twice.
  *
  * @version v0.3.0
  */

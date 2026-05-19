@@ -1,8 +1,9 @@
 /**
  * Miller Column
  *
- * One column of the Miller-columns explorer. Virtualised so each column
- * scrolls smoothly across thousands of siblings.
+ * This component is one column of the Miller-columns explorer.
+ * Virtualised so each column scrolls smoothly across thousands of
+ * siblings.
  *
  * @version v0.3.0
  */

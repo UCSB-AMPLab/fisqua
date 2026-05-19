@@ -1,19 +1,47 @@
 /**
  * Publish Run Progress Panel
  *
- * Polls `/admin/publish/runs/:exportId` every second while the run is
- * live, renders the heartbeat state — current step, steps completed,
- * record counts — and links out to the downstream GitHub Actions
- * rebuild once the pipeline finishes successfully. Poll interval is
- * deliberately short so a 12 s run still gives the operator several
+ * This component polls `/admin/publish/runs/:exportId` every second while
+ * the run is live, renders the heartbeat state — current step, steps
+ * completed, record counts — and links out to the downstream GitHub
+ * Actions rebuild once the pipeline finishes successfully. Poll interval
+ * is deliberately short so a 12 s run still gives the operator several
  * visible updates.
  *
- * @version v0.3.0
+ * The `~/lib/format-date` import is intentionally written as a
+ * relative path so the module loads cleanly under the workers
+ * vitest pool (which does not alias `~/`).
+ *
+ * A small `stepLabel` helper splits the heartbeat step ID (e.g.
+ * `ead:co-ahr-gob`) on `:` and looks the prefix up in
+ * `progress.stepLabels.<prefix>`, so the new EAD3/DC step IDs render
+ * with localised EN/ES labels. Falls back to the raw prefix when the
+ * key is missing so a future step ID without a translation still
+ * renders something readable.
+ *
+ * @version v0.4.0
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { formatIsoDateTime } from "~/lib/format-date";
+import type { TFunction } from "i18next";
+import { formatIsoDateTime } from "../../lib/format-date";
+
+/**
+ * Localised label for a heartbeat step ID. The step ID is the workflow's
+ * step name as written by `recordStepStart` — for per-fonds steps it has
+ * the shape `<prefix>:<fonds-ref>` (e.g. `ead:co-ahr-gob`); for global
+ * steps it is just the prefix (e.g. `repositories`). The function reads
+ * `progress.stepLabels.<prefix>` from the active locale, falling back to
+ * the raw prefix when the key is missing.
+ */
+function stepLabel(stepId: string, t: TFunction): string {
+  const idx = stepId.indexOf(":");
+  const prefix = idx === -1 ? stepId : stepId.slice(0, idx);
+  const suffix = idx === -1 ? "" : stepId.slice(idx + 1);
+  const label = t(`progress.stepLabels.${prefix}`, { defaultValue: prefix });
+  return suffix ? `${label}: ${suffix}` : label;
+}
 
 const GITHUB_ACTIONS_URL =
   "https://github.com/neogranadina/zasqua/actions/workflows/deploy.yml";
@@ -193,7 +221,7 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
       {isRunning && data.currentStep && (
         <div className="space-y-1">
           <p className="font-sans text-sm text-stone-600">
-            {t("progress.processing")}: {data.currentStep}
+            {t("progress.processing")}: {stepLabel(data.currentStep, t)}
           </p>
           {data.currentStep.startsWith("children:") && (
             <p className="font-sans text-xs italic text-stone-500">
@@ -241,7 +269,7 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
               key={key}
               className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-0.5 font-sans text-xs text-stone-600"
             >
-              {key}: {count.toLocaleString()} {t("progress.records")}
+              {stepLabel(key, t)}: {count.toLocaleString()} {t("progress.records")}
             </span>
           ))}
         </div>

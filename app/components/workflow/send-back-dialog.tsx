@@ -1,10 +1,24 @@
+/**
+ * Send Back Dialog
+ *
+ * This dialog is the surface a reviewer hits when they need to return a
+ * volume to the cataloguer for revision rather than approve or send it
+ * forward. The reviewer cannot send a volume back without leaving a
+ * comment — the textarea enforces a minimum of ten characters so the
+ * cataloguer always receives something actionable, not a bare `back`
+ * verdict. The dialog tracks its own draft comment state and resets on
+ * close so a half-typed comment from an earlier dismissal never leaks
+ * back into a new send-back. The Confirm button stays disabled until
+ * the minimum length is met, and a quiet counter underneath the
+ * textarea tells the reviewer how many characters they still owe;
+ * `onConfirm` raises the trimmed comment to the parent, where the
+ * route fetcher attaches it to the status transition.
+ *
+ * @version v0.3.0
+ */
+
 import { useState, useCallback } from "react";
 import { useTranslation, Trans } from "react-i18next";
-
-/**
- * Send-back dialog with mandatory comment field.
- * Used by reviewers to return a volume to the cataloguer for revision.
- */
 
 type SendBackDialogProps = {
   isOpen: boolean;

@@ -1,9 +1,9 @@
 /**
  * Resizable Divider
  *
- * Drag handle between the IIIF viewer and the outline panel. Persists
- * the chosen split to localStorage so the operator's preferred
- * balance is remembered across sessions.
+ * This component is the drag handle between the IIIF viewer and the
+ * outline panel. Persists the chosen split to localStorage so the
+ * operator's preferred balance is remembered across sessions.
  *
  * @version v0.3.0
  */

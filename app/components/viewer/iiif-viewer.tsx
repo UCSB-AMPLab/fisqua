@@ -1,9 +1,9 @@
 /**
  * IIIF Viewer
  *
- * Virtualised, zoom-aware strip-scroller that renders a volume's
- * pages from a IIIF image service. Lets the cataloguer zoom and
- * scroll through hundreds of pages without loading every tile,
+ * This component is the virtualised, zoom-aware strip-scroller that
+ * renders a volume's pages from a IIIF image service. Lets the cataloguer
+ * zoom and scroll through hundreds of pages without loading every tile,
  * exposes handles for programmatic scroll, and hosts the comment
  * region-pin overlay when comments exist.
  *

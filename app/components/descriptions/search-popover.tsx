@@ -1,8 +1,8 @@
 /**
  * Search Popover
  *
- * Keyboard-driven search dropdown that queries the descriptions FTS5
- * index as the user types and surfaces matching records.
+ * This popover is the keyboard-driven search dropdown that queries the
+ * descriptions FTS5 index as the user types and surfaces matching records.
  *
  * @version v0.3.0
  */

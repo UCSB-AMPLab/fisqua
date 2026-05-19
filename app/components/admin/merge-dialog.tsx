@@ -1,11 +1,11 @@
 /**
  * Merge Dialog
  *
- * Modal that drives the merge-two-records flow used across entities,
- * places, and vocabulary terms. Shows a side-by-side comparison,
- * collects the winning field values, and emits the merge payload —
- * the commit itself runs through the parent form action so the
- * audit log stays owned by the server.
+ * This dialog deals with merging two records — used across entities,
+ * places, and vocabulary terms. Shows a side-by-side comparison, collects
+ * the winning field values, and emits the merge payload; the commit itself
+ * runs through the parent form action so the audit log stays owned by the
+ * server.
  *
  * @version v0.3.0
  */

@@ -1,10 +1,10 @@
 /**
  * Miller Item
  *
- * One row inside a Miller column — reference code, title, child-count
- * chevron, and selected/hover state.
+ * This component is one row inside a Miller column — reference code,
+ * title, child-count chevron, and selected/hover state.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { ChevronRight } from "lucide-react";
@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import type { TreeItem } from "./miller-columns";
 
 // ---------------------------------------------------------------------------
-// Level badge colour mapping per UI-SPEC
+// Level badge colour mapping
 // ---------------------------------------------------------------------------
 
 const LEVEL_BADGE_STYLES: Record<string, string> = {

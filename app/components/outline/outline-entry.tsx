@@ -1,10 +1,10 @@
 /**
  * Outline Entry
  *
- * One entry row inside the outline panel: reference code, title
- * pill, segmentation state, open-comments count, and the
- * resegmentation flag badge when one is pending. Expands on click
- * to reveal the inline comment thread and any region-pin chips.
+ * This component is one entry row inside the outline panel — reference
+ * code, title pill, segmentation state, open-comments count, and the
+ * resegmentation flag badge when one is pending. Expands on click to
+ * reveal the inline comment thread and any region-pin chips.
  *
  * @version v0.3.0
  */
@@ -241,10 +241,9 @@ export function OutlineEntry({
   // draft-comment row mount, etc.) automatically. The previous effect
   // here called `virtualizer.measure()` (a full cache reset) on every
   // render because `onHeightChange` was a fresh closure each render —
-  // that was the root of the scroll-back cascade (see
-  // .planning/debug/resolved/outline-scroll-snaps-back.md).
-  // The `onHeightChange` prop is kept for API compatibility but is no
-  // longer invoked from this component.
+  // that was the root of the scroll-back cascade. The `onHeightChange`
+  // prop is kept for API compatibility but is no longer invoked from
+  // this component.
   void onHeightChange;
 
   const handleClick = useCallback(() => {

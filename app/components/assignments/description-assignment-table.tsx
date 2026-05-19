@@ -1,8 +1,15 @@
 /**
- * Per-entry assignment table for description workflow.
+ * Description Assignment Table
  *
- * Shows entries in a volume with per-entry cataloguer/reviewer assignment,
- * checkbox bulk selection, and a sticky bulk action toolbar.
+ * This table is the per-entry assignment surface for the description
+ * workflow — one row per entry inside a volume, with cataloguer and
+ * reviewer dropdowns the lead uses to fan out describing and reviewing
+ * work to the team. Each row carries a bulk-selection checkbox; the
+ * sticky bulk-action toolbar above operates on that selection so a lead
+ * can stamp the same pair of assignees across dozens of entries without
+ * clicking through one row at a time.
+ *
+ * @version v0.3.0
  */
 
 import { useState } from "react";

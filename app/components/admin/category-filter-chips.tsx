@@ -1,8 +1,8 @@
 /**
  * Category Filter Chips
  *
- * Horizontal strip of toggleable category chips used on the
- * vocabularies admin surfaces to narrow the terms list. Controls
+ * This component is the horizontal strip of toggleable category chips used
+ * on the vocabularies admin surfaces to narrow the terms list. Controls
  * its own keyboard focus ring so the chip row behaves like a single
  * listbox for screen readers.
  *

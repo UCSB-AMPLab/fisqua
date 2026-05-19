@@ -1,10 +1,11 @@
 /**
  * Publish Changelog Section
  *
- * Renders the pre-flight summary of what a publish run would change:
- * per-fonds counts of added, modified, and unpublished descriptions
- * plus aggregate modification counts for repositories, entities, and
- * places. Read-only display consumed by the publish dashboard.
+ * This component renders the pre-flight summary of what a publish run
+ * would change — per-fonds counts of added, modified, and unpublished
+ * descriptions plus aggregate modification counts for repositories,
+ * entities, and places. Read-only display consumed by the publish
+ * dashboard.
  *
  * @version v0.3.0
  */

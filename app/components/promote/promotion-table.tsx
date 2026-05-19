@@ -1,11 +1,11 @@
 /**
  * Promotion Table
  *
- * Row-per-entry table of the currently promotable crowdsourcing entries
- * in the selected volume. Each row shows the reference code, the field
- * fill rate, the current promotion state, and a checkbox to include
- * it in the batch. Rows already promoted render the PromotedBadge and
- * their checkboxes are disabled.
+ * This table is the row-per-entry list of the currently promotable
+ * crowdsourcing entries in the selected volume. Each row shows the
+ * reference code, the field fill rate, the current promotion state, and a
+ * checkbox to include it in the batch. Rows already promoted render the
+ * PromotedBadge and their checkboxes are disabled.
  *
  * @version v0.3.0
  */

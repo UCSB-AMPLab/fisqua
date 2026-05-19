@@ -1,9 +1,9 @@
 /**
  * Archive Stat Card
  *
- * Headline-sized number card used on the member dashboard to surface
- * archive-wide totals: volumes in progress, entries approved this
- * month, open QC flags. Purely presentational — numbers come from the
+ * This card is the headline-sized number tile used on the member dashboard
+ * to surface archive-wide totals — volumes in progress, entries approved
+ * this month, open QC flags. Purely presentational; numbers come from the
  * route loader.
  *
  * @version v0.3.0

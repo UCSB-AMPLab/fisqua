@@ -1,8 +1,9 @@
 /**
  * Place Linker
  *
- * Dialog for linking a place authority record to the current description,
- * with typeahead search, role picker, and inline create-new flow.
+ * This dialog deals with linking a place authority record to the current
+ * description, with typeahead search, role picker, and inline create-new
+ * flow.
  *
  * @version v0.3.0
  */

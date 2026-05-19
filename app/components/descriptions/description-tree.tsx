@@ -1,14 +1,14 @@
 /**
  * Description Tree
  *
- * A lazy-loading tree component for the archival description hierarchy.
- * Each node fetches its direct children on expand via
- * `api/descriptions/children/:parentId`, so even a 100,000-record fonds
- * renders instantly and the server only produces the branches the user
- * asks for. Nodes show reference code, title, and description level;
+ * This component is the lazy-loading tree view for the archival
+ * description hierarchy. Each node fetches its direct children on expand
+ * via `api/descriptions/children/:parentId`, so even a 100,000-record
+ * fonds renders instantly and the server only produces the branches the
+ * user asks for. Nodes show reference code, title, and description level;
  * click-to-open deep-links into the edit page.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -77,7 +77,7 @@ export function DescriptionTree({
     return (
       <div className="flex items-center gap-2 text-sm text-stone-400">
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span>{t("loading", { defaultValue: "Loading..." })}</span>
+        <span>{t("common:label.loading")}</span>
       </div>
     );
   }

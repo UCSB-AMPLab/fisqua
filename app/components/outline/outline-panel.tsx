@@ -1,8 +1,8 @@
 /**
  * Outline Panel
  *
- * Right-side pane in the viewer that lists the volume's segmented
- * entries in page order. Scrolls the viewer when an entry is
+ * This panel is the right-side pane in the viewer that lists the volume's
+ * segmented entries in page order. Scrolls the viewer when an entry is
  * selected, surfaces comments, and — when a reviewer triggers a
  * resegmentation flag — surfaces the `ResegmentationCard` inline.
  *
@@ -398,8 +398,7 @@ export function OutlinePanel({
   // on every render, which (a) made React invoke it (with null then the
   // element) on every commit and (b) re-armed the ResizeObserver
   // pathway repeatedly. Combined with `virtualizer.measure()` calls
-  // from `onHeightChange`, this caused the scroll-back cascade — see
-  // `.planning/debug/resolved/outline-scroll-snaps-back.md`.
+  // from `onHeightChange`, this caused the scroll-back cascade.
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
   const measureRowRef = useCallback((el: HTMLDivElement | null) => {

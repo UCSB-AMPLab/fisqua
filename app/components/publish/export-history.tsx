@@ -1,17 +1,21 @@
 /**
  * Publish Export History
  *
- * Compact table of recent publish runs shown below the live progress
- * panel: status, who triggered, selected fonds and types, record
- * counts, and start/finish timestamps. Each row deep-links to the
+ * This table is the compact list of recent publish runs shown below the
+ * live progress panel — status, who triggered, selected fonds and types,
+ * record counts, and start/finish timestamps. Each row deep-links to the
  * per-run detail page.
  *
- * @version v0.3.0
+ * The `~/lib/format-date` import is intentionally written as a
+ * relative path so the module loads cleanly under the workers
+ * vitest pool (which does not alias `~/`).
+ *
+ * @version v0.4.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { formatIsoDateTime } from "~/lib/format-date";
+import { formatIsoDateTime } from "../../lib/format-date";
 
 export interface ExportHistoryRow {
   id: string;

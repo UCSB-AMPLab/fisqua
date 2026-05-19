@@ -1,10 +1,10 @@
 /**
  * Cursor Pagination
  *
- * Previous/next controls for cursor-based data tables. Wraps the
- * pagination state the loader returns — current cursor, next cursor,
- * has-previous flag — so the hosting page never touches those fields
- * directly.
+ * This component is the previous/next control pair for cursor-based data
+ * tables. Wraps the pagination state the loader returns — current cursor,
+ * next cursor, has-previous flag — so the hosting page never touches those
+ * fields directly.
  *
  * @version v0.3.0
  */

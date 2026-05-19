@@ -1,10 +1,10 @@
 /**
  * Collapsible Section
  *
- * Generic accordion wrapper for grouping dense admin content into
- * expandable panels. Keeps an internal open/closed state unless an
- * explicit controlled pair is passed, and emits a summary line when
- * collapsed so the caller never loses scanning context.
+ * This component is the generic accordion wrapper for grouping dense
+ * admin content into expandable panels. Keeps an internal open/closed
+ * state unless an explicit controlled pair is passed, and emits a summary
+ * line when collapsed so the caller never loses scanning context.
  *
  * @version v0.3.0
  */

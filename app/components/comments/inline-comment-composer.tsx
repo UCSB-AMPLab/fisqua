@@ -1,10 +1,10 @@
 /**
  * Inline Comment Composer
  *
- * Floating composer shown inside the IIIF viewer when the operator
- * picks a point or region to leave a comment on. Collects the body
- * and geometry and hands the payload back to the parent form so
- * persistence and re-render route through the shared fetcher.
+ * This component is the floating composer shown inside the IIIF viewer
+ * when the operator picks a point or region to leave a comment on.
+ * Collects the body and geometry and hands the payload back to the parent
+ * form so persistence and re-render route through the shared fetcher.
  *
  * @version v0.3.0
  */

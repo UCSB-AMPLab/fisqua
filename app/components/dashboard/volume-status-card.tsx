@@ -1,10 +1,10 @@
 /**
  * Volume Status Card
  *
- * Per-volume progress card used across the dashboards: name,
- * segmentation state, entry counts by status, and the cataloguer /
- * reviewer avatars. Clicking the card opens the viewer in the
- * caller's default mode.
+ * This card is the per-volume progress tile used across the dashboards —
+ * name, segmentation state, entry counts by status, and the cataloguer /
+ * reviewer avatars. Clicking the card opens the viewer in the caller's
+ * default mode.
  *
  * @version v0.3.0
  */

@@ -1,10 +1,10 @@
 /**
  * Promotion Summary Panel
  *
- * Pre-flight summary that sits above the promotion table: how many
- * entries are selected, how many fields each one will copy, and the
- * resulting reference-code pattern. Lets the superadmin sanity-check
- * the batch before committing.
+ * This component is the pre-flight summary that sits above the promotion
+ * table — how many entries are selected, how many fields each one will
+ * copy, and the resulting reference-code pattern. Lets the superadmin
+ * sanity-check the batch before committing.
  *
  * @version v0.3.0
  */

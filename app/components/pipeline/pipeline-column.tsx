@@ -1,10 +1,10 @@
 /**
  * Pipeline Column
  *
- * One status column in the pipeline kanban. Lists every entry in
- * that status, sorted by most-recently-touched, and accepts drops
- * from other columns to trigger the workflow transition through
- * the parent form action.
+ * This component is one status column in the pipeline kanban. Lists every
+ * entry in that status, sorted by most-recently-touched, and accepts drops
+ * from other columns to trigger the workflow transition through the
+ * parent form action.
  *
  * @version v0.3.0
  */

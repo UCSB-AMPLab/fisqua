@@ -1,4 +1,19 @@
-import { useTranslation } from "react-i18next";
+/**
+ * Description Section (cataloguing)
+ *
+ * This component is the collapsible section primitive for the cataloguing
+ * description form. Pure presentation: receives a translated `title`
+ * string and a completion-state flag from the parent (the parent
+ * `description-form.tsx` resolves both via `tStd` and the
+ * `SectionCompletion` aggregate).
+ *
+ * No i18n calls live here — by design: label resolution is the
+ * parent's responsibility so per-standard label overrides flow
+ * through one site (`tStd(t, "sections.<id>", standard)`) rather than
+ * being split between parent and child.
+ *
+ * @version v0.4.0
+ */
 
 type DescriptionSectionProps = {
   title: string;
@@ -130,3 +145,5 @@ export function DescriptionSection({
 }
 
 export { CompletionDot };
+
+/* @version v0.4.0 */

@@ -1,11 +1,15 @@
 /**
- * Description tab content for the assignments page.
+ * Description Tab Content
  *
- * Shows:
- * - Volumes ready to be promoted to description ("Listos para descripcion")
- * - Volumes currently in description with progress bars
- * - Global description progress bar
- * - Team progress cards for description assignments
+ * This component is the contents of the Description tab on the
+ * assignments page. It stacks four reading surfaces for the project lead
+ * — volumes ready to be promoted into description ("Listos para
+ * descripción"), volumes currently in description with their per-status
+ * progress bars, a global description-progress bar for the project, and
+ * the team-progress cards keyed to description assignments. All data is
+ * read-only here; commit affordances live on the inner tables and cards.
+ *
+ * @version v0.3.0
  */
 
 import { Link, useFetcher } from "react-router";

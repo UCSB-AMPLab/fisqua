@@ -1,11 +1,11 @@
 /**
  * Edit Description Link Dialog
  *
- * Modal that lets an operator change which description a given
- * controlled-vocabulary term is linked to. Runs a typeahead against
- * the descriptions index, validates the new target, and returns the
- * pending reassignment to the parent without touching the database
- * directly — commits flow through the surrounding form action.
+ * This dialog deals with changing which description a given
+ * controlled-vocabulary term is linked to. Runs a typeahead against the
+ * descriptions index, validates the new target, and returns the pending
+ * reassignment to the parent without touching the database directly —
+ * commits flow through the surrounding form action.
  *
  * @version v0.3.0
  */

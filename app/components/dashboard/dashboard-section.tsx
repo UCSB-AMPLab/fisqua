@@ -1,10 +1,10 @@
 /**
  * Dashboard Section
  *
- * Generic two-column layout wrapper for a dashboard section: a title,
- * an optional call-to-action link, and either one or two content
- * columns. Lets the member dashboard compose Segmentation, Description,
- * and Messages with consistent spacing.
+ * This component is the generic two-column layout wrapper for a dashboard
+ * section — a title, an optional call-to-action link, and either one or
+ * two content columns. Lets the member dashboard compose Segmentation,
+ * Description, and Messages with consistent spacing.
  *
  * @version v0.3.0
  */

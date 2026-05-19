@@ -1,9 +1,9 @@
 /**
  * Column Toggle
  *
- * Popover that lets the operator show or hide individual columns in
- * a data table. Persists the selection to localStorage keyed by the
- * table id so preferences survive reloads.
+ * This popover deals with letting the operator show or hide individual
+ * columns in a data table. Persists the selection to localStorage keyed by
+ * the table id so preferences survive reloads.
  *
  * @version v0.3.0
  */

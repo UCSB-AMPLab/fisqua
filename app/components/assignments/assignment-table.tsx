@@ -1,6 +1,15 @@
 /**
- * Volume assignment table with per-row dropdowns for cataloguer and reviewer.
- * Each row has a checkbox for bulk selection and uses useFetcher for individual assignment.
+ * Volume Assignment Table
+ *
+ * This table is the volume assignment surface a project lead sees on the
+ * assignments page — one row per volume, with per-row cataloguer and
+ * reviewer dropdowns plus a checkbox the lead toggles to compose a bulk
+ * selection for the sticky toolbar above. Each row's dropdowns submit
+ * through their own `useFetcher`, so a single assignment edit lands
+ * without redrawing the whole table, and the row reflects the new
+ * assignee as soon as the action resolves.
+ *
+ * @version v0.4.0
  */
 
 import { useFetcher } from "react-router";
@@ -148,7 +157,7 @@ function AssignmentRow({
           onChange={(e) => handleAssign("cataloguerId", e.target.value)}
           className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
         >
-          <option value="">{t("dropdown.unassigned")}</option>
+          <option value="">{t("workflow:dropdown.unassigned")}</option>
           {cataloguers.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name ?? m.email}
@@ -162,7 +171,7 @@ function AssignmentRow({
           onChange={(e) => handleAssign("reviewerId", e.target.value)}
           className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-sm text-stone-700"
         >
-          <option value="">{t("dropdown.unassigned")}</option>
+          <option value="">{t("workflow:dropdown.unassigned")}</option>
           {reviewers.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name ?? m.email}

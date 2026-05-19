@@ -1,10 +1,11 @@
 /**
  * Metadata Preview
  *
- * Summary card rendered alongside the description form that shows the
- * record's repository, parent, level, and key identifiers at a glance.
+ * This card is the summary tile rendered alongside the description form,
+ * showing the record's repository, parent, level, and key identifiers at
+ * a glance.
  *
- * @version v0.3.0
+ * @version v0.4.0
  */
 
 import { useState } from "react";
@@ -113,7 +114,7 @@ export function MetadataPreview({
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
             <div>
               <span className="font-sans text-xs text-stone-500">
-                {t("field_referenceCode")}
+                {t("fields.referenceCode")}
               </span>
               <p className="font-sans text-sm text-stone-700">
                 {item.referenceCode}
@@ -121,7 +122,7 @@ export function MetadataPreview({
             </div>
             <div>
               <span className="font-sans text-xs text-stone-500">
-                {t("field_descriptionLevel")}
+                {t("fields.descriptionLevel")}
               </span>
               <p className="mt-0.5">
                 <span
@@ -133,7 +134,7 @@ export function MetadataPreview({
             </div>
             <div>
               <span className="font-sans text-xs text-stone-500">
-                {t("field_dateExpression")}
+                {t("fields.dateExpression")}
               </span>
               <p className="font-sans text-sm text-stone-700">
                 {item.dateExpression || "\u2014"}
@@ -141,7 +142,7 @@ export function MetadataPreview({
             </div>
             <div>
               <span className="font-sans text-xs text-stone-500">
-                {t("field_childCount")}
+                {t("fields.childCount")}
               </span>
               <p className="font-sans text-sm text-stone-700">
                 {item.childCount}
@@ -149,7 +150,7 @@ export function MetadataPreview({
             </div>
             <div className="col-span-2">
               <span className="font-sans text-xs text-stone-500">
-                {t("field_scopeContent")}
+                {t("fields.scopeContent")}
               </span>
               <p className="font-sans text-sm text-stone-700">{scopeContent}</p>
             </div>

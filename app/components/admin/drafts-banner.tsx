@@ -1,10 +1,10 @@
 /**
  * Drafts Banner
  *
- * Sticky notice shown above admin tables when unsaved draft records
- * exist. Tells the operator how many drafts are pending and exposes
- * the shortcut to the review surface so no draft disappears off the
- * edge of the screen.
+ * This banner is the sticky notice shown above admin tables when unsaved
+ * draft records exist. Tells the operator how many drafts are pending and
+ * exposes the shortcut to the review surface so no draft disappears off
+ * the edge of the screen.
  *
  * @version v0.3.0
  */

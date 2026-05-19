@@ -1,3 +1,26 @@
+/**
+ * Description Image Viewer
+ *
+ * This component is the image pane that sits beside the description
+ * form in the per-entry description editor. It renders only the IIIF
+ * pages that belong to the current entry — derived from the entry's
+ * `startPage` / `endPage` range — so the cataloguer is never asked to
+ * scroll past pages from neighbouring entries while they describe.
+ * The viewer carries its own zoom controls (a pair of zoom-in / zoom-out
+ * buttons plus a fit-to-width affordance) but no panning UI; the
+ * surrounding scroll container handles overflow. The first page in the
+ * current entry's range gets a ref so the viewer can scroll to that
+ * page whenever the entry changes, which means switching entries always
+ * lands the cataloguer at the start of the new entry rather than at
+ * whatever scroll offset the previous entry left behind. Visual
+ * decoration is intentionally light — no pin overlays, no flag dialogs
+ * inline; those live in sibling components — so this file stays
+ * focused on getting the right pages in front of the cataloguer at the
+ * right scale.
+ *
+ * @version v0.3.0
+ */
+
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 

@@ -1,10 +1,21 @@
 /**
- * Reviewer description tab for the dashboard.
- * Shows:
- * 1. Re-segmentation pending (priority) -- reseg flags
- * 2. Awaiting review -- entries with "described" status
- * 3. Reviewed -- entries with "reviewed" status
- * 4. Approved -- entries with "approved" status
+ * Reviewer Description Tab
+ *
+ * This component is the description-side of the reviewer's dashboard,
+ * the sibling of `ReviewerDashboard` for the description workflow. It
+ * surfaces the entries currently waiting on the reviewer in four
+ * buckets, weighted by urgency — Re-segmentation pending (entries the
+ * reviewer has flagged back to the lead for re-segmentation; these
+ * read first because they block forward motion across the team),
+ * Awaiting review (entries the cataloguer has marked `described` and
+ * handed off), Reviewed (the reviewer has signed off; awaiting
+ * approval), and Approved (terminal). The grouping mirrors the
+ * cataloguer description tab so a reviewer and a cataloguer reading
+ * over each other's shoulder see the same registers in the same
+ * positions. All loaders run on the parent route; this file is pure
+ * render.
+ *
+ * @version v0.3.0
  */
 
 import { Link } from "react-router";

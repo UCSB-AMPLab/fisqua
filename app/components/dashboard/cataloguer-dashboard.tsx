@@ -1,10 +1,14 @@
 /**
- * Cataloguer dashboard view.
- * Shows assigned volumes grouped by urgency:
- * 1. Needs attention (sent_back with reviewer comments)
- * 2. In progress
- * 3. Ready to start (unstarted)
- * 4. Completed (segmented, approved)
+ * Cataloguer Dashboard
+ *
+ * This component is the role-specific dashboard view a cataloguer lands
+ * on when they sign in. It groups the cataloguer's assigned volumes into
+ * four urgency buckets — Needs attention (sent back by a reviewer with
+ * comments), In progress, Ready to start (unstarted), and Completed
+ * (segmented or approved) — so the cataloguer always sees first what
+ * needs their hand before they scroll to anything else.
+ *
+ * @version v0.3.0
  */
 
 import { useTranslation } from "react-i18next";

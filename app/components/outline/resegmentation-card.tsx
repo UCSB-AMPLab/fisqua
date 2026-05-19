@@ -1,9 +1,9 @@
 /**
  * Resegmentation Card
  *
- * Inline card shown inside an outline entry when a reviewer has
- * requested the entry be re-segmented. Surfaces the reporter, the
- * reason, and the lead-only affordance to accept or reject the
+ * This card is the inline notice shown inside an outline entry when a
+ * reviewer has requested the entry be re-segmented. Surfaces the reporter,
+ * the reason, and the lead-only affordance to accept or reject the
  * request.
  *
  * @version v0.3.0

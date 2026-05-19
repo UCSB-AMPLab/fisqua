@@ -1,10 +1,10 @@
 /**
  * Region Chip
  *
- * Small pill that represents a region-anchored comment in the outline
- * and in the comment thread header. Clicking the chip scrolls the
- * viewer to the region and flashes the pin so the reader orients
- * immediately.
+ * This component is the small pill that represents a region-anchored
+ * comment in the outline and in the comment thread header. Clicking the
+ * chip scrolls the viewer to the region and flashes the pin so the reader
+ * orients immediately.
  *
  * @version v0.3.0
  */

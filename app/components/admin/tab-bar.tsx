@@ -1,9 +1,9 @@
 /**
  * Admin Tab Bar
  *
- * Thin pill-tab navigation component shared across the admin surfaces.
- * Renders as unstyled anchor tags so the caller can use it with either
- * React Router `NavLink` or plain URL-driven tabs.
+ * This component is the thin pill-tab navigation shared across the admin
+ * surfaces. Renders as unstyled anchor tags so the caller can use it with
+ * either React Router `NavLink` or plain URL-driven tabs.
  *
  * @version v0.3.0
  */

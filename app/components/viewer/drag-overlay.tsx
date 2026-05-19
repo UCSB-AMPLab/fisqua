@@ -1,9 +1,9 @@
 /**
  * Viewer Drag Overlay
  *
- * Ghost overlay shown while the cataloguer drags an entry boundary
- * to a new page. Rendered in a React portal so its geometry is
- * independent of the scrolling viewer below.
+ * This component is the ghost overlay shown while the cataloguer drags an
+ * entry boundary to a new page. Rendered in a React portal so its geometry
+ * is independent of the scrolling viewer below.
  *
  * @version v0.3.0
  */

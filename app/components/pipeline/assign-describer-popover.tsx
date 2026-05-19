@@ -1,10 +1,10 @@
 /**
  * Assign Describer Popover
  *
- * Popover on the pipeline card that lets a lead assign or reassign
- * the describer for an entry. Runs a typeahead against project
- * members, respects the workflow-role gate, and submits through a
- * fetcher so the card updates in place.
+ * This popover deals with letting a lead assign or reassign the describer
+ * for an entry from the pipeline card. Runs a typeahead against project
+ * members, respects the workflow-role gate, and submits through a fetcher
+ * so the card updates in place.
  *
  * @version v0.3.0
  */

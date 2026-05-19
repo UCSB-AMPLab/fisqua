@@ -1,11 +1,11 @@
 /**
  * QC Flag Card
  *
- * Presentational card for one QC flag: problem type, reporter and
- * timestamp, the free-text description, and — for leads — the
- * resolve affordance that opens `ResolveQcFlagDialog`. Props-in,
- * JSX-out so the component can render anywhere an open QC flag
- * needs to surface (viewer sidebar, outline, manage page).
+ * This card is the presentational surface for one QC flag — problem type,
+ * reporter and timestamp, the free-text description, and, for leads, the
+ * resolve affordance that opens `ResolveQcFlagDialog`. Props-in, JSX-out
+ * so the component can render anywhere an open QC flag needs to surface
+ * (viewer sidebar, outline, manage page).
  *
  * @version v0.3.0
  */
