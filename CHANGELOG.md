@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-29
+
+### Fixed
+
+- **Saving test and calibration entries.** Entries marked as the `test_images`
+  type could not be saved: autosave stalled and the manual "Save now" button
+  could not recover the entry, even though the type was selectable in the
+  outline. Save validation now accepts every valid entry type.
+
+### Changed
+
+- **Controlled vocabularies consolidated.** The catalogue's controlled
+  vocabularies — entry types, resource types, project roles, descriptive
+  standards, quality-control flag types, and volume statuses — are now defined
+  in a single place and shared across the database schema, validators, and type
+  definitions, removing the hand-copied duplicates that caused the save fault
+  above. An automated test now fails the build if these definitions drift apart.
+
 ## [0.4.0] - 2026-05-18
 
 ### Added
