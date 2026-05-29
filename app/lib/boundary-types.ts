@@ -23,15 +23,16 @@
  * the SaveStatus pill component, so `app/lib/` stays unit-testable
  * without dragging in the component layer.
  *
- * @version v0.4.0
+ * @version v0.4.1
  */
 
-export type EntryType =
-  | "item"
-  | "blank"
-  | "front_matter"
-  | "back_matter"
-  | "test_images";
+// EntryType is derived from the canonical `ENTRY_TYPES` array
+// (app/lib/validation/enums.ts) so the segmentation type vocabulary has
+// a single source of truth shared with the Drizzle schema and the save
+// validator. Imported locally for use below and re-exported so the many
+// modules that import `EntryType` from here keep working.
+import type { EntryType } from "./validation/enums";
+export type { EntryType };
 
 export type Entry = {
   id: string;

@@ -19,6 +19,7 @@
  */
 
 import { userContext } from "../context";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.resegmentation";
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -171,7 +172,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       db,
       user.id,
       volume.projectId,
-      ["lead", "cataloguer", "reviewer"],
+      [...PROJECT_ROLES],
       user.isAdmin
     );
 

@@ -25,6 +25,7 @@
  */
 
 import { userContext } from "../context";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.entries.save";
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -90,7 +91,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     db,
     user.id,
     volume.projectId,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     user.isAdmin
   );
 

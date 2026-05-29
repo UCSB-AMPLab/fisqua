@@ -153,6 +153,7 @@ import {
   buildDescriptionBeaconBody,
 } from "../lib/beacon-save";
 import type { Route } from "./+types/_auth.description.$projectId.$entryId";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -186,7 +187,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     db,
     user.id,
     params.projectId,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     user.isAdmin
   );
 

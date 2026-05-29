@@ -60,6 +60,7 @@
 
 import { z } from "zod";
 import { SlugSchema } from "./tenant";
+import { DESCRIPTIVE_STANDARDS } from "./validation/enums";
 
 /**
  * Boolean coercion for HTML form inputs. A checkbox sends its `value`
@@ -106,7 +107,7 @@ const checkboxSchema = z
 export const CreateTenantSchema = z.object({
   slug: SlugSchema,
   name: z.string().min(1, { message: "Name is required" }).max(120),
-  descriptiveStandard: z.enum(["isadg", "dacs", "rad"]),
+  descriptiveStandard: z.enum(DESCRIPTIVE_STANDARDS),
   crowdsourcingEnabled: checkboxSchema.default(false),
   vocabularyHubEnabled: checkboxSchema.default(true),
   publishPipelineEnabled: checkboxSchema.default(true),

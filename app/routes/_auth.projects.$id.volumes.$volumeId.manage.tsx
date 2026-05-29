@@ -166,7 +166,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // The loader's top-line requireProjectRole already restricted access to
   // leads; surface the role explicitly so the client dialog's role-gate
   // has a single source of truth.
-  const userRole: "lead" | "cataloguer" | "reviewer" = "lead";
+  const userRole: WorkflowRole = "lead";
 
   return {
     volume,

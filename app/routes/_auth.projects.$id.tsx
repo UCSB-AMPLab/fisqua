@@ -13,6 +13,7 @@
 import { Outlet, NavLink, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -32,7 +33,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
 
   // Check membership (admin bypasses)
-  await requireProjectRole(db, user.id, params.id, ["lead", "cataloguer", "reviewer"], user.isAdmin);
+  await requireProjectRole(db, user.id, params.id, [...PROJECT_ROLES], user.isAdmin);
 
   // Get user's specific role for conditional UI
   const membership = await db

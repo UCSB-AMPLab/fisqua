@@ -22,12 +22,13 @@
  * so a malformed payload fails fast with a useful message rather than
  * surfacing as a CHECK violation deep in the batch.
  *
- * @version v0.4.0
+ * @version v0.4.1
  */
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { entries } from "../db/schema";
 import type { Entry } from "./boundary-types";
+import { ENTRY_TYPES } from "./validation/enums";
 
 /**
  * Load all entries for a volume, ordered by position.
@@ -238,7 +239,7 @@ function validateEntries(entriesToSave: Entry[], volumeId: string): void {
         throw new Error("endY must be a number between 0 and 1, or null");
       }
     }
-    if (entry.type !== null && !["item", "blank", "front_matter", "back_matter"].includes(entry.type)) {
+    if (entry.type !== null && !(ENTRY_TYPES as readonly string[]).includes(entry.type)) {
       throw new Error(`invalid entry type: ${entry.type}`);
     }
   }

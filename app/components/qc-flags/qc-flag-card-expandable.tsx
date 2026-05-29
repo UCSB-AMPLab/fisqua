@@ -14,12 +14,13 @@ import { ChevronDown } from "lucide-react";
 import { QcFlagCard, type QcFlagCardData, type QcStatus } from "./qc-flag-card";
 import { CommentThread } from "../comments/comment-thread";
 import type { CommentWithAuthor } from "../../lib/description-types";
+import type { ProjectRole } from "../../lib/validation/enums";
 
 export type QCFlagCardExpandableProps = {
   flag: QcFlagCardData;
   volumeId: string;
   comments: CommentWithAuthor[];
-  userRole: "lead" | "cataloguer" | "reviewer";
+  userRole: ProjectRole;
   onResolveClick?: (flagId: string) => void;
   onCommentAdded?: () => void;
 };
@@ -34,7 +35,7 @@ export type QCFlagCardExpandableProps = {
  * body calls this helper to decide whether to forward `onResolveClick`.
  */
 export function shouldForwardResolve(
-  userRole: "lead" | "cataloguer" | "reviewer",
+  userRole: ProjectRole,
   flagStatus: QcStatus,
 ): boolean {
   return userRole === "lead" && flagStatus === "open";

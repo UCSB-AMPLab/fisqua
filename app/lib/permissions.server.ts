@@ -38,6 +38,7 @@
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
 
 import { eq, and } from "drizzle-orm";
+import { PROJECT_ROLES } from "./validation/enums";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { projectMembers, entries, volumes, volumePages } from "../db/schema";
 import type { DescriptionStatus } from "./description-workflow";
@@ -202,7 +203,7 @@ export async function requireEntryAccess(
     db,
     userId,
     volume.projectId,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     isAdmin
   );
 
@@ -351,7 +352,7 @@ export async function requirePageAccess(
     db,
     userId,
     volume.projectId,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     isAdmin
   );
 
