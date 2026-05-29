@@ -21,7 +21,7 @@
  */
 
 import { z } from "zod/v4";
-import { PLACE_TYPES } from "./enums";
+import { PLACE_TYPES, GEONAMES_FCLASSES } from "./enums";
 
 export const placeSchema = z.object({
   id: z.string().uuid(),
@@ -40,7 +40,7 @@ export const placeSchema = z.object({
   hgisId: z.string().max(50).nullable().optional(),
   whgId: z.string().max(50).nullable().optional(),
   // 5-value GeoNames feature class enum (added in 0036).
-  fclass: z.enum(["P", "H", "A", "T", "S"]).nullable().optional(),
+  fclass: z.enum(GEONAMES_FCLASSES).nullable().optional(),
   // Generic legacy id JSON column (0036). Stored as a JSON string at
   // the DB layer; full Zod shape lives in app/lib/validation/legacy-ids.ts.
   legacyIds: z.string().default("[]"),

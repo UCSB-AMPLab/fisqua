@@ -13,6 +13,7 @@ import { useState, useEffect } from "react";
 import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, X } from "lucide-react";
+import type { ProjectRole } from "../../lib/validation/enums";
 
 export type QcStatus = "resolved" | "wontfix";
 
@@ -55,7 +56,7 @@ export type ResolveQcFlagDialogProps = {
   open: boolean;
   onClose: () => void;
   flagId: string;
-  userRole: "lead" | "cataloguer" | "reviewer";
+  userRole: ProjectRole;
   onResolved?: () => void;
   onError?: (message: string) => void;
 };

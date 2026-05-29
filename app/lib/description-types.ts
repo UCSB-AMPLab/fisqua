@@ -10,6 +10,7 @@
  */
 
 import type { DescriptionStatus } from "./description-workflow";
+import type { ResourceTypeEs, ProjectRole } from "./validation/enums";
 
 /**
  * Entry fields relevant to the description form context.
@@ -22,7 +23,7 @@ export type DescriptionEntry = {
   endPage: number | null;
   title: string | null;
   translatedTitle: string | null;
-  resourceType: "texto" | "imagen" | "cartografico" | "mixto" | null;
+  resourceType: ResourceTypeEs | null;
   dateExpression: string | null;
   dateStart: string | null;
   dateEnd: string | null;
@@ -60,7 +61,7 @@ export type Comment = {
   regionH: number | null;
   parentId: string | null;
   authorId: string;
-  authorRole: "cataloguer" | "reviewer" | "lead";
+  authorRole: ProjectRole;
   text: string;
   createdAt: number;
   updatedAt: number;

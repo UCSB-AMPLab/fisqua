@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.admin.cataloguing.team";
 
 interface TeamMember {
@@ -196,7 +197,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const intent = formData.get("_action") as string;
 
   if (intent === "assignToProject") {
-    const roleSchema = z.enum(["lead", "cataloguer", "reviewer"]);
+    const roleSchema = z.enum(PROJECT_ROLES);
     const userId = formData.get("userId") as string;
     const projectId = formData.get("projectId") as string;
     const roleRaw = formData.get("role") as string;

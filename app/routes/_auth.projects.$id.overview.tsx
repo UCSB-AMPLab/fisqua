@@ -18,6 +18,7 @@ import { PipelineColumn } from "../components/pipeline/pipeline-column";
 import { AssignDescriberPopover } from "../components/pipeline/assign-describer-popover";
 import type { Route } from "./+types/_auth.projects.$id.overview";
 import type { PipelineColumn as PipelineColumnType } from "../lib/pipeline/pipeline.server";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -34,7 +35,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     db,
     user.id,
     params.id,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     user.isAdmin
   );
 

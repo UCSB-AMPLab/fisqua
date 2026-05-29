@@ -14,6 +14,7 @@
 import { Form, useActionData, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext } from "../context";
+import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id.members";
 
 type MemberRow = {
@@ -96,7 +97,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { ok: false, error: i18n.t("admin:error.user_not_found") };
     }
 
-    const validRoles = ["lead", "cataloguer", "reviewer"];
+    const validRoles: readonly string[] = PROJECT_ROLES;
     if (!validRoles.includes(role)) {
       return { ok: false, error: i18n.t("project:error.role_required") };
     }
@@ -132,7 +133,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       id: crypto.randomUUID(),
       projectId: params.id,
       userId: targetUser.id,
-      role: role as "lead" | "cataloguer" | "reviewer",
+      role: role as ProjectRole,
       createdAt: (Date.now() / 1000) | 0,
     });
 
@@ -147,14 +148,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { ok: false, error: "Missing membership ID" };
     }
 
-    const validRoles = ["lead", "cataloguer", "reviewer"];
+    const validRoles: readonly string[] = PROJECT_ROLES;
     if (!validRoles.includes(role)) {
       return { ok: false, error: i18n.t("project:error.role_required") };
     }
 
     await db
       .update(projectMembers)
-      .set({ role: role as "lead" | "cataloguer" | "reviewer" })
+      .set({ role: role as ProjectRole })
       .where(eq(projectMembers.id, membershipId));
 
     return { ok: true };

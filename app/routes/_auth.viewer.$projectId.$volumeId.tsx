@@ -75,6 +75,7 @@ import { findCurrentEntry } from "../lib/entry-ownership";
 import { partitionComments } from "../lib/comment-partition";
 import type { BoundaryAction } from "../lib/boundary-types";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -95,7 +96,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Any project member can access the viewer (access level determined by role + assignment)
   const memberships = await requireProjectRole(
  db, user.id, params.projectId,
- ["lead", "cataloguer", "reviewer"],
+ [...PROJECT_ROLES],
  user.isAdmin
   );
 

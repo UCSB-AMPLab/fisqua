@@ -29,6 +29,7 @@ import {
   sendExistingUserInviteEmail,
 } from "./email.server";
 import { getAppConfig } from "./config.server";
+import type { ProjectRole } from "./validation/enums";
 
 type InviterUser = {
   id: string;
@@ -108,7 +109,7 @@ export async function createInvite(
           id: crypto.randomUUID(),
           projectId,
           userId: existingUser.id,
-          role: role as "lead" | "cataloguer" | "reviewer",
+          role: role as ProjectRole,
           createdAt: now,
         });
       }
@@ -253,7 +254,7 @@ export async function acceptInvite(
         id: crypto.randomUUID(),
         projectId: invite.projectId,
         userId: user.id,
-        role: role as "lead" | "cataloguer" | "reviewer",
+        role: role as ProjectRole,
         createdAt: now,
       });
     }

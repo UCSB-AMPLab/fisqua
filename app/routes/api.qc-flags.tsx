@@ -7,28 +7,24 @@
  * additionally enforces the lead-only resolver rule. GET lists open
  * flags for the requested volume or entry.
  *
- * @version v0.3.0
+ * @version v0.4.1
  */
 import { userContext } from "../context";
 import type { Route } from "./+types/api.qc-flags";
+import {
+  QC_PROBLEM_TYPES,
+  QC_RESOLUTION_ACTIONS,
+  PROJECT_ROLES,
+} from "../lib/validation/enums";
 
-const ALLOWED_PROBLEM_TYPES = [
-  "damaged",
-  "repeated",
-  "out_of_order",
-  "missing",
-  "blank",
-  "other",
-] as const;
+// Canonical QC vocabularies live in validation/enums.ts so the schema
+// column, this validator, and the UI cannot drift. Local aliases keep
+// the call sites below readable.
+const ALLOWED_PROBLEM_TYPES = QC_PROBLEM_TYPES;
+const ALLOWED_RESOLUTION_ACTIONS = QC_RESOLUTION_ACTIONS;
 
-const ALLOWED_RESOLUTION_ACTIONS = [
-  "retake_requested",
-  "reordered",
-  "marked_duplicate",
-  "ignored",
-  "other",
-] as const;
-
+// Subset of the qc-flag status enum: the statuses a flag may be resolved
+// *to* (excludes "open"). Intentionally not the full enum.
 const ALLOWED_RESOLVE_STATUSES = ["resolved", "wontfix"] as const;
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -104,7 +100,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  db,
  user.id,
  volume.projectId,
- ["lead", "cataloguer", "reviewer"],
+ [...PROJECT_ROLES],
  user.isAdmin
  );
 
@@ -316,7 +312,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
  db,
  user.id,
  volume.projectId,
- ["lead", "cataloguer", "reviewer"],
+ [...PROJECT_ROLES],
  user.isAdmin
  );
 

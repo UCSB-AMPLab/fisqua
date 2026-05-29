@@ -20,18 +20,20 @@
  * keeping the two state machines separate reflects the fact that
  * segmentation and description proceed at different cadences.
  *
- * @version v0.3.0
+ * @version v0.4.1
  */
 
-export type VolumeStatus =
-  | "unstarted"
-  | "in_progress"
-  | "segmented"
-  | "sent_back"
-  | "reviewed"
-  | "approved";
+import type { ProjectRole, VolumeStatus } from "./validation/enums";
 
-export type WorkflowRole = "cataloguer" | "reviewer" | "lead";
+// VolumeStatus is derived from the canonical `VOLUME_STATUSES` array
+// (app/lib/validation/enums.ts). Imported locally for the state machine
+// below and re-exported so the many modules that import `VolumeStatus`
+// from here keep working.
+export type { VolumeStatus };
+
+// Project roles, viewed through the workflow lens. Aliased to the
+// canonical `ProjectRole` so the role vocabulary has one source.
+export type WorkflowRole = ProjectRole;
 
 const TRANSITIONS: Record<
   WorkflowRole,

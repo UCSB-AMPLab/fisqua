@@ -17,7 +17,7 @@
  * to another tenant rather than partially writing across the
  * boundary.
  *
- * @version v0.3.0
+ * @version v0.4.1
  */
 import {
   describe,
@@ -221,6 +221,34 @@ describe("entry persistence (loadEntries / saveEntries)", () => {
         makeEntry({ id: "e1", volumeId, position: 0, startPage: 1, type: "invalid" as any }),
       ])
     ).rejects.toThrow("invalid entry type");
+  });
+
+  it("accepts every EntryType the schema enum allows (incl. test_images)", async () => {
+    // Regression: `validateEntries` once allowlisted only item / blank /
+    // front_matter / back_matter, so a `test_images` entry — settable in
+    // the outline UI and valid in the schema enum — failed validation and
+    // its autosave hung on "saving…" forever. Every member of the closed
+    // enum must round-trip through save → load.
+    const db = drizzle(env.DB, { schema });
+
+    const entriesToSave: Entry[] = [
+      makeEntry({ id: "e1", volumeId, position: 0, startPage: 1, type: "test_images" }),
+      makeEntry({ id: "e2", volumeId, position: 1, startPage: 2, type: "front_matter" }),
+      makeEntry({ id: "e3", volumeId, position: 2, startPage: 3, type: "item" }),
+      makeEntry({ id: "e4", volumeId, position: 3, startPage: 4, type: "blank" }),
+      makeEntry({ id: "e5", volumeId, position: 4, startPage: 5, type: "back_matter" }),
+    ];
+
+    await saveEntries(db, volumeId, entriesToSave);
+    const loaded = await loadEntries(db, volumeId);
+
+    expect(loaded.map((e) => e.type)).toEqual([
+      "test_images",
+      "front_matter",
+      "item",
+      "blank",
+      "back_matter",
+    ]);
   });
 
   it("saves and loads entries with startY and endY (y-position roundtrip)", async () => {

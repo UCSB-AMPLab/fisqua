@@ -11,6 +11,7 @@
  */
 import { userContext } from "../context";
 import type { WorkflowRole } from "../lib/workflow";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.comments";
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -121,7 +122,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  db,
  user.id,
  volume.projectId,
- ["lead", "cataloguer", "reviewer"],
+ [...PROJECT_ROLES],
  user.isAdmin
  );
  const roleOrder: WorkflowRole[] = ["lead", "reviewer", "cataloguer"];
@@ -168,7 +169,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  db,
  user.id,
  volume.projectId,
- ["lead", "cataloguer", "reviewer"],
+ [...PROJECT_ROLES],
  user.isAdmin
  );
  const roleOrder: WorkflowRole[] = ["lead", "reviewer", "cataloguer"];

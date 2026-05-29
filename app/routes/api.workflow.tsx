@@ -20,6 +20,7 @@
 
 import { userContext } from "../context";
 import type { VolumeStatus, WorkflowRole } from "../lib/workflow";
+import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.workflow";
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -52,7 +53,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     db,
     user.id,
     projectId,
-    ["lead", "cataloguer", "reviewer"],
+    [...PROJECT_ROLES],
     user.isAdmin
   );
 

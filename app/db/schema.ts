@@ -79,7 +79,7 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.4.0
+ * @version v0.4.1
  */
 
 import {
@@ -99,6 +99,14 @@ import {
   ENTITY_ROLES,
   PLACE_ROLES,
   VOCABULARY_STATUSES,
+  VOLUME_STATUSES,
+  ENTRY_TYPES,
+  RESOURCE_TYPES_ES,
+  PROJECT_ROLES,
+  DESCRIPTIVE_STANDARDS,
+  QC_PROBLEM_TYPES,
+  QC_RESOLUTION_ACTIONS,
+  GEONAMES_FCLASSES,
 } from "../lib/validation/enums";
 // AUDIT_LOG_ACTIONS lives in a tiny constants module so
 // `app/lib/audit.server.ts` (which imports the auditLog table from
@@ -115,7 +123,7 @@ export const tenants = sqliteTable(
     slug: text("slug").notNull().unique(),
     name: text("name").notNull(),
     kind: text("kind", { enum: ["tenant", "platform"] }).notNull().default("tenant"),
-    descriptiveStandard: text("descriptive_standard", { enum: ["isadg", "dacs", "rad"] }),
+    descriptiveStandard: text("descriptive_standard", { enum: [...DESCRIPTIVE_STANDARDS] }),
     status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
     crowdsourcingEnabled: integer("crowdsourcing_enabled", { mode: "boolean" }).notNull().default(false),
     vocabularyHubEnabled: integer("vocabulary_hub_enabled", { mode: "boolean" }).notNull().default(true),
@@ -315,7 +323,7 @@ export const projectMembers = sqliteTable(
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull().references(() => projects.id),
     userId: text("user_id").notNull().references(() => users.id),
-    role: text("role", { enum: ["lead", "cataloguer", "reviewer"] }).notNull(),
+    role: text("role", { enum: [...PROJECT_ROLES] }).notNull(),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -349,7 +357,7 @@ export const volumes = sqliteTable(
     manifestUrl: text("manifest_url").notNull(),
     pageCount: integer("page_count").notNull(),
     status: text("status", {
-      enum: ["unstarted", "in_progress", "segmented", "sent_back", "reviewed", "approved"],
+      enum: [...VOLUME_STATUSES],
     })
       .notNull()
       .default("unstarted"),
@@ -399,7 +407,7 @@ export const entries = sqliteTable(
     endPage: integer("end_page"), // explicit for children, null for top-level
     endY: real("end_y"), // fraction 0-1, null for top-level
     type: text("type", {
-      enum: ["item", "blank", "front_matter", "back_matter", "test_images"],
+      enum: [...ENTRY_TYPES],
     }), // nullable: unset by default
     // Per-project document subtype label (e.g. "Escritura", "Poder", or a
     // free-typed "OTRO" value). Only meaningful when `type = 'item'`; null
@@ -418,7 +426,7 @@ export const entries = sqliteTable(
     // Description metadata fields
     translatedTitle: text("translated_title"),
     resourceType: text("resource_type", {
-      enum: ["texto", "imagen", "cartografico", "mixto"],
+      enum: [...RESOURCE_TYPES_ES],
     }),
     dateExpression: text("date_expression"),
     dateStart: text("date_start"),
@@ -488,14 +496,14 @@ export const qcFlags = sqliteTable(
       .references(() => volumePages.id, { onDelete: "cascade" }),
     reportedBy: text("reported_by").notNull().references(() => users.id),
     problemType: text("problem_type", {
-      enum: ["damaged", "repeated", "out_of_order", "missing", "blank", "other"],
+      enum: [...QC_PROBLEM_TYPES],
     }).notNull(),
     description: text("description").notNull(),
     status: text("status", { enum: ["open", "resolved", "wontfix"] })
       .notNull()
       .default("open"),
     resolutionAction: text("resolution_action", {
-      enum: ["retake_requested", "reordered", "marked_duplicate", "ignored", "other"],
+      enum: [...QC_RESOLUTION_ACTIONS],
     }),
     resolverNote: text("resolver_note"),
     resolvedBy: text("resolved_by").references(() => users.id),
@@ -536,7 +544,7 @@ export const comments = sqliteTable(
     parentId: text("parent_id"), // null = top-level, references comments.id for nesting
     authorId: text("author_id").notNull().references(() => users.id),
     authorRole: text("author_role", {
-      enum: ["cataloguer", "reviewer", "lead"],
+      enum: [...PROJECT_ROLES],
     }).notNull(),
     text: text("text").notNull(),
     createdAt: integer("created_at").notNull(),
@@ -812,7 +820,7 @@ export const places = sqliteTable(
     // column. The DB-level CHECK on fclass
     // (`IS NULL OR IN ('P','H','A','T','S')`) lives in the migration;
     // Drizzle's `enum:` hint here is the TypeScript-side mirror.
-    fclass: text("fclass", { enum: ["P", "H", "A", "T", "S"] }),
+    fclass: text("fclass", { enum: [...GEONAMES_FCLASSES] }),
     legacyIds: text("legacy_ids").notNull().default("[]"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),

@@ -47,12 +47,13 @@ import {
 import type { WorkflowRole } from "./workflow";
 import { logActivity } from "./workflow.server";
 import { createComment } from "./comments.server";
+import { RESOURCE_TYPES_ES, type ResourceTypeEs } from "./validation/enums";
 
 // --- Validation schema for submit-for-review ---
 
 const submitSchema = z.object({
   title: z.string().min(1, "Title is required"),
-  resourceType: z.enum(["texto", "imagen", "cartografico", "mixto"]),
+  resourceType: z.enum(RESOURCE_TYPES_ES),
   dateExpression: z.string().min(1, "Date expression is required"),
   scopeContent: z.string().min(1, "Scope and content is required"),
   language: z.string().min(1, "Language is required"),
@@ -62,7 +63,7 @@ const submitSchema = z.object({
 export type DescriptionFields = {
   title?: string | null;
   translatedTitle?: string | null;
-  resourceType?: "texto" | "imagen" | "cartografico" | "mixto" | null;
+  resourceType?: ResourceTypeEs | null;
   dateExpression?: string | null;
   dateStart?: string | null;
   dateEnd?: string | null;

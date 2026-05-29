@@ -37,6 +37,7 @@ import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { formatDate } from "../lib/format";
 import type { Route } from "./+types/_auth.admin.users.$id";
+import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -250,9 +251,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (intent === "assignToProject") {
     const projectId = formData.get("projectId") as string;
-    const role = formData.get("role") as "lead" | "cataloguer" | "reviewer";
+    const role = formData.get("role") as ProjectRole;
 
-    if (!projectId || !["lead", "cataloguer", "reviewer"].includes(role)) {
+    if (!projectId || !(PROJECT_ROLES as readonly string[]).includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
     }
 
@@ -284,9 +285,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   if (intent === "changeRole") {
     const membershipId = formData.get("membershipId") as string;
-    const role = formData.get("role") as "lead" | "cataloguer" | "reviewer";
+    const role = formData.get("role") as ProjectRole;
 
-    if (!membershipId || !["lead", "cataloguer", "reviewer"].includes(role)) {
+    if (!membershipId || !(PROJECT_ROLES as readonly string[]).includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
     }
 
