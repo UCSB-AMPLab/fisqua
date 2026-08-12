@@ -195,12 +195,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     }
 
     if (searchIds !== null && searchIds.length > 0) {
-      // Use rowid IN (...)
+      // Use rowid IN (...). The rowids are inlined as integer literals,
+      // not bound parameters: D1 caps a statement at 100 bindings, and a
+      // broad match (up to the LIMIT 200 above) would blow past it and
+      // fail the whole query. parseInt + isFinite keeps the inlining
+      // injection-proof — anything non-numeric from FTS is dropped.
+      const rowidLiterals = searchIds
+        .map((id) => parseInt(id, 10))
+        .filter((n) => Number.isFinite(n));
       baseConditions.push(
-        sql`${descriptions}.rowid IN (${sql.join(
-          searchIds.map((id) => sql`${parseInt(id, 10)}`),
-          sql`, `
-        )})`
+        rowidLiterals.length > 0
+          ? sql`${descriptions}.rowid IN (${sql.raw(rowidLiterals.join(", "))})`
+          : sql`1 = 0`
       );
     } else if (searchIds === null) {
       // LIKE fallback (parameterised).
