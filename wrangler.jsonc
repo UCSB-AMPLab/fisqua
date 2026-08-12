@@ -43,6 +43,14 @@
   "compatibility_date": "2025-04-04",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
+  // Import-commit batches re-validate the full staged file before writing
+  // (assembleRecords), which costs ~15s CPU per batch on a large import —
+  // the default 30s CPU ceiling killed batch steps mid-run on the first
+  // production-scale commit (5,602 rows). 300s is the platform maximum;
+  // the real fix is to stop re-parsing per batch.
+  "limits": {
+    "cpu_ms": 300000
+  },
   "observability": {
     "enabled": true
   },
