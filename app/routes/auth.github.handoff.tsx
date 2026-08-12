@@ -46,7 +46,7 @@
  *      `Domain=` attribute (the host-only-cookie invariant is pinned
  *      by `tests/sessions/cookie-scoping.test.ts`).
  *
- * @version v0.4.1
+ * @version v0.6.1
  */
 
 import { eq } from "drizzle-orm";
@@ -125,35 +125,43 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   if (user.tenantId !== tenant.id) {
-    // Three sub-cases fall through to /login?error=no-account:
+    // A live federation grant admits a foreign-home user (mirrors
+    // auth.verify): fall through to the session mint and let
+    // authMiddleware resolve the grant's effective role per request.
+    // Otherwise, three sub-cases fall through to
+    // /login?error=no-account:
     //   - user is the platform tenant (no user-facing subdomain)
     //   - user's home tenant row missing / soft-disabled
     //   - current host not a SUBDOMAIN_HOST_SUFFIXES host
     //     (handoff doesn't run on the legacy host in practice, but
     //     check defensively)
-    const { PLATFORM_TENANT_ID, SUBDOMAIN_HOST_SUFFIXES, findTenantById } =
-      await import("../lib/tenant");
-    if (user.tenantId !== PLATFORM_TENANT_ID) {
-      const currentHost = new URL(request.url).hostname.toLowerCase();
-      const isSubdomainHost = SUBDOMAIN_HOST_SUFFIXES.some((s) =>
-        currentHost.endsWith(s),
-      );
-      if (isSubdomainHost) {
-        const homeTenant = await findTenantById(db, user.tenantId);
-        if (homeTenant && homeTenant.disabledAt === null) {
-          return new Response(null, {
-            status: 302,
-            headers: {
-              Location: `/wrong-workspace?home=${encodeURIComponent(homeTenant.slug)}`,
-            },
-          });
+    const { resolveGrant } = await import("../lib/federation.server");
+    const grant = await resolveGrant(db, user, tenant);
+    if (grant === null) {
+      const { PLATFORM_TENANT_ID, SUBDOMAIN_HOST_SUFFIXES, findTenantById } =
+        await import("../lib/tenant");
+      if (user.tenantId !== PLATFORM_TENANT_ID) {
+        const currentHost = new URL(request.url).hostname.toLowerCase();
+        const isSubdomainHost = SUBDOMAIN_HOST_SUFFIXES.some((s) =>
+          currentHost.endsWith(s),
+        );
+        if (isSubdomainHost) {
+          const homeTenant = await findTenantById(db, user.tenantId);
+          if (homeTenant && homeTenant.disabledAt === null) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                Location: `/wrong-workspace?home=${encodeURIComponent(homeTenant.slug)}`,
+              },
+            });
+          }
         }
       }
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login?error=no-account" },
+      });
     }
-    return new Response(null, {
-      status: 302,
-      headers: { Location: "/login?error=no-account" },
-    });
   }
 
   // First-login GitHub bind: stamp github_id only when the column is
@@ -187,4 +195,4 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   });
 }
 
-// @version v0.4.1
+// @version v0.6.1

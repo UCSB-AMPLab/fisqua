@@ -15,7 +15,14 @@
  * on the same host so the user lands at the interstitial
  * unauthenticated (no wrong-tenant session ever exists).
  *
- * @version v0.4.1
+ * Exception — federation grants: a foreign-home user holding a live
+ * `federation_memberships` grant into this tenant's federation IS
+ * admitted (session minted normally); `authMiddleware` resolves the
+ * grant's effective role on every subsequent request. Stewards enter
+ * the member tenants they govern through this door — sessions are
+ * host-scoped, so without it the grant machinery is unreachable.
+ *
+ * @version v0.6.1
  */
 
 import { redirect } from "react-router";
@@ -85,22 +92,33 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   //     `catalogacion.zasqua.org`): the interstitial CTA can't be built
   //     for it; fall through to /login?error=no-account.
   if (user.tenantId !== tenant.id) {
-    if (user.tenantId === PLATFORM_TENANT_ID) {
+    // A live federation grant admits a foreign-home user: mint the
+    // session normally and let authMiddleware resolve the grant's
+    // effective role on every request (federation spec §4). Without
+    // this check the wrong-workspace interstitial locks stewards out
+    // of the member tenants they govern — no session can exist on a
+    // member-tenant host, so the grant machinery downstream is
+    // unreachable.
+    const { resolveGrant } = await import("../lib/federation.server");
+    const grant = await resolveGrant(db, user, tenant);
+    if (grant === null) {
+      if (user.tenantId === PLATFORM_TENANT_ID) {
+        throw redirect("/login?error=no-account");
+      }
+      const currentHost = url.hostname.toLowerCase();
+      const isSubdomainHost = SUBDOMAIN_HOST_SUFFIXES.some((s) =>
+        currentHost.endsWith(s),
+      );
+      if (isSubdomainHost) {
+        const homeTenant = await findTenantById(db, user.tenantId);
+        if (homeTenant && homeTenant.disabledAt === null) {
+          throw redirect(
+            `/wrong-workspace?home=${encodeURIComponent(homeTenant.slug)}`,
+          );
+        }
+      }
       throw redirect("/login?error=no-account");
     }
-    const currentHost = url.hostname.toLowerCase();
-    const isSubdomainHost = SUBDOMAIN_HOST_SUFFIXES.some((s) =>
-      currentHost.endsWith(s),
-    );
-    if (isSubdomainHost) {
-      const homeTenant = await findTenantById(db, user.tenantId);
-      if (homeTenant && homeTenant.disabledAt === null) {
-        throw redirect(
-          `/wrong-workspace?home=${encodeURIComponent(homeTenant.slug)}`,
-        );
-      }
-    }
-    throw redirect("/login?error=no-account");
   }
 
   // Tenant aligned — mint the session and proceed to /dashboard.

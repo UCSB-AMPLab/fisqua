@@ -15,13 +15,16 @@
  *   1. Wrong-tenant where the user's home tenant is soft-disabled
  *      (`disabledAt != null`) -> 302 to /login?error=no-account
  *      (no /wrong-workspace redirect, no session minted).
+ *   2. Wrong-tenant where the user holds a live steward grant into the
+ *      host tenant's federation -> session minted, 302 to /dashboard
+ *      (the grant door, mirroring auth.verify).
  *
  * The "ghost tenant" case (user.tenantId references a missing row) is
  * structurally unreachable: the FK constraint on `users.tenant_id`
  * prevents pointing a user at a non-existent tenant. The soft-disable
  * case below is the only "home tenant exists but unusable" branch.
  *
- * @version v0.4.1
+ * @version v0.6.1
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -30,10 +33,12 @@ import {
   applyMigrations,
   cleanDatabase,
   getTestDb,
+  DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
+  SECOND_TEST_FEDERATION_ID,
 } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
-import { tenants } from "../../app/db/schema";
+import { tenants, federationMemberships } from "../../app/db/schema";
 import { insertHandoff } from "../../app/lib/oauth-handoff.server";
 
 function makeLoaderArgs(url: string) {
@@ -111,6 +116,44 @@ describe("GitHub OAuth handoff - wrong-tenant edges", () => {
     expect(r.headers.get("Location")).toBe("/login?error=no-account");
     const cookie = r.headers.get("Set-Cookie");
     expect(cookie === null || !cookie.includes("__session=")).toBe(true);
+  });
+
+  it("user with a steward grant into the host tenant's federation -> session minted, /dashboard", async () => {
+    // Neogranadina-home user, steward of the Second Test Federation,
+    // GitHub handoff consumed on second-tenant.fisqua.test: the grant
+    // door admits them instead of the wrong-workspace bounce.
+    const user = await createTestUser({
+      email: "steward@example.com",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+
+    const db = getTestDb();
+    await db.insert(federationMemberships).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      federationId: SECOND_TEST_FEDERATION_ID,
+      role: "steward",
+      createdAt: Date.now(),
+    });
+
+    const id = "id-steward-grant-1";
+    await insertHandoff(db, {
+      id,
+      email: "steward@example.com",
+      githubId: "67890",
+      githubLogin: "stewardcat",
+      returnToSlug: "second-tenant",
+      now: Date.now(),
+    });
+
+    const r = await runLoader(
+      makeLoaderArgs(
+        `https://second-tenant.fisqua.test/auth/github/handoff?t=${id}`,
+      ),
+    );
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard");
+    expect(r.headers.get("Set-Cookie")).toContain("__session=");
   });
 
 });

@@ -19,8 +19,14 @@
  *      `/login?error=expired-link`, no session minted.
  *   4. wrong subdomain + user's home tenant is soft-disabled -> 302
  *      to `/login?error=no-account`, no session minted.
+ *   5. wrong subdomain + live federation steward grant into the host
+ *      tenant's federation -> session minted, 302 to `/dashboard`
+ *      (the grant door; without it stewards can never enter member
+ *      tenants — sessions are host-scoped).
+ *   6. wrong subdomain + grant on an UNRELATED federation -> still
+ *      bounced to `/wrong-workspace` (grants are federation-scoped).
  *
- * @version v0.4.1
+ * @version v0.6.1
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -30,6 +36,8 @@ import {
   cleanDatabase,
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
+  SECOND_TEST_FEDERATION_ID,
+  DEFAULT_TEST_FEDERATION_ID,
 } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import * as schema from "../../app/db/schema";
@@ -127,6 +135,74 @@ describe("auth.verify wrong-tenant gate", () => {
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe("/dashboard");
       expect(response.headers.get("Set-Cookie")).toContain("__session=");
+    }
+  });
+
+  it("mints the session and redirects to /dashboard when the user holds a steward grant into the host tenant's federation", async () => {
+    // Neogranadina-home user, steward of the Second Test Federation,
+    // magic link clicked on second-tenant.fisqua.test: the grant door
+    // admits them; authMiddleware resolves the effective role later.
+    const user = await createTestUser({ tenantId: DEFAULT_TEST_TENANT_ID });
+    const db = drizzle(env.DB);
+    await db.insert(schema.federationMemberships).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      federationId: SECOND_TEST_FEDERATION_ID,
+      role: "steward",
+      createdAt: Date.now(),
+    });
+    const token = await seedMagicToken(user.id);
+
+    const { loader } = await import("../../app/routes/auth.verify");
+
+    try {
+      await loader(
+        makeLoaderArgs(
+          `https://second-tenant.fisqua.test/auth/verify?token=${token}`,
+        ) as any,
+      );
+      expect.unreachable("loader should have thrown a redirect");
+    } catch (e) {
+      expect(e).toBeInstanceOf(Response);
+      const response = e as Response;
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBe("/dashboard");
+      expect(response.headers.get("Set-Cookie")).toContain("__session=");
+    }
+  });
+
+  it("still bounces to /wrong-workspace when the user's only grant is on an unrelated federation", async () => {
+    // A steward grant on the user's OWN home federation must not open
+    // doors elsewhere: grants are federation-scoped.
+    const user = await createTestUser({ tenantId: DEFAULT_TEST_TENANT_ID });
+    const db = drizzle(env.DB);
+    await db.insert(schema.federationMemberships).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      federationId: DEFAULT_TEST_FEDERATION_ID,
+      role: "steward",
+      createdAt: Date.now(),
+    });
+    const token = await seedMagicToken(user.id);
+
+    const { loader } = await import("../../app/routes/auth.verify");
+
+    try {
+      await loader(
+        makeLoaderArgs(
+          `https://second-tenant.fisqua.test/auth/verify?token=${token}`,
+        ) as any,
+      );
+      expect.unreachable("loader should have thrown a redirect");
+    } catch (e) {
+      expect(e).toBeInstanceOf(Response);
+      const response = e as Response;
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBe(
+        "/wrong-workspace?home=neogranadina",
+      );
+      const cookie = response.headers.get("Set-Cookie");
+      expect(cookie === null || !cookie.includes("__session=")).toBe(true);
     }
   });
 
