@@ -34,7 +34,7 @@ export default {
   placeholder: "tu@ejemplo.com",
   page_title: "Iniciar sesión | Fisqua",
   footer_note:
-    "Inicia sesión con GitHub o tu correo institucional de Neogranadina.",
+    "Inicia sesión con GitHub o con el correo de tu cuenta.",
   wrong_workspace: {
     page_title: "Espacio incorrecto | Fisqua",
     eyebrow: "Espacio incorrecto",

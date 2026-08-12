@@ -391,7 +391,7 @@ describe("dashboard loader helpers", () => {
         createdAt: Date.now(),
       });
 
-      const { projects, attentionItems } = await loadLeadData(db, lead.id, false);
+      const { projects, attentionItems } = await loadLeadData(db, lead.id, false, DEFAULT_TEST_TENANT_ID);
 
       expect(projects).toHaveLength(1);
       const overview = projects[0];
@@ -425,7 +425,7 @@ describe("dashboard loader helpers", () => {
         archivedAt: Date.now(),
       });
 
-      const { projects } = await loadLeadData(db, admin.id, true);
+      const { projects } = await loadLeadData(db, admin.id, true, DEFAULT_TEST_TENANT_ID);
 
       expect(projects.map((p) => p.id)).toEqual([visibleId]);
     });
@@ -433,7 +433,7 @@ describe("dashboard loader helpers", () => {
     it("returns empty projects/attentionItems when the user leads nothing", async () => {
       const db = getDb();
       const user = await createTestUser({ email: "nolead@test.com" });
-      const result = await loadLeadData(db, user.id, false);
+      const result = await loadLeadData(db, user.id, false, DEFAULT_TEST_TENANT_ID);
       expect(result).toEqual({ projects: [], attentionItems: [] });
     });
   });

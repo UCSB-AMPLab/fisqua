@@ -14,6 +14,7 @@ export default {
     home: "Inicio",
     projects: "Proyectos",
     members: "Miembros",
+    switch_workspace: "Cambiar de espacio de trabajo",
     my_assignments: "Mis asignaciones",
     all_volumes: "Todas las unidades compuestas",
     settings: "Configuración",

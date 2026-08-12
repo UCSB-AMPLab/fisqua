@@ -32,7 +32,7 @@ export default {
   placeholder: "you@example.com",
   page_title: "Log in | Fisqua",
   footer_note:
-    "Log in with GitHub or your Neogranadina institutional email.",
+    "Log in with GitHub or the email address on your account.",
   wrong_workspace: {
     page_title: "Wrong workspace | Fisqua",
     eyebrow: "Wrong workspace",

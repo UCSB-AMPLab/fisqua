@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { tenantContext, userContext } from "../context";
 import {
   CataloguerDashboard,
   type CataloguerGroups,
@@ -76,17 +76,36 @@ export function determinePrimaryRole(
 
 export async function loader({ context }: Route.LoaderArgs) {
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  // Get all memberships for role determination
+  // The dashboard's project/volume/queue content is crowdsourcing-module
+  // data. On a crowdsourcing-off tenant there is nothing of it to show —
+  // and, critically, none of it may leak in from the user's OTHER
+  // tenants (a grant-holding steward's user row carries home-tenant
+  // memberships; the first grant session, 2026-08-11, rendered the
+  // home tenant's projects on a member-tenant host). Capability gate
+  // first, tenant-scoped queries after.
+  if (!tenant.crowdsourcingEnabled) {
+    return { user, primaryRole: "none" as const, data: null };
+  }
+
+  // Memberships for role determination — scoped to THIS tenant's
+  // projects. A lead at home is not a lead here.
   const memberships = await db
     .select({
       projectId: projectMembers.projectId,
       role: projectMembers.role,
     })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, user.id))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        eq(projects.tenantId, tenant.id),
+      ),
+    )
     .all();
 
   const primaryRole = user.isAdmin ? "lead" : determinePrimaryRole(memberships);
@@ -123,7 +142,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   return {
     user,
     primaryRole,
-    data: await loadLeadData(db, user.id, user.isAdmin),
+    data: await loadLeadData(db, user.id, user.isAdmin, tenant.id),
   };
 }
 
@@ -356,16 +375,19 @@ export async function loadReviewerData(
 export async function loadLeadData(
   db: DrizzleD1Database<any>,
   userId: string,
-  isAdmin: boolean
+  isAdmin: boolean,
+  tenantId: string
 ): Promise<{ projects: ProjectOverview[]; attentionItems: AttentionItem[] }> {
-  // Get projects where user is lead (or all projects if admin)
+  // Get projects where user is lead (or all of THIS tenant's projects
+  // if admin — never platform-wide; the tenant filter is what keeps a
+  // grant-holder's dashboard honest on a member-tenant host).
   let leadProjectIds: string[];
 
   if (isAdmin) {
     const allProjects = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(isNull(projects.archivedAt))
+      .where(and(isNull(projects.archivedAt), eq(projects.tenantId, tenantId)))
       .all();
     leadProjectIds = allProjects.map((p: any) => p.id);
   } else {

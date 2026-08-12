@@ -24,6 +24,7 @@ import { impersonationContext, tenantContext, userContext } from "../context";
 import { Sidebar } from "../components/layout/sidebar";
 import { Footer } from "../components/layout/footer";
 import { ImpersonationBanner } from "../components/layout/impersonation-banner";
+import { WorkspaceSwitcher } from "../components/layout/workspace-switcher";
 import type { Route } from "./+types/_auth";
 
 export const middleware = [
@@ -110,9 +111,61 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ? { role: impersonating.role, tenantName: tenant.name }
     : null;
 
+  // Workspace switcher (multi-workspace users only): the user's home
+  // tenant plus every active tenant in a federation they hold a grant
+  // into. Single-workspace users get `null` and the top bar renders
+  // the tenant name as plain text — the switcher affordance exists
+  // only where there is somewhere to switch to. Links are absolute
+  // (sessions are host-scoped; a first hop may ask for a sign-in).
+  let workspaces: Array<{ name: string; url: string; current: boolean }> | null =
+    null;
+  {
+    const { federationMemberships, tenants } = await import("../db/schema");
+    const { inArray, isNull, and: andOp, eq: eqOp } = await import("drizzle-orm");
+    const grants = await db
+      .select({ federationId: federationMemberships.federationId })
+      .from(federationMemberships)
+      .where(eqOp(federationMemberships.userId, user.id))
+      .all();
+    if (grants.length > 0) {
+      const fedIds = grants.map((g) => g.federationId);
+      const reachable = await db
+        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+        .from(tenants)
+        .where(
+          andOp(
+            inArray(tenants.federationId, fedIds),
+            eqOp(tenants.status, "active"),
+            isNull(tenants.disabledAt),
+          ),
+        )
+        .all();
+      const home = await db
+        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+        .from(tenants)
+        .where(eqOp(tenants.id, user.tenantId))
+        .get();
+      const byId = new Map(reachable.map((t) => [t.id, t]));
+      if (home) byId.set(home.id, home);
+      if (byId.size > 1) {
+        const reqUrl = new URL(request.url);
+        const hostSuffix = reqUrl.hostname.split(".").slice(1).join(".");
+        workspaces = [...byId.values()]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((t2) => ({
+            name: t2.name,
+            url: `${reqUrl.protocol}//${t2.slug}.${hostSuffix}${reqUrl.port ? ":" + reqUrl.port : ""}/dashboard`,
+            current: t2.id === tenant.id,
+          }));
+      }
+    }
+  }
+
   return {
     user,
     appName,
+    tenantName: tenant.name,
+    workspaces,
     hasAnyProjectMembership,
     tenant: tenantCaps,
     impersonating: impersonatingForBanner,
@@ -203,7 +256,7 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
             Fisqua
           </span>
           <div className="mx-3 h-5 w-px bg-stone-200" aria-hidden="true" />
-          <span className="font-sans text-sm text-stone-500">Neogranadina</span>
+          <WorkspaceSwitcher />
         </div>
         <div className="flex items-center gap-3">
           <span className="font-sans text-sm text-stone-500">

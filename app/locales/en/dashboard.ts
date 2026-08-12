@@ -13,6 +13,7 @@ export default {
     home: "Home",
     projects: "Projects",
     members: "Members",
+    switch_workspace: "Switch workspace",
     my_assignments: "My assignments",
     all_volumes: "All volumes",
     settings: "Settings",
