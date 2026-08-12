@@ -70,6 +70,11 @@ export default {
     reseg_pending: "Re-segmentation pending",
   },
   empty: {
+    records_title: "Ready to catalog",
+    records_body:
+      "Create archival descriptions, manage repositories, or import existing records.",
+    go_to_descriptions: "Go to descriptions",
+    go_to_imports: "Go to imports",
     no_projects_title: "No projects yet",
     no_projects_body: "Create one to get started.",
     no_projects_admin_body: "Get started by creating a project or managing users.",

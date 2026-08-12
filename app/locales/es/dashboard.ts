@@ -71,6 +71,11 @@ export default {
     reseg_pending: "Re-segmentación pendiente",
   },
   empty: {
+    records_title: "Todo listo para catalogar",
+    records_body:
+      "Crea descripciones archivísticas, administra repositorios o importa registros existentes.",
+    go_to_descriptions: "Ir a descripciones",
+    go_to_imports: "Ir a importaciones",
     no_projects_title: "Aún no hay proyectos",
     no_projects_body: "Crea uno para empezar.",
     no_projects_admin_body: "Crea un proyecto o administra los usuarios para empezar.",

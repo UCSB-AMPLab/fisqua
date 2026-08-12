@@ -87,8 +87,13 @@ export async function loader({ context }: Route.LoaderArgs) {
   // memberships; the first grant session, 2026-08-11, rendered the
   // home tenant's projects on a member-tenant host). Capability gate
   // first, tenant-scoped queries after.
+  const caps = {
+    crowdsourcing: tenant.crowdsourcingEnabled,
+    imports: tenant.importsEnabled,
+  };
+
   if (!tenant.crowdsourcingEnabled) {
-    return { user, primaryRole: "none" as const, data: null };
+    return { user, caps, primaryRole: "none" as const, data: null };
   }
 
   // Memberships for role determination — scoped to THIS tenant's
@@ -111,7 +116,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const primaryRole = user.isAdmin ? "lead" : determinePrimaryRole(memberships);
 
   if (primaryRole === "none") {
-    return { user, primaryRole, data: null };
+    return { user, caps, primaryRole, data: null };
   }
 
   if (primaryRole === "cataloguer") {
@@ -121,6 +126,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     ]);
     return {
       user,
+      caps,
       primaryRole,
       data: { ...segData, descriptionEntries: descData },
     };
@@ -133,6 +139,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     ]);
     return {
       user,
+      caps,
       primaryRole,
       data: { ...segData, descriptionData: descData },
     };
@@ -141,6 +148,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   // lead or admin
   return {
     user,
+    caps,
     primaryRole,
     data: await loadLeadData(db, user.id, user.isAdmin, tenant.id),
   };
@@ -1005,7 +1013,7 @@ function ReviewerTabs({
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { user, primaryRole, data } = loaderData;
+  const { user, caps, primaryRole, data } = loaderData;
   const { t } = useTranslation("dashboard");
   const [activeTab, setActiveTab] = useState<"segmentation" | "description">("segmentation");
 
@@ -1053,7 +1061,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
               ? t("heading.my_reviews")
               : t("heading.dashboard")}
         </h1>
-        {user.isAdmin && (
+        {user.isAdmin && caps.crowdsourcing && (
           <div className="flex items-center gap-3">
             <Link
               to="/admin/cataloguing/users"
@@ -1080,6 +1088,33 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
+              {!caps.crowdsourcing ? (
+                <>
+                  <h3 className="mt-4 font-serif text-lg font-semibold text-indigo">{t("empty.records_title")}</h3>
+                  <p className="mt-2 font-serif text-15 text-stone-500 max-w-measure mx-auto">
+                    {t("empty.records_body")}
+                  </p>
+                  {user.isAdmin && (
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                      <Link
+                        to="/admin/descriptions"
+                        className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
+                      >
+                        {t("empty.go_to_descriptions")}
+                      </Link>
+                      {caps.imports && (
+                        <Link
+                          to="/admin/imports"
+                          className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                        >
+                          {t("empty.go_to_imports")}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+              <>
               <h3 className="mt-4 font-serif text-lg font-semibold text-indigo">{t("empty.no_projects_title")}</h3>
               {user.isAdmin ? (
                 <>
@@ -1105,6 +1140,8 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                 <p className="mt-2 font-serif text-15 text-stone-500 max-w-measure mx-auto">
                   {t("empty.no_projects_member_body")}
                 </p>
+              )}
+              </>
               )}
             </div>
           </div>
