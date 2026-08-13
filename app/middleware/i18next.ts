@@ -30,6 +30,11 @@ export const [i18nextMiddleware, getLocale, getInstance] =
     i18next: {
       resources,
       defaultNS: "common",
+      // React already escapes interpolated text on render; i18next's own
+      // HTML-entity escaping (default `escapeValue: true`) would run first
+      // and leave the entities as literal characters in the rendered
+      // output (e.g. "/" -> "&#x2F;") instead of being unescaped by React.
+      interpolation: { escapeValue: false },
     },
     plugins: [initReactI18next],
   });
