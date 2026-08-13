@@ -7,12 +7,18 @@
  * record once and passes it to children through the React Router
  * outlet context.
  *
- * @version v0.3.0
+ * The crowdsourcing capability gate lives here rather than on each
+ * child: every `/projects/:id/*` page renders through this layout, so
+ * one `requireCapability` call closes the whole subtree, and a child
+ * added later inherits the gate instead of having to remember it.
+ *
+ * @version v0.7.0
  */
 
 import { Outlet, NavLink, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id";
 
@@ -27,6 +33,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+
+  requireCapability(tenant, "crowdsourcing");
 
   const project = await getProject(db, tenant.id, params.id);
   if (!project) {

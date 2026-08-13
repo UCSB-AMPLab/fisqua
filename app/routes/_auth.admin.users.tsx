@@ -11,7 +11,12 @@
  * action plumbs `tenant.id` into `handleUsersAction` so the invite
  * path attributes the new user row to the calling tenant.
  *
- * @version v0.4.0
+ * Invite feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. The banner sits on the page rather than inside
+ * the invite modal because the modal closes on submit — a result
+ * rendered inside it would be unmounted before it could be read.
+ *
+ * @version v0.6.0
  */
 
 import { useState } from "react";
@@ -19,6 +24,11 @@ import { Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { formatDate } from "../lib/format";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.users";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +77,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projects.tenantId, tenant.id))
     .all();
 
   const membershipsByUser = new Map<string, { projectName: string; role: string }[]>();
@@ -112,7 +123,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     return handleUsersAction(user, tenant.id, db, formData, env, i18n, origin);
   }
 
-  return { ok: false, error: "Unknown action" };
+  // No `error` text: the branch is not reachable from the UI, so the
+  // feedback banner falls back to the localised "not saved" line
+  // rather than surfacing an untranslated developer string.
+  return { ok: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -166,10 +180,11 @@ export default function SystemUsersPage({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const inviteFetcher = useFetcher();
 
-  const inviteResult = inviteFetcher.data as
-    | { ok: boolean; message?: string; error?: string }
-    | undefined;
-  const inviteSuccess = inviteResult?.ok === true;
+  const inviting = isPendingSubmission(
+    inviteFetcher.state,
+    inviteFetcher.formData ?? undefined,
+    "inviteUser",
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-8 py-8 space-y-6">
@@ -186,17 +201,15 @@ export default function SystemUsersPage({
         </button>
       </div>
 
-      {inviteSuccess && inviteResult?.message && (
-        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {inviteResult.message}
-        </div>
-      )}
-
-      {inviteResult && !inviteResult.ok && inviteResult.error && (
-        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {inviteResult.error}
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={inviteFetcher.data}
+        pending={inviting}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+      />
 
       {showInviteModal && (
         <div
@@ -262,12 +275,11 @@ export default function SystemUsersPage({
                 >
                   {t("admin:action.cancel")}
                 </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-                >
-                  {t("sidebar:send_invite")}
-                </button>
+                <SaveButton
+                  pending={inviting}
+                  label={t("sidebar:send_invite")}
+                  pendingLabel={t("common:save.saving")}
+                />
               </div>
             </inviteFetcher.Form>
           </div>

@@ -44,13 +44,14 @@
  * MARK_SAVING / MARK_SAVED / MARK_ERROR transitions inside the
  * hook itself.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRevalidator, useBlocker } from "react-router";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { IIIFViewer, type PinMode } from "../components/viewer/iiif-viewer";
 import { ViewerToolbar } from "../components/viewer/viewer-toolbar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
@@ -93,6 +94,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // The viewer is a full-page route outside the `/projects/:id`
+  // layout, so it carries its own crowdsourcing gate.
+  requireCapability(tenant, "crowdsourcing");
 
   // Any project member can access the viewer (access level determined by role + assignment)
   const memberships = await requireProjectRole(

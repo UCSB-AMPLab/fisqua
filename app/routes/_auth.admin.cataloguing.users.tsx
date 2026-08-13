@@ -19,20 +19,31 @@
  * gate; the JSX gate here is belt-and-braces. Dormant flag values
  * stay in the DB (no auto-clear).
  *
- * @version v0.4.2
+ * Invite-form feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair, replacing the hand-rolled pair of banners that
+ * carried no live region and no pending state. `actionData` arrives as
+ * a component prop rather than through `useActionData` so both feedback
+ * states can be rendered without a live submission.
+ *
+ * @version v0.6.0
  */
 
-import { Form, useActionData } from "react-router";
+import { Form, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { formatDate } from "../lib/format";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.cataloguing.users";
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { desc, eq, or, inArray, sql } = await import("drizzle-orm");
   const { requireCollabAdmin } = await import("../lib/permissions.server");
-  const { users, projectMembers } = await import("../db/schema");
+  const { users, projectMembers, projects } = await import("../db/schema");
 
   const user = context.get(userContext);
   requireCollabAdmin(user);
@@ -47,6 +58,8 @@ export async function loader({ context }: Route.LoaderArgs) {
   const memberUserIds = await db
     .selectDistinct({ userId: projectMembers.userId })
     .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projects.tenantId, tenant.id))
     .all();
   const memberIdSet = memberUserIds.map((m) => m.userId);
 
@@ -99,10 +112,16 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function AdminCataloguingUsers({
   loaderData,
+  actionData,
 }: Route.ComponentProps) {
   const { users: allUsers, currentUser, tenant } = loaderData;
-  const actionData = useActionData<typeof action>();
   const { t } = useTranslation("admin");
+  const navigation = useNavigation();
+  const inviting = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "inviteUser",
+  );
 
   return (
     <div className="space-y-8">
@@ -116,16 +135,16 @@ export default function AdminCataloguingUsers({
           {t("heading.create_user")}
         </h2>
 
-        {actionData?.ok && actionData?.message && (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-            {actionData.message}
-          </div>
-        )}
-        {actionData && !actionData.ok && actionData?.error && (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-            {actionData.error}
-          </div>
-        )}
+        {/* Save feedback — transient on success, persistent on failure. */}
+        <SaveFeedbackBanner
+          source={actionData}
+          pending={inviting}
+          labels={{
+            success: t("common:save.saved"),
+            error: t("common:save.failed"),
+          }}
+          className="mt-3"
+        />
 
         <Form method="post" className="mt-4 flex items-end gap-3">
           <input type="hidden" name="_action" value="inviteUser" />
@@ -170,12 +189,11 @@ export default function AdminCataloguingUsers({
               Collab admin
             </label>
           )}
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("action.create_user")}
-          </button>
+          <SaveButton
+            pending={inviting}
+            label={t("action.create_user")}
+            pendingLabel={t("common:save.saving")}
+          />
         </Form>
       </section>
 

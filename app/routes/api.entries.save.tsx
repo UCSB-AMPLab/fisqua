@@ -25,6 +25,7 @@
  */
 
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.entries.save";
 
@@ -46,6 +47,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const formData = await request.formData();
   const actionType = formData.get("_action") as string | null;

@@ -43,8 +43,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const [columns, teamMembers] = await Promise.all([
-    getPipelineData(db, params.id),
-    getTeamMembers(db, params.id),
+    getPipelineData(db, tenant.id, params.id),
+    getTeamMembers(db, tenant.id, params.id),
   ]);
 
   return { columns, teamMembers, user, projectId: params.id };
@@ -134,7 +134,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       );
     }
 
-    return assignDescriber(db, parsed.data.entryId, parsed.data.describerId);
+    return assignDescriber(
+      db,
+      tenant.id,
+      parsed.data.entryId,
+      parsed.data.describerId
+    );
   }
 
   return { success: false, error: "Unknown intent" };

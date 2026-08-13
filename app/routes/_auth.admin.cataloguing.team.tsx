@@ -12,14 +12,30 @@
  * `entries`) inherit tenant scope through the user FK chain
  * (memberships only join users that already belong to the tenant).
  *
- * @version v0.4.2
+ * This page was fully silent on save: the action has always returned
+ * `{ ok, message }` / `{ ok: false, error }`, but nothing rendered it,
+ * so assigning or removing a member produced no acknowledgement at all.
+ * The fix is the page-level `SaveFeedbackBanner`, which required
+ * hoisting the fetcher out of `AssignForm` and `RemoveButton` into the
+ * page: those components are per-row and `AssignForm` unmounts itself
+ * on submit, so a result rendered inside either of them would vanish
+ * before it could be read. One fetcher shared by every row also means
+ * one result region and one announcement, which is what the user
+ * wants — these are sequential, one-at-a-time actions.
+ *
+ * @version v0.6.0
  */
 
 import { useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, type FetcherWithComponents } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { PROJECT_ROLES } from "../lib/validation/enums";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.cataloguing.team";
 
 interface TeamMember {
@@ -213,7 +229,12 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     const roleResult = roleSchema.safeParse(roleRaw);
     if (!roleResult.success) {
-      return { ok: false, error: "Invalid role" };
+      // No `error` text: neither branch is reachable from the UI (the
+      // role select is constrained to PROJECT_ROLES), so there is
+      // nothing user-meaningful to say. The feedback banner falls back
+      // to the localised "not saved" line rather than surfacing an
+      // untranslated developer string.
+      return { ok: false };
     }
 
     // Verify userId exists in the calling tenant
@@ -286,20 +307,27 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { ok: true, message: i18n.t("team:success_removed") };
   }
 
-  return { ok: false, error: "Unknown action" };
+  return { ok: false };
 }
 
 function AssignForm({
   userId,
   availableProjects,
   onClose,
+  fetcher,
 }: {
   userId: string;
   availableProjects: AvailableProject[];
   onClose: () => void;
+  /** The page-level fetcher, so the result outlives this form's unmount. */
+  fetcher: FetcherWithComponents<unknown>;
 }) {
   const { t } = useTranslation("team");
-  const fetcher = useFetcher();
+  const assigning = isPendingSubmission(
+    fetcher.state,
+    fetcher.formData ?? undefined,
+    "assignToProject",
+  );
 
   return (
     <fetcher.Form
@@ -336,12 +364,12 @@ function AssignForm({
         <option value="reviewer">{t("role_reviewer")}</option>
       </select>
 
-      <button
-        type="submit"
-        className="rounded-md bg-indigo px-3 py-1.5 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-      >
-        {t("assign")}
-      </button>
+      <SaveButton
+        pending={assigning}
+        label={t("assign")}
+        pendingLabel={t("common:save.saving")}
+        className="px-3 py-1.5"
+      />
       <button
         type="button"
         onClick={onClose}
@@ -357,13 +385,15 @@ function RemoveButton({
   membershipId,
   userName,
   projectName,
+  fetcher,
 }: {
   membershipId: string;
   userName: string;
   projectName: string;
+  /** The page-level fetcher — see the AssignForm note. */
+  fetcher: FetcherWithComponents<unknown>;
 }) {
   const { t } = useTranslation("team");
-  const fetcher = useFetcher();
 
   return (
     <fetcher.Form method="post" className="inline">
@@ -395,12 +425,24 @@ export default function AdminCataloguingTeam({
   const { team, availableProjects } = loaderData;
   const { t } = useTranslation("team");
   const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
+  // One fetcher for every row form on the page — see the module header.
+  const fetcher = useFetcher();
 
   return (
     <div className="space-y-6">
       <h1 className="font-display text-4xl font-semibold text-stone-700">
         {t("title")}
       </h1>
+
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={fetcher.data}
+        pending={fetcher.state !== "idle"}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+      />
 
       {/* Role legend */}
       <div className="flex flex-wrap items-center gap-3 font-sans text-xs text-stone-500">
@@ -485,6 +527,7 @@ export default function AdminCataloguingTeam({
                               membershipId={p.membershipId}
                               userName={member.name || member.email}
                               projectName={p.projectName}
+                              fetcher={fetcher}
                             />
                           </span>
                         ))}
@@ -499,6 +542,7 @@ export default function AdminCataloguingTeam({
                         userId={member.id}
                         availableProjects={availableProjects}
                         onClose={() => setAssigningUserId(null)}
+                        fetcher={fetcher}
                       />
                     )}
                   </td>

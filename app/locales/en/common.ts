@@ -7,7 +7,7 @@
  * Clear). i18next loads it as the default namespace, so bare keys
  * like `t("button.save")` resolve here without an explicit prefix.
  *
- * @version v0.3.0
+ * @version v0.6.0
  */
 export default {
   app_name: "Fisqua",
@@ -35,6 +35,18 @@ export default {
     confirm: "Confirm",
     edit: "Edit",
     details: "Details",
+  },
+  help: {
+    openDocs: "Open the guide for this screen",
+  },
+  // Shared save-feedback vocabulary for the admin forms. `saved` and
+  // `failed` are the fallbacks the banner uses when an action reports
+  // its outcome without a message of its own; `saving` is the busy
+  // label the submit button swaps to while a submission is in flight.
+  save: {
+    saved: "Changes saved",
+    saving: "Saving...",
+    failed: "Changes were not saved",
   },
   domain: {
     document_count_one: "{{count}} document",

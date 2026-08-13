@@ -17,7 +17,7 @@
  * subtypes, conventions, JSON settings blob) live on the per-project
  * settings page once the row exists.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { Form, redirect, useActionData, Link } from "react-router";
@@ -31,14 +31,17 @@ export function meta() {
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { requireAdmin } = await import("../lib/permissions.server");
+  const { requireCapability } = await import("../lib/tenant");
   const user = context.get(userContext);
   requireAdmin(user);
+  requireCapability(context.get(tenantContext), "crowdsourcing");
   return {};
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { requireAdmin } = await import("../lib/permissions.server");
+  const { requireCapability } = await import("../lib/tenant");
   const {
     validateProjectForm,
     createProject,
@@ -46,6 +49,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   requireAdmin(user);
+  requireCapability(context.get(tenantContext), "crowdsourcing");
 
   const formData = await request.formData();
   const raw = {

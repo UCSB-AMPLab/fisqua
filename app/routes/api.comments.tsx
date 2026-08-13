@@ -10,6 +10,7 @@
  * @version v0.7.0
  */
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import type { WorkflowRole } from "../lib/workflow";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.comments";
@@ -27,6 +28,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "POST") {
  let body: any;
@@ -243,6 +248,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const url = new URL(request.url);
   const entryId = url.searchParams.get("entryId");

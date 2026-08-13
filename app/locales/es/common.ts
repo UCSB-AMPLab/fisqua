@@ -8,7 +8,7 @@
  * bare keys like `t("button.save")` resolve here without an explicit
  * prefix.
  *
- * @version v0.3.0
+ * @version v0.6.0
  */
 export default {
   app_name: "Fisqua",
@@ -36,6 +36,18 @@ export default {
     confirm: "Confirmar",
     edit: "Editar",
     details: "Detalles",
+  },
+  help: {
+    openDocs: "Ver la guía para esta pantalla",
+  },
+  // Vocabulario compartido de confirmación de guardado en los
+  // formularios de administración. `saved` y `failed` son los textos de
+  // reserva cuando la acción informa el resultado sin mensaje propio;
+  // `saving` es la etiqueta del botón mientras el envío está en curso.
+  save: {
+    saved: "Se guardaron los cambios",
+    saving: "Guardando...",
+    failed: "No se guardaron los cambios",
   },
   domain: {
     document_count_one: "{{count}} documento",

@@ -39,6 +39,8 @@ export default {
     delete_boundary: "Delete boundary",
     zoom_in: "Zoom in",
     zoom_out: "Zoom out",
+    fullscreen: "Full screen",
+    readonly_tooltip: "Read only — you do not have permission to create",
     fit_to_width: "Fit to width",
     go_to_image: "Go to image",
     back_to_volumes: "Back to volumes",

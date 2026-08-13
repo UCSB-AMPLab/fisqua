@@ -10,6 +10,7 @@
  * @version v0.7.0
  */
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/api.comments.$id";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -35,6 +36,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "DELETE") {
  // Resolve the comment's anchor + project so we can check lead role

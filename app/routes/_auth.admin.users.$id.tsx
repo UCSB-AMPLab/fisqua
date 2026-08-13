@@ -28,7 +28,16 @@
  * full route-action wiring (the i18n middleware in particular pulls
  * in `~/locales` which the Workers test pool does not alias).
  *
- * @version v0.4.2
+ * Every form on the page — profile, role flags, project assignment,
+ * per-row role change and removal — shares ONE fetcher, so there is one
+ * page-level `SaveFeedbackBanner` rather than one per form: a second
+ * banner fed by the same fetcher would announce every result twice.
+ * The banner sits directly under the breadcrumb as the page's result
+ * region. Each submit button keys its own pending state off the
+ * `_action` value carried by the in-flight submission, so clicking
+ * "Save profile" does not grey out "Save roles".
+ *
+ * @version v0.6.0
  */
 
 import { useState } from "react";
@@ -36,6 +45,11 @@ import { Form, Link, useFetcher, redirect } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { formatDate } from "../lib/format";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.users.$id";
 import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 
@@ -379,9 +393,21 @@ export default function UserDetailPage({
   const fetcher = useFetcher();
   const [showAssignForm, setShowAssignForm] = useState(false);
 
-  const result = fetcher.data as
-    | { ok: boolean; message?: string; error?: string }
-    | undefined;
+  const formData = fetcher.formData ?? undefined;
+  const savingProfile = isPendingSubmission(
+    fetcher.state,
+    formData,
+    "updateProfile",
+  );
+  const savingRoles = isPendingSubmission(fetcher.state, formData, "updateRoles");
+  const assigning = isPendingSubmission(
+    fetcher.state,
+    formData,
+    "assignToProject",
+  );
+  // Any in-flight submission clears the previous result, so a stale
+  // error never sits under a retry that is already running.
+  const submitting = fetcher.state !== "idle";
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8 space-y-8">
@@ -393,6 +419,17 @@ export default function UserDetailPage({
         <span className="mx-2">&rsaquo;</span>
         <span className="text-stone-700">{u.name || u.email}</span>
       </nav>
+
+      {/* Save feedback — transient on success, persistent on failure.
+          One region for the whole page: every form shares one fetcher. */}
+      <SaveFeedbackBanner
+        source={fetcher.data}
+        pending={submitting}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+      />
 
       {/* Profile */}
       <fetcher.Form method="post" className="space-y-4">
@@ -436,26 +473,13 @@ export default function UserDetailPage({
             {" · "}
             {t("created_label")}: {formatDate(u.createdAt)}
           </p>
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save_profile")}
-          </button>
+          <SaveButton
+            pending={savingProfile}
+            label={t("save_profile")}
+            pendingLabel={t("common:save.saving")}
+          />
         </div>
       </fetcher.Form>
-
-      {/* Feedback */}
-      {result?.ok && result.message && (
-        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {result.message}
-        </div>
-      )}
-      {result && !result.ok && result.error && (
-        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {result.error}
-        </div>
-      )}
 
       {/* Role edit warnings */}
       {isSelf && (
@@ -551,12 +575,11 @@ export default function UserDetailPage({
           </div>
 
           {canEditRoles && !isSelf && (
-            <button
-              type="submit"
-              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-            >
-              {t("save_roles")}
-            </button>
+            <SaveButton
+              pending={savingRoles}
+              label={t("save_roles")}
+              pendingLabel={t("common:save.saving")}
+            />
           )}
         </div>
       </fetcher.Form>
@@ -617,12 +640,11 @@ export default function UserDetailPage({
                 <option value="reviewer">{t("role_reviewer")}</option>
               </select>
             </div>
-            <button
-              type="submit"
-              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-            >
-              {t("assign")}
-            </button>
+            <SaveButton
+              pending={assigning}
+              label={t("assign")}
+              pendingLabel={t("common:save.saving")}
+            />
           </fetcher.Form>
         )}
 

@@ -75,9 +75,7 @@ export function ViewerToolbar({
 }: ViewerToolbarProps) {
   const { t } = useTranslation(["viewer"]);
   const createEnabled = shouldEnableCreateButtons(accessLevel);
-  const readonlyTooltip = t("viewer:readonlyTooltip", {
- defaultValue: "Solo lectura — no tiene permisos para crear",
-  });
+  const readonlyTooltip = t("viewer:toolbar.readonly_tooltip");
   const annotationActive = pinMode !== "off";
 
   return (
@@ -87,9 +85,7 @@ export function ViewerToolbar({
  <button
  type="button"
  onClick={onZoomOut}
- aria-label={t("viewer:toolbar.zoomOut", {
- defaultValue: "Reducir zoom",
- })}
+ aria-label={t("viewer:toolbar.zoom_out")}
  className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <ZoomOut size={14} aria-hidden="true" />
@@ -100,9 +96,7 @@ export function ViewerToolbar({
  <button
  type="button"
  onClick={onZoomIn}
- aria-label={t("viewer:toolbar.zoomIn", {
- defaultValue: "Aumentar zoom",
- })}
+ aria-label={t("viewer:toolbar.zoom_in")}
  className="flex h-7 w-7 items-center justify-center rounded text-stone-600 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <ZoomIn size={14} aria-hidden="true" />
@@ -192,15 +186,11 @@ export function ViewerToolbar({
  <button
  type="button"
  onClick={onToggleFullscreen}
- aria-label={t("viewer:toolbar.pantallaCompleta", {
- defaultValue: "Pantalla completa",
- })}
+ aria-label={t("viewer:toolbar.fullscreen")}
  className="inline-flex h-7 items-center gap-1.5 rounded border border-stone-200 bg-white px-2 text-xs font-semibold text-stone-700 transition-colors hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
  <Maximize size={14} aria-hidden="true" />
- {t("viewer:toolbar.pantallaCompleta", {
- defaultValue: "Pantalla completa",
- })}
+ {t("viewer:toolbar.fullscreen")}
  </button>
  </div>
  </div>

@@ -7,14 +7,28 @@
  * administrative surfaces live here. Reachable from the sidebar
  * footer and the top-bar user menu.
  *
- * @version v0.3.0
+ * Save feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. Before that, this page confirmed a successful
+ * profile update but rendered nothing at all on failure, so a name
+ * change that the action rejected looked identical to one that landed.
+ *
+ * `actionData` arrives as a component prop rather than through
+ * `useActionData` so the feedback states can be rendered — and
+ * asserted — without standing up a live submission.
+ *
+ * @version v0.6.0
  */
 
 import { useState } from "react";
-import { Form, useActionData } from "react-router";
+import { Form, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Github } from "lucide-react";
 import { userContext } from "../context";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.configuracion";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +72,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     default:
-      return { ok: false, error: "Unknown action" };
+      // No `error` message: the intent is not reachable from the UI, so
+      // there is nothing user-meaningful to say. The feedback banner
+      // falls back to the localised "not saved" line rather than
+      // surfacing an untranslated developer string.
+      return { ok: false };
   }
 }
 
@@ -68,10 +86,16 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function ConfiguracionPage({
   loaderData,
+  actionData,
 }: Route.ComponentProps) {
   const { user } = loaderData;
-  const actionData = useActionData<typeof action>();
   const { t, i18n } = useTranslation("settings");
+  const navigation = useNavigation();
+  const savingProfile = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "updateProfile",
+  );
   const [activeLang, setActiveLang] = useState(i18n.language?.startsWith("es") ? "es" : "en");
 
   function handleLanguageChange(lang: string) {
@@ -90,12 +114,13 @@ export default function ConfiguracionPage({
         {t("title")}
       </h1>
 
-      {/* Success feedback */}
-      {actionData?.ok && actionData?.intent === "updateProfile" && (
-        <div className="mt-4 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {t("saved")}
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={actionData}
+        pending={savingProfile}
+        labels={{ success: t("saved"), error: t("common:save.failed") }}
+        className="mt-4"
+      />
 
       {/* Profile section */}
       <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
@@ -127,12 +152,11 @@ export default function ConfiguracionPage({
               {user.email}
             </p>
           </div>
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save")}
-          </button>
+          <SaveButton
+            pending={savingProfile}
+            label={t("save")}
+            pendingLabel={t("common:save.saving")}
+          />
         </Form>
       </div>
 

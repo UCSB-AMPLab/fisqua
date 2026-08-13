@@ -32,7 +32,17 @@
  * the behaviour from both angles: title persists, and the additive
  * contract still holds.
  *
- * @version v0.4.1
+ * Tenant scope is the CALLER'S responsibility, and the contract is
+ * strict: every `entryId` and `volumeId` passed in must already have
+ * been resolved through `requireDescriptionAccess`, `requireEntryAccess`
+ * or an equivalent guard that takes the REQUEST tenant id. Nothing in
+ * this module re-derives the tenant, so a raw client-supplied id
+ * reaching one of these helpers is a cross-tenant write. The keystone
+ * (`tests/db/cross-tenant-coverage.test.ts`) exempts this module on
+ * exactly that basis and fails if the contract stops being stated
+ * here.
+ *
+ * @version v0.7.0
  */
 
 import { eq, sql } from "drizzle-orm";

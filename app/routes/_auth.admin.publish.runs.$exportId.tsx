@@ -9,13 +9,13 @@
  * by `workflowInstanceId`. Used to diagnose runs that stalled or
  * failed.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
-import { userContext } from "../context";
+import { tenantContext, userContext } from "../context";
 import { formatIsoDateTime } from "~/lib/format-date";
 import type { Route } from "./+types/_auth.admin.publish.runs.$exportId";
 
@@ -56,12 +56,13 @@ export async function loader({
   context,
 }: Route.LoaderArgs): Promise<RunDetailLoaderData> {
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   if (!user.isSuperAdmin) {
     return { authorized: false, run: null };
   }
 
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq } = await import("drizzle-orm");
+  const { and, eq } = await import("drizzle-orm");
   const { exportRuns, users } = await import("../db/schema");
 
   const db = drizzle(context.cloudflare.env.DB);
@@ -87,8 +88,20 @@ export async function loader({
       createdAt: exportRuns.createdAt,
     })
     .from(exportRuns)
-    .leftJoin(users, eq(exportRuns.triggeredBy, users.id))
-    .where(eq(exportRuns.id, params.exportId))
+    // `export_runs` carries no tenant_id of its own, so the scope
+    // comes from the triggering user's row -- the same join
+    // `api.publish.tsx` uses, and for the same reason: without it a
+    // superadmin on one tenant reads any other tenant's run by id.
+    // innerJoin, not leftJoin: a run whose triggering user cannot be
+    // resolved inside this tenant must not fall through as a row with
+    // a null email.
+    .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
+    .where(
+      and(
+        eq(exportRuns.id, params.exportId),
+        eq(users.tenantId, tenant.id)
+      )
+    )
     .get();
 
   if (!row) {

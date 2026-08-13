@@ -57,14 +57,22 @@
  *   - `app/middleware/**` — middleware is structurally bounded; the
  *     allowlist documents the legitimate exceptions there.
  *
- * Routes outside `_auth.admin.**` (the dashboard, project routes,
- * OAuth callback, configuracion) and lib subsystems deliberately
- * scoped out (`app/lib/export/**`, `app/lib/pipeline/**`) are NOT
- * covered by this keystone in v0.4. Until a broader pass widens
- * the scope, the v0.4 reality (every existing user belongs to
- * Neogranadina, every existing host routes to Neogranadina via
- * `LEGACY_HOST_MAP`) means those queries cannot leak across tenants
- * in production.
+ *   - The MEMBER-FACING CROWDSOURCING SURFACE, added in v0.7:
+ *     `_auth.proyectos.tsx`, `_auth.projects.*`, `_auth.viewer.*`,
+ *     `_auth.description.*`, `_auth.users.*`, every `api.*` endpoint,
+ *     plus `app/lib/pipeline/**`, `app/lib/description.server.ts` and
+ *     `app/lib/activity.server.ts`. These sat outside the keystone
+ *     through v0.4-v0.6 on the reasoning that every host resolved to
+ *     Neogranadina anyway. Federation grants ended that: a steward is
+ *     now routinely served on a host that is not their home tenant,
+ *     and a membership-derived query on these surfaces renders their
+ *     home tenant's work under someone else's name.
+ *
+ * Still outside: `app/lib/export/**`, `_auth.dashboard.tsx`,
+ * `_auth.configuracion.tsx`, and the pre-session auth routes. The
+ * dashboard is the reference implementation for the correct shape but
+ * resolves actor and cataloguer names by id from rows it has already
+ * tenant-scoped, which the scanner would read as violations.
  *
  * `/operator/*` routes are scoped OUT of this keystone by design.
  * Operator surfaces read across tenants for recovery and support
@@ -77,6 +85,25 @@
  * exemption automatically as long as they live under `_operator.*`;
  * expanding the operator surface beyond `/operator/*` would require
  * an explicit second carve-out, surfaced in review.
+ *
+ * ## Two exemption lists, deliberately separate
+ *
+ * `ALLOWLIST_FILES` is the blanket one: the query cannot carry a
+ * tenant predicate at all (it runs before tenant context exists, or
+ * the column it keys on is globally unique by schema).
+ *
+ * `PARENT_FK_EXEMPTIONS` is the narrower one, and it is where the
+ * whole member surface lands. Those files query by a resource id that
+ * a request-tenant-carrying guard — `requireProjectRole`,
+ * `requireEntryAccess`, `requireDescriptionAccess`, `requirePageAccess`
+ * — has already resolved and refused if it belongs to another tenant.
+ * A `tenantId` predicate there would be redundant with the guard, not
+ * additional to it, so the scanner cannot classify the statement.
+ * Each entry names the guard in `requires`, and a test asserts the
+ * string is still in the file: delete the guard and the file fails
+ * the keystone rather than quietly losing its boundary. A second test
+ * fails any entry that no longer suppresses a violation, so carve-outs
+ * cannot outlive their reason.
  *
  * ## Allowlist
  *
@@ -127,9 +154,19 @@
  *      `.get()`, `.run()` at line-end, or a closing `})` whose paren
  *      depth has returned to zero relative to the verb's opening.
  *
- *   3. Asserts the captured statement contains the substring
- *      `tenantId` (case-sensitive; this is the camelCase the Drizzle
- *      schema and every loader use).
+ *   3. Asserts the captured statement contains a `tenantId` reference
+ *      in a genuine VALUE position (case-sensitive; this is the
+ *      camelCase the Drizzle schema and every loader use). Two things
+ *      are neutralised first so they cannot satisfy the check: type
+ *      annotations (`tenantId: string` in a signature is a
+ *      declaration, not a predicate) and HOME-TENANT references
+ *      (`user.tenantId`, `currentUser.tenantId` — scoping by the
+ *      caller's home tenant is the bug, so it must not read as the
+ *      fix). What the check still cannot distinguish is `tenant.id`
+ *      from any other right-hand side: `eq(volumes.tenantId, x)`
+ *      passes whatever `x` is. Reading the right-hand side properly
+ *      needs a real parse, not a line walker; the guard-anchored
+ *      exemptions below carry the part of the load this cannot.
  *
  *   4. Pushes any violation onto a list. After the scan, asserts the
  *      list is empty; the failure message lists each
@@ -147,7 +184,7 @@
  * tenant-scoped tables (users/repositories/descriptions). See the
  * TENANT_TABLES / FEDERATION_TABLES split below.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -199,6 +236,36 @@ const crowdsourcingWriterFiles = import.meta.glob(
 
 const middlewareFiles = import.meta.glob(
   "../../app/middleware/**/*.{ts,tsx}",
+  { query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
+
+// Member-facing crowdsourcing surface. Outside the keystone until
+// v0.7: `/proyectos`, the `/projects/*` tree, the full-page viewer and
+// description editor, the per-user activity page, and every
+// crowdsourcing `api.*` endpoint. These are the surfaces a federation
+// grant-holder reaches on a member tenant's host, so they are exactly
+// where a membership-derived query leaks the caller's home tenant.
+const memberRouteFiles = import.meta.glob(
+  [
+    "../../app/routes/_auth.proyectos.tsx",
+    "../../app/routes/_auth.projects.*.tsx",
+    "../../app/routes/_auth.viewer.*.tsx",
+    "../../app/routes/_auth.description.*.tsx",
+    "../../app/routes/_auth.users.*.tsx",
+    "../../app/routes/api.*.tsx",
+  ],
+  { query: "?raw", import: "default", eager: true },
+) as Record<string, string>;
+
+// Lib subsystems the member surface calls that the v0.4 keystone
+// scoped out: the kanban pipeline, the description reader/writer, and
+// the activity feeds.
+const memberLibFiles = import.meta.glob(
+  [
+    "../../app/lib/pipeline/**/*.ts",
+    "../../app/lib/description.server.ts",
+    "../../app/lib/activity.server.ts",
+  ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
@@ -294,6 +361,118 @@ const ALLOWLIST_FILES: ReadonlyArray<string> = [
   // parent volume.
   "../../app/lib/resegmentation.server.ts",
 ];
+
+/**
+ * PARENT-FK exemptions — the member crowdsourcing surface.
+ *
+ * A different shape of exception from `ALLOWLIST_FILES`, and given
+ * its own list so it cannot be confused with one. These files query
+ * domain tables by a resource primary key or a parent foreign key
+ * (`params.id`, `volumeId`, `entryId`, `pageId`, `commentId`) that a
+ * request-tenant-carrying guard has ALREADY resolved and refused if
+ * it belongs to another tenant. Re-stating `tenantId` on each
+ * statement would be redundant with the guard, not additional to it,
+ * so the scanner cannot classify them and a bare `tenantId` predicate
+ * is not the right fix.
+ *
+ * What keeps this from being a blank cheque: every entry names the
+ * thing that actually does the scoping, in `requires`, and the test
+ * asserts that string is still present in the file. Delete the guard
+ * call and the exemption stops applying — the file fails the keystone
+ * instead of silently losing its boundary. That is the F-1/F-5
+ * regression class (a guard removed, or an action added without one),
+ * which is precisely what the plain file allowlist above cannot see.
+ *
+ * Reviewers: an entry here is a claim that EVERY domain-table
+ * statement in the file is parent-FK scoped. Adding one because a
+ * single aggregate query is inconvenient to scope is an abuse of the
+ * mechanism — scope that query instead.
+ */
+interface ParentFkExemption {
+  /** Glob-relative path, as it appears in `import.meta.glob` keys. */
+  file: string;
+  /** One line: what makes every statement in this file parent-FK. */
+  why: string;
+  /** Substring that must remain in the file for `why` to hold. */
+  requires: string;
+}
+
+const PARENT_FK_EXEMPTIONS: ReadonlyArray<ParentFkExemption> = [
+  {
+    file: "../../app/routes/_auth.projects.$id.settings.tsx",
+    why: "every statement keys on params.id (or a volume of it) after the lead guard resolves the project inside the request tenant",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/_auth.projects.$id.assignments.tsx",
+    why: "volume and entry reads/writes are linked to params.id in the same statement, behind the lead guard",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/_auth.projects.$id.assignments.description.$volumeId.tsx",
+    why: "the volume read is linked to params.id in the same statement, behind the lead guard",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/_auth.projects.$id.volumes.$volumeId.manage.tsx",
+    why: "volume reads/writes are linked to params.id behind the lead guard; the user lookups resolve ids taken from that volume's own rows",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/_auth.projects.$id.overview.tsx",
+    why: "the entry->volume linkage read exists to prove the submitted entry belongs to params.id, which the guard already bound to the request tenant",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/_auth.viewer.$projectId.$volumeId.tsx",
+    why: "volume, page and project reads key on params behind the project guard; the reporter lookups resolve ids taken from this volume's own flags",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/api.workflow.tsx",
+    why: "the volume read is linked to the submitted projectId in the same statement, behind the project guard",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/api.comments.tsx",
+    why: "the QC-flag and volume reads resolve the comment's anchor for the access guard that follows",
+    requires: "requireEntryAccess",
+  },
+  {
+    file: "../../app/routes/api.comments.$id.tsx",
+    why: "the comment and volume reads resolve the target back to its project, which the guard then checks against the request tenant",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/api.comments.$id.resolve.tsx",
+    why: "the comment and volume reads resolve the target back to its project, which the guard then checks against the request tenant",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/api.qc-flags.tsx",
+    why: "page, flag and volume reads resolve the flag's anchor for the page/project guards that follow",
+    requires: "requirePageAccess",
+  },
+  {
+    file: "../../app/routes/api.resegmentation.tsx",
+    why: "flag and volume reads resolve the flag's anchor for the project guard that follows",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/routes/api.entries.save.tsx",
+    why: "the volume reads and the status bump key on a volumeId the entry guard already resolved inside the request tenant",
+    requires: "requireProjectRole(",
+  },
+  {
+    file: "../../app/lib/description.server.ts",
+    why: "a called module, not a route: every entryId and volumeId it takes was resolved by requireDescriptionAccess or requireEntryAccess at the call site",
+    requires: "requireDescriptionAccess",
+  },
+];
+
+const PARENT_FK_FILES: ReadonlyArray<string> = PARENT_FK_EXEMPTIONS.map(
+  (e) => e.file,
+);
 
 interface Violation {
   file: string;
@@ -501,10 +680,26 @@ function scanFiles(
       // (also `?:`, number, boolean) leaves only genuine value contexts
       // (`tenantId: tenant.id`, `{ tenantId, ... }`, `x.tenantId`) able
       // to satisfy the check.
-      const sanitized = statement.replace(
-        new RegExp(`\\b${col}\\??\\s*:\\s*(string|number|boolean)\\b`, "g"),
-        "__TYPE_ANNOTATION__",
-      );
+      const sanitized = statement
+        .replace(
+          new RegExp(`\\b${col}\\??\\s*:\\s*(string|number|boolean)\\b`, "g"),
+          "__TYPE_ANNOTATION__",
+        )
+        // Neutralise HOME-TENANT references. `user.tenantId` is the
+        // caller's HOME tenant, which under a federation grant is not
+        // the tenant the request is being served for. It must never be
+        // what satisfies this check -- concretely, a `user.tenantId`
+        // read anywhere in the enclosing scope (the backward context
+        // window routinely pulls one in) would otherwise make an
+        // entirely unscoped statement look predicated. The pattern
+        // matches any identifier ENDING in `user`/`User` (`user`,
+        // `currentUser`, `targetUser`, `sessionUser`) and deliberately
+        // does NOT match the Drizzle column `users.tenantId`, where
+        // the `s` sits between `user` and the dot.
+        .replace(
+          new RegExp(`\\b\\w*[uU]ser\\.${col}\\b`, "g"),
+          "__HOME_TENANT__",
+        );
 
       const QUALIFIED_REF = new RegExp(`\\b\\w+\\.${col}\\b`);
       const FIELD_LITERAL = new RegExp(`\\b${col}\\s*[:,]`);
@@ -539,16 +734,27 @@ function scanFiles(
   return violations;
 }
 
+/** Every file the keystone scans, from all seven globs. */
+function allScannedFiles(): Record<string, string> {
+  return {
+    ...adminRouteFiles,
+    ...invitesFile,
+    ...promoteFiles,
+    ...crowdsourcingWriterFiles,
+    ...middlewareFiles,
+    ...memberRouteFiles,
+    ...memberLibFiles,
+  } as Record<string, string>;
+}
+
+const EXEMPT_FILES: ReadonlyArray<string> = [
+  ...ALLOWLIST_FILES,
+  ...PARENT_FK_FILES,
+];
+
 describe("cross-tenant coverage", () => {
-  it("every domain-table query in app/routes/_auth.admin.**, app/lib/invites + promote, app/middleware/** references its scoping predicate (tenantId, or federationId for authorities)", () => {
-    const allFiles = {
-      ...adminRouteFiles,
-      ...invitesFile,
-      ...promoteFiles,
-      ...crowdsourcingWriterFiles,
-      ...middlewareFiles,
-    };
-    const violations = scanFiles(allFiles, ALLOWLIST_FILES);
+  it("every domain-table query in the admin namespace, the member crowdsourcing surface, and the scanned libs references its scoping predicate (tenantId, or federationId for authorities)", () => {
+    const violations = scanFiles(allScannedFiles(), EXEMPT_FILES);
 
     const formatted = violations
       .map((v) => `  ${v.file}:${v.line}: ${v.statement}`)
@@ -560,22 +766,58 @@ describe("cross-tenant coverage", () => {
         `(tenantId for tenant tables; federationId for entities/places):\n${formatted}\n\n` +
         `If a violation is on a query that legitimately cannot or should not be scoped, ` +
         `add the file to ALLOWLIST_FILES in this test with a one-line justification. ` +
-        `Otherwise, add the missing predicate.`,
+        `If every domain-table statement in the file is keyed on a resource id that a ` +
+        `request-tenant-carrying guard already resolved, add a PARENT_FK_EXEMPTIONS ` +
+        `entry naming that guard in \`requires\`. Otherwise, add the missing predicate.`,
     ).toEqual([]);
   });
 
   it("ALLOWLIST_FILES entries all exist on disk (no stale references)", () => {
-    const allFiles = {
-      ...adminRouteFiles,
-      ...invitesFile,
-      ...promoteFiles,
-      ...crowdsourcingWriterFiles,
-      ...middlewareFiles,
-    } as Record<string, string>;
+    const allFiles = allScannedFiles();
     const missing = ALLOWLIST_FILES.filter((p) => !(p in allFiles));
     expect(
       missing,
       `Stale ALLOWLIST_FILES entries (file no longer exists):\n${missing.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("PARENT_FK_EXEMPTIONS entries all exist on disk and still need the exemption", () => {
+    const allFiles = allScannedFiles();
+    const missing = PARENT_FK_FILES.filter((p) => !(p in allFiles));
+    expect(
+      missing,
+      `Stale PARENT_FK_EXEMPTIONS entries (file no longer exists or left the glob):\n${missing.join("\n")}`,
+    ).toEqual([]);
+
+    // An exemption that suppresses nothing is dead weight: the file
+    // has since been scoped properly, or the queries are gone. Drop
+    // the entry rather than leaving a standing carve-out.
+    const unscanned = scanFiles(allFiles, []);
+    const violatingFiles = new Set(unscanned.map((v) => v.file));
+    const unnecessary = PARENT_FK_FILES.filter(
+      (p) => p in allFiles && !violatingFiles.has(p),
+    );
+    expect(
+      unnecessary,
+      `PARENT_FK_EXEMPTIONS entries that suppress nothing — remove them:\n${unnecessary.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("every PARENT_FK_EXEMPTIONS entry still contains the guard it claims scopes it", () => {
+    // The tripwire that keeps the exemption honest. `requires` names
+    // the request-tenant-carrying guard (or, for a called lib, the
+    // contract its header states) that does the scoping the scanner
+    // cannot see. If that string disappears, the reason for the
+    // exemption disappeared with it and the entry must be re-argued.
+    const allFiles = allScannedFiles();
+    const broken = PARENT_FK_EXEMPTIONS.filter((e) => {
+      const content = allFiles[e.file];
+      return content !== undefined && !content.includes(e.requires);
+    }).map((e) => `${e.file} no longer contains "${e.requires}" — ${e.why}`);
+
+    expect(
+      broken,
+      `PARENT-FK exemptions whose stated guard is gone:\n${broken.join("\n")}`,
     ).toEqual([]);
   });
 

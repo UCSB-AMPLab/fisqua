@@ -13,11 +13,19 @@
  * term read/mutation (save/merge/split/deprecate) is filtered by
  * `tenant.federationId`.
  *
- * @version v0.4.2
+ * Save feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. The page previously confirmed a save by echoing
+ * the button's own label followed by a check mark ("Save term ✓"),
+ * which reads as a restated control rather than as an outcome, and
+ * carried no live region for screen readers. This page discriminates
+ * its forms on `intent` rather than `_action`, hence the field
+ * override on `isPendingSubmission`.
+ *
+ * @version v0.6.0
  */
 
 import { useState, useEffect } from "react";
-import { Form, Link, redirect, useFetcher } from "react-router";
+import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { FUNCTION_CATEGORIES } from "~/lib/validation/enums";
@@ -25,6 +33,11 @@ import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
 import { MergeDialog } from "~/components/admin/merge-dialog";
 import { SplitDialog } from "~/components/admin/split-dialog";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.vocabularies.functions.$id";
 
 // ---------------------------------------------------------------------------
@@ -516,6 +529,13 @@ export default function AdminVocabularyFunctionDetailPage({
   const { term, linkedEntities, totalLinked } = loaderData;
   const { t } = useTranslation("vocabularies");
   const fetcher = useFetcher();
+  const navigation = useNavigation();
+  const savingTerm = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "save",
+    "intent",
+  );
 
   // Merge dialog state
   const [showMerge, setShowMerge] = useState(false);
@@ -566,17 +586,16 @@ export default function AdminVocabularyFunctionDetailPage({
         />
       </div>
 
-      {/* Action result messages */}
-      {actionData && "error" in actionData && (
-        <div className="mt-4 rounded-md border border-madder bg-madder-tint p-3 text-sm text-madder-deep">
-          {actionData.error}
-        </div>
-      )}
-      {actionData && "success" in actionData && (
-        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint p-3 text-sm text-verdigris-deep">
-          {t("save_term")} ✓
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={actionData}
+        pending={savingTerm}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+        className="mt-4"
+      />
 
       {/* Edit form card */}
       <Form method="post" className="mt-6 rounded-lg border border-stone-200 p-6">
@@ -664,12 +683,11 @@ export default function AdminVocabularyFunctionDetailPage({
 
         {/* Save button */}
         <div className="mt-6">
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save_term")}
-          </button>
+          <SaveButton
+            pending={savingTerm}
+            label={t("save_term")}
+            pendingLabel={t("common:save.saving")}
+          />
         </div>
       </Form>
 

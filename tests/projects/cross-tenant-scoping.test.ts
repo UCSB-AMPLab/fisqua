@@ -60,10 +60,17 @@ const PROJECT_B = "projBBBB1";
  * run for real because the member and volume actions translate their
  * own error strings through `getInstance(context)`.
  */
-async function buildContext(user: User, requestTenantId: string) {
+async function buildContext(
+  user: User,
+  requestTenantId: string,
+  tenantOverrides: Partial<Parameters<typeof makeTenantContext>[0]> = {},
+) {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
-  ctx.set(tenantContext, makeTenantContext({ id: requestTenantId }));
+  ctx.set(
+    tenantContext,
+    makeTenantContext({ id: requestTenantId, ...tenantOverrides }),
+  );
   (ctx as any).cloudflare = { env };
   await i18nextMiddleware(
     {
@@ -102,6 +109,12 @@ type Fixture = Awaited<ReturnType<typeof seedTwoTenants>>;
  * Two tenants, one project each, with a volume and an unassigned entry
  * under every project. `leadA` leads project A; `cataloguerA` is a
  * member of it; `strangerA` shares tenant A but holds no membership.
+ *
+ * `grantHolder` is the grant-shaped case the aggregate surfaces care
+ * about: their `users` row is HOMED in tenant B, and they hold work in
+ * BOTH tenants — a membership, an assigned volume, an assigned entry
+ * and an activity row on each side. Served on tenant A's host they
+ * must see the tenant-A half and nothing of the tenant-B half.
  */
 async function seedTwoTenants() {
   const db = drizzle(env.DB, { schema });
@@ -122,6 +135,11 @@ async function seedTwoTenants() {
   const userB = await createTestUser({
     tenantId: SECOND_TEST_TENANT_ID,
     email: "user-b@example.test",
+  });
+  const grantHolder = await createTestUser({
+    tenantId: SECOND_TEST_TENANT_ID,
+    email: "grant-holder@example.test",
+    name: "Grant Holder",
   });
 
   await db.insert(schema.projects).values([
@@ -165,6 +183,20 @@ async function seedTwoTenants() {
       role: "lead",
       createdAt: now,
     },
+    {
+      id: "pm-grant-a",
+      projectId: PROJECT_A,
+      userId: grantHolder.id,
+      role: "cataloguer",
+      createdAt: now,
+    },
+    {
+      id: "pm-grant-b",
+      projectId: PROJECT_B,
+      userId: grantHolder.id,
+      role: "lead",
+      createdAt: now,
+    },
   ]);
 
   await db.insert(schema.volumes).values([
@@ -187,6 +219,32 @@ async function seedTwoTenants() {
       referenceCode: "B-1",
       manifestUrl: "https://iiif.example.test/b.json",
       pageCount: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "vol-a2",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      projectId: PROJECT_A,
+      name: "Volume A2",
+      referenceCode: "A-2",
+      manifestUrl: "https://iiif.example.test/a2.json",
+      pageCount: 2,
+      status: "in_progress",
+      assignedTo: grantHolder.id,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "vol-b2",
+      tenantId: SECOND_TEST_TENANT_ID,
+      projectId: PROJECT_B,
+      name: "Volume B2",
+      referenceCode: "B-2",
+      manifestUrl: "https://iiif.example.test/b2.json",
+      pageCount: 2,
+      status: "in_progress",
+      assignedTo: grantHolder.id,
       createdAt: now,
       updatedAt: now,
     },
@@ -213,9 +271,78 @@ async function seedTwoTenants() {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: "entry-a2",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      volumeId: "vol-a2",
+      position: 0,
+      startPage: 1,
+      title: "Entry A2",
+      descriptionStatus: "in_progress",
+      assignedDescriber: grantHolder.id,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "entry-b2",
+      tenantId: SECOND_TEST_TENANT_ID,
+      volumeId: "vol-b2",
+      position: 0,
+      startPage: 1,
+      title: "Entry B2",
+      descriptionStatus: "in_progress",
+      assignedDescriber: grantHolder.id,
+      createdAt: now,
+      updatedAt: now,
+    },
   ]);
 
-  return { db, leadA, cataloguerA, strangerA, userB };
+  await db.insert(schema.activityLog).values([
+    {
+      id: "al-a",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      userId: grantHolder.id,
+      projectId: PROJECT_A,
+      volumeId: "vol-a2",
+      event: "volume_opened",
+      detail: null,
+      createdAt: now,
+    },
+    {
+      id: "al-b",
+      tenantId: SECOND_TEST_TENANT_ID,
+      userId: grantHolder.id,
+      projectId: PROJECT_B,
+      volumeId: "vol-b2",
+      event: "volume_opened",
+      detail: null,
+      createdAt: now + 1,
+    },
+  ]);
+
+  // `export_runs` carries no tenant_id: the run's tenant is the
+  // triggering user's. One run per tenant, so the detail route has a
+  // foreign one to refuse and an own one to render.
+  await db.insert(schema.exportRuns).values([
+    {
+      id: "run-a",
+      triggeredBy: leadA.id,
+      status: "complete",
+      selectedFonds: JSON.stringify(["fonds-a"]),
+      selectedTypes: JSON.stringify(["descriptions"]),
+      createdAt: now,
+    },
+    {
+      id: "run-b",
+      triggeredBy: userB.id,
+      status: "complete",
+      selectedFonds: JSON.stringify(["fonds-b"]),
+      selectedTypes: JSON.stringify(["descriptions"]),
+      createdAt: now,
+    },
+  ]);
+
+  return { db, leadA, cataloguerA, strangerA, userB, grantHolder };
 }
 
 describe("cross-tenant scoping — crowdsourcing surface", () => {
@@ -606,6 +733,281 @@ describe("cross-tenant scoping — crowdsourcing surface", () => {
         .where(eq(schema.volumes.id, "vol-a"))
         .get();
       expect(volA).toBeUndefined();
+    });
+  });
+
+  describe("/proyectos aggregates by request tenant, not by account", () => {
+    async function runProyectos(
+      user: User,
+      requestTenantId: string,
+      tenantOverrides: Record<string, unknown> = {},
+    ) {
+      const { loader } = await import("../../app/routes/_auth.proyectos");
+      return (await loader({
+        request: new Request("http://neogranadina.fisqua.test/proyectos"),
+        context: await buildContext(user, requestTenantId, tenantOverrides),
+        params: {},
+      } as any)) as any;
+    }
+
+    it("shows a grant-holder only the request tenant's projects, work and feed", async () => {
+      const data = await runProyectos(
+        makeUserContext({
+          id: fx.grantHolder.id,
+          tenantId: SECOND_TEST_TENANT_ID,
+        }),
+        DEFAULT_TEST_TENANT_ID,
+      );
+
+      expect(data.userProjects.map((p: { id: string }) => p.id)).toEqual([
+        PROJECT_A,
+      ]);
+      expect(data.segMyWork.map((v: { id: string }) => v.id)).toEqual([
+        "vol-a2",
+      ]);
+      expect(data.descMyWork.map((e: { id: string }) => e.id)).toEqual([
+        "entry-a2",
+      ]);
+      expect(data.messages.map((m: { id: string }) => m.id)).toEqual(["al-a"]);
+    });
+
+    it("shows the same grant-holder the other half on the other host", async () => {
+      const data = await runProyectos(
+        makeUserContext({
+          id: fx.grantHolder.id,
+          tenantId: SECOND_TEST_TENANT_ID,
+        }),
+        SECOND_TEST_TENANT_ID,
+      );
+
+      expect(data.userProjects.map((p: { id: string }) => p.id)).toEqual([
+        PROJECT_B,
+      ]);
+      expect(data.segMyWork.map((v: { id: string }) => v.id)).toEqual([
+        "vol-b2",
+      ]);
+      expect(data.messages.map((m: { id: string }) => m.id)).toEqual(["al-b"]);
+    });
+
+    it("404s on a crowdsourcing-off tenant", async () => {
+      const status = await statusOf(() =>
+        runProyectos(
+          makeUserContext({
+            id: fx.grantHolder.id,
+            tenantId: SECOND_TEST_TENANT_ID,
+          }),
+          DEFAULT_TEST_TENANT_ID,
+          { crowdsourcingEnabled: false },
+        ),
+      );
+      expect(status).toBe(404);
+    });
+  });
+
+  describe("/users/:userId/activity", () => {
+    async function runActivity(
+      user: User,
+      targetUserId: string,
+      requestTenantId: string,
+      tenantOverrides: Record<string, unknown> = {},
+    ) {
+      const { loader } = await import(
+        "../../app/routes/_auth.users.$userId.activity"
+      );
+      return (await loader({
+        request: new Request("http://neogranadina.fisqua.test/"),
+        context: await buildContext(user, requestTenantId, tenantOverrides),
+        params: { userId: targetUserId },
+      } as any)) as any;
+    }
+
+    it("404s on a user homed in another tenant, even for an admin", async () => {
+      const status = await statusOf(() =>
+        runActivity(
+          makeUserContext({ id: fx.leadA.id, isAdmin: true }),
+          fx.userB.id,
+          DEFAULT_TEST_TENANT_ID,
+        ),
+      );
+      expect(status).toBe(404);
+    });
+
+    it("cuts a grant-holder's own trail to the tenant being served", async () => {
+      const data = await runActivity(
+        makeUserContext({
+          id: fx.grantHolder.id,
+          tenantId: SECOND_TEST_TENANT_ID,
+        }),
+        fx.grantHolder.id,
+        DEFAULT_TEST_TENANT_ID,
+      );
+
+      expect(data.activity.map((a: { id: string }) => a.id)).toEqual(["al-a"]);
+      expect(data.volumes.map((v: { id: string }) => v.id)).toEqual(["vol-a2"]);
+      // Lead of project B at home, cataloguer of project A here — only
+      // the role held on this tenant's project may render.
+      expect(data.targetUser.roles).toEqual(["cataloguer"]);
+    });
+
+    it("403s a non-admin whose only lead role is on another tenant's project", async () => {
+      const status = await statusOf(() =>
+        runActivity(
+          makeUserContext({ id: fx.userB.id, tenantId: SECOND_TEST_TENANT_ID }),
+          fx.cataloguerA.id,
+          DEFAULT_TEST_TENANT_ID,
+        ),
+      );
+      expect(status).toBe(403);
+    });
+
+    it("404s on a crowdsourcing-off tenant", async () => {
+      const status = await statusOf(() =>
+        runActivity(
+          makeUserContext({ id: fx.leadA.id }),
+          fx.leadA.id,
+          DEFAULT_TEST_TENANT_ID,
+          { crowdsourcingEnabled: false },
+        ),
+      );
+      expect(status).toBe(404);
+    });
+  });
+
+  describe("/admin/publish/runs/:exportId", () => {
+    async function runExportDetail(exportId: string, requestTenantId: string) {
+      const { loader } = await import(
+        "../../app/routes/_auth.admin.publish.runs.$exportId"
+      );
+      return (await loader({
+        request: new Request("http://neogranadina.fisqua.test/"),
+        context: await buildContext(
+          makeUserContext({ id: fx.leadA.id, isSuperAdmin: true }),
+          requestTenantId,
+        ),
+        params: { exportId },
+      } as any)) as any;
+    }
+
+    it("refuses a run triggered from another tenant", async () => {
+      const data = await runExportDetail("run-b", DEFAULT_TEST_TENANT_ID);
+      expect(data.authorized).toBe(true);
+      expect(data.run).toBeNull();
+    });
+
+    it("still renders a run triggered from this tenant", async () => {
+      const data = await runExportDetail("run-a", DEFAULT_TEST_TENANT_ID);
+      expect(data.run?.id).toBe("run-a");
+      expect(data.run?.selectedFonds).toEqual(["fonds-a"]);
+    });
+  });
+
+  describe("crowdsourcing capability gate on the member tree", () => {
+    const OFF = { crowdsourcingEnabled: false };
+
+    it("404s the /projects/:id layout", async () => {
+      const { loader } = await import("../../app/routes/_auth.projects.$id");
+      const status = await statusOf(async () =>
+        loader({
+          request: new Request("http://neogranadina.fisqua.test/"),
+          context: await buildContext(
+            makeUserContext({ id: fx.leadA.id }),
+            DEFAULT_TEST_TENANT_ID,
+            OFF,
+          ),
+          params: { id: PROJECT_A },
+        } as any),
+      );
+      expect(status).toBe(404);
+    });
+
+    it("404s the workflow endpoint before it reads the body", async () => {
+      const { action } = await import("../../app/routes/api.workflow");
+      const status = await statusOf(async () =>
+        action({
+          request: formRequest({
+            volumeId: "vol-a",
+            projectId: PROJECT_A,
+            targetStatus: "in_progress",
+          }),
+          context: await buildContext(
+            makeUserContext({ id: fx.leadA.id }),
+            DEFAULT_TEST_TENANT_ID,
+            OFF,
+          ),
+          params: {},
+        } as any),
+      );
+      expect(status).toBe(404);
+
+      const volA = await fx.db
+        .select()
+        .from(schema.volumes)
+        .where(eq(schema.volumes.id, "vol-a"))
+        .get();
+      expect(volA!.status).toBe("unstarted");
+    });
+
+    it("404s the description editor", async () => {
+      const { loader } = await import(
+        "../../app/routes/_auth.description.$projectId.$entryId"
+      );
+      const status = await statusOf(async () =>
+        loader({
+          request: new Request("http://neogranadina.fisqua.test/"),
+          context: await buildContext(
+            makeUserContext({ id: fx.leadA.id }),
+            DEFAULT_TEST_TENANT_ID,
+            OFF,
+          ),
+          params: { projectId: PROJECT_A, entryId: "entry-a" },
+        } as any),
+      );
+      expect(status).toBe(404);
+    });
+  });
+
+  describe("description editor never renders a foreign standard's form", () => {
+    // The loader reads `descriptiveStandard` off the REQUEST tenant
+    // and the record off the project in the URL. The two can only
+    // disagree if a foreign project reaches the record load — so the
+    // guarantee is the 404, not a second standard lookup. Pin it from
+    // both directions: a foreign project, and a foreign entry smuggled
+    // under an own project.
+    async function runDescription(
+      user: User,
+      projectId: string,
+      entryId: string,
+    ) {
+      const { loader } = await import(
+        "../../app/routes/_auth.description.$projectId.$entryId"
+      );
+      return (await loader({
+        request: new Request("http://neogranadina.fisqua.test/"),
+        context: await buildContext(user, DEFAULT_TEST_TENANT_ID),
+        params: { projectId, entryId },
+      } as any)) as any;
+    }
+
+    it("404s a foreign-tenant project id before any record is read", async () => {
+      const status = await statusOf(() =>
+        runDescription(
+          makeUserContext({ id: fx.leadA.id, isAdmin: true }),
+          PROJECT_B,
+          "entry-b",
+        ),
+      );
+      expect(status).toBe(404);
+    });
+
+    it("404s a foreign-tenant entry sent under an own-tenant project", async () => {
+      const status = await statusOf(() =>
+        runDescription(
+          makeUserContext({ id: fx.leadA.id, isAdmin: true }),
+          PROJECT_A,
+          "entry-b",
+        ),
+      );
+      expect(status).toBe(404);
     });
   });
 });

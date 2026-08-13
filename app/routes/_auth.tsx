@@ -14,7 +14,7 @@
  * capability flags to the `<Sidebar>` so capability-off nav surfaces
  * are hidden.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { useState, useEffect } from "react";
@@ -37,8 +37,8 @@ export const middleware = [
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { getAppConfig } = await import("../lib/config.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq } = await import("drizzle-orm");
-  const { projectMembers } = await import("../db/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const { projectMembers, projects } = await import("../db/schema");
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
@@ -52,11 +52,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Compute hasAnyProjectMembership so the sidebar can show the
   // Collaborative Cataloguing section to project-member-only users.
+  // Memberships held on other tenants' projects must not raise the
+  // section here: it is the affordance that leads into the
+  // crowdsourcing tree, and on this host that tree holds this
+  // tenant's work only.
   const db = drizzle(env.DB);
   const membershipRows = await db
     .select({ id: projectMembers.id })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, user.id))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        eq(projects.tenantId, tenant.id),
+      ),
+    )
     .limit(1);
   const hasAnyProjectMembership = membershipRows.length > 0;
 

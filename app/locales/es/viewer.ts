@@ -37,6 +37,8 @@ export default {
     delete_boundary: "Eliminar división",
     zoom_in: "Acercar",
     zoom_out: "Alejar",
+    fullscreen: "Pantalla completa",
+    readonly_tooltip: "Solo lectura — no tienes permisos para crear",
     fit_to_width: "Ajustar al ancho",
     go_to_image: "Ir a imagen",
     back_to_volumes: "Volver a unidades compuestas",

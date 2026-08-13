@@ -7,9 +7,10 @@
  * additionally enforces the lead-only resolver rule. GET lists open
  * flags for the requested volume or entry.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/api.qc-flags";
 import {
   QC_PROBLEM_TYPES,
@@ -43,6 +44,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "POST") {
  let body: any;
@@ -276,6 +281,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const url = new URL(request.url);
   const volumeId = url.searchParams.get("volumeId");
