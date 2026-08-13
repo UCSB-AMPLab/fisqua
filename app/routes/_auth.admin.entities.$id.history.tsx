@@ -25,6 +25,7 @@ import {
 import type { Route } from "./+types/_auth.admin.entities.$id.history";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray } = await import("drizzle-orm");
@@ -48,7 +49,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       entityCode: entities.entityCode,
     })
     .from(entities)
-    .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+    .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
     .get();
   if (!entity) throw new Response("Not found", { status: 404 });
 
@@ -74,7 +75,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           inArray(entities.id, counterpartIds),
         ),
       )

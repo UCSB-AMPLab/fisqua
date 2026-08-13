@@ -402,10 +402,21 @@ export async function getSeparatePairs(
  * per record type, minus dismissed pairs whose records still collide.
  * One GROUP BY scan + one indexed join per type — an approximation
  * (no accent normalisation), never the worklist's exact number.
+ *
+ * `ownerTenantId` narrows the count to what the request tenant can
+ * actually SEE after migration 0067: the federation-shared records plus
+ * its own, never another tenant's owned ones (the same predicate
+ * `authorityScope` builds for the worklist itself). It is OPTIONAL, and
+ * omitting it counts the whole federation — the pre-0067 behaviour,
+ * correct for any federation whose authority space is entirely shared,
+ * which is every federation until a claim runs. Callers on a
+ * multi-tenant federation should pass it so the badge matches the
+ * worklist it links to.
  */
 export async function getDuplicateBadgeCounts(
   db: DrizzleD1Database<any>,
   federationId: string,
+  ownerTenantId?: string,
 ): Promise<{ entities: number; places: number }> {
   const { sql } = await import("drizzle-orm");
 
@@ -413,11 +424,20 @@ export async function getDuplicateBadgeCounts(
     table: "entities" | "places",
     recordType: "entity" | "place",
   ): Promise<number> {
+    // Ownership arm per aliased occurrence of the authority table. With
+    // no owner supplied it collapses to `1 = 1`, leaving the statement
+    // byte-equivalent to its pre-0067 shape.
+    const owned = (alias: string) =>
+      ownerTenantId === undefined
+        ? sql`1 = 1`
+        : sql`(${sql.raw(alias)}.tenant_id IS NULL OR ${sql.raw(alias)}.tenant_id = ${ownerTenantId})`;
+
     const groups = (await db.all(sql`
       SELECT COUNT(*) AS c
-      FROM ${sql.raw(table)}
-      WHERE federation_id = ${federationId} AND merged_into IS NULL
-      GROUP BY lower(display_name)
+      FROM ${sql.raw(table)} t
+      WHERE t.federation_id = ${federationId} AND t.merged_into IS NULL
+        AND ${owned("t")}
+      GROUP BY lower(t.display_name)
       HAVING c > 1
     `)) as Array<{ c: number }>;
     let pairs = 0;
@@ -437,6 +457,7 @@ export async function getDuplicateBadgeCounts(
         AND ao.record_type = ${recordType}
         AND ao.operation = 'separate'
         AND a.merged_into IS NULL AND b.merged_into IS NULL
+        AND ${owned("a")} AND ${owned("b")}
         AND lower(a.display_name) = lower(b.display_name)
     `)) as Array<{ c: number }>;
     return Math.max(0, pairs - (dismissed[0]?.c ?? 0));

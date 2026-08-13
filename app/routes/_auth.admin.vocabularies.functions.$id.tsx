@@ -11,7 +11,10 @@
  * read/update/delete of `entities` (linked-entity reads,
  * primaryFunction reassignment, count subqueries) and every vocabulary
  * term read/mutation (save/merge/split/deprecate) is filtered by
- * `tenant.federationId`.
+ * `tenant.federationId`. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * Save feedback runs through the shared `SaveFeedbackBanner` /
  * `SaveButton` pair. The page previously confirmed a save by echoing
@@ -67,6 +70,7 @@ interface LinkedEntity {
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
@@ -107,7 +111,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         eq(entities.primaryFunctionId, id)
       )
     )
@@ -120,7 +124,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         eq(entities.primaryFunctionId, id)
       )
     )
@@ -134,6 +138,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, sql } = await import("drizzle-orm");
@@ -276,7 +281,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           .set({ primaryFunctionId: targetId, updatedAt: now })
           .where(
             and(
-              eq(entities.federationId, tenant.federationId),
+              authorityScope(entities, tenant.federationId, tenant.id),
               inArray(entities.id, entityIds)
             )
           )
@@ -314,7 +319,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, targetId)
         )
       )
@@ -329,7 +334,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, id)
         )
       )
@@ -407,7 +412,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           .set({ primaryFunctionId: newId, updatedAt: now })
           .where(
             and(
-              eq(entities.federationId, tenant.federationId),
+              authorityScope(entities, tenant.federationId, tenant.id),
               inArray(entities.id, entityIds)
             )
           )
@@ -433,7 +438,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, id)
         )
       )
@@ -448,7 +453,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, newId)
         )
       )

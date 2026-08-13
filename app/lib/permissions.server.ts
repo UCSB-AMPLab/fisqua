@@ -42,6 +42,17 @@
  * to paint UI (disable a button when the user cannot write) and on the
  * server to gate writes before they hit D1.
  *
+ * Role-assignment scope -- `canManageTenantUsers`,
+ * `assignableRoleFlags`, `canAssignTenantRoles`,
+ * `unassignableSubmittedRoleFlags`, `INVITE_ROLE_CHOICES` -- answers a
+ * different question from the guards above: not "may this user reach
+ * the resource" but "may this user hand out this ROLE". The six role
+ * flags split into tenant-scoped (assignable by a tenant admin, on
+ * users of the request tenant) and super-admin-only. Both the form
+ * rendering and the actions read the same helper, so the UI can never
+ * offer a toggle the server will refuse, and a crafted form body that
+ * adds a super-admin-only field is rejected rather than trusted.
+ *
  * @version v0.7.0
  */
 
@@ -164,6 +175,149 @@ export async function requireProjectRole(
 // machine module (app/lib/workflow.ts); re-exported here so server
 // code keeps one import site for role decisions.
 export { WORKFLOW_ROLE_PRECEDENCE, highestProjectRole } from "./workflow";
+
+// --- Role-assignment scope ---------------------------------------------
+//
+// Who may hand out which role flag. The six flags on `users` are not
+// one tier: two of them describe a person's standing INSIDE one
+// archive, two describe standing across the whole platform, and two
+// gate the cataloguing surface. Before this split every flag was
+// super-admin-only, which left a federation steward -- whose effective
+// member-tenant flags are admin-equivalent but deliberately NOT
+// `isSuperAdmin` (see `grantEffectiveRoleFlags`) -- able to invite
+// staff into a partner workspace but unable to give them any role, so
+// the people they invited landed on an empty dashboard.
+
+/**
+ * Roles a tenant admin may assign, on users of their own tenant.
+ * Both describe standing inside one archive and confer nothing
+ * anywhere else on the platform.
+ */
+export const TENANT_SCOPED_ROLE_FLAGS = ["isAdmin", "isArchiveUser"] as const;
+
+/**
+ * Roles that stay super-admin-only. `isSuperAdmin` is the flag that
+ * hands out every other flag, and `isUserManager` reaches the whole
+ * user-administration surface; a tenant admin who could set either
+ * would be able to escalate themselves out of their own tenant.
+ */
+export const PLATFORM_SCOPED_ROLE_FLAGS = [
+  "isSuperAdmin",
+  "isUserManager",
+] as const;
+
+/**
+ * The crowdsourcing pair. Super-admin-only, unchanged: the cataloguing
+ * admin tier has always been walled off from the archive admin tier
+ * (see `requireCollabAdmin`), and the per-row `toggleCollabAdmin`
+ * handler already gates on super admin. They are listed here so the
+ * flag vocabulary below is exhaustive, not to widen anything.
+ */
+export const CATALOGUING_ROLE_FLAGS = ["isCollabAdmin", "isCataloguer"] as const;
+
+/** Every role flag on `users`, in the order the admin form renders them. */
+export const ROLE_FLAGS = [
+  ...PLATFORM_SCOPED_ROLE_FLAGS,
+  ...CATALOGUING_ROLE_FLAGS,
+  ...TENANT_SCOPED_ROLE_FLAGS,
+] as const;
+
+export type RoleFlag = (typeof ROLE_FLAGS)[number];
+
+/** The role-flag subset of `User` the assignment helpers read. */
+export type RoleAssigner = Pick<
+  User,
+  "isAdmin" | "isSuperAdmin" | "isUserManager"
+>;
+
+/**
+ * Whether `user` may reach the tenant user-administration surface at
+ * all -- the user directory and the per-user detail page. A tenant
+ * admin belongs here because on a records-management tenant they are
+ * the only person who can put a newly invited colleague to work; a
+ * user manager because that is what the flag is for; a super admin
+ * because they reach everything.
+ *
+ * The surface this admits to is already tenant-scoped end to end: both
+ * loaders filter `users` by `context.get(tenantContext).id`, so
+ * admitting a tenant admin exposes their own tenant's directory and
+ * nothing else.
+ */
+export function canManageTenantUsers(user: RoleAssigner): boolean {
+  return user.isSuperAdmin || user.isUserManager || user.isAdmin;
+}
+
+/**
+ * The role flags `user` may assign to somebody else. This is the ONE
+ * place the split is decided; the form-rendering code and the action
+ * both read it, so the UI can never offer a toggle the action will
+ * refuse.
+ *
+ * A super admin assigns everything. A tenant admin -- which a
+ * federation steward's effective member-tenant flags include -- assigns
+ * the two tenant-scoped roles and nothing else. Everyone else assigns
+ * nothing.
+ *
+ * Note what is NOT consulted: the tenant the acting user's row names.
+ * Scope of the TARGET is a separate question, enforced by the caller
+ * against the REQUEST tenant from `tenantContext`; under a federation
+ * grant the two differ, and the acting user's home tenant is never the
+ * right answer.
+ */
+export function assignableRoleFlags(user: RoleAssigner): readonly RoleFlag[] {
+  if (user.isSuperAdmin) return ROLE_FLAGS;
+  if (user.isAdmin) return TENANT_SCOPED_ROLE_FLAGS;
+  return [];
+}
+
+/**
+ * Whether `user` may hand out the tenant-scoped roles -- the predicate
+ * behind the invite-time role picker.
+ */
+export function canAssignTenantRoles(user: RoleAssigner): boolean {
+  const assignable = assignableRoleFlags(user);
+  return TENANT_SCOPED_ROLE_FLAGS.every((flag) => assignable.includes(flag));
+}
+
+/**
+ * The role flags present in `formData` that `user` may NOT assign.
+ *
+ * The form is treated as hostile. A checkbox rendered `disabled` is
+ * not submitted by the browser at all, and an unchecked one is not
+ * submitted either -- so for an actor who is not a super admin, a
+ * well-formed post NEVER carries `isSuperAdmin` or `isUserManager` as
+ * a key. Presence of such a key is therefore not an unchecked box, it
+ * is a crafted body, and the action refuses the whole submission
+ * rather than silently dropping the field.
+ */
+export function unassignableSubmittedRoleFlags(
+  user: RoleAssigner,
+  formData: FormData,
+): RoleFlag[] {
+  const assignable = assignableRoleFlags(user);
+  return ROLE_FLAGS.filter(
+    (flag) => !assignable.includes(flag) && formData.has(flag),
+  );
+}
+
+/**
+ * The role a new account may be given at invite time, keyed by the
+ * value the invite form posts. `null` is the "no role" choice, which
+ * reproduces the pre-existing behaviour (every flag false).
+ *
+ * Only tenant-scoped roles appear. A platform role is not offered to
+ * anyone at invite time -- promoting somebody to super admin or user
+ * manager is a deliberate second step on the user detail page, not a
+ * side effect of sending an email -- so any other value is an invalid
+ * request, whoever sent it.
+ */
+export const INVITE_ROLE_CHOICES: Readonly<
+  Record<string, "isAdmin" | "isArchiveUser" | null>
+> = {
+  none: null,
+  records_admin: "isAdmin",
+  archive_user: "isArchiveUser",
+};
 
 /**
  * Determine the access level for a user on a specific volume.

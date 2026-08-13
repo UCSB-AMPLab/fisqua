@@ -28,6 +28,7 @@
  */
 
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
+import { authorityScope } from "../authority-ownership.server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { z } from "zod";
 import {
@@ -609,7 +610,7 @@ export async function exportEntities(
         // reads the federation's member tenants' published descriptions joined
         // to the federation's entities. I4 guarantees each description's
         // tenant's federation equals the entity's federation.
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenantIds),
         inArray(descriptions.tenantId, tenantIds),
         eq(descriptions.isPublished, true),
         isNull(entities.mergedInto)
@@ -703,7 +704,7 @@ export async function exportPlaces(
         // Federation-scoped authorities (migrations 0045-0048), joined to the
         // member tenants' published descriptions (I4 keeps the federations
         // aligned).
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenantIds),
         inArray(descriptions.tenantId, tenantIds),
         eq(descriptions.isPublished, true),
         isNull(places.mergedInto)

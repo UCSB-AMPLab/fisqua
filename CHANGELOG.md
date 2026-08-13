@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **In-app links to the guide.** Every step of the imports journey — and the run and revert surfaces — carries a help link that opens the matching page of the public guide in the reader's own language.
+
+### Changed
+
+- **Authority codes name the institution that made the record.** Entity and place codes used to be minted under one hardcoded prefix, so every institution's records carried Neogranadina's mark. Each maintaining agency now has its own prefix: Neogranadina keeps `ne-` and `nl-` for its shared authority space, and an institution that maintains its own people and places mints under its own — the Santa Barbara Mission Archive-Library's records take `sbmal-e-` and `sbmal-p-`. The prefix records who did the identifying and enriching that produced the record, and never changes afterwards, so a code stays a stable citation even if the record later changes hands.
+
 ## [0.6.0] - 2026-07-17
 
 ### Added

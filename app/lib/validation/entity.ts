@@ -8,23 +8,31 @@
  * intentionally stricter than the UI form: the admin UI may defer
  * optional fields, but a row committed to `entities` has to satisfy
  * every declared constraint. The `entityCode` regex pins the
- * `ne-xxxxxx` format (6 lowercase alphanumeric characters from a
- * 32-char alphabet) so external references have a stable shape.
+ * agency-prefixed code format — a configured prefix, a hyphen, and six
+ * characters from the 30-character code alphabet — so external
+ * references have a stable shape. It accepts `ne-abc234` (Neogranadina)
+ * and `sbmal-e-abc234` (SBMAL) alike: since migration 0068 the prefix
+ * names whichever agency maintains the record, so the format can no
+ * longer pin one institution's literal. The rule itself lives in
+ * `app/lib/validation/authority-code.ts`, shared with the place schema
+ * and with the generator's alphabet.
  *
  * Migration `drizzle/0036_union_schema.sql` dropped `legal_status`
  * (0% populated in production audit) and added `dbe_id` (Diccionario
  * Biográfico Electrónico authority ref) and the generic `legacy_ids`
  * JSON column.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { z } from "zod/v4";
 import { ENTITY_TYPES } from "./enums";
+import { AUTHORITY_CODE_RE } from "./authority-code";
 
 export const entitySchema = z.object({
   id: z.string().uuid(),
-  entityCode: z.string().regex(/^ne-[a-z2-9]{6}$/), // 6-char from 32-char alphabet
+  // Agency prefix + 6 characters from the 30-char code alphabet.
+  entityCode: z.string().regex(AUTHORITY_CODE_RE),
   displayName: z.string().min(1).max(500),
   sortName: z.string().min(1).max(500),
   surname: z.string().max(200).optional(),

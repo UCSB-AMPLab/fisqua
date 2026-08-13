@@ -82,7 +82,7 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import {
@@ -130,8 +130,13 @@ import { AUDIT_LOG_ACTIONS } from "../lib/audit-actions";
 // prohibited for these populated cascade-parent tables (0042 header), and
 // because no writer omits the column, that default is never consulted.
 // The authority tables (entities/places/vocabulary_terms) carry
-// `federation_id`, not `tenant_id`; drafts sit at a root (session tenant),
-// keyed by (record_id, record_type) rather than under a volume.
+// `federation_id` as their required scope; drafts sit at a root (session
+// tenant), keyed by (record_id, record_type) rather than under a volume.
+// entities and places additionally carry an OPTIONAL `tenant_id`
+// (migration 0067) whose NULL means "federation-shared" — it is an
+// ownership marker inside the federation, not a second required scope,
+// and it is the one `tenant_id` in the schema that a writer may leave
+// unset.
 
 export const tenants = sqliteTable(
   "tenants",
@@ -181,6 +186,21 @@ export const tenants = sqliteTable(
     // the SQL migration (0044) and the test harness; this is the one
     // side dropped to break the type cycle.
     federationId: text("federation_id").notNull(),
+    // Authority code prefixes for records this tenant MAINTAINS
+    // (migration 0068). Set only on a tenant that mints its OWN
+    // authority records — i.e. one whose federation keeps sharing off,
+    // so `requireAuthorityMint` resolves the tenant as the owner. SBMAL
+    // carries 'sbmal-e' / 'sbmal-p'; every other tenant is NULL because
+    // its mints resolve to the federation row instead.
+    //
+    // The prefix names the maintaining agency, and is stored rather than
+    // derived from anything: it must NOT follow `entities.tenantId`,
+    // which is mutable, because a later ownership transfer would then
+    // falsify codes already published as citable identifiers. NULL means
+    // "no prefix configured", and the mint path throws on it rather than
+    // fall back to another institution's mark.
+    entityCodePrefix: text("entity_code_prefix"),
+    placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -219,6 +239,36 @@ export const federations = sqliteTable(
     multiMemberEnabled: integer("multi_member_enabled", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Operator-set gate on whether this federation's authority space is
+    // SHARED by default (migration 0067). Sibling of
+    // `multiMemberEnabled` in every respect: boolean, NOT NULL, default
+    // off. It governs what new authority minting DEFAULTS to, not what
+    // is permitted — off mints tenant-owned entities/places (the minting
+    // tenant's id lands in `entities.tenantId` / `places.tenantId`), on
+    // mints federation-shared ones (NULL owner, steward-gated as
+    // before). A federation whose members genuinely share people and
+    // places turns it on; one whose members are unrelated archives
+    // co-located for operational reasons leaves it off.
+    sharedAuthoritiesEnabled: integer("shared_authorities_enabled", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    // Authority code prefixes for records this federation MAINTAINS
+    // (migration 0068) — the shared-space counterpart of the identical
+    // pair on `tenants`. A record minted into a shared authority space
+    // (`entities.tenantId` NULL) takes its prefix from here; a
+    // tenant-owned one takes it from the tenant row. The Neogranadina
+    // federation carries 'ne' / 'nl', the series its ~78K existing codes
+    // already use; every other federation is NULL until provisioned.
+    //
+    // Stored as the FINISHED prefix string, not a slug plus a derived
+    // type letter, because Neogranadina's form fuses the type letter
+    // into a two-letter mnemonic ('ne' = entidad, 'nl' = lugar) while
+    // the general form separates it ('sbmal-e', 'sbmal-p'). The
+    // generator's `${prefix}-${chars}` covers both with no branching.
+    entityCodePrefix: text("entity_code_prefix"),
+    placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -913,7 +963,36 @@ export const entities = sqliteTable(
     federationId: text("federation_id")
       .notNull()
       .references(() => federations.id, { onDelete: "restrict" }),
-    entityCode: text("entity_code"), // ne-xxxxxx format
+    // OPTIONAL owner one level below the federation (migration 0067).
+    // Deliberately NULLABLE at both the DB and the type layer, because
+    // NULL is a meaningful value here rather than a gap:
+    //
+    //   set  -> tenant-owned. Visible to that tenant only; mutated by
+    //           that tenant's own admins with no steward gate.
+    //   NULL -> federation-shared. Visible to every member tenant;
+    //           mutated only by a federation steward (the 2026-07-08
+    //           rule, unchanged).
+    //
+    // INVARIANT: when `tenantId` is set, this row's `federationId` MUST
+    // equal that tenant's federation. Ownership NARROWS scope; it never
+    // moves a record between federations. Upheld by construction — the
+    // owner is only ever the REQUEST tenant, whose federation is the one
+    // the query already filters on — not by a DB constraint (SQLite has
+    // no cross-table CHECK).
+    //
+    // The unique code index below stays (federationId, entityCode):
+    // codes are unique federation-wide whether or not a record is owned,
+    // so an owned record can later be shared without a collision.
+    // Reads must never filter on `federationId` alone — go through
+    // `authorityScope()` in `app/lib/authority-ownership.server.ts`.
+    tenantId: text("tenant_id").references(() => tenants.id, {
+      onDelete: "restrict",
+    }),
+    // `<agency prefix>-xxxxxx`: `ne-abc234` for a record Neogranadina
+    // maintains, `sbmal-e-abc234` for one SBMAL maintains (migration
+    // 0068). The prefix names the MAINTAINING agency and is issued once
+    // — it is not derived from `tenantId`, which is transferable.
+    entityCode: text("entity_code"),
     displayName: text("display_name").notNull(),
     sortName: text("sort_name").notNull(),
     surname: text("surname"),
@@ -964,7 +1043,21 @@ export const places = sqliteTable(
     federationId: text("federation_id")
       .notNull()
       .references(() => federations.id, { onDelete: "restrict" }),
-    placeCode: text("place_code"), // nl-xxxxxx format
+    // OPTIONAL owner, identical in meaning and invariant to
+    // `entities.tenantId` (migration 0067): set = tenant-owned (that
+    // tenant's admins mutate it freely), NULL = federation-shared
+    // (steward-gated). When set, `federationId` MUST equal that tenant's
+    // federation — ownership narrows scope, never moves a record between
+    // federations. Reads go through `authorityScope()` in
+    // `app/lib/authority-ownership.server.ts`, never through a bare
+    // `federationId` filter.
+    tenantId: text("tenant_id").references(() => tenants.id, {
+      onDelete: "restrict",
+    }),
+    // `<agency prefix>-xxxxxx`, same rule as `entities.entityCode`:
+    // `nl-abc234` for Neogranadina, `sbmal-p-abc234` for SBMAL
+    // (migration 0068).
+    placeCode: text("place_code"),
     label: text("label").notNull(),
     displayName: text("display_name").notNull(),
     placeType: text("place_type", { enum: [...PLACE_TYPES] }),

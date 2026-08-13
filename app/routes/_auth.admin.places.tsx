@@ -43,7 +43,10 @@
  *
  * Authority scope is the federation (migrations 0045-0048): every read of
  * `places` is filtered by `tenant.federationId`, resolved from the
- * session tenant's federation.
+ * session tenant's federation. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * @version v0.4.3
  */
@@ -118,6 +121,7 @@ interface PagePoint extends MapPoint {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, or, gt, asc, isNull, sql } = await import(
@@ -142,7 +146,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const excludeId = sp.get("exclude") || "";
     const likePattern = `%${searchQ}%`;
     const conditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       like(places.label, likePattern),
     ];
     if (excludeId) {
@@ -278,9 +282,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // site — the list drops it under showMerged (spec §4: merged-away
   // records stay findable), while the map points and the coordinate
   // totals keep it unconditionally (merged places have no pin). The
-  // federation-scope predicate (`eq(places.federationId, …)`) is spelt
-  // out INLINE at each query site below — both so the tenant-isolation
-  // static guard sees it and so scoping is never one indirection away.
+  // visibility predicate (`authorityScope(places, tenant.federationId,
+  // tenant.id)` — the federation, narrowed to shared records plus this
+  // tenant's own, migration 0067) is spelt out INLINE at each query site
+  // below rather than folded into this shared helper: the scope stays
+  // one glance away at every site, and the tenant-isolation static guard
+  // sees the `federationId` reference it scans for.
   function searchConditions(includeType = true): any[] {
     const conditions: any[] = [];
     if (q) {
@@ -331,7 +338,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
     .from(descriptionPlaces)
     .innerJoin(places, eq(descriptionPlaces.placeId, places.id))
-    .where(eq(places.federationId, tenant.federationId))
+    .where(authorityScope(places, tenant.federationId, tenant.id))
     .groupBy(descriptionPlaces.placeId)
     .all();
   const countMap = new Map(countRows.map((r) => [r.placeId, r.count]));
@@ -343,7 +350,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     cur: string | null,
   ): Promise<{ rows: PlaceRow[]; next: string | null }> {
     const conditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       ...searchConditions(),
     ];
     if (!showMerged) conditions.push(isNull(places.mergedInto));
@@ -428,7 +435,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           .from(places)
           .where(
             and(
-              eq(places.federationId, tenant.federationId),
+              authorityScope(places, tenant.federationId, tenant.id),
               inArray(places.id, mergedIds),
             ),
           )
@@ -466,7 +473,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     let inViewCount: number | null = null;
     if (bounds) {
       const countConditions = [
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         ...searchConditions(),
         isNull(places.mergedInto),
         sql`${places.latitude} IS NOT NULL`,
@@ -502,7 +509,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`${places.latitude} IS NOT NULL`,
@@ -515,7 +522,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`(${places.latitude} IS NULL OR ${places.longitude} IS NULL)`,
@@ -529,7 +536,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`${places.latitude} IS NOT NULL`,
@@ -545,7 +552,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let mergedCount = 0;
   if (showMerged) {
     const mergedConditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       sql`${places.mergedInto} IS NOT NULL`,
       ...searchConditions(),
     ];
@@ -574,7 +581,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // so the control keeps offering sibling types). Liveness and the
   // worklist predicate follow the list's composition.
   const typeCountConditions = [
-    eq(places.federationId, tenant.federationId),
+    authorityScope(places, tenant.federationId, tenant.id),
     ...searchConditions(false),
     sql`${places.placeType} IS NOT NULL`,
   ];
@@ -606,7 +613,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let points: PagePoint[] = [];
   if (!missingCoords) {
     const pointConditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       isNull(places.mergedInto),
       ...searchConditions(),
       sql`${places.latitude} IS NOT NULL`,

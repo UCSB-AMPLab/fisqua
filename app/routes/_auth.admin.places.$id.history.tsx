@@ -22,6 +22,7 @@ import {
 import type { Route } from "./+types/_auth.admin.places.$id.history";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray } = await import("drizzle-orm");
@@ -45,7 +46,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       placeCode: places.placeCode,
     })
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
     .get();
   if (!place) throw new Response("Not found", { status: 404 });
 
@@ -69,7 +70,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       .from(places)
       .where(
         and(
-          eq(places.federationId, tenant.federationId),
+          authorityScope(places, tenant.federationId, tenant.id),
           inArray(places.id, counterpartIds),
         ),
       )

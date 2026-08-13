@@ -11,7 +11,7 @@
  * inserted, and the required reason lands in the ledger row's
  * `detail.reason`.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -27,6 +27,7 @@ import type { Route } from "./+types/_auth.admin.places.$id.split";
 type Choice = "original" | "both" | "new";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
@@ -46,7 +47,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const place = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
     .get();
   if (!place) throw new Response("Not found", { status: 404 });
 
@@ -60,11 +61,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { places, descriptionPlaces } = await import("~/db/schema");
-  const { requireFederationSteward } = await import("~/lib/federation.server");
   const { generateUniqueCode } = await import("~/lib/codes.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
@@ -75,7 +78,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
-  await requireFederationSteward(db, user, tenant);
+  // The source record's ownership governs the split (see the entity
+  // split for the reasoning).
+  await requireAuthorityMutation(db, user, tenant, "place", [params.id]);
 
   const id = params.id;
   const formData = await request.formData();
@@ -106,7 +111,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const source = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
     .get();
   if (!source) return { ok: false as const, error: "generic" as const };
 
@@ -181,13 +186,31 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     verifiedLinkIds = owned.map((r) => r.id);
   }
 
-  const newCode = await generateUniqueCode(db, "nl", places, places.placeCode);
+  // The sibling inherits the source's ownership (see the insert below),
+  // and with it the agency whose mark goes on its code: the federation's
+  // prefix for a shared record, the owning tenant's for an owned one.
+  const { resolveAuthorityCodePrefix } = await import("~/lib/codes.server");
+  const newCode = await generateUniqueCode(
+    db,
+    await resolveAuthorityCodePrefix(
+      db,
+      "place",
+      tenant.federationId,
+      source.tenantId,
+    ),
+    places,
+    places.placeCode,
+  );
   const newId = crypto.randomUUID();
   const timestamp = Date.now();
 
   await db.batch([
     db.insert(places).values({
       federationId: tenant.federationId,
+      // The sibling inherits the source's ownership rather than the
+      // federation's minting default, so both halves of a split stay
+      // under the same mutation rule.
+      tenantId: source.tenantId,
       id: newId,
       placeCode: newCode,
       label: nameB,
@@ -219,7 +242,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         whgId: choices.whgId === "original" ? source.whgId : null,
         updatedAt: timestamp,
       })
-      .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id))),
+      .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id))),
     ...verifiedLinkIds.map((linkId) =>
       db
         .update(descriptionPlaces)

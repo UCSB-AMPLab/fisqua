@@ -1,0 +1,133 @@
+-- Tenant-owned authority spaces: a nullable owner on entities/places
+-- plus the per-federation minting default.
+--
+-- WHAT THIS CHANGES
+-- -----------------
+-- Since the authorities lift (0045-0048) an entity or place belongs to a
+-- FEDERATION and to nothing narrower: `federation_id` is NOT NULL,
+-- `tenant_id` was dropped by 0048, and every mutation runs through the
+-- federation-steward gate. That model is right for a federation whose
+-- members genuinely share an authority space -- colonial archives that
+-- share notaries, encomenderos, and towns. It is wrong for a federation
+-- whose members are unrelated archives that happen to be co-located for
+-- operational reasons: there, one member's people and places are simply
+-- not another's business, and routing every edit through a steward makes
+-- a shared curation ritual out of a private housekeeping task.
+--
+-- So ownership becomes optional, one level below the federation:
+--
+--   tenant_id SET   -> tenant-owned. Visible only to that tenant (plus
+--                      its federation's stewards through the ordinary
+--                      steward paths); mutated by that tenant's own
+--                      admins, no steward gate.
+--   tenant_id NULL  -> federation-shared. Exactly today's record:
+--                      visible to every member tenant, mutated only by
+--                      a federation steward.
+--
+-- INVARIANT: when `tenant_id` is set, the row's `federation_id` MUST
+-- equal that tenant's federation. Ownership NARROWS scope; it never
+-- moves a record between federations. Enforced at the app layer (the
+-- owner is always resolved from the request tenant, whose federation is
+-- the one being filtered on), not by a DB CHECK -- SQLite cannot express
+-- a cross-table CHECK, and the alternative (a trigger) would fire on
+-- every authority write for an invariant no writer can violate.
+--
+-- NO BACKFILL, DELIBERATELY
+-- -------------------------
+-- Every existing row keeps `tenant_id` NULL, so every existing row stays
+-- federation-shared and platform behaviour is unchanged the moment this
+-- migration lands. Neogranadina's ~78K entities and ~6.9K places ARE
+-- shared and stay that way. Rows change ownership only when a tenant's
+-- set is explicitly claimed, which is a separate, reviewed data step
+-- (`scripts/claim-authorities.ts` emits the SQL for that step; it is not
+-- run from here). Schema first, data later, so the column can land
+-- harmlessly before any row moves.
+--
+-- WHY ADD COLUMN AND NOT A TABLE REBUILD
+-- --------------------------------------
+-- Same operation, same reasoning as 0045, which added `federation_id` to
+-- these very tables: `ALTER TABLE ... ADD COLUMN` rewrites nothing and
+-- issues no DELETE, so no ON DELETE CASCADE child action can fire inside
+-- D1's per-file transaction. The 0035-style table REBUILD that the 0042
+-- header prohibits for populated cascade-parent tables (entities and
+-- places both are) is not needed and not used. SQLite forbids combining
+-- NOT NULL with REFERENCES on ADD COLUMN anyway, and nullable is what
+-- this column wants: NULL is a meaningful value here (shared), not a
+-- gap awaiting a backfill.
+--
+-- THE UNIQUE CODE INDEXES ARE DELIBERATELY LEFT ALONE
+-- ---------------------------------------------------
+-- `entity_code_idx` and `place_code_idx` stay UNIQUE (federation_id,
+-- code) exactly as 0048 left them -- invariant I5 is untouched. Code
+-- uniqueness stays FEDERATION-wide on purpose: a tenant-owned record
+-- still lives in a federation, and keeping its code unique across that
+-- federation means the record can later be shared -- or the whole
+-- federation can turn sharing on -- without a code collision to
+-- reconcile. Narrowing the indexes to (federation_id, tenant_id, code)
+-- would buy nothing and would make sharing a one-way door.
+--
+-- NO INDEX ON tenant_id, AND WHY
+-- ------------------------------
+-- The visibility predicate is
+--   federation_id = ? AND (tenant_id IS NULL OR tenant_id = ?)
+-- whose selective term is `federation_id`, already served as a leading
+-- prefix by the existing UNIQUE (federation_id, code) indexes. The
+-- `tenant_id` term is a two-branch OR over a column with, in every
+-- planned configuration, exactly ONE distinct non-NULL value per
+-- federation (a shared federation is all-NULL; an owned one is all-one-
+-- tenant). A standalone index on such a column is never selective enough
+-- for the planner to prefer, and SQLite cannot combine it with the
+-- federation prefix across an OR anyway -- it would be dead weight on
+-- every INSERT and UPDATE.
+--
+-- Leaving the column unindexed also keeps it droppable: SQLite refuses
+-- `DROP COLUMN` on an indexed column (see 0048's list of refusal
+-- conditions), so an unindexed `tenant_id` preserves the same clean
+-- reversal path that 0048 used to remove the previous one. If a
+-- federation ever holds many owning tenants AND the authority tables
+-- grow past the point where the federation prefix alone is enough, the
+-- right answer then is a composite (federation_id, tenant_id) index, not
+-- a bare one -- and it can be added at that point without a rewrite.
+--
+-- THE FEDERATION SETTING
+-- ----------------------
+-- `federations.shared_authorities_enabled` is a sibling of
+-- `multi_member_enabled` (0044): INTEGER boolean, NOT NULL, DEFAULT 0,
+-- operator-set per federation. It governs what NEW minting defaults to,
+-- not what is permitted -- sharing off mints tenant-owned records,
+-- sharing on mints shared ones. Default 0 matches its sibling's "every
+-- federation starts as the narrow case" posture; the federations that
+-- genuinely share get switched on explicitly.
+--
+-- ...WHICH IS WHY NEOGRANADINA IS SWITCHED ON HERE, IN THIS FILE
+-- --------------------------------------------------------------
+-- A DEFAULT of 0 is right for a column that did not exist, but it is
+-- NOT behaviour-neutral for the one federation that has been sharing
+-- its authority space all along. Left at 0, Neogranadina's next new
+-- entity would be minted tenant-owned and would quietly leave the shared
+-- space its ~78K siblings live in. So the one federation whose
+-- authorities are genuinely shared is set to 1 in the same file that
+-- creates the column, and the promise the rest of this migration makes
+-- -- nothing behaves differently until a claim is run -- holds for
+-- minting as well as for reading.
+--
+-- The literal below is byte-for-byte NEOGRANADINA_FEDERATION_ID in
+-- app/lib/tenant.ts (the same literal 0045 used for the vocabulary
+-- backfill). The AMPL federation is deliberately NOT touched: 0 is
+-- exactly what it wants, and every federation provisioned after this
+-- point inherits 0 from the column default.
+--
+-- Three ALTER TABLE ADD COLUMNs and one single-row UPDATE, so wall time
+-- is independent of table size and the 30s-per-file budget discussed in
+-- 0045's header is not in play here.
+--
+-- Version: v0.7.0
+
+ALTER TABLE entities ADD COLUMN tenant_id TEXT REFERENCES tenants(id);
+ALTER TABLE places ADD COLUMN tenant_id TEXT REFERENCES tenants(id);
+ALTER TABLE federations ADD COLUMN shared_authorities_enabled INTEGER NOT NULL DEFAULT 0;
+
+-- The Neogranadina federation shares its authority space and always has;
+-- keep it minting into that space. Idempotent, single row, no-op if
+-- re-run.
+UPDATE federations SET shared_authorities_enabled = 1 WHERE id = 'b4462493-6170-44f8-ae07-24666606d1f1';

@@ -13,7 +13,7 @@
  * here so downstream test files share a single import surface for
  * tenant-aware fixtures.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
@@ -70,6 +70,11 @@ export async function applyMigrations() {
       // federations, created just below — SQLite allows a forward FK
       // reference at CREATE time (checked only at row ops).
       "federation_id TEXT REFERENCES federations(id) ON DELETE RESTRICT, " +
+      // Authority code prefixes (migration 0068). Set only on tenants
+      // that mint their OWN authority records; NULL everywhere else,
+      // where the federation row carries the pair instead.
+      "entity_code_prefix TEXT, " +
+      "place_code_prefix TEXT, " +
       "created_at INTEGER NOT NULL, " +
       "updated_at INTEGER NOT NULL, " +
       // SQLite CHECK only rejects on FALSE (not NULL). The second
@@ -99,6 +104,16 @@ export async function applyMigrations() {
       "lead_tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
       "status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended')), " +
       "multi_member_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // shared_authorities_enabled (migration 0067): the minting default
+      // for this federation's authority space. DEFAULT 0 — a federation
+      // mints tenant-owned entities/places until it says otherwise.
+      "shared_authorities_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // Authority code prefixes (migration 0068): the mark the minting
+      // agency puts on the codes it issues. Carried here for records
+      // minted into a federation's SHARED authority space; the same
+      // pair on `tenants` covers tenant-owned records.
+      "entity_code_prefix TEXT, " +
+      "place_code_prefix TEXT, " +
       "created_at INTEGER NOT NULL" +
     ")",
   );
@@ -326,7 +341,10 @@ export async function applyMigrations() {
   // entities carries federation_id NOT NULL FK (migrations 0045-0048):
   // authorities are federation-scoped, and the code index is unique per
   // federation. tenant_id was dropped by 0048.
-  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // entities.tenant_id (migration 0067) is the OPTIONAL owner: NULL =
+  // federation-shared, set = owned by that tenant. Nullable with a real
+  // FK and no index, exactly as the migration adds it.
+  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS entity_code_idx ON entities(federation_id, entity_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_sort_name_idx ON entities(sort_name)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_wikidata_idx ON entities(wikidata_id)");
@@ -365,7 +383,8 @@ export async function applyMigrations() {
   // admin_level_1, admin_level_2, wikidata_id — all 0% populated)
   // and gains fclass (5-value GeoNames feature class with CHECK
   // enforcement at the DB layer) + legacy_ids JSON.
-  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, fclass TEXT CHECK (fclass IS NULL OR fclass IN ('P','H','A','T','S')), legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // places.tenant_id (migration 0067): same optional owner as entities.
+  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, fclass TEXT CHECK (fclass IS NULL OR fclass IN ('P','H','A','T','S')), legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS place_code_idx ON places(federation_id, place_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_label_idx ON places(label)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_tgn_idx ON places(tgn_id)");
@@ -763,23 +782,46 @@ export const DISABLED_TEST_FEDERATION_ID = "f3333333-3333-4333-8333-333333333333
  * lead_tenant_id points at a tenant row, and each tenant's federation_id
  * is UPDATE-set here. neogranadina + AMPL-style leads carry
  * multi_member_enabled=1; the rest are federations-of-one (0).
+ *
+ * `shared_authorities_enabled` (migration 0067) mirrors what the
+ * migration leaves in production: 1 for Neogranadina, whose authority
+ * space is genuinely shared and whose new records must keep landing in
+ * it, and 0 everywhere else. Fixtures that need the other setting flip
+ * the single row themselves rather than changing this baseline.
+ *
+ * The authority code prefixes (migration 0068) mirror it in the same
+ * way: 'ne'/'nl' on the Neogranadina federation, whose shared space
+ * mints those codes and always has, and NULL on every other fixture
+ * federation — NULL being the production truth for an agency that has
+ * not been given a prefix, and the state the mint path must refuse to
+ * paper over.
  */
 export async function seedFederations(): Promise<void> {
   const now = Date.now();
-  // [federationId, slug, name, leadTenantId, multiMemberEnabled]
-  const feds: Array<[string, string, string, string, number]> = [
-    [NEOGRANADINA_FEDERATION_ID, "neogranadina", "Neogranadina", NEOGRANADINA_TENANT_ID, 1],
-    [PLATFORM_FEDERATION_ID, "platform", "Platform", PLATFORM_TENANT_ID, 0],
-    [SECOND_TEST_FEDERATION_ID, "second-tenant", "Second Test Federation", SECOND_TEST_TENANT_ID, 0],
-    [DACS_TEST_FEDERATION_ID, "dacs-test", "DACS Test Federation", DACS_TEST_TENANT_ID, 0],
-    [RAD_TEST_FEDERATION_ID, "rad-test", "RAD Test Federation", RAD_TEST_TENANT_ID, 0],
+  // [federationId, slug, name, leadTenantId, multiMemberEnabled, sharedAuthoritiesEnabled]
+  // [federationId, slug, name, leadTenantId, multiMemberEnabled,
+  //  sharedAuthoritiesEnabled, entityCodePrefix, placeCodePrefix]
+  const feds: Array<
+    [string, string, string, string, number, number, string | null, string | null]
+  > = [
+    [NEOGRANADINA_FEDERATION_ID, "neogranadina", "Neogranadina", NEOGRANADINA_TENANT_ID, 1, 1, "ne", "nl"],
+    [PLATFORM_FEDERATION_ID, "platform", "Platform", PLATFORM_TENANT_ID, 0, 0, null, null],
+    [SECOND_TEST_FEDERATION_ID, "second-tenant", "Second Test Federation", SECOND_TEST_TENANT_ID, 0, 0, null, null],
+    [DACS_TEST_FEDERATION_ID, "dacs-test", "DACS Test Federation", DACS_TEST_TENANT_ID, 0, 0, null, null],
+    [RAD_TEST_FEDERATION_ID, "rad-test", "RAD Test Federation", RAD_TEST_TENANT_ID, 0, 0, null, null],
   ];
-  for (const [id, slug, name, leadTenantId, multiMember] of feds) {
+  for (const [
+    id, slug, name, leadTenantId, multiMember, sharedAuthorities,
+    entityCodePrefix, placeCodePrefix,
+  ] of feds) {
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO federations (id, slug, name, lead_tenant_id, status, multi_member_enabled, created_at) " +
-        "VALUES (?,?,?,?,?,?,?)",
+      "INSERT OR IGNORE INTO federations (id, slug, name, lead_tenant_id, status, multi_member_enabled, shared_authorities_enabled, entity_code_prefix, place_code_prefix, created_at) " +
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
     )
-      .bind(id, slug, name, leadTenantId, "active", multiMember, now)
+      .bind(
+        id, slug, name, leadTenantId, "active", multiMember, sharedAuthorities,
+        entityCodePrefix, placeCodePrefix, now,
+      )
       .run();
     await env.DB.prepare("UPDATE tenants SET federation_id = ? WHERE id = ?")
       .bind(id, leadTenantId)

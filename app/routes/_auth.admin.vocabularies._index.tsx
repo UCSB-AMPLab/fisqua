@@ -10,7 +10,10 @@
  * term counts and the distinct-value counts on `entities` and `places`
  * are scoped to `tenant.federationId`; descriptionEntities /
  * descriptionPlaces inherit tenant scope through their parent
- * description (children-table FK chain).
+ * description (children-table FK chain). Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * @version v0.4.2
  */
@@ -26,6 +29,7 @@ import type { Route } from "./+types/_auth.admin.vocabularies._index";
 // ---------------------------------------------------------------------------
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, sql } = await import("drizzle-orm");
   const {
@@ -63,7 +67,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const entityTypeCount = await db
     .select({ count: sql<number>`count(distinct entity_type)` })
     .from(entities)
-    .where(eq(entities.federationId, tenant.federationId))
+    .where(authorityScope(entities, tenant.federationId, tenant.id))
     .all();
 
   // Entity roles: count distinct values in use. descriptionEntities has
@@ -78,7 +82,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const placeTypeCount = await db
     .select({ count: sql<number>`count(distinct place_type)` })
     .from(places)
-    .where(eq(places.federationId, tenant.federationId))
+    .where(authorityScope(places, tenant.federationId, tenant.id))
     .all();
 
   // Place roles: count distinct values in use

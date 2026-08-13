@@ -17,7 +17,13 @@
  * `NEOGRANADINA_TENANT_ID` so cross-tenant behaviours can be added
  * later without rewriting the existing tests.
  *
- * @version v0.4.0
+ * The invite cases also cover the opening-role choice: a tenant admin
+ * can send someone in as Records admin or Archive user and gets
+ * exactly that flag and no other; a platform role is refused at invite
+ * time whoever asks for it; and an inviter who is not a tenant admin
+ * cannot give away a tenant role either.
+ *
+ * @version v0.7.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
@@ -309,6 +315,137 @@ describe("cataloguing users admin: action handler", () => {
       .where(eq(schema.users.email, "dup@example.com"))
       .all();
     expect(rows.length).toBe(1);
+  });
+
+  it("inviteUser with role=records_admin as a tenant admin creates the user with exactly that flag", async () => {
+    const db = drizzle(env.DB);
+    // A tenant admin — the shape a federation steward's effective
+    // member-tenant flags take. Also collab admin so the calling
+    // route's own gate would admit them.
+    const inviter = makeUser({ isAdmin: true, isCollabAdmin: true });
+
+    const result = await handleUsersAction(
+      inviter,
+      NEOGRANADINA_TENANT_ID,
+      db,
+      fd({
+        _action: "inviteUser",
+        email: "records@example.com",
+        name: "Records",
+        role: "records_admin",
+      }),
+      env,
+      i18n,
+      "http://localhost",
+      { sendInvite: async () => ({ success: true }) }
+    );
+
+    expect(result.ok).toBe(true);
+
+    const row = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, "records@example.com"))
+      .get();
+    expect(row!.isAdmin).toBeTruthy();
+    // Exactly that flag: nothing else came along with it.
+    expect(row!.isArchiveUser).toBeFalsy();
+    expect(row!.isSuperAdmin).toBeFalsy();
+    expect(row!.isUserManager).toBeFalsy();
+    expect(row!.isCollabAdmin).toBeFalsy();
+  });
+
+  it("inviteUser with role=archive_user creates a read-only account", async () => {
+    const db = drizzle(env.DB);
+    const inviter = makeUser({ isAdmin: true, isCollabAdmin: true });
+
+    const result = await handleUsersAction(
+      inviter,
+      NEOGRANADINA_TENANT_ID,
+      db,
+      fd({
+        _action: "inviteUser",
+        email: "reader@example.com",
+        role: "archive_user",
+      }),
+      env,
+      i18n,
+      "http://localhost",
+      { sendInvite: async () => ({ success: true }) }
+    );
+
+    expect(result.ok).toBe(true);
+
+    const row = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, "reader@example.com"))
+      .get();
+    expect(row!.isArchiveUser).toBeTruthy();
+    expect(row!.isAdmin).toBeFalsy();
+  });
+
+  it("inviteUser offering a platform role is refused and creates nothing", async () => {
+    const db = drizzle(env.DB);
+    const inviter = makeUser({ isAdmin: true, isCollabAdmin: true });
+
+    for (const role of ["super_admin", "user_manager", "isSuperAdmin"]) {
+      const result = await handleUsersAction(
+        inviter,
+        NEOGRANADINA_TENANT_ID,
+        db,
+        fd({
+          _action: "inviteUser",
+          email: `escalate-${role}@example.com`,
+          role,
+        }),
+        env,
+        i18n,
+        "http://localhost",
+        { sendInvite: async () => ({ success: true }) }
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/role/);
+
+      const row = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.email, `escalate-${role}@example.com`))
+        .get();
+      expect(row).toBeFalsy();
+    }
+  });
+
+  it("inviteUser with a tenant role as a collab admin who is not a tenant admin is refused", async () => {
+    const db = drizzle(env.DB);
+    // Collab admin only: reaches the cataloguing invite form, but is
+    // not a tenant admin, so has no tenant roles to give away.
+    const inviter = makeUser({ isCollabAdmin: true });
+
+    const result = await handleUsersAction(
+      inviter,
+      NEOGRANADINA_TENANT_ID,
+      db,
+      fd({
+        _action: "inviteUser",
+        email: "nope@example.com",
+        role: "records_admin",
+      }),
+      env,
+      i18n,
+      "http://localhost",
+      { sendInvite: async () => ({ success: true }) }
+    );
+
+    expect(result.ok).toBe(false);
+
+    const row = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, "nope@example.com"))
+      .get();
+    expect(row).toBeFalsy();
   });
 
   it("inviteUser rolls back user row when email sender fails", async () => {

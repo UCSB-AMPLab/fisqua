@@ -145,6 +145,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
@@ -292,7 +293,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .from(entities)
         .where(
           and(
-            eq(entities.federationId, tenant.federationId),
+            authorityScope(entities, tenant.federationId, tenant.id),
             eq(entities.primaryFunctionId, sourceId)
           )
         )
@@ -310,7 +311,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           .set({ primaryFunctionId: targetId, updatedAt: now })
           .where(
             and(
-              eq(entities.federationId, tenant.federationId),
+              authorityScope(entities, tenant.federationId, tenant.id),
               eq(entities.primaryFunctionId, sourceId)
             )
           ),
@@ -348,7 +349,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .from(entities)
         .where(
           and(
-            eq(entities.federationId, tenant.federationId),
+            authorityScope(entities, tenant.federationId, tenant.id),
             eq(entities.primaryFunctionId, targetId)
           )
         )

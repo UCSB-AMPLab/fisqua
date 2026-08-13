@@ -18,7 +18,7 @@
  * Linked descriptions render as rich context cards grouped by
  * description; a multi-role description is routed as one unit.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -34,6 +34,7 @@ import type { Route } from "./+types/_auth.admin.entities.$id.split";
 type Choice = "original" | "both" | "new";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
@@ -53,7 +54,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const entity = await db
     .select()
     .from(entities)
-    .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+    .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
     .get();
   if (!entity) throw new Response("Not found", { status: 404 });
 
@@ -67,11 +68,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { entities, descriptionEntities } = await import("~/db/schema");
-  const { requireFederationSteward } = await import("~/lib/federation.server");
   const { generateUniqueCode } = await import("~/lib/codes.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
@@ -82,9 +85,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
-  await requireFederationSteward(db, user, tenant);
 
   const id = params.id;
+  // A split rewrites the source and mints a sibling from it, so the
+  // source's ownership governs the whole operation: this tenant's own
+  // record splits without a steward, a shared one does not, another
+  // tenant's 404s.
+  await requireAuthorityMutation(db, user, tenant, "entity", [id]);
   const formData = await request.formData();
 
   const reason = (formData.get("reason") as string)?.trim() || "";
@@ -113,7 +120,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const source = await db
     .select()
     .from(entities)
-    .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+    .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
     .get();
   if (!source) return { ok: false as const, error: "generic" as const };
 
@@ -189,7 +196,22 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     verifiedLinkIds = owned.map((r) => r.id);
   }
 
-  const newCode = await generateUniqueCode(db, "ne", entities, entities.entityCode);
+  // The sibling inherits the source's ownership (see the insert below),
+  // so it also inherits the agency whose mark goes on its code: a shared
+  // record splits into two shared records under the federation's prefix,
+  // an owned one into two of that tenant's.
+  const { resolveAuthorityCodePrefix } = await import("~/lib/codes.server");
+  const newCode = await generateUniqueCode(
+    db,
+    await resolveAuthorityCodePrefix(
+      db,
+      "entity",
+      tenant.federationId,
+      source.tenantId,
+    ),
+    entities,
+    entities.entityCode,
+  );
   const newId = crypto.randomUUID();
   const timestamp = Date.now();
   const now = new Date().toISOString().slice(0, 10);
@@ -200,6 +222,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     // New record: identity fields clone; assignable fields follow choices.
     db.insert(entities).values({
       federationId: tenant.federationId,
+      // The sibling INHERITS the source's ownership rather than taking
+      // the federation's minting default: a split preserves what the
+      // record already was, so a shared record splits into shared
+      // records and an owned one into owned records. Anything else would
+      // leave the two halves of one split under different mutation
+      // rules the moment they were created.
+      tenantId: source.tenantId,
       id: newId,
       entityCode: newCode,
       displayName: nameB,
@@ -241,7 +270,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         sources: source.sources ? `${source.sources}\n${splitIntoNote}` : splitIntoNote,
         updatedAt: timestamp,
       })
-      .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id))),
+      .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id))),
     ...verifiedLinkIds.map((linkId) =>
       db
         .update(descriptionEntities)

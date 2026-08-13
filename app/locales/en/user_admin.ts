@@ -7,7 +7,7 @@
  * cataloguer, records admin, archive user), and the per-row project
  * count column.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   breadcrumb_system_users: "System users",
@@ -38,7 +38,14 @@ export default {
     "This is your own account. Role changes are disabled to prevent accidental self-demotion.",
   non_superadmin_notice:
     "You can manage this user's profile and project assignments. Role changes require super admin access.",
+  tenant_admin_roles_notice:
+    "You can grant the roles for this archive. Super admin and user manager are platform-wide and can only be granted by a super admin.",
   self_role_badge_tooltip: "You cannot change your own roles",
+  platform_role_tooltip: "Only a super admin can grant this role",
+  invite_role_label: "Initial role",
+  invite_role_none: "No role",
+  invite_role_hint:
+    "Without a role, the new user signs in to an empty dashboard.",
   name_label: "Name",
   email_label: "Email",
   last_login_label: "Last login",
@@ -63,6 +70,8 @@ export default {
   error_invalid_request: "Invalid request",
   error_only_superadmin_roles: "Only super admins can change roles",
   error_cannot_change_own_roles: "You cannot change your own roles",
+  error_role_not_assignable:
+    "That request included a role you cannot grant. No roles were changed.",
   error_already_member: "Already a member of this project",
   error_forbidden: "Forbidden",
   success_profile_updated: "Profile updated",

@@ -22,7 +22,10 @@
  * Authority scope is the federation (migrations 0045-0048): every read of
  * `entities` is filtered by `tenant.federationId` (including the FTS5
  * fast path and every COUNT), resolved from the session tenant's
- * federation.
+ * federation. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * @version v0.4.3
  */
@@ -94,6 +97,9 @@ interface FunctionOption {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { authorityScope, authorityScopeSql } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, asc, desc, isNull, eq, like, or, inArray, sql } =
@@ -117,7 +123,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const excludeId = sp.get("exclude") || "";
     const likePattern = `%${q}%`;
     const conditions = [
-      eq(entities.federationId, tenant.federationId),
+      authorityScope(entities, tenant.federationId, tenant.id),
       like(entities.displayName, likePattern),
     ];
     if (excludeId) {
@@ -207,7 +213,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         isNull(entities.mergedInto),
         sql`${entities.primaryFunction} IS NOT NULL AND ${entities.primaryFunction} != ''`,
       ),
@@ -266,7 +272,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // its own filter. The federation predicate is spelt out inline so the
   // tenant-isolation static guard sees it at every site.
   function filterConditions(includeType: boolean): any[] {
-    const c: any[] = [eq(entities.federationId, tenant.federationId)];
+    const c: any[] = [authorityScope(entities, tenant.federationId, tenant.id)];
     if (!showMerged) c.push(isNull(entities.mergedInto));
     if (includeType && typeFilter) c.push(eq(entities.entityType, typeFilter));
     // Year overlap with open-ended bounds: a missing date_end means the
@@ -366,7 +372,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           inArray(descriptionEntities.entityId, ids),
         ),
       )
@@ -389,7 +395,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           inArray(entities.id, mergedIds),
         ),
       )
@@ -432,7 +438,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(true),
         ),
       )
@@ -442,7 +448,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(false),
         ),
       )
@@ -476,7 +482,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(true),
         ),
       )
@@ -550,7 +556,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${typeClause}${datedClause}${fromClause}${toClause}${fnClause}
         ORDER BY rank
         LIMIT ${pageSize}
@@ -561,7 +567,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${typeClause}${datedClause}${fromClause}${toClause}${fnClause}
       `)) as { total: number }[];
       total = totalRows[0]?.total ?? 0;
@@ -571,7 +577,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${datedClause}${fromClause}${toClause}${fnClause}
         GROUP BY e.entity_type
       `)) as { type: string | null; count: number }[];

@@ -11,7 +11,9 @@
  * records.
  *
  * Gated on the `authorities` capability (loader and action); the
- * dismissal requires a federation steward.
+ * dismissal follows the authority ownership rule (migration 0067):
+ * unrestricted when this tenant owns BOTH records of the pair,
+ * steward-gated otherwise.
  *
  * @version v0.6.0
  */
@@ -30,6 +32,7 @@ import type { Route } from "./+types/_auth.admin.places.duplicates";
 const MAX_PAIRS = 50;
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull, inArray, sql } = await import("drizzle-orm");
@@ -55,7 +58,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
       ),
     )
@@ -98,11 +101,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull } = await import("drizzle-orm");
   const { places } = await import("~/db/schema");
-  const { requireFederationSteward } = await import("~/lib/federation.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
@@ -112,7 +117,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
-  await requireFederationSteward(db, user, tenant);
 
   const formData = await request.formData();
   if ((formData.get("_action") as string) !== "separate") {
@@ -128,13 +132,20 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { ok: false as const, error: "generic" as const };
   }
 
+  // Pair rule: a dismissal names two records, so it is unrestricted only
+  // when this tenant owns both. See requireAuthorityMutation.
+  await requireAuthorityMutation(db, user, tenant, "place", [
+    sourceId,
+    targetId,
+  ]);
+
   const [a, b] = await Promise.all([
     db
       .select({ id: places.id })
       .from(places)
       .where(
         and(
-          eq(places.federationId, tenant.federationId),
+          authorityScope(places, tenant.federationId, tenant.id),
           eq(places.id, sourceId),
           isNull(places.mergedInto),
         ),
@@ -145,7 +156,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       .from(places)
       .where(
         and(
-          eq(places.federationId, tenant.federationId),
+          authorityScope(places, tenant.federationId, tenant.id),
           eq(places.id, targetId),
           isNull(places.mergedInto),
         ),

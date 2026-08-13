@@ -1,15 +1,26 @@
 /**
  * User Admin — List
  *
- * This page is the superadmin-only directory of every user in the
- * system, with filter chips for role flags and a search box for name
- * or email. Each row
- * deep-links to the user detail page for edits.
+ * This page is the directory of every user in the request tenant, with
+ * role pills and project counts. Each row deep-links to the user detail
+ * page for edits.
+ *
+ * Reaching it takes `canManageTenantUsers`: a super admin, a user
+ * manager, or a tenant admin. The tenant admin is the addition — on a
+ * records-management tenant they are the only person in a position to
+ * put a newly invited colleague to work, and gating the directory on
+ * the platform roles left a federation steward able to send invitations
+ * and unable to do anything with them afterwards.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Loader filters `users` by `tenant.id`; the
  * action plumbs `tenant.id` into `handleUsersAction` so the invite
  * path attributes the new user row to the calling tenant.
+ *
+ * The invite modal carries an opening-role picker, shown only to a
+ * caller who may assign the tenant-scoped roles. It offers those two
+ * roles and "no role"; the platform roles are not on offer here and
+ * the action refuses them regardless of what the body says.
  *
  * Invite feedback runs through the shared `SaveFeedbackBanner` /
  * `SaveButton` pair. The banner sits on the page rather than inside
@@ -40,8 +51,12 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { asc, eq } = await import("drizzle-orm");
   const { users, projectMembers, projects } = await import("../db/schema");
 
+  const { canAssignTenantRoles, canManageTenantUsers } = await import(
+    "../lib/permissions.server"
+  );
+
   const user = context.get(userContext);
-  if (!user.isSuperAdmin && !user.isUserManager) {
+  if (!canManageTenantUsers(user)) {
     throw new Response("Forbidden", { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -92,7 +107,13 @@ export async function loader({ context }: Route.LoaderArgs) {
     projects: membershipsByUser.get(u.id) || [],
   }));
 
-  return { users: usersWithProjects };
+  return {
+    users: usersWithProjects,
+    // Drives the invite modal's role picker. A caller who cannot hand
+    // out the tenant-scoped roles is not offered the field at all,
+    // rather than shown a control whose every value the action refuses.
+    canAssignTenantRoles: canAssignTenantRoles(user),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -101,9 +122,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
+  const { canManageTenantUsers } = await import("../lib/permissions.server");
 
   const user = context.get(userContext);
-  if (!user.isSuperAdmin && !user.isUserManager) {
+  if (!canManageTenantUsers(user)) {
     throw new Response("Forbidden", { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -175,7 +197,7 @@ const ROLE_PILL_COLORS: Record<RoleKey, string> = {
 export default function SystemUsersPage({
   loaderData,
 }: Route.ComponentProps) {
-  const { users: allUsers } = loaderData;
+  const { users: allUsers, canAssignTenantRoles } = loaderData;
   const { t } = useTranslation(["user_admin", "sidebar", "admin"]);
   const { formatDate } = useFormatters();
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -268,6 +290,41 @@ export default function SystemUsersPage({
                   className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
+              {/* Opening role. Only the tenant-scoped roles are on
+                  offer, and only to a caller who may assign them —
+                  the same split `assignableRoleFlags` enforces
+                  server-side. Without this the invited user landed on
+                  an empty dashboard, because every records-management
+                  surface requires Records admin. */}
+              {canAssignTenantRoles && (
+                <div>
+                  <label
+                    htmlFor="invite-role"
+                    className="mb-1 block font-sans text-xs font-medium text-indigo"
+                  >
+                    {t("user_admin:invite_role_label")}
+                  </label>
+                  <select
+                    id="invite-role"
+                    name="role"
+                    defaultValue="none"
+                    className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                  >
+                    <option value="none">
+                      {t("user_admin:invite_role_none")}
+                    </option>
+                    <option value="records_admin">
+                      {t("user_admin:role_records_admin")}
+                    </option>
+                    <option value="archive_user">
+                      {t("user_admin:role_archive_user")}
+                    </option>
+                  </select>
+                  <p className="mt-1 font-sans text-xs text-stone-400">
+                    {t("user_admin:invite_role_hint")}
+                  </p>
+                </div>
+              )}
               <div className="flex justify-end gap-3 border-t border-stone-200 pt-4">
                 <button
                   type="button"

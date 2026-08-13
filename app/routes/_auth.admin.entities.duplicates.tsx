@@ -36,6 +36,7 @@ import type { Route } from "./+types/_auth.admin.entities.duplicates";
 const MAX_PAIRS = 50;
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull, inArray, sql } = await import("drizzle-orm");
@@ -64,7 +65,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         isNull(entities.mergedInto),
       ),
     )
@@ -108,11 +109,13 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull } = await import("drizzle-orm");
   const { entities } = await import("~/db/schema");
-  const { requireFederationSteward } = await import("~/lib/federation.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
@@ -122,7 +125,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
-  await requireFederationSteward(db, user, tenant);
 
   const formData = await request.formData();
   if ((formData.get("_action") as string) !== "separate") {
@@ -138,6 +140,14 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { ok: false as const, error: "generic" as const };
   }
 
+  // Dismissing a pair writes a ledger row about BOTH records, so it
+  // obeys the pair rule: free for this tenant only when it owns both,
+  // steward-gated otherwise, 404 if either belongs to another tenant.
+  await requireAuthorityMutation(db, user, tenant, "entity", [
+    sourceId,
+    targetId,
+  ]);
+
   // Both records must be live entities in this federation — a
   // dismissal names two real records, never arbitrary ids.
   const [a, b] = await Promise.all([
@@ -146,7 +156,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.id, sourceId),
           isNull(entities.mergedInto),
         ),
@@ -157,7 +167,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.id, targetId),
           isNull(entities.mergedInto),
         ),

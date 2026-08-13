@@ -6,7 +6,8 @@
  * the v0.4 union schema:
  *
  *   - federation_id is mandatory at column position 2
- *     (NEOGRANADINA_FEDERATION_ID) — places are federation-scoped
+ *     (NEOGRANADINA_FEDERATION_ID) — places are federation-scoped, and
+ *     tenant_id (migration 0067, the optional owner) imports as NULL
  *     after migrations 0045-0048
  *   - 7 columns are dropped (0% populated in audit; gone in
  *     drizzle/0036): historical_gobernacion, historical_partido,
@@ -36,7 +37,7 @@ import { toEpochSeconds, stringifyJsonArray, buildLegacyIdsForPlace } from "../l
 import { NEOGRANADINA_FEDERATION_ID } from "../../app/lib/tenant";
 
 const COLUMNS = [
-  "id", "federation_id",
+  "id", "federation_id", "tenant_id",
   "place_code", "label", "display_name", "place_type", "name_variants",
   "parent_id", "latitude", "longitude", "coordinate_precision",
   // needs_geocoding dropped in 0060 — coordinate status is derived.
@@ -175,6 +176,9 @@ export async function importPlaces(
     rows.push([
       escapeSql(newId),
       escapeSql(NEOGRANADINA_FEDERATION_ID),
+      // tenant_id (migration 0067): NULL, the federation-shared owner —
+      // Neogranadina's places belong to the federation, not to one tenant.
+      escapeSql(null),
       escapeSql(codes[i]),
       escapeSql(record.label),
       escapeSql(record.display_name),

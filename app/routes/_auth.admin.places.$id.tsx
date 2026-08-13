@@ -23,7 +23,10 @@
  * Authority scope is the federation (migrations 0045-0048). Every
  * read/update/delete of `places` is filtered by `tenant.federationId`.
  * The description-search subquery stays `tenant.id`-scoped
- * (descriptions remain tenant-scoped).
+ * (descriptions remain tenant-scoped). Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * @version v0.4.3
  */
@@ -73,6 +76,7 @@ import type { Route } from "./+types/_auth.admin.places.$id";
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
@@ -91,7 +95,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const place = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
     .get();
 
   if (!place) {
@@ -287,7 +291,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       .select({ id: places.id, label: places.label })
       .from(places)
       .where(
-        and(eq(places.federationId, tenant.federationId), eq(places.id, place.mergedInto))
+        and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, place.mergedInto))
       )
       .get();
     if (target) mergeTarget = target;
@@ -331,7 +335,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .from(places)
         .where(
           and(
-            eq(places.federationId, tenant.federationId),
+            authorityScope(places, tenant.federationId, tenant.id),
             inArray(places.id, targetIds),
           ),
         )
@@ -361,7 +365,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .from(places)
         .where(
           and(
-            eq(places.federationId, tenant.federationId),
+            authorityScope(places, tenant.federationId, tenant.id),
             eq(places.id, fromActor.sourceId),
           ),
         )
@@ -440,6 +444,9 @@ type PlaceLoaderData = Exclude<Awaited<ReturnType<typeof loader>>, Response>;
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, sql } = await import("drizzle-orm");
@@ -458,12 +465,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const db = drizzle(env.DB);
   const id = params.id;
 
-  // Authority mutation gate helper (ruled 2026-07-08). Applied per-intent
-  // below to the canonical place mutations (update, delete, merge, split)
-  // — each requires a federation steward. NOT applied to autosave
+  // Authority mutation gate helper (2026-07-08 rule as reworked by
+  // migration 0067). Applied per-intent below to the canonical place
+  // mutations (update, delete, merge, split). It reads the record's OWNER
+  // and branches: this tenant's own record needs only the ordinary admin
+  // rights already checked above; a federation-shared record still needs
+  // a steward; another tenant's record 404s. NOT applied to autosave
   // (drafts), the read search, or the description-link intents, which
   // stay open to member-tenant admins (READ + member-side junction ops).
-  const { requireFederationSteward } = await import("~/lib/federation.server");
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -479,7 +488,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "update": {
-      await requireFederationSteward(db, user, tenant);
+      await requireAuthorityMutation(db, user, tenant, "place", [id]);
       const label = (formData.get("label") as string)?.trim() || undefined;
       const displayName =
         (formData.get("displayName") as string)?.trim() || undefined;
@@ -557,7 +566,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const original = await db
         .select()
         .from(places)
-        .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+        .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
         .get();
 
       // Optimistic lock check
@@ -598,7 +607,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
             ...updatedFields,
             updatedAt: Date.now(),
           })
-          .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)));
+          .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)));
       } catch (e) {
         if (String(e).includes("UNIQUE constraint failed")) {
           return { ok: false as const, error: "duplicate_code" };
@@ -630,7 +639,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "delete": {
-      await requireFederationSteward(db, user, tenant);
+      await requireAuthorityMutation(db, user, tenant, "place", [id]);
       // Server-side cascade check
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
@@ -648,7 +657,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const original = await db
         .select()
         .from(places)
-        .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+        .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
         .get();
       if (!original) {
         return redirect("/admin/places");
@@ -657,7 +666,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       await db.batch([
         db
           .delete(places)
-          .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id))),
+          .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id))),
         logAuthorityOperation(db, {
           federationId: tenant.federationId,
           recordType: "place",

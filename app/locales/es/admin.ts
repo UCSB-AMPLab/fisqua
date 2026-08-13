@@ -6,7 +6,7 @@
  * project sections, and the all/archived project pickers the admin
  * landing page uses.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   heading: {
@@ -76,6 +76,8 @@ export default {
     self_admin: "No puedes cambiar tu propio estado de administrador.",
     user_not_found: "Usuario no encontrado.",
     invalid_email: "Ingresa una dirección de correo válida.",
+    invalid_role: "Ese rol no se puede asignar al momento de invitar.",
+    role_not_assignable: "No puedes otorgar ese rol.",
     duplicate_email: "Ya existe un usuario con este correo.",
     user_created: "Usuario {{email}} creado.",
     user_invited: "Invitación enviada a {{email}}.",
