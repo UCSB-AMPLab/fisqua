@@ -106,6 +106,7 @@ export default {
     // Área de identificación
     referenceCode: "Código de referencia",
     localIdentifier: "Identificador local",
+    legacyIds: "Identificadores anteriores",
     title: "Título",
     translatedTitle: "Título traducido",
     uniformTitle: "Título uniforme",

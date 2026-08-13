@@ -73,7 +73,8 @@ export type Primitive =
   | "checkbox"
   | "iiif-url"
   | "entity-linker"
-  | "place-linker";
+  | "place-linker"
+  | "legacy-ids";
 
 /**
  * A single field inside a section. `column` MUST exist on

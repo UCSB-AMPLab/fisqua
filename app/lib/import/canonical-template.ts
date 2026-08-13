@@ -38,7 +38,7 @@ import type { ProfileBinding } from "./profile-schema";
 import { allowedTargetFields } from "./target-fields";
 
 /** Bumped only when a generated header set below changes (drift test guards). */
-export const CANONICAL_TEMPLATE_VERSION = 2;
+export const CANONICAL_TEMPLATE_VERSION = 3;
 
 /** The starter_key stamped on a minted canonical-template profile. */
 export const CANONICAL_STARTER_KEY = "fisqua-canonical";
@@ -81,31 +81,32 @@ export function canonicalTemplateCsv(standard: Standard): string {
  */
 export const CANONICAL_HEADER_SNAPSHOT: Readonly<Record<Standard, readonly string[]>> = {
   isadg: [
-    "referenceCode", "localIdentifier", "title", "translatedTitle", "uniformTitle",
-    "descriptionLevel", "resourceType", "genre", "dateExpression", "dateStart",
-    "dateEnd", "dateCertainty", "extent", "dimensions", "medium", "repositoryId",
-    "provenance", "creatorDisplay", "scopeContent", "arrangement", "ocrText",
-    "accessConditions", "reproductionConditions", "language", "locationOfOriginals",
-    "locationOfCopies", "findingAids", "notes", "internalNotes", "imprint",
-    "editionStatement", "seriesStatement", "volumeNumber", "issueNumber", "pages",
-    "publicationTitle", "sectionTitle", "iiifManifestUrl", "hasDigital", "parent",
-    "legacyIds",
+    "referenceCode", "localIdentifier", "legacyIds", "title", "translatedTitle",
+    "uniformTitle", "descriptionLevel", "resourceType", "genre", "dateExpression",
+    "dateStart", "dateEnd", "dateCertainty", "extent", "dimensions", "medium",
+    "repositoryId", "provenance", "creatorDisplay", "scopeContent", "arrangement",
+    "ocrText", "accessConditions", "reproductionConditions", "language",
+    "locationOfOriginals", "locationOfCopies", "findingAids", "notes", "internalNotes",
+    "imprint", "editionStatement", "seriesStatement", "volumeNumber", "issueNumber",
+    "pages", "publicationTitle", "sectionTitle", "iiifManifestUrl", "hasDigital",
+    "parent",
   ],
   dacs: [
-    "referenceCode", "localIdentifier", "title", "translatedTitle", "descriptionLevel",
-    "dateExpression", "dateStart", "dateEnd", "extent", "repositoryId", "creatorDisplay",
-    "adminBiogHistory", "provenance", "scopeContent", "systemOfArrangement", "arrangement",
-    "physicalCharacteristics", "accessConditions", "reproductionConditions", "language",
-    "acquisitionInfo", "locationOfOriginals", "locationOfCopies", "findingAids", "notes",
-    "internalNotes", "preferredCitation", "iiifManifestUrl", "hasDigital", "parent",
-    "legacyIds", "dateCertainty",
+    "referenceCode", "localIdentifier", "legacyIds", "title", "translatedTitle",
+    "descriptionLevel", "dateExpression", "dateStart", "dateEnd", "extent",
+    "repositoryId", "creatorDisplay", "adminBiogHistory", "provenance", "scopeContent",
+    "systemOfArrangement", "arrangement", "physicalCharacteristics", "accessConditions",
+    "reproductionConditions", "language", "acquisitionInfo", "locationOfOriginals",
+    "locationOfCopies", "findingAids", "notes", "internalNotes", "preferredCitation",
+    "iiifManifestUrl", "hasDigital", "parent", "dateCertainty",
   ],
   rad: [
     "title", "translatedTitle", "descriptionLevel", "referenceCode", "localIdentifier",
-    "repositoryId", "editionStatement", "dateExpression", "dateStart", "dateEnd",
-    "dateCertainty", "extent", "dimensions", "medium", "physicalCharacteristics",
-    "imprint", "seriesStatement", "publicationTitle", "creatorDisplay", "provenance",
-    "scopeContent", "adminBiogHistory", "systemOfArrangement", "notes", "internalNotes",
-    "iiifManifestUrl", "hasDigital", "parent", "legacyIds",
+    "legacyIds", "repositoryId", "editionStatement", "dateExpression", "dateStart",
+    "dateEnd", "dateCertainty", "extent", "dimensions", "medium",
+    "physicalCharacteristics", "imprint", "seriesStatement", "publicationTitle",
+    "creatorDisplay", "provenance", "scopeContent", "adminBiogHistory",
+    "systemOfArrangement", "notes", "internalNotes", "iiifManifestUrl", "hasDigital",
+    "parent",
   ],
 } as const;

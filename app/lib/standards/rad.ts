@@ -194,6 +194,9 @@ export const RAD_CONFIG: StandardConfig = {
         },
         { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode") },
         { column: "localIdentifier", primitive: "text", requiredAt: requiredAtFor("localIdentifier") },
+        // System-managed provenance (import legacyIds providers); the
+        // renderer displays it read-only and never submits it.
+        { column: "legacyIds", primitive: "legacy-ids", requiredAt: [] },
         {
           column: "repositoryId",
           primitive: "repository-select",

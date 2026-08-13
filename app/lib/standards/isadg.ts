@@ -159,6 +159,9 @@ export const ISADG_CONFIG: StandardConfig = {
         { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode") },
         // RELAXED in 0036; ISAD(G) does not mandate it (see header).
         { column: "localIdentifier", primitive: "text", requiredAt: requiredAtFor("localIdentifier") },
+        // System-managed provenance (import legacyIds providers); the
+        // renderer displays it read-only and never submits it.
+        { column: "legacyIds", primitive: "legacy-ids", requiredAt: [] },
         { column: "title", primitive: "text", requiredAt: requiredAtFor("title") },
         { column: "translatedTitle", primitive: "text", requiredAt: requiredAtFor("translatedTitle") },
         { column: "uniformTitle", primitive: "text", requiredAt: requiredAtFor("uniformTitle") },

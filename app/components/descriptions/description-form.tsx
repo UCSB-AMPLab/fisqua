@@ -424,6 +424,20 @@ function FieldRenderer({
       );
     }
 
+    case "legacy-ids": {
+      // System-managed provenance: read-only in both modes, no input
+      // element, so the update action never receives it. The column
+      // holds JSON text validated by LegacyIdsSchema at the write
+      // boundaries; a row that fails to parse renders as absent rather
+      // than crashing the form.
+      return (
+        <LegacyIdsField
+          label={label}
+          value={typeof value === "string" ? value : null}
+        />
+      );
+    }
+
     case "entity-linker": {
       return (
         <EntityLinker
@@ -457,6 +471,53 @@ function FieldRenderer({
 // ---------------------------------------------------------------------------
 // Helper components
 // ---------------------------------------------------------------------------
+
+function LegacyIdsField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  let entries: Array<{ provider: string; id: string | number }> = [];
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        entries = parsed.filter(
+          (e): e is { provider: string; id: string | number } =>
+            e !== null &&
+            typeof e === "object" &&
+            typeof e.provider === "string" &&
+            (typeof e.id === "string" || typeof e.id === "number"),
+        );
+      }
+    } catch {
+      // Unparseable rows render as absent; the write boundaries own
+      // validation (LegacyIdsSchema), not the display path.
+    }
+  }
+
+  if (entries.length === 0) {
+    return <ReadOnlyField label={label} value={null} />;
+  }
+
+  return (
+    <div>
+      <span className="mb-1 block text-xs text-stone-500">{label}</span>
+      <ul className="space-y-1">
+        {entries.map((entry, i) => (
+          <li key={i} className="flex items-center gap-2 text-sm text-stone-700">
+            <span>{String(entry.id)}</span>
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] text-stone-500">
+              {entry.provider}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function ReadOnlyField({
   label,

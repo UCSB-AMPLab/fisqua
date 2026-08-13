@@ -108,6 +108,7 @@ export default {
     // Identity area
     referenceCode: "Reference code",
     localIdentifier: "Local identifier",
+    legacyIds: "Legacy identifiers",
     title: "Title",
     translatedTitle: "Translated title",
     uniformTitle: "Uniform title",
