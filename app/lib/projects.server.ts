@@ -19,7 +19,7 @@
  * `projectMembers` so a caller never sees a project they do not have
  * a role on, regardless of how the loader assembles the request.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 // --- EXTENSION POINT --- add your domain-specific project logic here
@@ -119,15 +119,19 @@ export async function createProject(
 
 /**
  * Fetches all projects for a user, with their roles.
- * Admins see all projects.
+ * Admins see all projects OF THE REQUEST TENANT — `tenantId` is
+ * `context.get(tenantContext).id`, never `user.tenantId`, so an admin
+ * flag earned through a federation grant cannot widen the result set
+ * past the tenant currently being served.
  */
 export async function getUserProjects(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   userId: string,
   isAdmin: boolean
 ) {
   if (isAdmin) {
-    // Admin sees all projects
+    // Admin sees every project of this tenant
     const allProjects = await db
       .select({
         id: projects.id,
@@ -136,6 +140,7 @@ export async function getUserProjects(
         updatedAt: projects.updatedAt,
       })
       .from(projects)
+      .where(eq(projects.tenantId, tenantId))
       .all();
 
     // Get admin's memberships for role display
@@ -158,7 +163,9 @@ export async function getUserProjects(
     }));
   }
 
-  // Regular user -- only projects with membership
+  // Regular user -- only projects with membership. A membership join
+  // is not a tenant predicate (project_members has no tenant_id), so
+  // the tenant filter lands on the projects fetch below.
   const userMemberships = await db
     .select({
       projectId: projectMembers.projectId,
@@ -193,7 +200,7 @@ export async function getUserProjects(
         updatedAt: projects.updatedAt,
       })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(and(eq(projects.id, projectId), eq(projects.tenantId, tenantId)))
       .all();
 
     if (rows.length > 0) {
@@ -208,10 +215,17 @@ export async function getUserProjects(
 }
 
 /**
- * Fetches a single project by ID.
+ * Fetches a single project by ID, scoped to the request tenant.
+ *
+ * This is the read that decides whether a project "exists" for the
+ * `/projects/*` layout and its children, so the tenant predicate has
+ * to live here: without it a foreign project id resolves to a row and
+ * the 404 that should protect it never fires. `tenantId` is
+ * `context.get(tenantContext).id`, never `user.tenantId`.
  */
 export async function getProject(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   projectId: string
 ) {
   const rows = await db
@@ -227,7 +241,7 @@ export async function getProject(
       archivedAt: projects.archivedAt,
     })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), eq(projects.tenantId, tenantId)))
     .all();
 
   return rows[0] || null;

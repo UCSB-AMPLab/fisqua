@@ -28,7 +28,12 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { DEFAULT_TEST_TENANT_ID, applyMigrations, cleanDatabase } from "../helpers/db";
+import {
+  DEFAULT_TEST_TENANT_ID,
+  SECOND_TEST_TENANT_ID,
+  applyMigrations,
+  cleanDatabase,
+} from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { requireAdmin, requireProjectRole } from "../../app/lib/permissions.server";
 import { createProject, generateProjectId, validateProjectForm } from "../../app/lib/projects.server";
@@ -109,7 +114,7 @@ describe("project creation", () => {
         createdAt: now,
       });
 
-      const result = await requireProjectRole(db, user.id, "proj-1", ["lead"]);
+      const result = await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, user.id, "proj-1", ["lead"]);
       expect(result).toHaveLength(1);
       expect(result[0].role).toBe("lead");
     });
@@ -137,7 +142,7 @@ describe("project creation", () => {
       });
 
       try {
-        await requireProjectRole(db, user.id, "proj-2", ["lead"]);
+        await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, user.id, "proj-2", ["lead"]);
         expect.fail("Should have thrown");
       } catch (e) {
         expect(e).toBeInstanceOf(Response);
@@ -160,8 +165,34 @@ describe("project creation", () => {
       });
 
       // Admin has no membership but should still be allowed
-      const result = await requireProjectRole(db, admin.id, "proj-3", ["lead"], true);
+      const result = await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, admin.id, "proj-3", ["lead"], true);
       expect(result).toHaveLength(0); // no membership, but allowed
+    });
+
+    it("404s on a project belonging to another tenant, admin or not", async () => {
+      const db = drizzle(env.DB, { schema });
+      const admin = await createTestUser({ isAdmin: true });
+      const now = Date.now();
+
+      await db.insert(schema.projects).values({
+        id: "proj-4",
+        tenantId: SECOND_TEST_TENANT_ID,
+        name: "Foreign Project",
+        createdBy: admin.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // isAdmin skips the ROLE check, never the tenant SCOPE check.
+      // 404 rather than 403: a 403 would confirm the id names a real
+      // project somewhere on the platform.
+      try {
+        await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, admin.id, "proj-4", ["lead"], true);
+        expect.fail("Should have thrown");
+      } catch (e) {
+        expect(e).toBeInstanceOf(Response);
+        expect((e as Response).status).toBe(404);
+      }
     });
   });
 

@@ -5,9 +5,11 @@
  * marketing landing + workspace picker (`app/routes/_index.tsx`). Every value is locked verbatim by
  * `32-LANDING-COPY.md` and the 2026-05-02 design pass; do not
  * paraphrase, retranslate, or shorten without re-opening that
- * document. The version eyebrow `hero.eyebrow` reads "FISQUA · v0.4"
- * — bump it by hand at the milestone boundary along with the
- * `footer.version` string.
+ * document. The version eyebrow `hero.eyebrow` reads "FISQUA ·
+ * v{{version}}" — the number is interpolated from `APP_VERSION`
+ * (`app/lib/app-version.server.ts`, derived from `package.json`), not
+ * hand-bumped here. Only the label text is translatable; do not bake a
+ * literal version number back into this string.
  *
  * The `context.paragraph` value is consumed via `<Trans>` so the
  * embedded `<em>` markup in the ES counterpart renders as italic
@@ -15,7 +17,7 @@
  * standards (ISAD(G), DACS, RAD) and the institutional names
  * (AMPL, Neogranadina) render as semibold.
  *
- * @version v0.4.0
+ * @version v0.6.0
  */
 export default {
   header: {
@@ -25,7 +27,7 @@ export default {
     lang_es: "ES",
   },
   hero: {
-    eyebrow: "FISQUA · v0.4",
+    eyebrow: "FISQUA · v{{version}}",
     tagline:
       "An open-source, collaborative archival cataloguing and records management platform.",
   },
@@ -50,7 +52,7 @@ export default {
       'Fisqua, from the Muisca verb "to gather scattered things", is an open-source platform for archival cataloguing and records management. It is built to run on lightweight serverless infrastructure and designed to support community-based collaborative description. It supports <strong>ISAD(G)</strong>, <strong>DACS</strong>, and <strong>RAD</strong>, and exports all data in open formats. It is developed at the <strong>Archives, Memory, and Preservation Lab (AMPL)</strong> at UC Santa Barbara and <strong>Neogranadina</strong>.',
   },
   footer: {
-    version: "Fisqua v0.4",
+    version: "Fisqua v{{version}}",
     license: "Open source",
     about: "About",
     source: "Source code",
@@ -62,4 +64,4 @@ export default {
   },
 } as const;
 
-// @version v0.4.0
+// @version v0.6.0

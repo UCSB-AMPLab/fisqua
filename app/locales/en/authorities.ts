@@ -143,6 +143,9 @@ export default {
     "Work through candidate duplicate pairs: merge true duplicates, or dismiss false matches with a reason recorded in the ledger.",
   dupCountLine: "candidate pairs · sorted by match strength",
   dupSignalName: "normalized name",
+  dupSignalNearName: "near spelling",
+  dupNearSpellingHint:
+    "The two normalized names differ by a single character.",
   dupSignalDates: "overlapping dates",
   dupSignalWikidata: "shared Wikidata",
   dupSignalTgn: "shared Getty TGN",

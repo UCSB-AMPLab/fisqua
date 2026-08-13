@@ -3,16 +3,17 @@
  *
  * The place duplicates queue (spec §4, handoff surface 3), the place
  * counterpart of the entities worklist. Places carry no lifespan
- * dates, so the tie-signals are the accent-normalised name collision
- * (always) and a shared TGN identifier; pairs dismissed with a
- * `separate` ledger operation never resurface. The action writes one
- * `separate` row with the required `detail.reason`; nothing on the
- * page mutates place records.
+ * dates, so the tie-signals are the name match (an accent-normalised
+ * collision, or a near-spelling key one edit away) and a shared TGN
+ * identifier; pairs dismissed with a `separate` ledger operation
+ * never resurface. The action writes one `separate` row with the
+ * required `detail.reason`; nothing on the page mutates place
+ * records.
  *
  * Gated on the `authorities` capability (loader and action); the
  * dismissal requires a federation steward.
  *
- * @version v0.4.2
+ * @version v0.6.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -195,6 +196,7 @@ export default function PlaceDuplicatesPage({
       meta={meta}
       signalLabels={{
         name: t("dupSignalName"),
+        nearName: t("dupSignalNearName"),
         dates: t("dupSignalDates"),
         externalId: t("dupSignalTgn"),
       }}

@@ -4,7 +4,8 @@
  * The entity duplicates queue (spec §4, handoff surface 3). The loader
  * computes candidates deterministically on every request: active
  * (non-merged-away) entities in the session tenant's federation,
- * bucketed by accent-normalised name, with date overlap and shared
+ * bucketed by accent-normalised name and then cross-matched at edit
+ * distance 1 for spelling variants, with date overlap and shared
  * Wikidata as ranking tie-signals; pairs with a `separate` ledger
  * operation between them never resurface. No background jobs, no
  * candidate table.
@@ -18,7 +19,7 @@
  * dismissal is a federation-steward decision like every other ledger
  * write.
  *
- * @version v0.4.2
+ * @version v0.6.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -207,6 +208,7 @@ export default function EntityDuplicatesPage({
       meta={meta}
       signalLabels={{
         name: t("dupSignalName"),
+        nearName: t("dupSignalNearName"),
         dates: t("dupSignalDates"),
         externalId: t("dupSignalWikidata"),
       }}

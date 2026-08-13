@@ -33,6 +33,7 @@ import {
   normaliseName,
   datesOverlap,
   computeDuplicateCandidates,
+  isEditDistanceOne,
   pairKey,
 } from "../../app/lib/authority-duplicates.server";
 import "../../app/routes/_auth.admin.entities.duplicates";
@@ -146,6 +147,134 @@ describe("duplicate candidate computation (pure)", () => {
     ];
     const { truncated } = computeDuplicateCandidates(records, new Set());
     expect(truncated).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Near-spelling signal (SBMAL editdist1 rule)
+// ---------------------------------------------------------------------------
+
+describe("near-spelling candidates (pure)", () => {
+  it("isEditDistanceOne accepts one substitution/insertion/deletion only", () => {
+    expect(isEditDistanceOne("fortuni", "fortuny")).toBe(true); // substitution
+    expect(isEditDistanceOne("catala", "catalan")).toBe(true); // insertion
+    expect(isEditDistanceOne("catalan", "catala")).toBe(true); // deletion
+    // Identical strings are the exact-collision case, not distance 1.
+    expect(isEditDistanceOne("perez", "perez")).toBe(false);
+    // Two edits, and a length gap above one, both reject.
+    expect(isEditDistanceOne("martines", "martinho")).toBe(false);
+    expect(isEditDistanceOne("mora", "morales")).toBe(false);
+    // Transpositions are Damerau, which the reference rule excludes.
+    expect(isEditDistanceOne("peres", "pesre")).toBe(false);
+  });
+
+  it("flags the SBMAL spelling variants exact collision misses", () => {
+    const records = [
+      { id: "f1", name: "Buenaventura Fortuni", code: "1" },
+      { id: "f2", name: "Buenaventura Fortuny", code: "2" },
+      { id: "c1", name: "Josep Catalá", code: "3" },
+      { id: "c2", name: "Josep Catalán", code: "4" },
+      { id: "m1", name: "Juan Martines", code: "5" },
+      { id: "m2", name: "Juan Martínez", code: "6" },
+    ];
+    const { pairs, truncated } = computeDuplicateCandidates(records, new Set());
+    expect(truncated).toBe(false);
+    expect(pairs).toHaveLength(3);
+    expect(pairs.every((p) => p.reason === "near-spelling")).toBe(true);
+    expect(pairs.every((p) => p.signals[0] === "nearName")).toBe(true);
+    // Accent-stripping is what brings Martines/Martínez to distance 1.
+    expect(
+      pairs.map((p) => pairKey(p.a.id, p.b.id)).sort(),
+    ).toEqual([pairKey("c1", "c2"), pairKey("f1", "f2"), pairKey("m1", "m2")].sort());
+  });
+
+  it("ranks exact collisions above near spellings and keeps their signals apart", () => {
+    const records = [
+      { id: "x1", name: "Ana Restrepo", code: "1" },
+      { id: "x2", name: "Ana Réstrepo", code: "2" },
+      { id: "y1", name: "Ana Restrepa", code: "3" },
+    ];
+    const { pairs } = computeDuplicateCandidates(records, new Set());
+    expect(pairs[0].reason).toBe("exact-name");
+    expect(pairs[0].signals).toEqual(["name"]);
+    expect(pairs.filter((p) => p.reason === "near-spelling")).toHaveLength(2);
+    expect(pairs[1].signals).toEqual(["nearName"]);
+  });
+
+  it("carries date and external-id signals onto near-spelling pairs", () => {
+    const records = [
+      {
+        id: "a",
+        name: "Fray Juan Fortuni",
+        code: "1",
+        dateStart: "1780",
+        dateEnd: "1830",
+        externalId: "Q123",
+      },
+      {
+        id: "b",
+        name: "Fray Juan Fortuny",
+        code: "2",
+        dateStart: "1800",
+        dateEnd: "1840",
+        externalId: "Q123",
+      },
+    ];
+    const { pairs } = computeDuplicateCandidates(records, new Set());
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].signals).toEqual(["nearName", "dates", "externalId"]);
+  });
+
+  it("a separate dismissal suppresses a near-spelling pair too", () => {
+    const records = [
+      { id: "a", name: "Diego Catalá", code: "1" },
+      { id: "b", name: "Diego Catalán", code: "2" },
+    ];
+    const { pairs } = computeDuplicateCandidates(
+      records,
+      new Set([pairKey("b", "a")]),
+    );
+    expect(pairs).toHaveLength(0);
+  });
+
+  it("guards short keys so two-letter names do not pair", () => {
+    // Below the three-character floor every name is one edit from its
+    // neighbours; the reference rule guards at the same length.
+    const short = computeDuplicateCandidates(
+      [
+        { id: "a", name: "Li", code: "1" },
+        { id: "b", name: "Lo", code: "2" },
+      ],
+      new Set(),
+    );
+    expect(short.pairs).toHaveLength(0);
+    expect(short.truncated).toBe(false);
+
+    // Three characters is inside the guard and does pair.
+    const atFloor = computeDuplicateCandidates(
+      [
+        { id: "a", name: "Ubá", code: "1" },
+        { id: "b", name: "Ubi", code: "2" },
+      ],
+      new Set(),
+    );
+    expect(atFloor.pairs).toHaveLength(1);
+    expect(atFloor.pairs[0].reason).toBe("near-spelling");
+  });
+
+  it("caps the near-spelling pass and flags the truncation", () => {
+    // 20 keys that are all one edit from one another would emit 190
+    // pairs; the cap bounds the output and the flag keeps the total
+    // honest (the UI renders it with a trailing "+").
+    const records = "abcdefghijklmnopqrst".split("").map((c, i) => ({
+      id: `n-${i}`,
+      name: `Sancho${c}`,
+      code: String(i),
+    }));
+    const { pairs, truncated } = computeDuplicateCandidates(records, new Set());
+    expect(truncated).toBe(true);
+    expect(pairs).toHaveLength(100);
+    expect(pairs.every((p) => p.reason === "near-spelling")).toBe(true);
   });
 });
 

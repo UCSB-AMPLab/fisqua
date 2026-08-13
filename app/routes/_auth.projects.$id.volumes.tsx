@@ -9,13 +9,13 @@
  * from a IIIF manifest URL here; per-volume deep management lives on
  * the `$volumeId/manage` page.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Form, useActionData } from "react-router";
 import { useTranslation, Trans } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { VolumeCard } from "../components/volumes/volume-card";
 import type { Route } from "./+types/_auth.projects.$id.volumes";
 
@@ -33,11 +33,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { getProjectVolumes } = await import("../lib/volumes.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
   // Only leads (and admins) can access volume management
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const volumes = await getProjectVolumes(db, params.id);
   return { volumes, projectId: params.id };
@@ -45,18 +46,21 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProjectVolumes, createVolume, deleteVolume } = await import("../lib/volumes.server");
   const { validateManifestUrl, parseManifest } = await import("../lib/iiif.server");
   const { getInstance } = await import("~/middleware/i18next");
+  const { volumes: volumesTable } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
 
   // Only leads (and admins) can mutate volumes
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -107,6 +111,26 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const volumeId = formData.get("volumeId") as string;
       if (!volumeId) {
         return { _action: "delete-volume" as const, error: i18n.t("project:error.volume_id_required") };
+      }
+
+      // Being a lead of params.id authorises deleting volumes OF
+      // params.id. deleteVolume cascades pages, entries, comments,
+      // flags and activity rows, so an unlinked volume id here is a
+      // destructive cross-project write.
+      const [target] = await db
+        .select({ id: volumesTable.id })
+        .from(volumesTable)
+        .where(
+          and(
+            eq(volumesTable.id, volumeId),
+            eq(volumesTable.projectId, params.id)
+          )
+        )
+        .limit(1)
+        .all();
+
+      if (!target) {
+        throw new Response("Volume not found", { status: 404 });
       }
 
       try {

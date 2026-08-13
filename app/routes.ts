@@ -196,8 +196,11 @@ export default [
   ]),
 
   // Operator surface — platform-host-only top-level layout.
-  // Sibling of `_auth`; gated by `operatorAuthMiddleware`.
+  // Sibling of `_auth`; gated by `operatorAuthMiddleware`. The bare
+  // `operator` prefix redirects to the tenant list -- without it the
+  // prefix has no route of its own and falls through to a no-match.
   layout("routes/_operator.tsx", [
+    { path: "operator", file: "routes/_operator._index.tsx" },
     { path: "operator/tenants", file: "routes/_operator.tenants._index.tsx" },
     { path: "operator/tenants/new", file: "routes/_operator.tenants.new.tsx" },
     { path: "operator/tenants/:slug", file: "routes/_operator.tenants.$slug.tsx" },

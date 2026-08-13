@@ -20,6 +20,16 @@
  * project A cannot comment or flag things in project B, regardless of
  * what identifiers they send in the request body.
  *
+ * Every resource-scoped guard takes the REQUEST tenant id as its
+ * second argument -- `context.get(tenantContext).id`, never
+ * `user.tenantId`. Under a federation grant the two routinely differ:
+ * a steward's user row still names their home tenant while the request
+ * is served on the member tenant's host. `project_members` carries no
+ * `tenant_id` of its own, so a membership join can never answer the
+ * tenant question; the guards reach the tenant through the owning
+ * `projects` row and refuse anything that does not belong to the
+ * request tenant.
+ *
  * `requireEntryAccess` and `requirePageAccess` are deliberately
  * symmetric. One resolves an entry back to its volume and project; the
  * other resolves a page. Both delegate the final cataloguer / reviewer
@@ -32,7 +42,7 @@
  * to paint UI (disable a button when the user cannot write) and on the
  * server to gate writes before they hit D1.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
@@ -40,7 +50,13 @@
 import { eq, and } from "drizzle-orm";
 import { PROJECT_ROLES } from "./validation/enums";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { projectMembers, entries, volumes, volumePages } from "../db/schema";
+import {
+  projects,
+  projectMembers,
+  entries,
+  volumes,
+  volumePages,
+} from "../db/schema";
 import type { DescriptionStatus } from "./description-workflow";
 import type { User } from "../context";
 
@@ -72,31 +88,45 @@ export function requireCollabAdmin(user: User): void {
 }
 
 /**
- * Checks that the user has one of the required roles on the given project.
- * Admins bypass role checks entirely.
- * Returns the matching membership rows.
- * Throws 403 if no matching role found.
+ * Checks that the project belongs to the request tenant AND that the
+ * user holds one of the required roles on it. Returns the matching
+ * membership rows.
+ *
+ * `tenantId` is the REQUEST tenant (`context.get(tenantContext).id`).
+ * Callers must never pass `user.tenantId`: under a federation grant the
+ * caller's home tenant is not the tenant being served.
+ *
+ * Two distinct failure modes, deliberately given different statuses:
+ *
+ * - The project does not exist, or belongs to another tenant -> 404.
+ *   A 403 would confirm that the id names a real project somewhere on
+ *   the platform, which is a disclosure in itself; from this tenant's
+ *   point of view a foreign project simply does not exist.
+ * - The project is ours but the caller lacks the role -> 403.
+ *
+ * The tenant assert runs BEFORE the `isAdmin` branch on purpose.
+ * `isAdmin` skips the ROLE check, never the SCOPE check: role flags
+ * arrive from the grant's effective member-tenant flags, so `isAdmin`
+ * means "admin here, for this request" and confers nothing anywhere
+ * else.
  */
 export async function requireProjectRole(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   userId: string,
   projectId: string,
   requiredRoles: string[],
   isAdmin = false
 ): Promise<typeof projectMembers.$inferSelect[]> {
-  if (isAdmin) {
-    // Admins bypass — return any existing memberships (may be empty)
-    const memberships = await db
-      .select()
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, userId)
-        )
-      )
-      .all();
-    return memberships;
+  const [project] = await db
+    .select({ id: projects.id, tenantId: projects.tenantId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+    .all();
+
+  if (!project || project.tenantId !== tenantId) {
+    throw new Response("Not Found", { status: 404 });
   }
 
   const memberships = await db
@@ -109,6 +139,13 @@ export async function requireProjectRole(
       )
     )
     .all();
+
+  if (isAdmin) {
+    // Tenant admins may manage any project of the request tenant, so
+    // the role check is skipped — but the memberships still come back
+    // (they may be empty) because callers derive workflow roles here.
+    return memberships;
+  }
 
   const hasRequiredRole = memberships.some((m) =>
     requiredRoles.includes(m.role)
@@ -169,14 +206,21 @@ export function requireVolumeAccess(
 // --- Description-specific access control ---
 
 /**
- * Load an entry, find its volume and project, check membership.
- * Returns { entry, volume, memberships } or throws 403/404. All
- * membership rows come back (a user can hold several roles on one
- * project); use highestProjectRole to derive an effective role —
- * never a single row, whose position carries no meaning.
+ * Load an entry, find its volume and project, check tenant and
+ * membership. Returns { entry, volume, memberships } or throws
+ * 403/404. All membership rows come back (a user can hold several
+ * roles on one project); use highestProjectRole to derive an effective
+ * role — never a single row, whose position carries no meaning.
+ *
+ * `entryId` is attacker-chosen, so the project it resolves to is the
+ * only project that may be authorised against. Callers that also
+ * receive a project id from the request must compare it against
+ * `volume.projectId` themselves — this guard answers for the RESOLVED
+ * project, never the claimed one.
  */
 export async function requireEntryAccess(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   entryId: string,
   userId: string,
   isAdmin = false
@@ -209,6 +253,7 @@ export async function requireEntryAccess(
 
   const memberships = await requireProjectRole(
     db,
+    tenantId,
     userId,
     volume.projectId,
     [...PROJECT_ROLES],
@@ -220,10 +265,12 @@ export async function requireEntryAccess(
 
 /**
  * Like requireEntryAccess but also checks that the user is the assigned
- * describer, assigned reviewer, or a lead.
+ * describer, assigned reviewer, or a lead. Tenant scope is enforced by
+ * the delegated requireEntryAccess call.
  */
 export async function requireDescriptionAccess(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   entryId: string,
   userId: string,
   isAdmin = false
@@ -234,6 +281,7 @@ export async function requireDescriptionAccess(
 }> {
   const { entry, volume, memberships } = await requireEntryAccess(
     db,
+    tenantId,
     entryId,
     userId,
     isAdmin
@@ -319,11 +367,13 @@ export function canReviewDescription(
  * Returns the minimal page and volume records needed by callers to
  * cross-check a client-supplied `volumeId` against the server-derived
  * `volume.id`. Throws a 404 Response if the page or its volume is
- * missing, and a 403 Response (via `requireProjectRole`) if the user
- * is not a member of the project.
+ * missing or the resolved project belongs to another tenant, and a 403
+ * Response (via `requireProjectRole`) if the user is not a member of
+ * the project.
  */
 export async function requirePageAccess(
   db: DrizzleD1Database<any>,
+  tenantId: string,
   pageId: string,
   userId: string,
   isAdmin = false
@@ -359,6 +409,7 @@ export async function requirePageAccess(
 
   await requireProjectRole(
     db,
+    tenantId,
     userId,
     volume.projectId,
     [...PROJECT_ROLES],

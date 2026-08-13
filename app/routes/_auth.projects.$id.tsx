@@ -12,7 +12,7 @@
 
 import { Outlet, NavLink, Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id";
 
@@ -24,16 +24,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { projectMembers } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  const project = await getProject(db, params.id);
+  const project = await getProject(db, tenant.id, params.id);
   if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  // Check membership (admin bypasses)
-  await requireProjectRole(db, user.id, params.id, [...PROJECT_ROLES], user.isAdmin);
+  // Check membership (admin bypasses the role check, not the tenant scope)
+  await requireProjectRole(db, tenant.id, user.id, params.id, [...PROJECT_ROLES], user.isAdmin);
 
   // Get user's specific role for conditional UI
   const membership = await db

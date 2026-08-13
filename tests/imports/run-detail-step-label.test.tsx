@@ -1,5 +1,5 @@
 /**
- * Tests — import run detail: step-label interpolation (QUA-104)
+ * Tests — import run detail: step-label interpolation
  *
  * Pins the render of the in-flight step label at
  * `app/routes/_auth.admin.imports.runs.$runId.tsx` (`t("runDetail.step", {

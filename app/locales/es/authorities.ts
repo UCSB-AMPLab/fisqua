@@ -143,6 +143,9 @@ export default {
     "Revisa las parejas candidatas a duplicados: combina los duplicados reales o descarta las coincidencias falsas dejando el motivo en el historial.",
   dupCountLine: "parejas candidatas · ordenadas de mayor a menor coincidencia",
   dupSignalName: "nombre normalizado",
+  dupSignalNearName: "escritura parecida",
+  dupNearSpellingHint:
+    "Los dos nombres normalizados se diferencian en un solo carácter.",
   dupSignalDates: "fechas que se superponen",
   dupSignalWikidata: "Wikidata compartido",
   dupSignalTgn: "TGN de Getty compartido",

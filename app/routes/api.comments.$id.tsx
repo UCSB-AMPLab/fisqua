@@ -7,9 +7,9 @@
  * they are the project lead. GET fetches the thread with denormalised
  * author display names.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/api.comments.$id";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -33,6 +33,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { comments, volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   if (request.method === "DELETE") {
@@ -70,6 +71,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  try {
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  ["lead", "reviewer", "cataloguer"],
@@ -82,9 +84,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  // the PATCH path. A revoked-but-not-yet-expired membership hits
  // this guard with 403 before softDeleteComment touches the row.
  if (row.pageId) {
- await requirePageAccess(db, row.pageId, user.id, user.isAdmin);
+ await requirePageAccess(db, tenant.id, row.pageId, user.id, user.isAdmin);
  } else if (row.entryId) {
- await requireEntryAccess(db, row.entryId, user.id, user.isAdmin);
+ await requireEntryAccess(db, tenant.id, row.entryId, user.id, user.isAdmin);
  }
 
  const result = await softDeleteComment(db, commentId, user.id, isLead);
@@ -176,6 +178,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin,
@@ -184,6 +187,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  } else if (entryId) {
  const { volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin,
@@ -228,6 +232,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin,
@@ -236,6 +241,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  } else if (entryId) {
  const { volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin,

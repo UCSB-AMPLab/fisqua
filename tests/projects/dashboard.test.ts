@@ -70,7 +70,7 @@ describe("dashboard", () => {
         { id: "pm-b1", projectId: "proj-b", userId: user.id, role: "cataloguer", createdAt: now },
       ]);
 
-      const projects = await getUserProjects(db, user.id, false);
+      const projects = await getUserProjects(db, DEFAULT_TEST_TENANT_ID, user.id, false);
 
       expect(projects).toHaveLength(2);
       expect(projects.map((p) => p.name)).toContain("Project A");
@@ -88,7 +88,7 @@ describe("dashboard", () => {
       const db = drizzle(env.DB, { schema });
       const user = await createTestUser();
 
-      const projects = await getUserProjects(db, user.id, false);
+      const projects = await getUserProjects(db, DEFAULT_TEST_TENANT_ID, user.id, false);
       expect(projects).toHaveLength(0);
     });
 
@@ -116,7 +116,7 @@ describe("dashboard", () => {
         createdAt: now,
       });
 
-      const projects = await getUserProjects(db, user.id, false);
+      const projects = await getUserProjects(db, DEFAULT_TEST_TENANT_ID, user.id, false);
       expect(projects).toHaveLength(0);
     });
 
@@ -144,7 +144,7 @@ describe("dashboard", () => {
         createdAt: now,
       });
 
-      const projects = await getUserProjects(db, admin.id, true);
+      const projects = await getUserProjects(db, DEFAULT_TEST_TENANT_ID, admin.id, true);
       expect(projects).toHaveLength(1);
       expect(projects[0].name).toBe("Project D");
     });

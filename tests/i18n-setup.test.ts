@@ -74,7 +74,7 @@ describe("i18n setup", () => {
     expect(initReactI18next).toHaveProperty("init");
   });
 
-  it("disables i18next's own interpolation escaping on both bootstraps (QUA-104)", async () => {
+  it("disables i18next's own interpolation escaping on both bootstraps", async () => {
     // Without `escapeValue: false`, i18next HTML-escapes interpolated
     // values (e.g. a workflow step label like "create-batch:3/113"
     // becomes "create-batch:3&#x2F;113") before React ever renders

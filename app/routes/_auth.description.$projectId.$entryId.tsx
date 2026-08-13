@@ -185,6 +185,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Verify project membership
   const memberships = await requireProjectRole(
     db,
+    tenant.id,
     user.id,
     params.projectId,
     [...PROJECT_ROLES],

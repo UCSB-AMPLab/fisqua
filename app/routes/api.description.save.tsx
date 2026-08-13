@@ -21,7 +21,7 @@
  * @version v0.4.1
  */
 
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { WorkflowRole } from "../lib/workflow";
 import type { Route } from "./+types/api.description.save";
 
@@ -40,6 +40,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   } = await import("../lib/description.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   let body: any;
@@ -59,6 +60,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     // Check description access
     const { memberships } = await requireDescriptionAccess(
       db,
+      tenant.id,
       entryId,
       user.id,
       user.isAdmin

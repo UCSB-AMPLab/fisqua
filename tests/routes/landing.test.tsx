@@ -31,7 +31,7 @@
  * `applyMigrations()` + `cleanDatabase()` run anyway so this file
  * composes cleanly with sibling tests in this directory.
  *
- * @version v0.4.0
+ * @version v0.6.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -233,6 +233,7 @@ describe("landing render — locked copy + a11y", () => {
     const enResources = (await import("../../app/locales/en")).default;
     const esResources = (await import("../../app/locales/es")).default;
     const LandingRoute = (await import("../../app/routes/_index")).default;
+    const { APP_VERSION } = await import("../../app/lib/app-version.server");
 
     const inst = i18nextModule.default.createInstance();
     await (inst.init as (opts: unknown) => Promise<unknown>)({
@@ -250,7 +251,7 @@ describe("landing render — locked copy + a11y", () => {
       I18nextProvider,
       { i18n: inst },
       React.createElement(LandingRoute as never, {
-        loaderData: { lang, surface: "landing" as const },
+        loaderData: { lang, surface: "landing" as const, version: APP_VERSION },
         actionData: undefined,
         params: {},
         matches: [],
@@ -306,6 +307,7 @@ describe("landing render — locked copy + a11y", () => {
     const enResources = (await import("../../app/locales/en")).default;
     const esResources = (await import("../../app/locales/es")).default;
     const LandingRoute = (await import("../../app/routes/_index")).default;
+    const { APP_VERSION } = await import("../../app/lib/app-version.server");
 
     const inst = i18nextModule.default.createInstance();
     await (inst.init as (opts: unknown) => Promise<unknown>)({
@@ -323,7 +325,11 @@ describe("landing render — locked copy + a11y", () => {
       I18nextProvider,
       { i18n: inst },
       React.createElement(LandingRoute as never, {
-        loaderData: { lang: "en" as const, surface: "landing" as const },
+        loaderData: {
+          lang: "en" as const,
+          surface: "landing" as const,
+          version: APP_VERSION,
+        },
         actionData: { error: "empty" as const },
         params: {},
         matches: [],
@@ -332,6 +338,32 @@ describe("landing render — locked copy + a11y", () => {
     const html = renderToStaticMarkup(tree);
     expect(html).toContain("Enter your workspace name.");
   });
+
+  // Pins the fix for the badge that sat at "FISQUA · v0.4" through the
+  // 0.5 and 0.6 releases because nobody remembered to hand-edit the
+  // locale file. The version now comes from `APP_VERSION`
+  // (`app/lib/app-version.server.ts`, itself derived from
+  // `package.json`), so this asserts the rendered badge carries that
+  // value rather than a number baked into the locale string.
+  it("hero badge derives its version number from APP_VERSION, not a hardcoded locale string", async () => {
+    const { APP_VERSION } = await import("../../app/lib/app-version.server");
+    const html = await renderLanding("en");
+    expect(html).toContain(`FISQUA · v${APP_VERSION}`);
+    // Regression guard: the badge used to be stuck on "v0.4" long
+    // after the app moved past 0.4.x. If APP_VERSION and the rendered
+    // badge ever drift back to that literal while the real version has
+    // moved on, this catches it.
+    expect(APP_VERSION).not.toBe("0.4");
+  });
+
+  // The footer line carried the same stale literal as the hero badge
+  // and was wired to the same source in the same pass, so it gets the
+  // same guard: both surfaces move with `package.json` or neither does.
+  it("footer version line derives from APP_VERSION in both locales", async () => {
+    const { APP_VERSION } = await import("../../app/lib/app-version.server");
+    expect(await renderLanding("en")).toContain(`Fisqua v${APP_VERSION}`);
+    expect(await renderLanding("es")).toContain(`Fisqua v${APP_VERSION}`);
+  });
 });
 
-// @version v0.4.0
+// @version v0.6.0

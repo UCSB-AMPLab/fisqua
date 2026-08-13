@@ -7,9 +7,9 @@
  * project-role guard so a cataloguer never sees a thread on a project
  * they do not belong to.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { WorkflowRole } from "../lib/workflow";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.comments";
@@ -25,6 +25,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { z } = await import("zod");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   if (request.method === "POST") {
@@ -90,6 +91,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  if (entryId) {
  const { memberships, volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin
@@ -105,6 +107,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  } else if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin
@@ -120,6 +123,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // correct provenance on page-targeted posts too.
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -164,6 +168,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -236,6 +241,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   const url = new URL(request.url);
@@ -254,12 +260,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   try {
  if (entryId) {
- await requireEntryAccess(db, entryId, user.id, user.isAdmin);
+ await requireEntryAccess(db, tenant.id, entryId, user.id, user.isAdmin);
  const comments = await getCommentsForEntry(db, entryId);
  return Response.json({ comments });
  }
 
- await requirePageAccess(db, pageId!, user.id, user.isAdmin);
+ await requirePageAccess(db, tenant.id, pageId!, user.id, user.isAdmin);
  const comments = await getCommentsForPage(db, pageId!);
  return Response.json({ comments });
   } catch (err) {

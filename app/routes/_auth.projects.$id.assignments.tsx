@@ -2,8 +2,8 @@
  * Project Assignments Tab
  *
  * This page is the lead-only assignments surface inside a project,
- * gated through `requireProjectRole(user, projectId, "lead")` in both
- * loader and action. It pairs an `AssignmentTable` of every volume in
+ * gated through `requireProjectRole(db, tenant.id, user.id, projectId,
+ * ["lead"])` in both loader and action. It pairs an `AssignmentTable` of every volume in
  * the project — cataloguer, reviewer, status, progress — with a
  * `BulkToolbar` for multi-row reassignment and a `TeamProgress` panel
  * that aggregates per-member workload. A sub-tab switch lets the lead
@@ -17,12 +17,12 @@
  * and the per-member stats — so the table never waterfalls when the
  * lead opens it.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { StackedProgressBar } from "../components/dashboard/progress-bar";
 import {
   AssignmentTable,
@@ -49,10 +49,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { volumes, projectMembers, users, entries } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   // Lead-only access
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   // Fetch all volumes for this project
   const projectVolumes = await db
@@ -355,10 +356,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   // Lead-only access
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
   const actionType = formData.get("_action") as string;
@@ -367,6 +369,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const volumeId = formData.get("volumeId") as string;
     if (!volumeId) {
       return Response.json({ error: "volumeId required" }, { status: 400 });
+    }
+
+    // Same linkage check the sibling assign branches already carry:
+    // promoteVolumeToDescription rewrites every entry of the volume by
+    // volumeId alone, so the volume must belong to the project this
+    // request was authorised against.
+    const [target] = await db
+      .select({ id: volumes.id })
+      .from(volumes)
+      .where(and(eq(volumes.id, volumeId), eq(volumes.projectId, params.id)))
+      .limit(1)
+      .all();
+
+    if (!target) {
+      throw new Response("Volume not found", { status: 404 });
     }
 
     await promoteVolumeToDescription(db, volumeId);

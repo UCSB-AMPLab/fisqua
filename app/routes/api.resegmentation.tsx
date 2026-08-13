@@ -15,10 +15,17 @@
  * each transition writes to the activity log so the lead's
  * dashboard reflects the request without a separate write path.
  *
- * @version v0.3.0
+ * PATCH takes only a flag id, which proves nothing about the caller,
+ * so it resolves the flag to its entry and runs the same guard the
+ * other branches run. This header claimed that gating before the
+ * PATCH branch actually did it (fixed in 0.7.0): the guard must be
+ * reachable from the identifier the request supplies, not assumed
+ * from the identifier the caller happens to have used elsewhere.
+ *
+ * @version v0.7.0
  */
 
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.resegmentation";
 
@@ -30,9 +37,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     "../lib/resegmentation.server"
   );
   const { logActivity } = await import("../lib/workflow.server");
-  const { volumes } = await import("../db/schema");
+  const { volumes, resegmentationFlags } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   if (request.method === "POST") {
@@ -60,6 +68,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       // Verify entry access
       const { volume } = await requireEntryAccess(
         db,
+        tenant.id,
         entryId,
         user.id,
         user.isAdmin
@@ -115,6 +124,24 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     try {
+      // The flag id arrives from the request body, so it proves nothing
+      // about who may resolve it. Resolve the flag to its entry first
+      // and let requireEntryAccess run the tenant assert and the
+      // membership check on the owning project — without this, any
+      // authenticated user could resolve any flag in any tenant.
+      const [flag] = await db
+        .select({ entryId: resegmentationFlags.entryId })
+        .from(resegmentationFlags)
+        .where(eq(resegmentationFlags.id, flagId))
+        .limit(1)
+        .all();
+
+      if (!flag) {
+        throw new Response("Not Found", { status: 404 });
+      }
+
+      await requireEntryAccess(db, tenant.id, flag.entryId, user.id, user.isAdmin);
+
       await resolveResegmentationFlag(db, flagId, user.id);
       return Response.json({ ok: true });
     } catch (err) {
@@ -143,6 +170,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   const url = new URL(request.url);
@@ -170,6 +198,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
     await requireProjectRole(
       db,
+      tenant.id,
       user.id,
       volume.projectId,
       [...PROJECT_ROLES],

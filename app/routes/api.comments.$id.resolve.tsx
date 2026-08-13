@@ -8,7 +8,7 @@
  *
  * @version v0.3.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/api.comments.$id.resolve";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -31,6 +31,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { comments, volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   let body: any;
@@ -83,6 +84,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  : (["lead"] as const);
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  requiredRoles as any,
@@ -90,9 +92,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  );
 
  if (row.pageId) {
- await requirePageAccess(db, row.pageId, user.id, user.isAdmin);
+ await requirePageAccess(db, tenant.id, row.pageId, user.id, user.isAdmin);
  } else if (row.entryId) {
- await requireEntryAccess(db, row.entryId, user.id, user.isAdmin);
+ await requireEntryAccess(db, tenant.id, row.entryId, user.id, user.isAdmin);
  }
 
  const result = await resolveComment(db, commentId, user.id, resolved);

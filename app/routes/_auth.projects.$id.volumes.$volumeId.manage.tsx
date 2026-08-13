@@ -14,14 +14,14 @@
  * rejected by the project-role guard before the UI renders, so the page
  * can assume it is always running as a lead.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Form, Link, useFetcher, useRevalidator } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/_auth.projects.$id.volumes.$volumeId.manage";
 import type { VolumeStatus, WorkflowRole } from "../lib/workflow";
 import { QcFlagCard, type QcFlagCardData } from "../components/qc-flags/qc-flag-card";
@@ -45,10 +45,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { getQcFlagsForVolume } = await import("../lib/qc-flags.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const [volume] = await db
     .select()
@@ -180,11 +181,29 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { getInstance } = await import("~/middleware/i18next");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
+
+  // The loader carries this same check; the action needs its own,
+  // because the two are separately reachable and every write below is
+  // keyed on the URL's volumeId. Leading a project authorises writes
+  // to ITS volumes, not to any volume whose id fits in the path.
+  const [scopedVolume] = await db
+    .select({ id: volumes.id })
+    .from(volumes)
+    .where(
+      and(eq(volumes.id, params.volumeId), eq(volumes.projectId, params.id))
+    )
+    .limit(1)
+    .all();
+
+  if (!scopedVolume) {
+    throw new Response("Volume not found", { status: 404 });
+  }
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;

@@ -17,7 +17,13 @@
  * gap; a wrong dismissal currently needs a future counter-operation
  * type.
  *
- * @version v0.4.2
+ * Candidates arrive from two rules — exact normalised-name collision
+ * and near-spelling (keys one edit apart) — and the card must say
+ * which: the near-spelling chip is labelled and coloured differently
+ * so an archivist reads the weaker claim as weaker before opening the
+ * merge workbench.
+ *
+ * @version v0.6.0
  */
 
 import { useState, useEffect } from "react";
@@ -26,6 +32,7 @@ import {
   GitCompare,
   GitMerge,
   Sparkles,
+  SpellCheck,
   CheckCircle2,
   CheckCheck,
 } from "lucide-react";
@@ -182,17 +189,30 @@ export function DuplicatesWorklist({
                 </div>
 
                 <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-3">
-                  {/* Match-signal chips */}
+                  {/* Match-signal chips. The near-spelling chip carries
+                      the saffron "needs attention" treatment used
+                      elsewhere for weaker signals — a one-character
+                      difference is a weaker claim than an exact
+                      collision, and the two must not read alike. */}
                   <div className="flex flex-wrap gap-1.5">
-                    {pair.signals.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1 rounded-full bg-indigo-tint px-2 py-0.5 text-11 text-indigo"
-                      >
-                        <Sparkles className="h-3 w-3" strokeWidth={1.5} />
-                        {signalLabels[s]}
-                      </span>
-                    ))}
+                    {pair.signals.map((s) => {
+                      const near = s === "nearName";
+                      const Icon = near ? SpellCheck : Sparkles;
+                      return (
+                        <span
+                          key={s}
+                          title={near ? t("dupNearSpellingHint") : undefined}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-11 ${
+                            near
+                              ? "bg-saffron-tint text-saffron-deep"
+                              : "bg-indigo-tint text-indigo"
+                          }`}
+                        >
+                          <Icon className="h-3 w-3" strokeWidth={1.5} />
+                          {signalLabels[s]}
+                        </span>
+                      );
+                    })}
                   </div>
                   {/* Actions */}
                   <div className="flex gap-2">

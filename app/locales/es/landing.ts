@@ -6,15 +6,18 @@
  * espacio de trabajo. Cada valor está fijado palabra por palabra en
  * `32-LANDING-COPY.md` y en la pasada de diseño del 2026-05-02; no
  * parafrasees, no retraduzcas y no abrevies sin volver a abrir ese
- * documento. La cifra de versión en `hero.eyebrow` ("FISQUA · v0.4")
- * se actualiza a mano al cierre del hito junto con `footer.version`.
+ * documento. La cifra de versión en `hero.eyebrow` ("FISQUA ·
+ * v{{version}}") se interpola desde `APP_VERSION`
+ * (`app/lib/app-version.server.ts`, derivado de `package.json`); no se
+ * actualiza a mano aquí. Solo el texto de la etiqueta es traducible —
+ * no vuelvas a fijar un número de versión literal en esta cadena.
  *
  * El valor `context.paragraph` se consume con `<Trans>`: el `<em>`
  * alrededor de *serverless* renderiza en cursiva y los `<strong>`
  * alrededor de los estándares (ISAD(G), DACS, RAD) y los nombres
  * institucionales (AMPL, Neogranadina) renderizan en seminegrita.
  *
- * @version v0.4.0
+ * @version v0.6.0
  */
 export default {
   header: {
@@ -24,7 +27,7 @@ export default {
     lang_es: "ES",
   },
   hero: {
-    eyebrow: "FISQUA · v0.4",
+    eyebrow: "FISQUA · v{{version}}",
     tagline:
       "Una plataforma colaborativa y de código abierto para la catalogación y gestión de archivos.",
   },
@@ -49,7 +52,7 @@ export default {
       'Fisqua, del verbo muisca "recoger cosas desperdigadas", es una plataforma de código abierto para catalogación y gestión archivística. Funciona sobre infraestructura <em>serverless</em> ligera y abre la descripción al trabajo colaborativo de comunidades. Admite los estándares <strong>ISAD(G)</strong>, <strong>DACS</strong> y <strong>RAD</strong>, y exporta todos los datos en formatos abiertos. La desarrolla el <strong>Laboratorio de Archivos, Memoria y Preservación (AMPL)</strong> de la Universidad de California, Santa Bárbara, y <strong>Neogranadina</strong>.',
   },
   footer: {
-    version: "Fisqua v0.4",
+    version: "Fisqua v{{version}}",
     license: "Código abierto",
     about: "Acerca de",
     source: "Código fuente",
@@ -61,4 +64,4 @@ export default {
   },
 } as const;
 
-// @version v0.4.0
+// @version v0.6.0

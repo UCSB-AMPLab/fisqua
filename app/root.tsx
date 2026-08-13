@@ -4,9 +4,13 @@
  * This file deals with the outermost React Router component. It
  * renders the HTML document scaffold, hydrates the i18next instance
  * attached by the middleware, and mounts the fall-back error boundary
- * that catches uncaught errors from loaders, actions, and components.
+ * that catches uncaught errors from loaders, actions, and components --
+ * including unmatched URLs, which never run route middleware and so
+ * cannot assume any context (i18next included) was populated for the
+ * request. See `app/entry.server.tsx` for the corresponding fallback
+ * on the render side.
  *
- * @version v0.3.0
+ * @version v0.6.0
  */
 
 import {
@@ -73,16 +77,37 @@ export default function App() {
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const { t } = useTranslation("common");
-  let message = t("error.generic_title");
-  let details = t("error.generic_detail");
+  // This boundary is the last line of defense for the whole render
+  // tree, including requests that never matched a route -- and a
+  // genuinely unmatched URL skips route middleware entirely (see
+  // `app/entry.server.tsx`), so nothing here can assume the i18next
+  // instance carries real translations. `t()` calls are wrapped
+  // defensively so a translation failure still renders a plain 404 /
+  // error page instead of taking the whole boundary down with it.
+  let message: string;
+  let details: string;
+  try {
+    message = t("error.generic_title");
+    details = t("error.generic_detail");
+  } catch {
+    message = "Something went wrong";
+    details = "An unexpected error occurred.";
+  }
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
     message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404
-        ? t("error.not_found")
-        : error.statusText || details;
+    try {
+      details =
+        error.status === 404
+          ? t("error.not_found")
+          : error.statusText || details;
+    } catch {
+      details =
+        error.status === 404
+          ? "The requested page could not be found."
+          : error.statusText || details;
+    }
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;

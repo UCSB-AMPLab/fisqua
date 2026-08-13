@@ -9,7 +9,7 @@
  *
  * @version v0.3.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/api.qc-flags";
 import {
   QC_PROBLEM_TYPES,
@@ -41,6 +41,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { z } = await import("zod");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   if (request.method === "POST") {
@@ -81,6 +82,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // Access guard — any project member can raise a flag.
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin
@@ -98,6 +100,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // call mirrors other mutation sites for parity.
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -208,6 +211,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  ["lead"],
@@ -270,6 +274,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
   const url = new URL(request.url);
@@ -310,6 +315,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
