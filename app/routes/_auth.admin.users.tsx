@@ -16,14 +16,14 @@
  * the invite modal because the modal closes on submit — a result
  * rendered inside it would be unmounted before it could be read.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "../lib/format";
+import { useFormatters } from "../lib/use-formatters";
 import {
   SaveButton,
   SaveFeedbackBanner,
@@ -177,6 +177,7 @@ export default function SystemUsersPage({
 }: Route.ComponentProps) {
   const { users: allUsers } = loaderData;
   const { t } = useTranslation(["user_admin", "sidebar", "admin"]);
+  const { formatDate } = useFormatters();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const inviteFetcher = useFetcher();
 

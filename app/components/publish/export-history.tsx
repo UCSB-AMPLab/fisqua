@@ -10,12 +10,13 @@
  * relative path so the module loads cleanly under the workers
  * vitest pool (which does not alias `~/`).
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { formatIsoDateTime } from "../../lib/format-date";
+import { useFormatters } from "../../lib/use-formatters";
 
 export interface ExportHistoryRow {
   id: string;
@@ -87,10 +88,6 @@ function parseRecordTotals(recordCounts: string | null): RecordTotals | null {
   };
 }
 
-function formatNumber(n: number): string {
-  return n.toLocaleString("en-US");
-}
-
 const STATUS_STYLES: Record<string, string> = {
   complete: "bg-verdigris-tint text-verdigris-deep",
   error: "bg-madder-tint text-madder-deep",
@@ -100,6 +97,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function ExportHistory({ history }: ExportHistoryProps) {
   const { t } = useTranslation("publish");
+  const { formatNumber } = useFormatters();
 
   if (history.length === 0) {
     return (

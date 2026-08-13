@@ -15,7 +15,7 @@
  * rendered inside it would unmount before it could be read) and feeds
  * one page-level result region.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { useState } from "react";
@@ -28,7 +28,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
 import {
   SaveButton,
   SaveFeedbackBanner,
@@ -298,6 +298,7 @@ function CreateProjectForm({
 
 function ProjectRow({ project }: { project: ProjectDetail }) {
   const { t } = useTranslation(["admin", "common", "workflow"]);
+  const { formatDate } = useFormatters();
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (

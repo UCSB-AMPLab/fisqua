@@ -31,7 +31,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { relativeTime } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
 import { StatusBadge } from "../components/workflow/status-badge";
 import type { Route } from "./+types/_auth.users.$userId.activity";
 
@@ -324,6 +324,7 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
   const { targetUser, activity, volumes } = loaderData;
   const [tab, setTab] = useState<"activity" | "volumes">("activity");
   const { t } = useTranslation(["dashboard", "workflow", "project", "common"]);
+  const { relativeTime } = useFormatters();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -401,6 +402,7 @@ function ActivityTab({
   }[];
 }) {
   const { t } = useTranslation("dashboard");
+  const { relativeTime } = useFormatters();
 
   if (activity.length === 0) {
     return (
@@ -485,6 +487,7 @@ function VolumesTab({
   }[];
 }) {
   const { t } = useTranslation(["dashboard", "project"]);
+  const { relativeTime } = useFormatters();
 
   if (volumes.length === 0) {
     return (

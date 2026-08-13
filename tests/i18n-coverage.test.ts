@@ -12,13 +12,21 @@
  *
  * The check is deliberately a heuristic — false positives are
  * expected and triaged by hand. The contract is "no new hardcoded
- * strings", not "zero hardcoded strings": legacy components carrying
- * known-allowed bare strings are listed in an allowlist inside this
- * file. A regression here surfaces as a new file in the violation
- * list, which the contributor either translates or adds to the
- * allowlist with a justification.
+ * strings", not "zero hardcoded strings". A regression here surfaces
+ * as a new file in the violation list, which the contributor
+ * translates.
  *
- * @version v0.3.0
+ * The third assertion is a separate rule with a wider scope: it
+ * forbids any literal locale tag passed to an `Intl.*` constructor or
+ * a `toLocale*` method, anywhere under `app/`. Both dimensions matter.
+ * It previously forbade only the literal `"en"` and ran only over the
+ * routes-and-components glob, so a formatter pinned to `"es-CO"`
+ * inside `app/lib/format.ts` was invisible twice over — wrong locale
+ * literal and wrong file scope. A Spanish pin is exactly as
+ * locale-blind as an English one, and a `.ts` helper is exactly as
+ * user-facing as the component that renders its output.
+ *
+ * @version v0.7.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -29,6 +37,20 @@ const routeFiles = import.meta.glob("../app/routes/**/*.tsx", {
 }) as Record<string, string>;
 
 const componentFiles = import.meta.glob("../app/components/**/*.tsx", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+/**
+ * Every source file under `app/`, for the hardcoded-locale assertion
+ * only. The two globs above are scoped to routes and components
+ * because the string heuristic reads JSX; a locale literal, by
+ * contrast, is just as wrong inside a plain `.ts` helper — and in
+ * fact `app/lib/format.ts` pinned `es-CO` for three releases without
+ * ever entering the scanned set.
+ */
+const allSourceFiles = import.meta.glob("../app/**/*.{ts,tsx}", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -141,17 +163,25 @@ describe("i18n string coverage", () => {
     ).toEqual([]);
   });
 
-  it("no Intl calls use hardcoded 'en' locale", () => {
-    const allFiles = { ...routeFiles, ...componentFiles };
+  it("no Intl or toLocale* call hardcodes a locale tag", () => {
     const violations: { file: string; line: number; text: string }[] = [];
 
-    const INTL_EN_PATTERN =
-      /Intl\.(DateTimeFormat|NumberFormat|RelativeTimeFormat)\(\s*["']en["']/;
+    // Any string-literal first argument to an `Intl.*` constructor or a
+    // `toLocale*` method. The previous form of this rule forbade only
+    // the literal `"en"`, which let `"es-CO"` and `"en-US"` through —
+    // and since a Spanish-pinned formatter is exactly as locale-blind
+    // as an English-pinned one, the asymmetry is what allowed
+    // `app/lib/format.ts` to ship a hardcoded `es-CO`. The locale must
+    // always derive from the active language, never from a literal.
+    const HARDCODED_LOCALE_PATTERNS = [
+      /\bIntl\.[A-Za-z]+\(\s*["'`]/,
+      /\.toLocale[A-Za-z]*\(\s*["'`]/,
+    ];
 
-    for (const [file, content] of Object.entries(allFiles)) {
+    for (const [file, content] of Object.entries(allSourceFiles)) {
       const lines = content.split("\n");
       for (let i = 0; i < lines.length; i++) {
-        if (INTL_EN_PATTERN.test(lines[i])) {
+        if (HARDCODED_LOCALE_PATTERNS.some((p) => p.test(lines[i]))) {
           violations.push({
             file,
             line: i + 1,
@@ -166,7 +196,7 @@ describe("i18n string coverage", () => {
       .join("\n");
     expect(
       violations,
-      `Hardcoded 'en' locale in Intl calls:\n${formatted}`,
+      `Hardcoded locale tag in an Intl / toLocale* call — format through the active language instead (see app/lib/format.ts):\n${formatted}`,
     ).toEqual([]);
   });
 });

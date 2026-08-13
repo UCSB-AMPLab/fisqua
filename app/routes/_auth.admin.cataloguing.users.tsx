@@ -25,13 +25,13 @@
  * a component prop rather than through `useActionData` so both feedback
  * states can be rendered without a live submission.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { Form, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "../lib/format";
+import { useFormatters } from "../lib/use-formatters";
 import {
   SaveButton,
   SaveFeedbackBanner,
@@ -116,6 +116,7 @@ export default function AdminCataloguingUsers({
 }: Route.ComponentProps) {
   const { users: allUsers, currentUser, tenant } = loaderData;
   const { t } = useTranslation("admin");
+  const { formatDate } = useFormatters();
   const navigation = useNavigation();
   const inviting = isPendingSubmission(
     navigation.state,

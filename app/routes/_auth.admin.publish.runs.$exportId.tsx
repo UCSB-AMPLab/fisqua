@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { formatIsoDateTime } from "~/lib/format-date";
+import { useFormatters } from "~/lib/use-formatters";
 import type { Route } from "./+types/_auth.admin.publish.runs.$exportId";
 
 /**
@@ -183,6 +184,7 @@ export default function PublishRunDetail({
   loaderData,
 }: Route.ComponentProps) {
   const { t } = useTranslation("publish");
+  const { formatNumber } = useFormatters();
   const { authorized, run } = loaderData;
 
   if (!authorized) {
@@ -354,7 +356,7 @@ export default function PublishRunDetail({
                       {step}
                     </td>
                     <td className="px-4 py-2 text-right font-sans text-sm text-stone-800">
-                      {count.toLocaleString("en-US")}
+                      {formatNumber(count)}
                     </td>
                   </tr>
                 ))}
@@ -395,7 +397,7 @@ export default function PublishRunDetail({
                       {step.replace(/^children:/, "")}
                     </td>
                     <td className="px-4 py-2 text-right font-sans text-sm text-stone-800">
-                      {count.toLocaleString("en-US")}
+                      {formatNumber(count)}
                     </td>
                   </tr>
                 ))}

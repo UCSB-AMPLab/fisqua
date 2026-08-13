@@ -37,14 +37,14 @@
  * `_action` value carried by the in-flight submission, so clicking
  * "Save profile" does not grey out "Save roles".
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Form, Link, useFetcher, redirect } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "../lib/format";
+import { useFormatters } from "../lib/use-formatters";
 import {
   SaveButton,
   SaveFeedbackBanner,
@@ -390,6 +390,7 @@ export default function UserDetailPage({
     tenant,
   } = loaderData;
   const { t } = useTranslation("user_admin");
+  const { formatDate } = useFormatters();
   const fetcher = useFetcher();
   const [showAssignForm, setShowAssignForm] = useState(false);
 
