@@ -48,7 +48,7 @@ export function RejectInlinePanel({
         <textarea
           name="reason"
           rows={2}
-          placeholder="Reason for rejection..."
+          placeholder={t("reject_reason_placeholder")}
           className="mb-2 w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-madder focus:outline-none focus:ring-1 focus:ring-madder"
         />
         <div className="flex items-center gap-3">
@@ -63,7 +63,7 @@ export function RejectInlinePanel({
             onClick={onClose}
             className="text-sm text-stone-500 hover:text-stone-700"
           >
-            Cancel
+            {t("common:button.cancel")}
           </button>
         </div>
       </Form>

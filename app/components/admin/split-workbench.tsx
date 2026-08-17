@@ -27,6 +27,7 @@ import {
   ACTION_BAR_META_ROW_CLASSES,
 } from "./workbench-action-bar";
 import type { LinkedDescriptionCardList } from "~/lib/authority-linked-context.server";
+import { useFormatters } from "~/lib/use-formatters";
 
 export interface SplitFieldRow {
   key: string;
@@ -70,6 +71,7 @@ export function SplitWorkbench({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const navigate = useNavigate();
+  const { formatDateTime } = useFormatters();
   const allRows = useMemo(
     () => [...fieldRows, ...nameVariantRows],
     [fieldRows, nameVariantRows],
@@ -152,7 +154,7 @@ export function SplitWorkbench({
             </p>
             <p className="mt-1 text-13 text-madder-deep">
               {t("conflictBody", {
-                time: new Date(conflictModifiedAt).toLocaleString(),
+                time: formatDateTime(conflictModifiedAt),
               })}
             </p>
             <button

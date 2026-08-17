@@ -4,8 +4,10 @@
  * This component is the paired latitude/longitude number input with
  * optional precision. Used on the place edit form.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
+
+import { useTranslation } from "react-i18next";
 
 interface CoordinateInputProps {
   latitude: number | null;
@@ -26,6 +28,8 @@ export function CoordinateInput({
   onPrecisionChange,
   disabled = false,
 }: CoordinateInputProps) {
+  const { t } = useTranslation("places");
+
   function handleNumberChange(
     e: React.ChangeEvent<HTMLInputElement>,
     setter: (v: number | null) => void
@@ -44,7 +48,7 @@ export function CoordinateInput({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="mb-1 block text-xs font-medium text-indigo">
-            Latitude
+            {t("coord.latitude")}
           </label>
           <input
             type="number"
@@ -54,13 +58,13 @@ export function CoordinateInput({
             value={latitude ?? ""}
             onChange={(e) => handleNumberChange(e, onLatChange)}
             disabled={disabled}
-            aria-label="Latitude"
+            aria-label={t("coord.latitude")}
             className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-indigo">
-            Longitude
+            {t("coord.longitude")}
           </label>
           <input
             type="number"
@@ -70,14 +74,14 @@ export function CoordinateInput({
             value={longitude ?? ""}
             onChange={(e) => handleNumberChange(e, onLngChange)}
             disabled={disabled}
-            aria-label="Longitude"
+            aria-label={t("coord.longitude")}
             className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
       </div>
       <div className="mt-4">
         <label className="mb-1 block text-xs font-medium text-indigo">
-          Precision
+          {t("coord.precision")}
         </label>
         <select
           value={precision}
@@ -85,9 +89,9 @@ export function CoordinateInput({
           disabled={disabled}
           className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="approximate">Aproximada</option>
-          <option value="exact">Exacta</option>
-          <option value="centroid">Centroide</option>
+          <option value="approximate">{t("coord.precision_approximate")}</option>
+          <option value="exact">{t("coord.precision_exact")}</option>
+          <option value="centroid">{t("coord.precision_centroid")}</option>
         </select>
       </div>
     </div>

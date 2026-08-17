@@ -43,6 +43,7 @@ import {
   ACTION_BAR_META_ROW_CLASSES,
 } from "./workbench-action-bar";
 import type { LinkedDescriptionCardList } from "~/lib/authority-linked-context.server";
+import { useFormatters } from "~/lib/use-formatters";
 
 export interface ComparisonField {
   key: string;
@@ -94,6 +95,7 @@ export function MergeWorkbench({
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const navigate = useNavigate();
+  const { formatDateTime } = useFormatters();
 
   // Move/stay tracked at LINK granularity, seeded from every one of the
   // loser's links (including links on cards hidden past the cap) so the
@@ -155,7 +157,7 @@ export function MergeWorkbench({
               </p>
               <p className="mt-1 text-13 text-madder-deep">
                 {t("conflictBody", {
-                  time: new Date(conflictModifiedAt).toLocaleString(),
+                  time: formatDateTime(conflictModifiedAt),
                 })}
               </p>
               <div className="mt-3 flex gap-2">
