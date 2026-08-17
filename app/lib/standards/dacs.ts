@@ -153,14 +153,30 @@ function requiredAtFor(col: string): ReadonlyArray<DescriptionLevel> {
 
 export const DACS_CONFIG: StandardConfig = {
   standard: "dacs",
+  displayName: "DACS",
+  // quoted; DACS is CC-BY.
+  guidanceVerbatim: true,
   sections: [
     {
       // DACS § 2 — Identity Elements
       id: "identity",
       fields: [
-        { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode") },
+        {
+          column: "referenceCode",
+          primitive: "text",
+          requiredAt: requiredAtFor("referenceCode"),
+          guidance: "2.1",
+        },
         { column: "localIdentifier", primitive: "text", requiredAt: requiredAtFor("localIdentifier") },
-        { column: "title", primitive: "text", requiredAt: requiredAtFor("title") },
+        // System-managed provenance (import legacyIds providers); the
+        // renderer displays it read-only and never submits it.
+        { column: "legacyIds", primitive: "legacy-ids", requiredAt: [] },
+        {
+          column: "title",
+          primitive: "text",
+          requiredAt: requiredAtFor("title"),
+          guidance: "2.3",
+        },
         { column: "translatedTitle", primitive: "text", requiredAt: requiredAtFor("translatedTitle") },
         {
           column: "descriptionLevel",
@@ -171,14 +187,21 @@ export const DACS_CONFIG: StandardConfig = {
           column: "dateExpression",
           primitive: "date-range",
           requiredAt: requiredAtFor("dateExpression"),
+          guidance: "2.4",
         },
         { column: "dateStart", primitive: "date", requiredAt: requiredAtFor("dateStart") },
         { column: "dateEnd", primitive: "date", requiredAt: requiredAtFor("dateEnd") },
-        { column: "extent", primitive: "text", requiredAt: requiredAtFor("extent") },
+        {
+          column: "extent",
+          primitive: "text",
+          requiredAt: requiredAtFor("extent"),
+          guidance: "2.5",
+        },
         {
           column: "repositoryId",
           primitive: "repository-select",
           requiredAt: requiredAtFor("repositoryId"),
+          guidance: "2.2",
         },
       ],
     },
@@ -192,12 +215,14 @@ export const DACS_CONFIG: StandardConfig = {
           column: "creatorDisplay",
           primitive: "text",
           requiredAt: requiredAtFor("creatorDisplay"),
+          guidance: "2.6",
         },
         {
           column: "adminBiogHistory",
           primitive: "textarea",
           requiredAt: requiredAtFor("adminBiogHistory"),
           hints: { rows: 6 },
+          guidance: "2.7",
         },
         {
           column: "provenance",
@@ -216,6 +241,7 @@ export const DACS_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: requiredAtFor("scopeContent"),
           hints: { rows: 6 },
+          guidance: "3.1",
         },
         {
           column: "systemOfArrangement",
@@ -246,6 +272,7 @@ export const DACS_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: requiredAtFor("accessConditions"),
           hints: { rows: 4 },
+          guidance: "4.1",
         },
         {
           column: "reproductionConditions",
@@ -253,7 +280,12 @@ export const DACS_CONFIG: StandardConfig = {
           requiredAt: requiredAtFor("reproductionConditions"),
           hints: { rows: 3 },
         },
-        { column: "language", primitive: "text", requiredAt: requiredAtFor("language") },
+        {
+          column: "language",
+          primitive: "text",
+          requiredAt: requiredAtFor("language"),
+          guidance: "4.5",
+        },
       ],
     },
     {

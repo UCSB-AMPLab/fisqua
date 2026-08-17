@@ -151,11 +151,14 @@ describe("schema (page targets + qc_flags)", () => {
     expect(row.notnull).toBe(0);
   });
 
-  test("comments.volume_id is NOT NULL", async () => {
+  test("comments.volume_id is nullable — a decision comment has no volume", async () => {
+    // Inverted when decision comments folded into this table: the row is
+    // now keyed by whichever of volume_id / decision_id applies, so the
+    // volume side cannot be NOT NULL.
     const result = await env.DB.prepare("PRAGMA table_info(comments)").all();
     const row = result.results.find((r: any) => r.name === "volume_id") as any;
     expect(row).toBeDefined();
-    expect(row.notnull).toBe(1);
+    expect(row.notnull).toBe(0);
   });
 
   // --- comments CHECK constraint (exactly one of entry_id, page_id) ---

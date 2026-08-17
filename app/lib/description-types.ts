@@ -60,8 +60,14 @@ export type Comment = {
   regionW: number | null;
   regionH: number | null;
   parentId: string | null;
-  authorId: string;
-  authorRole: ProjectRole;
+  // NULL for label-authored comments (author user-XOR-label). Author
+  // comparisons against a user id then never match, which is exactly
+  // the ruled behaviour: label comments are never editable.
+  authorId: string | null;
+  // Widened from ProjectRole by the unified-comments rebuild: tenant
+  // roles are legal values and label comments carry no role at all.
+  // Badge/connector styling falls back for unknown or absent roles.
+  authorRole: string | null;
   text: string;
   createdAt: number;
   updatedAt: number;

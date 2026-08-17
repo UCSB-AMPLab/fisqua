@@ -58,6 +58,125 @@ export default {
   ref_code_helper:
     "Suggested from parent record. You can edit it.",
   parent_helper: "Parent: {{parentTitle}}",
+  level_required_helper:
+    "The {{level}} level also requires these. You can revise them later on the description itself.",
+
+  // Field guidance: the standard's OWN statement of what each element
+  // is for, quoted verbatim and shown beside the field. Keyed by
+  // standard with no cross-standard fallback — see FieldConfig.guidance
+  // in app/lib/standards/types.ts for why a fallback would amount to a
+  // false attribution. The citation is NOT stored here; it comes from
+  // the config, so the two cannot drift into disagreement.
+  //
+  // ISAD(G): General International Standard Archival Description,
+  // 2nd ed. (International Council on Archives, 2000), quoted from the
+  // "Purpose" statement of each element.
+  guidance: {
+    "referenceCode.isadg":
+      "To identify uniquely the unit of description and to provide a link to the description that represents it.",
+    "title.isadg": "To name the unit of description.",
+    "dateExpression.isadg":
+      "To identify and record the date(s) of the unit of description.",
+    "descriptionLevel.isadg":
+      "To identify the level of arrangement of the unit of description.",
+    "extent.isadg":
+      "To identify and describe a. the physical or logical extent and b. the medium of the unit of description.",
+    "creatorDisplay.isadg":
+      "To identify the creator (or creators) of the unit of description.",
+    "scopeContent.isadg":
+      "To enable users to judge the potential relevance of the unit of description.",
+    "provenance.isadg":
+      "To provide information on the history of the unit of description that is significant for its authenticity, integrity and interpretation.",
+    "arrangement.isadg":
+      "To provide information on the internal structure, the order and/or the system of classification of the unit of description.",
+    "accessConditions.isadg":
+      "To provide information on the legal status or other regulations that restrict or affect access to the unit of description.",
+    "reproductionConditions.isadg":
+      "To identify any restrictions on reproduction of the unit of description.",
+    "language.isadg":
+      "To identify the language(s), script(s) and symbol systems employed in the unit of description.",
+    "findingAids.isadg":
+      "To identify any finding aids to the unit of description.",
+    "locationOfOriginals.isadg":
+      "To indicate the existence, location, availability and/or destruction of originals where the unit of description consists of copies.",
+    "locationOfCopies.isadg":
+      "To indicate the existence, location and availability of copies of the unit of description.",
+    "notes.isadg":
+      "To provide information that cannot be accommodated in any of the other areas.",
+    // DACS: Describing Archives: A Content Standard, 2019.0.3 (Society
+    // of American Archivists), quoted from the "Purpose and Scope"
+    // statement of each element, trimmed at the Commentary. DACS is
+    // published under CC-BY, so verbatim reuse is licensed; the citation
+    // is the attribution.
+    //
+    // DACS has no element for level of description, so that field
+    // carries no guidance here — correct, not an omission.
+    "referenceCode.dacs":
+      "This element provides a unique identifier for the unit being described. The identifier may consist of three subelements: a local identifier, a code for the repository, and a code for the country.",
+    "repositoryId.dacs":
+      "This element identifies the name and location of the repository that holds the materials being described.",
+    "title.dacs":
+      "This element provides a word or phrase by which the material being described is known or can be identified. A title may be devised or formal.",
+    "dateExpression.dacs":
+      "This element identifies and records the date(s) that pertain to the creation, assembly, accumulation, and/or maintenance and use of the materials being described.",
+    "extent.dacs":
+      "This element indicates the extent and the physical nature of the materials being described. This is handled in two parts, a number (quantity) and an expression of the extent or material type.",
+    "creatorDisplay.dacs":
+      "This element identifies the corporate bodies, persons, and families associated with the creation, assembly, accumulation, and/or maintenance and use of the materials being described so that they might be appropriately documented and used to create access points by which users can search for and retrieve descriptive records.",
+    // 2.7's opening sentence describes what the element's RULES cover
+    // rather than what the field is for, so the second sentence — the
+    // one that answers "what goes here" — is the one quoted.
+    "adminBiogHistory.dacs":
+      "The administrative/biographical history provides relevant information about corporate bodies, persons, or families who are identified using the Name of Creator(s) Element and who therefore function as nominal access points.",
+    "scopeContent.dacs":
+      "This element provides information about the nature of the materials and activities reflected in the unit being described to enable users to judge its potential relevance.",
+    "accessConditions.dacs":
+      "This element provides information about access restrictions due to the nature of the information in the materials being described, such as those imposed by the donor, by the repository, or by statutory/regulatory requirements.",
+    "language.dacs":
+      "This element identifies the language(s), script(s), and symbol systems employed in the materials being described, particularly as they may affect its use.",
+    // RAD: Rules for Archival Description (Canadian Council of
+    // Archives), Chapter 1, revised July 2008. RAD's text is all rights
+    // reserved, so these are SUMMARIES in our own words, not quotations
+    // — the config marks the standard `guidanceVerbatim: false` and the
+    // affordance drops the quotation marks accordingly.
+    "title.rad":
+      "Transcribe the formal title the material itself carries; supply one where it has none.",
+    "editionStatement.rad":
+      "Transcribe the edition statement on the item. Item-level description only.",
+    "dateExpression.rad":
+      "The date or dates the material was created. At aggregate levels record creation dates, not publication details.",
+    "extent.rad":
+      "How many physical units there are, in arabic numerals, with the specific material designation for that class of material.",
+    "dimensions.rad":
+      "The dimensions of the material, following the rules for its class.",
+    "seriesStatement.rad":
+      "The title of a publisher's or artist's series the item belongs to — not an archival series.",
+    "adminBiogHistory.rad":
+      "The history of the body, person or family responsible for creating, accumulating and using the material.",
+    "provenance.rad":
+      "The successive transfers of ownership, custody or control of the material, with their dates, as far as they can be established. Distinct from the creator's own history.",
+    "scopeContent.rad":
+      "The functions or activities the records arise from, how they relate to each other, how they are organized and their documentary forms, with the period, subject matter and geographical area they cover.",
+    "systemOfArrangement.rad":
+      "Arrangement that matters for understanding the material but does not belong in scope and content — a reorganization by the creator, arrangement by the archivist, a change of classification scheme.",
+    "notes.rad":
+      "Descriptive information that does not fit any other area.",
+  },
+  guidance_source: "{{standard}} {{element}}",
+  guidance_source_summary: "Based on {{standard}} {{element}}",
+  guidance_example_label: "e.g.",
+  // Worked examples, quoted from the standards' own Examples blocks.
+  // Only where the published example is short enough to read at a
+  // glance: scope and content's run to a paragraph, so that field
+  // carries the purpose statement alone.
+  guidance_example: {
+    "referenceCode.isadg": "CA OTY F0453",
+    "title.isadg": "Helen Lucas fonds",
+    "dateExpression.isadg": "1833-1998 (bulk 1833-1874)",
+    "descriptionLevel.isadg": "Fonds",
+    "extent.isadg": "103.5 cubic feet (98 boxes)",
+    "creatorDisplay.isadg": "Lucas, Helen (1931- )",
+  },
 
   // Section labels: keyed by stable English section id from the
   // standard configs (`app/lib/standards/{isadg,dacs,rad}.ts`). Per-
@@ -108,6 +227,7 @@ export default {
     // Identity area
     referenceCode: "Reference code",
     localIdentifier: "Local identifier",
+    legacyIds: "Legacy identifiers",
     title: "Title",
     translatedTitle: "Translated title",
     uniformTitle: "Uniform title",

@@ -100,6 +100,16 @@ const SECTION_IDS = [
 
 type SectionId = (typeof SECTION_IDS)[number];
 
+// Submit-for-review validator tokens (description.server.ts) →
+// `description`-namespace keys, resolved in the CR-04 map below.
+const SUBMIT_ERROR_KEYS: Record<string, string> = {
+  required_title: "error_required_title",
+  required_date_expression: "error_required_date_expression",
+  required_scope: "error_required_scope",
+  required_language: "error_required_language",
+  required_extent: "error_required_extent",
+};
+
 function FieldLabel({
   label,
   optional,
@@ -158,11 +168,12 @@ export function DescriptionForm({
   );
 
   // CR-04: validator-emitted errors arrive as stable i18n tokens
-  // (`field_required`, etc.). Resolve to localised strings at the
-  // component boundary so the leaf `<FieldError>` renders never
-  // surface raw tokens in the user UI. Anything not a known token
-  // is passed through (covers future Zod base-schema messages until
-  // they migrate to the same convention).
+  // (`field_required`, the submit-schema `required_*` family, etc.).
+  // Resolve to localised strings at the component boundary so the
+  // leaf `<FieldError>` renders never surface raw tokens in the user
+  // UI. Anything not a known token is passed through (covers future
+  // Zod base-schema messages until they migrate to the same
+  // convention).
   const resolvedErrors = useMemo(() => {
     const out: Record<string, string> = {};
     for (const [col, raw] of Object.entries(validationErrors)) {
@@ -170,6 +181,8 @@ export function DescriptionForm({
         out[col] = t("error_required");
       } else if (raw === "invalid_level") {
         out[col] = t("error_invalid_level");
+      } else if (raw != null && SUBMIT_ERROR_KEYS[raw]) {
+        out[col] = t(SUBMIT_ERROR_KEYS[raw]);
       } else if (raw != null) {
         out[col] = raw;
       }

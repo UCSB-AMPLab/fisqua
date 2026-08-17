@@ -26,7 +26,13 @@
  * store; only the explicit save path crosses into `descriptions` and
  * only that path enforces the validator.
  *
- * @version v0.4.2
+ * The header's "Add to handlist" is the browse-time half of how a
+ * handlist gets built: one record at a time, from its own page, through
+ * the same type-matched picker the search page's selection bar opens.
+ * It offers only handlists that hold records, and it reports the
+ * resulting count rather than a bare "Added".
+ *
+ * @version v0.7.0
  */
 
 import { useState, useEffect } from "react";
@@ -47,6 +53,7 @@ import { DraftsBanner } from "~/components/admin/drafts-banner";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
 import { PublishToggle } from "~/components/descriptions/publish-toggle";
+import { HandlistPicker } from "~/components/handlists/handlist-picker";
 import type { Route } from "./+types/_auth.admin.descriptions.$id";
 
 // ---------------------------------------------------------------------------
@@ -223,6 +230,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     };
   }
 
+  const { countHoldingHandlists } = await import("~/lib/handlists.server");
+  const holdingHandlists = await countHoldingHandlists(db, tenant, user, id);
+
   return {
     description,
     ancestors,
@@ -234,6 +244,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     entityLinks,
     placeLinks,
     conflictDraft,
+    // How many handlists this person can reach already hold this
+    // record: the affordance states where it is rather than only
+    // offering to put it somewhere.
+    holdingHandlists,
     // Hand the active standard down to <DescriptionForm> so the
     // renderer picks the correct StandardConfig.
     descriptiveStandard,
@@ -874,11 +888,15 @@ export default function DescriptionDetailPage({
     entityLinks,
     placeLinks,
     conflictDraft,
+    holdingHandlists,
     descriptiveStandard,
     authoritiesEnabled,
   } = loaderData;
   const actionData = useActionData<typeof action>();
   const { t } = useTranslation("descriptions_admin");
+  // The handlists namespace owns every string the picker says,
+  // including the label on the control that opens it.
+  const { t: th } = useTranslation("handlists");
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -940,7 +958,7 @@ export default function DescriptionDetailPage({
   return (
     <div className="px-8 py-6">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex flex-wrap items-center gap-1">
           <li>
             <Link
@@ -983,6 +1001,15 @@ export default function DescriptionDetailPage({
 
         {!isEditing && (
           <div className="flex gap-2">
+            {/* One record at a time, into a handlist that holds
+                records. First in the row because it is the only action
+                here that neither edits nor deletes anything. */}
+            <HandlistPicker
+              recordType="records"
+              memberIds={[description.id]}
+              triggerLabel={th("pickerAddTitle")}
+              holdingCount={holdingHandlists}
+            />
             <Link
               to={`/admin/descriptions/new?parentId=${description.id}`}
               className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
