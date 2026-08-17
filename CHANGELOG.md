@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-17
+
+### Added
+
+- **Switch workspaces from the top bar.** The bar names the workspace you are actually in, the dashboard is scoped to it, and signing in is tied to your account rather than to one institution.
+
+- **Search across the whole workspace.** One box reaches descriptions, entities and places together, with filters, sorting, and browsing for when you have no search term yet. An advanced view adds a query grammar, per-field criteria and date ranges. Open to every workspace member; records for people and places still require an administrator.
+
+- **Handlists.** Working lists you assemble by hand. Each list holds one kind of thing — records, entities or places — keeps the order you put them in, and stays put. Share one read-only or for editing, search within it, and add to it from a search result or from a record's own page. The add dialog tells you which of your lists a record is already in.
+
+- **Self-service export.** Choose what to export, in what shape and in what format. Four ways to define the set — everything, a search, a handlist, or a hand-picked selection — and four formats: Fisqua canonical, Dublin Core, JSON and EAD XML, plus a print-ready finding aid. Every run is recorded: what left, in what shape, and when.
+
+- **Pending decisions.** One queue for everything awaiting a judgement — authority proposals, suspected duplicate pairs and vocabulary review. Each one states what it is asking you to decide, names a suggested action, and shows the evidence behind it. Decisions carry comment threads their authors can edit or withdraw.
+
+- **Bulk selection.** Tick rows in search results or in the descriptions, entities and places lists, then add the selection to a handlist or send it straight to export.
+
+- **Field guidance from the descriptive standards.** Any field can show what its own standard says the element is for, with the element cited — ISAD(G) and DACS in the standards' own words, RAD summarised — in English and Spanish.
+
+- **Notifications.** Digest emails collecting what has happened since the last one, with frequency and language set per account.
+
+- **Each workspace owns its own people and places.** Sharing them into a federation is something you opt into, not the default.
+
+- **Roles a workspace assigns itself.** Workspace administrators can now grant the roles their own institution needs.
+
+- **Legacy identifiers appear on the record page**, so numbers carried over from a previous system stay visible.
+
+- **Records management explains itself** in workspaces that do not use crowdsourcing, instead of showing an empty page.
+
+- **In-app links to the guide.** Every step of the imports journey — and the run and revert surfaces — carries a help link that opens the matching page of the public guide in the reader's own language.
+
+- **The guide opens inside Fisqua**, at `/docs` and `/guia`, in the reader's own language.
+
+### Changed
+
+- **Authority codes name the institution that made the record.** Entity and place codes used to be minted under one hardcoded prefix, so every institution's records carried Neogranadina's mark. Each maintaining agency now has its own prefix: Neogranadina keeps `ne-` and `nl-` for its shared authority space, and an institution that maintains its own people and places mints under its own — the Santa Barbara Mission Archive-Library's records take `sbmal-e-` and `sbmal-p-`. The prefix records who did the identifying and enriching that produced the record, and never changes afterwards, so a code stays a stable citation even if the record later changes hands.
+
+- **The new-description form asks for what the level requires.** The fields on the form now follow the level you choose, drawn from your own descriptive standard.
+
+- **Merging and minting authority records are now recorded like other edits.** When two records are merged, or one is created from an accepted proposal, the workspace keeps what the records said beforehand, so the change can be traced or undone.
+
+- **The interface is fully bilingual.** Every piece of text in the interface now exists in both languages, and the Spanish has been reconciled to a single house style rather than varying from screen to screen.
+
+- **Saving behaves the same way across every admin form.**
+
+- **Duplicate detection reads more like a person would.** It now catches pairs that differ only by spelling or by the ending of a word, for both authority records and vocabulary terms.
+
+- **Counts, dates and durations follow the reader's language.**
+
+- **Error pages look like Fisqua and speak your language.** A 403, 404 or 500 now renders as a proper page in English or Spanish — the 404 explains that nothing in this workspace has that address, rather than implying the page might exist elsewhere.
+
+### Fixed
+
+- **Descriptions could only be created at section and volume level.** Every other level was refused for fields the form never offered. Reported by @reallybigmess.
+
+- **People holding a federation grant were bounced at login** to a wrong-workspace page instead of being admitted.
+
+- **Dashboard feedback listed items that had been deleted.**
+
+- **Images promoted from crowdsourcing did not appear**, because their manifests were written to an address the site did not serve.
+
+- **Broad searches could exceed a database limit** and return nothing.
+
+- **Four viewer toolbar labels never resolved** and showed their key instead.
+
+- **Names with apostrophes or accents displayed as strings of symbols.**
+
 ## [0.6.0] - 2026-07-17
 
 ### Added
