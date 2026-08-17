@@ -1,17 +1,25 @@
 /**
- * Tests — possible-duplicates worklist + ledger history (phase 3b)
+ * Tests — possible-duplicates queue + ledger history
  *
  * Covers the deterministic candidate computation (pure helpers and the
- * entities worklist loader), the `separate` dismissal action, the
- * capability gates on the new routes (loader AND action), the
- * per-record operation-history loader, the sidebar badge counts, and
- * the show-merged survivor-name join added to the entities list
- * loader. Harness mirrors `authority-workbench.test.ts`: a
+ * duplicates tab's loader), the tab's two rulings — keep both and
+ * merge — the capability gates on loader AND action, the per-record
+ * operation-history loader, the sidebar badge counts, and the
+ * show-merged survivor-name join added to the entities list loader.
+ * Harness mirrors `authority-workbench.test.ts`: a
  * `RouterContextProvider` carrying userContext + tenantContext with
  * `cloudflare.env` attached; the acting user is a lead-tenant admin
  * (i.e. a federation steward).
  *
- * @version v0.4.2
+ * The two rulings are asserted through their durable trail rather than
+ * their return value: keep both must leave a ruled `kept_both` decision
+ * row AND a `separate` ledger operation, merge must point the loser at
+ * the survivor and rule the same pair `merged`. The reason is optional
+ * on both — the card's dialogs say so, and the ruling functions accept
+ * null — so the empty-reason rejection the old worklist carried is
+ * gone and is asserted gone.
+ *
+ * @version v0.7.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -33,10 +41,10 @@ import {
   normaliseName,
   datesOverlap,
   computeDuplicateCandidates,
+  isEditDistanceOne,
   pairKey,
 } from "../../app/lib/authority-duplicates.server";
-import "../../app/routes/_auth.admin.entities.duplicates";
-import "../../app/routes/_auth.admin.places.duplicates";
+import "../../app/routes/_auth.admin.decisions.duplicates";
 import "../../app/routes/_auth.admin.entities.$id.history";
 import "../../app/routes/_auth.admin.entities";
 
@@ -150,6 +158,134 @@ describe("duplicate candidate computation (pure)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Near-spelling signal (SBMAL editdist1 rule)
+// ---------------------------------------------------------------------------
+
+describe("near-spelling candidates (pure)", () => {
+  it("isEditDistanceOne accepts one substitution/insertion/deletion only", () => {
+    expect(isEditDistanceOne("fortuni", "fortuny")).toBe(true); // substitution
+    expect(isEditDistanceOne("catala", "catalan")).toBe(true); // insertion
+    expect(isEditDistanceOne("catalan", "catala")).toBe(true); // deletion
+    // Identical strings are the exact-collision case, not distance 1.
+    expect(isEditDistanceOne("perez", "perez")).toBe(false);
+    // Two edits, and a length gap above one, both reject.
+    expect(isEditDistanceOne("martines", "martinho")).toBe(false);
+    expect(isEditDistanceOne("mora", "morales")).toBe(false);
+    // Transpositions are Damerau, which the reference rule excludes.
+    expect(isEditDistanceOne("peres", "pesre")).toBe(false);
+  });
+
+  it("flags the SBMAL spelling variants exact collision misses", () => {
+    const records = [
+      { id: "f1", name: "Buenaventura Fortuni", code: "1" },
+      { id: "f2", name: "Buenaventura Fortuny", code: "2" },
+      { id: "c1", name: "Josep Catalá", code: "3" },
+      { id: "c2", name: "Josep Catalán", code: "4" },
+      { id: "m1", name: "Juan Martines", code: "5" },
+      { id: "m2", name: "Juan Martínez", code: "6" },
+    ];
+    const { pairs, truncated } = computeDuplicateCandidates(records, new Set());
+    expect(truncated).toBe(false);
+    expect(pairs).toHaveLength(3);
+    expect(pairs.every((p) => p.reason === "near-spelling")).toBe(true);
+    expect(pairs.every((p) => p.signals[0] === "nearName")).toBe(true);
+    // Accent-stripping is what brings Martines/Martínez to distance 1.
+    expect(
+      pairs.map((p) => pairKey(p.a.id, p.b.id)).sort(),
+    ).toEqual([pairKey("c1", "c2"), pairKey("f1", "f2"), pairKey("m1", "m2")].sort());
+  });
+
+  it("ranks exact collisions above near spellings and keeps their signals apart", () => {
+    const records = [
+      { id: "x1", name: "Ana Restrepo", code: "1" },
+      { id: "x2", name: "Ana Réstrepo", code: "2" },
+      { id: "y1", name: "Ana Restrepa", code: "3" },
+    ];
+    const { pairs } = computeDuplicateCandidates(records, new Set());
+    expect(pairs[0].reason).toBe("exact-name");
+    expect(pairs[0].signals).toEqual(["name"]);
+    expect(pairs.filter((p) => p.reason === "near-spelling")).toHaveLength(2);
+    expect(pairs[1].signals).toEqual(["nearName"]);
+  });
+
+  it("carries date and external-id signals onto near-spelling pairs", () => {
+    const records = [
+      {
+        id: "a",
+        name: "Fray Juan Fortuni",
+        code: "1",
+        dateStart: "1780",
+        dateEnd: "1830",
+        externalId: "Q123",
+      },
+      {
+        id: "b",
+        name: "Fray Juan Fortuny",
+        code: "2",
+        dateStart: "1800",
+        dateEnd: "1840",
+        externalId: "Q123",
+      },
+    ];
+    const { pairs } = computeDuplicateCandidates(records, new Set());
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].signals).toEqual(["nearName", "dates", "externalId"]);
+  });
+
+  it("a separate dismissal suppresses a near-spelling pair too", () => {
+    const records = [
+      { id: "a", name: "Diego Catalá", code: "1" },
+      { id: "b", name: "Diego Catalán", code: "2" },
+    ];
+    const { pairs } = computeDuplicateCandidates(
+      records,
+      new Set([pairKey("b", "a")]),
+    );
+    expect(pairs).toHaveLength(0);
+  });
+
+  it("guards short keys so two-letter names do not pair", () => {
+    // Below the three-character floor every name is one edit from its
+    // neighbours; the reference rule guards at the same length.
+    const short = computeDuplicateCandidates(
+      [
+        { id: "a", name: "Li", code: "1" },
+        { id: "b", name: "Lo", code: "2" },
+      ],
+      new Set(),
+    );
+    expect(short.pairs).toHaveLength(0);
+    expect(short.truncated).toBe(false);
+
+    // Three characters is inside the guard and does pair.
+    const atFloor = computeDuplicateCandidates(
+      [
+        { id: "a", name: "Ubá", code: "1" },
+        { id: "b", name: "Ubi", code: "2" },
+      ],
+      new Set(),
+    );
+    expect(atFloor.pairs).toHaveLength(1);
+    expect(atFloor.pairs[0].reason).toBe("near-spelling");
+  });
+
+  it("caps the near-spelling pass and flags the truncation", () => {
+    // 20 keys that are all one edit from one another would emit 190
+    // pairs; the cap bounds the output and the flag keeps the total
+    // honest (the UI renders it with a trailing "+").
+    const records = "abcdefghijklmnopqrst".split("").map((c, i) => ({
+      id: `n-${i}`,
+      name: `Sancho${c}`,
+      code: String(i),
+    }));
+    const { pairs, truncated } = computeDuplicateCandidates(records, new Set());
+    expect(truncated).toBe(true);
+    expect(pairs).toHaveLength(100);
+    expect(pairs.every((p) => p.reason === "near-spelling")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Worklist loader + dismissal action
 // ---------------------------------------------------------------------------
 
@@ -196,10 +332,10 @@ describe("entities duplicates worklist", () => {
     });
 
     const { loader } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     const data: any = await loader({
-      request: get("/admin/entities/duplicates"),
+      request: get("/admin/decisions/duplicates"),
       context: buildContext(ctxUser),
       params: {},
     } as any);
@@ -225,49 +361,34 @@ describe("entities duplicates worklist", () => {
     });
 
     const { loader } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     const data: any = await loader({
-      request: get("/admin/entities/duplicates"),
+      request: get("/admin/decisions/duplicates"),
       context: buildContext(ctxUser),
       params: {},
     } as any);
     expect(data.totalPairs).toBe(0);
   });
 
-  it("dismissal action requires a reason and writes exactly one separate op", async () => {
+  it("keep both rules the pair and writes exactly one separate op", async () => {
     const { ctxUser, a, b } = await seedCollision();
     const { action } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     const db = drizzle(env.DB);
 
-    const noReason: any = await action({
-      request: form({
-        _action: "separate",
-        sourceId: a.id,
-        targetId: b.id,
-        reason: "  ",
-      }),
-      context: buildContext(ctxUser),
-      params: {},
-    } as any);
-    expect(noReason).toEqual({ ok: false, error: "reason" });
-    expect(
-      await db.select().from(schema.authorityOperations).all(),
-    ).toHaveLength(0);
-
     const ok: any = await action({
       request: form({
-        _action: "separate",
-        sourceId: a.id,
-        targetId: b.id,
+        _action: "keepBoth",
+        idA: a.id,
+        idB: b.id,
         reason: "different people, same name",
       }),
       context: buildContext(ctxUser),
       params: {},
     } as any);
-    expect(ok).toEqual({ ok: true });
+    expect(ok).toEqual({ ok: true, ruling: "kept_both" });
 
     const ops = await db.select().from(schema.authorityOperations).all();
     expect(ops).toHaveLength(1);
@@ -278,45 +399,167 @@ describe("entities duplicates worklist", () => {
       "different people, same name",
     );
 
+    // The decision row the surface reads carries the same judgement.
+    const decisions = await db.select().from(schema.pendingDecisions).all();
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].kind).toBe("duplicate-pair");
+    expect(decisions[0].status).toBe("ruled");
+    expect(decisions[0].ruling).toBe("kept_both");
+
     // The pair disappears from the next load.
     const { loader } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     const data: any = await loader({
-      request: get("/admin/entities/duplicates"),
+      request: get("/admin/decisions/duplicates"),
       context: buildContext(ctxUser),
       params: {},
     } as any);
     expect(data.totalPairs).toBe(0);
+
+    // …and reappears, ruled, in the ruled view.
+    const ruledView: any = await loader({
+      request: get("/admin/decisions/duplicates?status=ruled"),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(ruledView.ruled).toHaveLength(1);
+    expect(ruledView.ruled[0].ruling).toBe("kept_both");
+    expect(ruledView.ruled[0].names.sort()).toEqual(
+      ["Juan Pérez", "Juan Perez"].sort(),
+    );
   });
 
-  it("dismissal action rejects ids that are not live records of this federation", async () => {
+  it("keep both accepts an empty reason", async () => {
+    const { ctxUser, a, b } = await seedCollision();
+    const { action } = await import(
+      "../../app/routes/_auth.admin.decisions.duplicates"
+    );
+    const db = drizzle(env.DB);
+
+    const ok: any = await action({
+      request: form({
+        _action: "keepBoth",
+        idA: a.id,
+        idB: b.id,
+        reason: "  ",
+      }),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(ok).toEqual({ ok: true, ruling: "kept_both" });
+
+    const ops = await db.select().from(schema.authorityOperations).all();
+    expect(ops).toHaveLength(1);
+    expect(JSON.parse(ops[0].detail as string).reason).toBeNull();
+  });
+
+  it("merge rules the pair merged and points the loser at the survivor", async () => {
+    const { ctxUser, a, b } = await seedCollision();
+    const { action, loader } = await import(
+      "../../app/routes/_auth.admin.decisions.duplicates"
+    );
+    const db = drizzle(env.DB);
+
+    const ok: any = await action({
+      request: form({
+        _action: "merge",
+        survivorId: a.id,
+        loserId: b.id,
+        reason: "one man, two spellings",
+      }),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(ok).toEqual({ ok: true, ruling: "merged" });
+
+    const loser = await db
+      .select()
+      .from(schema.entities)
+      .where(eq(schema.entities.id, b.id))
+      .get();
+    expect(loser?.mergedInto).toBe(a.id);
+
+    const decisions = await db.select().from(schema.pendingDecisions).all();
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].ruling).toBe("merged");
+    expect(decisions[0].resultId).toBe(a.id);
+
+    const ops = await db.select().from(schema.authorityOperations).all();
+    expect(ops).toHaveLength(1);
+    expect(ops[0].operation).toBe("merge");
+
+    // The survivor's code is what the ruled view reports.
+    const ruledView: any = await loader({
+      request: get("/admin/decisions/duplicates?status=ruled"),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(ruledView.ruled).toHaveLength(1);
+    expect(ruledView.ruled[0].survivorCode).toBe("ne-dupa01");
+  });
+
+  it("a ruling rejects ids that are not live records of this federation", async () => {
     const { ctxUser, a } = await seedCollision();
     const { action } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
+    const db = drizzle(env.DB);
     const result: any = await action({
       request: form({
-        _action: "separate",
-        sourceId: a.id,
-        targetId: "not-a-real-id",
+        _action: "keepBoth",
+        idA: a.id,
+        idB: "not-a-real-id",
         reason: "bogus",
       }),
       context: buildContext(ctxUser),
       params: {},
     } as any);
-    expect(result).toEqual({ ok: false, error: "generic" });
+    expect(result).toEqual({ ok: false, code: "generic" });
+    // Nothing was written on the way to the refusal.
+    expect(
+      await db.select().from(schema.authorityOperations).all(),
+    ).toHaveLength(0);
+    expect(await db.select().from(schema.pendingDecisions).all()).toHaveLength(
+      0,
+    );
+  });
+
+  it("a second ruling on the same pair reports the conflict", async () => {
+    const { ctxUser, a, b } = await seedCollision();
+    const { action } = await import(
+      "../../app/routes/_auth.admin.decisions.duplicates"
+    );
+    const fields = {
+      _action: "keepBoth",
+      idA: a.id,
+      idB: b.id,
+      reason: "namesakes",
+    };
+    const first: any = await action({
+      request: form(fields),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(first).toEqual({ ok: true, ruling: "kept_both" });
+
+    const second: any = await action({
+      request: form(fields),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(second).toEqual({ ok: false, code: "conflict" });
   });
 
   it("loader and action 404 when the authorities capability is off", async () => {
     const { ctxUser, a, b } = await seedCollision();
     const off = makeTenantContext({ authoritiesEnabled: false });
     const { loader, action } = await import(
-      "../../app/routes/_auth.admin.entities.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     await expect(
       loader({
-        request: get("/admin/entities/duplicates"),
+        request: get("/admin/decisions/duplicates"),
         context: buildContext(ctxUser, off),
         params: {},
       } as any),
@@ -324,9 +567,9 @@ describe("entities duplicates worklist", () => {
     await expect(
       action({
         request: form({
-          _action: "separate",
-          sourceId: a.id,
-          targetId: b.id,
+          _action: "keepBoth",
+          idA: a.id,
+          idB: b.id,
           reason: "x",
         }),
         context: buildContext(ctxUser, off),
@@ -344,7 +587,7 @@ describe("places duplicates worklist", () => {
     await cleanDatabase();
   });
 
-  it("loader surfaces place collisions with the shared-TGN signal; action dismisses", async () => {
+  it("loader surfaces place collisions with their codes; keep both rules them", async () => {
     const user = await createTestUser({ isAdmin: true });
     const ctxUser = makeUserContext({ id: user.id, isAdmin: true });
     const a = await createTestPlace({
@@ -362,30 +605,37 @@ describe("places duplicates worklist", () => {
     });
 
     const { loader, action } = await import(
-      "../../app/routes/_auth.admin.places.duplicates"
+      "../../app/routes/_auth.admin.decisions.duplicates"
     );
     const data: any = await loader({
-      request: get("/admin/places/duplicates"),
+      request: get("/admin/decisions/duplicates?type=places"),
       context: buildContext(ctxUser),
       params: {},
     } as any);
     expect(data.totalPairs).toBe(1);
-    expect(data.pairs[0].signals).toContain("externalId");
+    // The card's panes travel with the pair: codes, the place type
+    // label's input, and the description load.
+    expect(
+      [data.pairs[0].a.code, data.pairs[0].b.code].sort(),
+    ).toEqual(["nl-dupa01", "nl-dupb01"]);
+    expect(data.pairs[0].a.descriptionCount).toBe(0);
+    expect(data.pairs[0].a.entityType).toBeNull();
 
     const ok: any = await action({
       request: form({
-        _action: "separate",
-        sourceId: a.id,
-        targetId: b.id,
+        _action: "keepBoth",
+        recordKind: "places",
+        idA: a.id,
+        idB: b.id,
         reason: "city and province",
       }),
       context: buildContext(ctxUser),
       params: {},
     } as any);
-    expect(ok).toEqual({ ok: true });
+    expect(ok).toEqual({ ok: true, ruling: "kept_both" });
 
     const after: any = await loader({
-      request: get("/admin/places/duplicates"),
+      request: get("/admin/decisions/duplicates?type=places"),
       context: buildContext(ctxUser),
       params: {},
     } as any);

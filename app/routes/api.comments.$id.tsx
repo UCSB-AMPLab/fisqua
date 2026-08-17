@@ -7,9 +7,11 @@
  * they are the project lead. GET fetches the thread with denormalised
  * author display names.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
+import { apiErrorToken } from "../lib/api-error.server";
 import type { Route } from "./+types/api.comments.$id";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -33,7 +35,12 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const { comments, volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "DELETE") {
  // Resolve the comment's anchor + project so we can check lead role
@@ -56,6 +63,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  return Response.json({ error: "Comment not found" }, { status: 404 });
  }
 
+ // Decision comments (volume_id NULL) are ruled through the queue —
+ // this volume-side route cannot even authorise them (no volume, no
+ // project role), so they are indistinguishable from absent.
+ if (row.volumeId === null) {
+ return Response.json({ error: "Comment not found" }, { status: 404 });
+ }
+
  const [volume] = await db
  .select({ projectId: volumes.projectId })
  .from(volumes)
@@ -70,6 +84,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  try {
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  ["lead", "reviewer", "cataloguer"],
@@ -82,9 +97,9 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  // the PATCH path. A revoked-but-not-yet-expired membership hits
  // this guard with 403 before softDeleteComment touches the row.
  if (row.pageId) {
- await requirePageAccess(db, row.pageId, user.id, user.isAdmin);
+ await requirePageAccess(db, tenant.id, row.pageId, user.id, user.isAdmin);
  } else if (row.entryId) {
- await requireEntryAccess(db, row.entryId, user.id, user.isAdmin);
+ await requireEntryAccess(db, tenant.id, row.entryId, user.id, user.isAdmin);
  }
 
  const result = await softDeleteComment(db, commentId, user.id, isLead);
@@ -107,12 +122,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  });
  } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to delete comment";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
  }
   }
 
@@ -176,6 +190,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin,
@@ -184,6 +199,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  } else if (entryId) {
  const { volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin,
@@ -228,6 +244,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin,
@@ -236,6 +253,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  } else if (entryId) {
  const { volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin,
@@ -265,12 +283,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
  return Response.json({ ok: true });
   } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to update comment";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
   }
 }
 

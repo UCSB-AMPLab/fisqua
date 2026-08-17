@@ -6,10 +6,11 @@
  * the kebab menu with edit and delete actions. Renders the resolved badge
  * when the thread has been closed.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 import { useTranslation } from "react-i18next";
 import type { CommentWithAuthor } from "../../lib/description-types";
+import { useFormatters } from "../../lib/use-formatters";
 import { RegionChip } from "./region-chip";
 
 type CommentCardProps = {
@@ -62,20 +63,6 @@ export function shouldRenderRegionChip(
   return true;
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const rtf = new Intl.RelativeTimeFormat("es-CO", { numeric: "auto" });
-  const diffMs = timestamp - Date.now();
-  const diffSec = Math.round(diffMs / 1000);
-  const diffMin = Math.round(diffSec / 60);
-  const diffHr = Math.round(diffMin / 60);
-  const diffDay = Math.round(diffHr / 24);
-
-  if (Math.abs(diffSec) < 60) return rtf.format(diffSec, "second");
-  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
-  if (Math.abs(diffHr) < 24) return rtf.format(diffHr, "hour");
-  return rtf.format(diffDay, "day");
-}
-
 export function CommentCard({
   comment,
   onReply,
@@ -84,6 +71,7 @@ export function CommentCard({
   pageNumber,
 }: CommentCardProps) {
   const { t } = useTranslation("comments");
+  const { relativeTime } = useFormatters();
 
   const isTopLevel = depth === 0;
   const cardBg = isTopLevel ? "bg-indigo-tint" : "bg-white border border-stone-200";
@@ -98,16 +86,16 @@ export function CommentCard({
  <div className="mb-1.5 flex items-center justify-between">
  <div className="flex items-center gap-2">
  <span
- className={`rounded px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_STYLES[comment.authorRole] || ROLE_BADGE_STYLES.cataloguer}`}
+ className={`rounded px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_BADGE_STYLES[comment.authorRole ?? ""] || ROLE_BADGE_STYLES.cataloguer}`}
  >
- {t(ROLE_I18N_KEYS[comment.authorRole] || "roles.catalogador")}
+ {t(ROLE_I18N_KEYS[comment.authorRole ?? ""] || "roles.catalogador")}
  </span>
  <span className="font-sans text-xs text-stone-500">
  {comment.authorEmail}
  </span>
  </div>
  <span className="font-sans text-xs text-stone-400">
- {formatRelativeTime(comment.createdAt)}
+ {relativeTime(comment.createdAt)}
  </span>
  </div>
 

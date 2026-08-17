@@ -299,7 +299,7 @@ export async function getCommentsForVolume(
   db: DrizzleD1Database<any>,
   volumeId: string
 ) {
-  return db
+  const rows = await db
  .select({
  id: comments.id,
  entryId: comments.entryId,
@@ -327,6 +327,10 @@ export async function getCommentsForVolume(
  .where(and(eq(comments.volumeId, volumeId), isNull(comments.deletedAt)))
  .orderBy(comments.createdAt)
  .all();
+  // The eq(volume_id) filter makes decision comments (volume_id NULL)
+  // unmatchable, so the column is non-null in every row — assert what
+  // the WHERE clause already proved.
+  return rows.map((r) => ({ ...r, volumeId: r.volumeId as string }));
 }
 
 /**
@@ -388,6 +392,12 @@ export async function updateCommentRegion(
  .all();
 
   if (!comment) {
+ throw new Response("Comment not found", { status: 404 });
+  }
+  // Decision comments (volume_id NULL) are ruled through the queue,
+  // never mutated from the volume-side surface — indistinguishable
+  // from absent here.
+  if (comment.volumeId === null) {
  throw new Response("Comment not found", { status: 404 });
   }
   if (comment.authorId !== userId) {
@@ -489,6 +499,13 @@ export async function updateCommentBody(
  throw new Response("Comment not found", { status: 404 });
   }
 
+  // Decision comments (volume_id NULL) are ruled through the queue,
+  // never mutated from the volume-side surface — indistinguishable
+  // from absent here.
+  if (comment.volumeId === null) {
+ throw new Response("Comment not found", { status: 404 });
+  }
+
   if (comment.deletedAt !== null) {
  throw new Response("Comment already deleted", { status: 410 });
   }
@@ -572,6 +589,13 @@ export async function softDeleteComment(
  .all();
 
   if (!comment) {
+ throw new Response("Comment not found", { status: 404 });
+  }
+
+  // Decision comments (volume_id NULL) are ruled through the queue,
+  // never mutated from the volume-side surface — indistinguishable
+  // from absent here.
+  if (comment.volumeId === null) {
  throw new Response("Comment not found", { status: 404 });
   }
 
@@ -661,6 +685,13 @@ export async function resolveComment(
  .all();
 
   if (!comment) {
+ throw new Response("Comment not found", { status: 404 });
+  }
+
+  // Decision comments (volume_id NULL) are ruled through the queue,
+  // never mutated from the volume-side surface — indistinguishable
+  // from absent here.
+  if (comment.volumeId === null) {
  throw new Response("Comment not found", { status: 404 });
   }
 
