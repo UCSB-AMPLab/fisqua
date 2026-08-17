@@ -41,7 +41,7 @@
  * guardado" para el cierre y tú-form para la apertura ("Tienes
  * cambios").
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 export default {
   status: {
@@ -145,7 +145,7 @@ export default {
     catalogador: "Catalogador",
     revisor: "Revisor",
     estado: "Estado",
-    alerta_resegmentacion: "Este volumen tiene reportes de re-segmentación abiertos",
+    alerta_resegmentacion: "Este volumen tiene informes de re-segmentación abiertos",
     selection_options: "Opciones de selección",
   },
   progress: {
@@ -196,12 +196,12 @@ export default {
     unsaved_dialog_leave: "Salir de todas formas",
     pantalla_completa: "Expandir",
     contraer_imagen: "Contraer",
-    descripcion_pausada: "La descripción de este volumen está pausada por un reporte de re-segmentación",
+    descripcion_pausada: "La descripción de este volumen está pausada por un informe de re-segmentación",
     reportar_problema: "Reportar problema",
   },
   resegmentation: {
     reportar_problema: "Reportar problema de segmentación",
-    warning: "Al enviar este reporte, se pausará la descripción de todo el volumen hasta que un revisor corrija la segmentación.",
+    warning: "Al enviar este informe, se pausará la descripción de todo el volumen hasta que un revisor corrija la segmentación.",
     tipo_problema: "Tipo de problema",
     limites_incorrectos: "Límites incorrectos",
     limites_incorrectos_desc: "El documento empieza o termina en otro lugar",
@@ -213,7 +213,7 @@ export default {
     otro: "Otro",
     entradas_afectadas: "Entradas afectadas",
     descripcion_placeholder: "Describe lo que observas y qué corrección se necesita...",
-    enviar_reporte: "Enviar reporte",
+    enviar_reporte: "Enviar informe",
     cancelar: "Cancelar",
   },
   // Tokens de error emitidos por el validador (CR-04). Mantener en
@@ -223,6 +223,11 @@ export default {
   error_required: "Este campo es obligatorio para el estándar activo.",
   error_invalid_level:
     "Este nivel no es válido para el nivel de la descripción padre.",
+  error_required_title: "El título es obligatorio",
+  error_required_date_expression: "La expresión de fecha es obligatoria",
+  error_required_scope: "El alcance y contenido es obligatorio",
+  error_required_language: "El idioma es obligatorio",
+  error_required_extent: "La extensión es obligatoria",
 } as const;
 
-/* @version v0.4.1 */
+/* @version v0.7.0 */

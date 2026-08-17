@@ -30,6 +30,7 @@ import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit"
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { formatIsoDateTime } from "../lib/format-date";
+import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs.$runId";
 
 /** One recorded readiness-check acceptance, as snapshotted on the run. */
@@ -451,9 +452,12 @@ export default function ImportRunDetailPage({ loaderData }: Route.ComponentProps
       {/* Revert action (spec §4): its own required message + a confirm. */}
       {canRevert && (
         <section className="mt-10 rounded-lg border border-madder bg-madder-tint/40 p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-madder-deep">
-            {t("revert.heading")}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-madder-deep">
+              {t("revert.heading")}
+            </h2>
+            <DocsHelpLink topic="importsRevert" />
+          </div>
           <p className="mt-2 text-sm text-stone-600">
             {isRevert ? t("revert.helpRevertOfRevert") : t("revert.help")}
           </p>

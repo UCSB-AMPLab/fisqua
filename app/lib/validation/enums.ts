@@ -150,6 +150,13 @@ export type ResourceTypeEs = (typeof RESOURCE_TYPES_ES)[number];
 export const PROJECT_ROLES = ["lead", "cataloguer", "reviewer"] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
+// The roles a comment can snapshot at post time: project roles on volume
+// surfaces, plus "admin" on decision threads (the tenant role the
+// decisions surface runs under). A snapshot vocabulary, not a grant —
+// widening PROJECT_ROLES widens this automatically.
+export const COMMENT_AUTHOR_ROLES = [...PROJECT_ROLES, "admin"] as const;
+export type CommentAuthorRole = (typeof COMMENT_AUTHOR_ROLES)[number];
+
 // Volume segmentation-lifecycle statuses. The allowed transitions
 // between them live in `app/lib/workflow.ts` (a state machine, not a
 // flat set); this is just the closed set of valid status values shared

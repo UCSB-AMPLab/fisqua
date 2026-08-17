@@ -8,7 +8,7 @@
  * registros, usuario del archivo), and the per-row project count
  * column.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   breadcrumb_system_users: "Usuarios del sistema",
@@ -36,10 +36,17 @@ export default {
     "Gestionar descripciones, entidades, lugares, repositorios y vocabularios",
   archive_user_description: "Acceso de solo lectura a los registros archivísticos",
   self_warning:
-    "Esta es su propia cuenta. Los cambios de rol están deshabilitados para evitar una degradación accidental.",
+    "Esta es tu propia cuenta. Los cambios de rol están deshabilitados para evitar una degradación accidental.",
   non_superadmin_notice:
     "Puede gestionar el perfil y las asignaciones de proyectos de este usuario. Los cambios de rol requieren acceso de superadministrador.",
-  self_role_badge_tooltip: "No puede cambiar sus propios roles",
+  tenant_admin_roles_notice:
+    "Estos son los roles que se pueden otorgar en este archivo. Superadministrador y gestor de usuarios rigen en toda la plataforma: solo un superadministrador puede otorgarlos.",
+  self_role_badge_tooltip: "No puedes cambiar tus propios roles",
+  platform_role_tooltip: "Solo un superadministrador puede otorgar este rol",
+  invite_role_label: "Rol inicial",
+  invite_role_none: "Sin rol",
+  invite_role_hint:
+    "Sin un rol, la persona invitada solo verá una página de inicio vacía.",
   name_label: "Nombre",
   email_label: "Correo",
   last_login_label: "Último acceso",
@@ -64,7 +71,9 @@ export default {
   error_invalid_request: "Solicitud inválida",
   error_only_superadmin_roles:
     "Solo los superadministradores pueden cambiar los roles",
-  error_cannot_change_own_roles: "No puede cambiar sus propios roles",
+  error_cannot_change_own_roles: "No puedes cambiar tus propios roles",
+  error_role_not_assignable:
+    "La solicitud incluía un rol que no se puede otorgar desde esta cuenta. No se cambió ningún rol.",
   error_already_member: "Ya es miembro de este proyecto",
   error_forbidden: "Prohibido",
   success_profile_updated: "Perfil actualizado",

@@ -263,7 +263,7 @@ describe("canonical template - generated projection of the union schema", () => 
         ...CANONICAL_HEADER_SNAPSHOT[standard],
       ]);
     }
-    expect(CANONICAL_TEMPLATE_VERSION).toBe(2);
+    expect(CANONICAL_TEMPLATE_VERSION).toBe(3);
   });
 
   it("projects every header to a direct-copy binding (source === target)", () => {

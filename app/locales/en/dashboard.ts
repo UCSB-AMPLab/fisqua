@@ -4,15 +4,17 @@
  * This locale namespace carries the English strings for the
  * authenticated-tree chrome — the primary side-nav (Home, Projects,
  * Members, My assignments, All volumes, Settings, Log out, Admin) and
- * the per-section headings on the dashboard surface.
+ * the per-section headings on the dashboard surface, including the
+ * admin-only "Pending decisions" card (`pending_decisions`).
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   nav: {
     home: "Home",
     projects: "Projects",
     members: "Members",
+    switch_workspace: "Switch workspace",
     my_assignments: "My assignments",
     all_volumes: "All volumes",
     settings: "Settings",
@@ -69,6 +71,11 @@ export default {
     reseg_pending: "Re-segmentation pending",
   },
   empty: {
+    records_title: "Ready to catalog",
+    records_body:
+      "Create archival descriptions, manage repositories, or import existing records.",
+    go_to_descriptions: "Go to descriptions",
+    go_to_imports: "Go to imports",
     no_projects_title: "No projects yet",
     no_projects_body: "Create one to get started.",
     no_projects_admin_body: "Get started by creating a project or managing users.",
@@ -94,11 +101,23 @@ export default {
   announcement_label: "System announcement (visible to all users)",
   set_announcement: "Set announcement",
   clear_announcement: "Clear",
+  announcement: {
+    dismiss: "Dismiss announcement",
+  },
   today: "Today",
   days_waiting_one: "{{count}} day waiting",
   days_waiting_other: "{{count}} days waiting",
   new_project: "New project",
   manage_users: "Manage users",
+  pending_decisions: {
+    waiting_one: "{{count}} question waiting for a ruling",
+    waiting_other: "{{count}} questions waiting for a ruling",
+    title: "Pending decisions",
+    authority_proposals_one: "{{count}} authority proposal",
+    authority_proposals_other: "{{count}} authority proposals",
+    vocabulary_proposals_one: "{{count}} vocabulary proposal",
+    vocabulary_proposals_other: "{{count}} vocabulary proposals",
+  },
   by: "by {{name}}",
   unnamed: "Unnamed",
   vol_abbr: "vol.",

@@ -17,7 +17,7 @@
  * every namespace — adding a `tests/i18n/` directory would imply a
  * narrower scope.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 import { describe, it, expect } from "vitest";
 import es from "../app/locales/es";
@@ -59,6 +59,7 @@ const NAMESPACES = [
   "common",
   "auth",
   "dashboard",
+  "decisions",
   "viewer",
   "workflow",
   "admin",
@@ -85,6 +86,10 @@ const NAMESPACES = [
   "operator",
   "authorities",
   "imports",
+  "emails",
+  "search",
+  "handlists",
+  "exports",
 ] as const;
 
 describe("translation completeness", () => {

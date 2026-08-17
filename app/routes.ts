@@ -22,7 +22,34 @@
  * `/admin/descriptions`, `/admin/entities`, `/admin/places`,
  * `/admin/repositories`, and `/admin/vocabularies` host the archival
  * records admin. `/admin/publish` and `/admin/promote` are superadmin
- * only, gated in their own loaders.
+ * only, gated in their own loaders. `/admin/decisions/*` is the
+ * cross-module Pending decisions surface; each of its tabs keeps the
+ * capability gate the page carried before it moved there.
+ *
+ * `/search` is the odd one out: a bare tenant-level path that reads
+ * across three admin modules at once. It sits with the other non-admin
+ * routes because that is where its nav item lives, and it earns the
+ * reach in its own loader — the admin guard plus the `authorities`
+ * capability check, so a search never returns a row its viewer could
+ * not open directly.
+ *
+ * `/handlists` is the second tenant-level path of that kind, and it
+ * earns its reach differently: a handlist belongs to a person rather
+ * than to a module, so there is no guard on the routes at all. What
+ * a person may see is decided per handlist inside
+ * `handlists.server` — owner, sharee or workspace-visible, plus the
+ * admin gate an entities- or places-typed one inherits from the
+ * surfaces it points at. `/handlists/add` under the same prefix is an
+ * action-only resource route with no UI of its own.
+ *
+ * `/admin/exports` is the third path that breaks the admin-prefix
+ * pattern, and it breaks it deliberately. Getting your own records out
+ * is not a privilege the platform grants, so the surface carries no
+ * guard at all; what a role changes is which formats the page offers,
+ * which is decided inside the page and re-checked server-side when a
+ * run starts and when an artifact is downloaded. It keeps the
+ * `/admin/` prefix because it sits beside Imports in the sidebar and
+ * acts on the workspace as a whole, not because it is admin-gated.
  *
  * API endpoints live under `/api/*` and are also mounted inside the
  * auth layout so they inherit the same authentication and context. The
@@ -40,7 +67,7 @@
  * tenant subdomain falls through to React Router's no-match 404
  * because no `/operator/*` route is registered on `_auth`.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import {
@@ -80,6 +107,27 @@ export default [
   // Authenticated routes
   layout("routes/_auth.tsx", [
     route("dashboard", "routes/_auth.dashboard.tsx"),
+    // Global search — one query over records, entities, and places.
+    // A tenant route rather than an admin one by URL, but its loader
+    // carries the admin guard its three destination surfaces carry.
+    route("search", "routes/_auth.search.tsx"),
+    // Handlists — the working sets a person keeps. Tenant-level paths
+    // rather than admin ones, for the same reason `/search` is: the
+    // nav item sits at the top level beside Home, because a handlist
+    // belongs to a person rather than to a module and can hold
+    // records, entities OR places. Unlike search there is no admin
+    // guard on the loaders: the gate an authority-typed handlist takes
+    // is the one `handlists.server` applies to the handlist itself, so
+    // the index lists everything this person may reach and the detail
+    // page renders the refusal in place rather than 403ing the URL.
+    //
+    // `/handlists/add` is an action-only resource route — the add-to-
+    // handlist picker posts to it from search and from record detail
+    // pages. The literal segment outranks `:id`, so a handlist can
+    // never be shadowed by it.
+    route("handlists", "routes/_auth.handlists.tsx"),
+    route("handlists/add", "routes/_auth.handlists.add.tsx"),
+    route("handlists/:id", "routes/_auth.handlists.$id.tsx"),
     route("proyectos", "routes/_auth.proyectos.tsx"),
     route("no-access", "routes/_auth.no-access.tsx"),
     route("configuracion", "routes/_auth.configuracion.tsx"),
@@ -185,6 +233,68 @@ export default [
       "routes/_auth.admin.imports.runs.$runId.report.tsx",
     ),
 
+    // Exports — the self-service surface, and the three ways an
+    // artifact or a run is reached from it. Unlike every other
+    // `/admin/*` path here, the surface carries NO admin guard: the
+    // permission tier decides what the page offers (the PDF finding
+    // aid for any member, the machine-readable formats for admins),
+    // not whether the page may be opened. Its loader and action are
+    // member-level for the same reason, and the tier is applied
+    // server-side inside `startExportRun` and again on the download.
+    //
+    // The literal segments outrank one another in the order they are
+    // written, and none of the three collides: `download`, `runs` and
+    // `aid` are all fixed words followed by a run id.
+    route("admin/exports", "routes/_auth.admin.exports.tsx"),
+    route(
+      "admin/exports/download/:runId",
+      "routes/_auth.admin.exports.download.$runId.tsx",
+    ),
+    // Polled by the dialog and by an in-progress history row. A
+    // resource route rather than a reload of the surface, whose loader
+    // resolves a scope and sweeps the retention window.
+    route(
+      "admin/exports/runs/:runId",
+      "routes/_auth.admin.exports.runs.$runId.tsx",
+    ),
+    // The stored, rendered finding aid — served as HTML in a new tab
+    // rather than downloaded, which is why "Open again" and not
+    // "Download" is what history offers for a PDF run.
+    route(
+      "admin/exports/aid/:runId",
+      "routes/_auth.admin.exports.aid.$runId.tsx",
+    ),
+    // The browse surfaces' half of "Send to export": a list stashes
+    // the ids it holds and lands on the same carried tile the search
+    // page's own carry lands on. Action-only.
+    route("admin/exports/carry", "routes/_auth.admin.exports.carry.tsx"),
+
+    // Pending decisions — the questions the workspace has not
+    // answered yet, gathered from three modules into one surface:
+    // authority proposals, the possible-duplicates worklist, and the
+    // vocabulary review queue. The old addresses of the latter two
+    // (`admin/entities/duplicates`, `admin/places/duplicates`,
+    // `admin/vocabularies/review`) stay registered as redirects.
+    layout("routes/_auth.admin.decisions.tsx", [
+      { path: "admin/decisions", file: "routes/_auth.admin.decisions._index.tsx" },
+      route("admin/decisions/duplicates", "routes/_auth.admin.decisions.duplicates.tsx"),
+      route("admin/decisions/vocabulary", "routes/_auth.admin.decisions.vocabulary.tsx"),
+    ]),
+    // The proposal detail page sits OUTSIDE the tab layout on purpose:
+    // it is the considered, full-screen lane, not a fourth tab. The
+    // literal tab segments above win the match over `:id`.
+    //
+    // The pair collation page ("Look closer") is the same lane for a
+    // duplicate pair, and is likewise a static segment that outranks
+    // `:id`. It addresses its pair by query string (`?type=&a=&b=`)
+    // rather than by path, because a pair has two ids and no id of its
+    // own until someone comments on it or rules it.
+    route(
+      "admin/decisions/pair",
+      "routes/_auth.admin.decisions.pair.tsx",
+    ),
+    route("admin/decisions/:id", "routes/_auth.admin.decisions.$id.tsx"),
+
     // Vocabulary management
     layout("routes/_auth.admin.vocabularies.tsx", [
       { path: "admin/vocabularies", file: "routes/_auth.admin.vocabularies._index.tsx" },
@@ -196,8 +306,11 @@ export default [
   ]),
 
   // Operator surface — platform-host-only top-level layout.
-  // Sibling of `_auth`; gated by `operatorAuthMiddleware`.
+  // Sibling of `_auth`; gated by `operatorAuthMiddleware`. The bare
+  // `operator` prefix redirects to the tenant list -- without it the
+  // prefix has no route of its own and falls through to a no-match.
   layout("routes/_operator.tsx", [
+    { path: "operator", file: "routes/_operator._index.tsx" },
     { path: "operator/tenants", file: "routes/_operator.tenants._index.tsx" },
     { path: "operator/tenants/new", file: "routes/_operator.tenants.new.tsx" },
     { path: "operator/tenants/:slug", file: "routes/_operator.tenants.$slug.tsx" },

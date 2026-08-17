@@ -260,6 +260,18 @@ interface ActionData {
   fieldErrors?: Record<string, string[] | undefined>;
 }
 
+// Validator tokens (SlugSchema, CreateTenantSchema) →
+// `operator`-namespace keys. Tokens outside this map fall back to
+// generic error copy in `fieldError()` — raw validator text must
+// never render.
+const FIELD_ERROR_KEYS: Record<string, string> = {
+  slug_format: "field_error.slug_format",
+  slug_length: "field_error.slug_length",
+  slug_reserved_word: "field_error.slug_reserved_word",
+  name_required: "field_error.name_required",
+  email_invalid: "field_error.email_invalid",
+};
+
 export default function CreateTenantPage({
   actionData,
 }: Route.ComponentProps) {
@@ -267,16 +279,20 @@ export default function CreateTenantPage({
   const data = actionData as ActionData | undefined;
   const fieldErrors = data?.fieldErrors ?? {};
 
-  // Custom error-message resolver: route-side errors are emitted as
-  // locale keys (e.g. "slug_taken") so the rendered text is
-  // language-aware. Zod's intrinsic messages are passed through.
+  // Custom error-message resolver: every error arrives as a stable
+  // token (route-side checks and the Zod schemas' custom messages
+  // alike) and resolves to a locale key here. Raw text never reaches
+  // the DOM — an unrecognised token (e.g. a Zod intrinsic message on
+  // a field without a custom message) falls back to the generic
+  // error copy.
   function fieldError(field: string): string | null {
     const errs = fieldErrors[field];
     if (!errs || errs.length === 0) return null;
     const first = errs[0];
     if (first === "slug_taken") return t("tenant_new.errors.slug_taken");
     if (first === "slug_reserved") return t("tenant_new.errors.slug_reserved");
-    return first;
+    const key = FIELD_ERROR_KEYS[first];
+    return key ? t(key) : t("common:error.generic_detail");
   }
 
   return (

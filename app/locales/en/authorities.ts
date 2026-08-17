@@ -120,11 +120,23 @@ export default {
   bandRedirectedCount: "0 (redirected)",
   bandUnknownUser: "an unknown user",
 
-  // Bulk-merge toolbar (list surfaces)
+  // Bulk action bar (list surfaces). One ticked column serves every
+  // errand the count can support: merge at exactly two, a handlist or
+  // an export at any number. The count sentence is written whole per
+  // kind of thing, the way every other count in the product is.
   bulkSelected: "{{count}} selected",
+  bulkCountRecords_one: "{{count}} record selected",
+  bulkCountRecords_other: "{{count}} records selected",
+  bulkCountEntities_one: "{{count}} entity selected",
+  bulkCountEntities_other: "{{count}} entities selected",
+  bulkCountPlaces_one: "{{count}} place selected",
+  bulkCountPlaces_other: "{{count}} places selected",
   bulkClear: "Clear",
   bulkMerge: "Merge…",
   bulkHintPickTwo: "Select exactly two records to merge.",
+  bulkAddToHandlist: "Add to handlist",
+  bulkSendToExport: "Send to export",
+  bulkSelectRow: "Select this record",
 
   // Show-merged toggle + merged row indicator
   showMerged: "Show merged",
@@ -143,6 +155,9 @@ export default {
     "Work through candidate duplicate pairs: merge true duplicates, or dismiss false matches with a reason recorded in the ledger.",
   dupCountLine: "candidate pairs · sorted by match strength",
   dupSignalName: "normalized name",
+  dupSignalNearName: "near spelling",
+  dupNearSpellingHint:
+    "The two normalized names differ by a single character.",
   dupSignalDates: "overlapping dates",
   dupSignalWikidata: "shared Wikidata",
   dupSignalTgn: "shared Getty TGN",

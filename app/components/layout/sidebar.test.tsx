@@ -15,11 +15,22 @@
  * that structure: Records management holds descriptions / repositories /
  * vocabularies / publish; Authorities holds entities / places.
  *
- * The `imports` capability (migration 0061) adds its own gated
- * `Imports` section, off by default; the cases near the end pin its
- * visibility.
+ * The `imports` capability (migration 0061) gates the Imports ITEM
+ * inside the `Import and export` group (ruled 2026-08-15). The group
+ * itself is ungated because its other entry, Exports, is: portability
+ * is not a product tier, so the group renders for every signed-in
+ * person on every tenant, and the cases near the end pin both halves
+ * of that — the capability still hides Imports, and nothing hides
+ * Exports.
  *
- * @version v0.6.0
+ * The global-search cases pin one of the two items that live in the
+ * first, unlabelled section alongside Home: it appears for admins, in
+ * that position, and is absent for every non-admin role permutation.
+ * The handlists cases pin the other: it sits directly under Home for
+ * everyone, on every tenant, because a handlist belongs to a person
+ * rather than to a module and carries no capability or role gate.
+ *
+ * @version v0.7.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -84,6 +95,7 @@ describe("getSidebarSections", () => {
       "sidebar:collaborative_cataloguing",
       "sidebar:records_management",
       "sidebar:authorities",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
@@ -100,7 +112,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 
@@ -114,6 +126,7 @@ describe("getSidebarSections", () => {
       "sidebar:collaborative_cataloguing",
       "sidebar:records_management",
       "sidebar:authorities",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
@@ -126,7 +139,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 
@@ -138,6 +151,7 @@ describe("getSidebarSections", () => {
     expect(labels(sections)).toEqual([
       "<home>",
       "sidebar:collaborative_cataloguing",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
@@ -156,15 +170,23 @@ describe("getSidebarSections", () => {
     expect(labels(sections)).toEqual([
       "<home>",
       "sidebar:collaborative_cataloguing",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
     ]);
   });
 
-  it("no-access user sees only Home", () => {
+  it("no-access user sees Home and the ungated Import and export group", () => {
+    // Exports carries no capability and no role — portability is not a
+    // product tier — so the group renders for every signed-in person,
+    // holding Exports alone when imports is off or the person is not
+    // an admin.
     const sections = getSidebarSections(makeUser(), makeTenant());
-    expect(labels(sections)).toEqual(["<home>"]);
+    expect(labels(sections)).toEqual(["<home>", "sidebar:import_and_export"]);
+    expect(paths(sections, "sidebar:import_and_export")).toEqual([
+      "/admin/exports",
+    ]);
   });
 
   it("isAdmin + isCollabAdmin sees merged section with manage items + Authorities", () => {
@@ -177,6 +199,7 @@ describe("getSidebarSections", () => {
       "sidebar:collaborative_cataloguing",
       "sidebar:records_management",
       "sidebar:authorities",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
@@ -191,7 +214,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 
@@ -243,7 +266,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 
@@ -295,21 +318,21 @@ describe("getSidebarSections", () => {
       (sec) => sec.labelKey === "sidebar:authorities",
     );
     const dup = authorities?.items.find(
-      (i) => i.path === "/admin/entities/duplicates",
+      (i) => i.path === "/admin/decisions",
     );
     expect(dup?.badge).toBe(4);
-    expect(dup?.labelKey).toBe("sidebar:possible_duplicates");
+    expect(dup?.labelKey).toBe("sidebar:pending_decisions");
   });
 
-  it("shows the Imports section only when imports is on", () => {
+  it("shows the Imports entry only when imports is on", () => {
     const off = getSidebarSections(
       makeUser({ isSuperAdmin: true }),
       makeTenant(),
     );
-    // Default tenant has imports off — no Imports section, and the
-    // existing section set is unchanged.
-    expect(labels(off)).not.toContain("sidebar:imports");
+    // Default tenant has imports off — the Import and export group
+    // still renders, holding Exports alone.
     expect(allPaths(off)).not.toContain("/admin/imports");
+    expect(paths(off, "sidebar:import_and_export")).toEqual(["/admin/exports"]);
 
     const on = getSidebarSections(
       makeUser({ isSuperAdmin: true }),
@@ -320,20 +343,50 @@ describe("getSidebarSections", () => {
       "sidebar:collaborative_cataloguing",
       "sidebar:records_management",
       "sidebar:authorities",
-      "sidebar:imports",
+      "sidebar:import_and_export",
     ]);
-    expect(paths(on, "sidebar:imports")).toEqual(["/admin/imports"]);
+    expect(paths(on, "sidebar:import_and_export")).toEqual([
+      "/admin/imports",
+      "/admin/exports",
+    ]);
   });
 
-  it("hides the Imports section for a non-admin even when imports is on", () => {
-    // A member-only user never reaches the admin block that carries
-    // the Imports section, regardless of the capability flag.
+  it("hides the Imports entry for a non-admin even when imports is on", () => {
+    // Imports keeps its admin gate; Exports does not have one, so the
+    // group renders with Exports alone rather than disappearing.
     const sections = getSidebarSections(
       makeUser({ hasAnyProjectMembership: true }),
       makeTenant({ importsEnabled: true }),
     );
-    expect(labels(sections)).not.toContain("sidebar:imports");
     expect(allPaths(sections)).not.toContain("/admin/imports");
+    expect(paths(sections, "sidebar:import_and_export")).toEqual([
+      "/admin/exports",
+    ]);
+  });
+
+  it("shows Exports on a tenant with every capability off", () => {
+    // Ruling 2 (re-ruled 2026-08-15): portability is not a product
+    // tier, so no capability flag can take the export surface away.
+    const sections = getSidebarSections(
+      makeUser(),
+      makeTenant({
+        crowdsourcingEnabled: false,
+        vocabularyHubEnabled: false,
+        publishPipelineEnabled: false,
+        multiRepositoryEnabled: false,
+        authoritiesEnabled: false,
+        importsEnabled: false,
+      }),
+    );
+    expect(allPaths(sections)).toContain("/admin/exports");
+  });
+
+  it("puts Import and export last, after the module sections", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant({ importsEnabled: true }),
+    );
+    expect(labels(sections).at(-1)).toBe("sidebar:import_and_export");
   });
 
   it("imports capability does not collateral-affect other sections", () => {
@@ -352,7 +405,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 
@@ -373,6 +426,100 @@ describe("getSidebarSections", () => {
     ]);
   });
 
+  // ---------------------------------------------------------------------
+  // Global search
+  //
+  // The item lives in the first, unlabelled section directly after
+  // Home and Handlists, and carries no gate (ruled 2026-08-16): search
+  // is member-level, and only the authority reach inside the surface
+  // keeps the admin gate. The item shows for every role.
+  // ---------------------------------------------------------------------
+
+  it("puts Search directly after Home for an archive admin", () => {
+    const sections = getSidebarSections(
+      makeUser({ isAdmin: true }),
+      makeTenant(),
+    );
+    expect(sections[0].labelKey).toBeUndefined();
+    expect(sections[0].items.map((i) => i.path)).toEqual([
+      "/",
+      "/handlists",
+      "/search",
+    ]);
+    expect(sections[0].items[2].labelKey).toBe("sidebar:search");
+  });
+
+  it("puts Search directly after Home for a superadmin", () => {
+    const sections = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant(),
+    );
+    expect(sections[0].items.map((i) => i.path)).toEqual([
+      "/",
+      "/handlists",
+      "/search",
+    ]);
+  });
+
+  it("shows Search to every non-admin role", () => {
+    for (const user of [
+      makeUser(),
+      makeUser({ hasAnyProjectMembership: true }),
+      makeUser({ isCollabAdmin: true }),
+      makeUser({ isCataloguer: true }),
+      makeUser({ isUserManager: true }),
+    ]) {
+      const sections = getSidebarSections(user, makeTenant());
+      expect(sections[0].items.map((i) => i.path)).toEqual([
+        "/",
+        "/handlists",
+        "/search",
+      ]);
+    }
+  });
+
+  it("puts Handlists directly under Home for every role", () => {
+    for (const user of [
+      makeUser(),
+      makeUser({ isAdmin: true }),
+      makeUser({ isSuperAdmin: true }),
+      makeUser({ isCataloguer: true }),
+      makeUser({ isCollabAdmin: true }),
+    ]) {
+      const sections = getSidebarSections(user, makeTenant());
+      expect(sections[0].items[1].path).toBe("/handlists");
+      expect(sections[0].items[1].labelKey).toBe("sidebar:handlists");
+    }
+  });
+
+  it("shows Handlists on a tenant with every capability off", () => {
+    // A handlist belongs to no module, so no capability can take it
+    // away — the admin gate on an authority-typed one lives on the
+    // handlist itself, not on the nav item.
+    const sections = getSidebarSections(
+      makeUser(),
+      makeTenant({
+        crowdsourcingEnabled: false,
+        vocabularyHubEnabled: false,
+        publishPipelineEnabled: false,
+        multiRepositoryEnabled: false,
+        authoritiesEnabled: false,
+        importsEnabled: false,
+      }),
+    );
+    expect(allPaths(sections)).toContain("/handlists");
+  });
+
+  it("shows Search regardless of the authorities capability", () => {
+    // Records are searchable on every tenant; the authorities
+    // categories are what the capability gates, inside the surface.
+    const sections = getSidebarSections(
+      makeUser({ isAdmin: true }),
+      makeTenant({ authoritiesEnabled: false }),
+    );
+    expect(allPaths(sections)).toContain("/search");
+  });
+
   it("Neogranadina (all caps on) renders the full section set for a superadmin", () => {
     const sections = getSidebarSections(
       makeUser({ isSuperAdmin: true }),
@@ -383,6 +530,7 @@ describe("getSidebarSections", () => {
       "sidebar:collaborative_cataloguing",
       "sidebar:records_management",
       "sidebar:authorities",
+      "sidebar:import_and_export",
     ]);
     expect(paths(sections, "sidebar:collaborative_cataloguing")).toEqual([
       "/proyectos",
@@ -399,7 +547,7 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
       "/admin/places",
-      "/admin/entities/duplicates",
+      "/admin/decisions",
     ]);
   });
 });

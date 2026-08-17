@@ -15,10 +15,12 @@
  * `volumes` directly — keeping every status change behind one
  * guarded handler is what lets the state machine stay enforceable.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
+import { apiErrorToken } from "../lib/api-error.server";
 import type { VolumeStatus, WorkflowRole } from "../lib/workflow";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.workflow";
@@ -29,12 +31,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { WORKFLOW_ROLE_PRECEDENCE } = await import("../lib/workflow");
   const { transitionVolumeStatus } = await import("../lib/workflow.server");
+  const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const formData = await request.formData();
   const volumeId = formData.get("volumeId") as string;
@@ -52,11 +61,32 @@ export async function action({ request, context }: Route.ActionArgs) {
   // Get user's role on this project
   const memberships = await requireProjectRole(
     db,
+    tenant.id,
     user.id,
     projectId,
     [...PROJECT_ROLES],
     user.isAdmin
   );
+
+  // Both identifiers arrive in the request body, so nothing so far
+  // ties them together: without this check a member of any project can
+  // send their own projectId plus a foreign volumeId and drive that
+  // volume through the state machine. The resulting activity_log row
+  // is stamped with the VOLUME's tenant_id, so the forged transition
+  // reads as native activity in the victim tenant.
+  const [linkedVolume] = await db
+    .select({ id: volumes.id })
+    .from(volumes)
+    .where(and(eq(volumes.id, volumeId), eq(volumes.projectId, projectId)))
+    .limit(1)
+    .all();
+
+  if (!linkedVolume) {
+    return Response.json(
+      { ok: false, error: "Volume not found" },
+      { status: 404 }
+    );
+  }
 
   // All held roles, not the first row: previously a user holding both
   // reviewer and cataloguer memberships got whichever role the DB
@@ -81,13 +111,13 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json({ ok: true });
   } catch (err) {
     if (err instanceof Response) {
-      const text = await err.text();
       return Response.json(
-        { ok: false, error: text },
+        { ok: false, error: apiErrorToken(err.status) },
         { status: err.status }
       );
     }
-    const message = err instanceof Error ? err.message : "Transition failed";
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    // Server internals never reach the client: the 500 carries the
+    // same stable token the catch helper uses for unknown statuses.
+    return Response.json({ ok: false, error: "generic" }, { status: 500 });
   }
 }

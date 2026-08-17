@@ -6,15 +6,34 @@
  * counts, and exposes the new-project dialog. Destructive actions are
  * gated behind a confirm dialog and record an audit trail.
  *
- * @version v0.4.2
+ * Save feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. The page previously read its banner off
+ * `useActionData`, but the only mutating form here — the new-project
+ * dialog — posts through a fetcher, so the result never reached the
+ * banner and creating a project acknowledged nothing. The fetcher now
+ * lives on the page (the dialog closes itself on submit, so a result
+ * rendered inside it would unmount before it could be read) and feeds
+ * one page-level result region.
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
-import { useFetcher, useActionData, useSearchParams, Link } from "react-router";
+import {
+  useFetcher,
+  useSearchParams,
+  Link,
+  type FetcherWithComponents,
+} from "react-router";
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.cataloguing.projects";
 
 interface ProjectMember {
@@ -204,9 +223,20 @@ function CreateProjectButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function CreateProjectForm({ onClose }: { onClose: () => void }) {
+function CreateProjectForm({
+  onClose,
+  fetcher,
+}: {
+  onClose: () => void;
+  /** The page-level fetcher, so the result outlives this form's unmount. */
+  fetcher: FetcherWithComponents<unknown>;
+}) {
   const { t } = useTranslation(["admin", "common"]);
-  const fetcher = useFetcher();
+  const creating = isPendingSubmission(
+    fetcher.state,
+    fetcher.formData ?? undefined,
+    "createProject",
+  );
 
   return (
     <fetcher.Form
@@ -248,12 +278,11 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
           />
         </div>
         <div className="flex gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("common:button.save")}
-          </button>
+          <SaveButton
+            pending={creating}
+            label={t("common:button.save")}
+            pendingLabel={t("common:save.saving")}
+          />
           <button
             type="button"
             onClick={onClose}
@@ -269,6 +298,7 @@ function CreateProjectForm({ onClose }: { onClose: () => void }) {
 
 function ProjectRow({ project }: { project: ProjectDetail }) {
   const { t } = useTranslation(["admin", "common", "workflow"]);
+  const { formatDate } = useFormatters();
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -379,9 +409,10 @@ export default function AdminCataloguingProjects({
   loaderData,
 }: Route.ComponentProps) {
   const { projects: allProjects, showArchived } = loaderData;
-  const actionData = useActionData<typeof action>();
   const { t } = useTranslation(["admin", "common"]);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  // One fetcher for the page — see the module header.
+  const fetcher = useFetcher();
 
   return (
     <div>
@@ -411,21 +442,22 @@ export default function AdminCataloguingProjects({
       </div>
 
       {showCreateForm && (
-        <CreateProjectForm onClose={() => setShowCreateForm(false)} />
+        <CreateProjectForm
+          onClose={() => setShowCreateForm(false)}
+          fetcher={fetcher}
+        />
       )}
 
-      {actionData?.message && (
-        <div
-          className={`mt-3 rounded-md border px-4 py-3 font-sans text-sm ${actionData.ok ? "border-verdigris bg-verdigris-tint text-stone-700" : "border-indigo bg-indigo-tint text-stone-700"}`}
-        >
-          {actionData.message}
-        </div>
-      )}
-      {actionData && !actionData.ok && actionData.error && (
-        <div className="mt-3 rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {actionData.error}
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={fetcher.data}
+        pending={fetcher.state !== "idle"}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+        className="mt-3"
+      />
 
       {allProjects.length === 0 ? (
         <p className="mt-4 font-sans text-sm text-stone-400">

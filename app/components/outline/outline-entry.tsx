@@ -229,7 +229,7 @@ export function OutlineEntry({
   anchoredCommentCount = 0,
   children,
 }: OutlineEntryProps) {
-  const { t } = useTranslation(["viewer", "resegmentation", "comments"]);
+  const { t } = useTranslation(["viewer", "comments"]);
   const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isReadonly = accessLevel === "readonly";
@@ -513,9 +513,7 @@ export function OutlineEntry({
  {/* reseg pill */}
  {showResegPill && (
  <span className="ml-2 inline-block rounded bg-violet-600 px-1.5 py-0.5 font-sans text-10 font-bold uppercase tracking-wide text-white">
- {t("resegmentation:proposed", {
- defaultValue: "Resegmentación propuesta",
- })}
+ {t("viewer:resegmentation.proposed")}
  </span>
  )}
 

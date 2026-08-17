@@ -10,13 +10,21 @@
  * archive, delete) is deliberately absent from this surface — those
  * operations live exclusively in `/admin/cataloguing/projects`.
  *
- * @version v0.4.1
+ * Everything the page shows is crowdsourcing-module data belonging to
+ * ONE tenant: the one whose host is being served. The caller's
+ * memberships and assignments span every tenant their account works
+ * in, so each query joins up to `projects` or filters on the row's own
+ * `tenant_id` before anything reaches the page. `_auth.dashboard.tsx`
+ * is the reference for the shape.
+ *
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { BookOpen, ClipboardList, Settings, ArrowRight } from "lucide-react";
-import { userContext } from "../context";
+import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { DashboardSection } from "../components/dashboard/dashboard-section";
 import { VolumeStatusCard } from "../components/dashboard/volume-status-card";
 import { DescriptionStatusBadge } from "../components/workflow/status-badge";
@@ -31,23 +39,36 @@ export async function loader({ context }: Route.LoaderArgs) {
     volumes,
     entries,
     activityLog,
-    comments,
     users,
     qcFlags,
   } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  // 1. User's project memberships
+  // Crowdsourcing surface: 404 where the tenant does not have the
+  // module, rather than rendering the visitor's other tenants' work
+  // under this tenant's name.
+  requireCapability(tenant, "crowdsourcing");
+
+  // 1. User's project memberships — in THIS tenant. `project_members`
+  //    has no tenant_id of its own, so the scope comes from the
+  //    owning project row.
   const memberships = await db
     .select({
       projectId: projectMembers.projectId,
       role: projectMembers.role,
     })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, user.id))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        eq(projects.tenantId, tenant.id)
+      )
+    )
     .all();
 
   const projectIds = [...new Set(memberships.map((m) => m.projectId))];
@@ -90,7 +111,12 @@ export async function loader({ context }: Route.LoaderArgs) {
   const projectList = await db
     .select({ id: projects.id, name: projects.name, description: projects.description })
     .from(projects)
-    .where(inArray(projects.id, projectIds))
+    .where(
+      and(
+        inArray(projects.id, projectIds),
+        eq(projects.tenantId, tenant.id)
+      )
+    )
     .all();
   const projectNameMap = new Map(projectList.map((p) => [p.id, p.name]));
 
@@ -118,6 +144,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(volumes)
     .where(
       and(
+        eq(volumes.tenantId, tenant.id),
         eq(volumes.assignedTo, user.id),
         inArray(volumes.status, ["unstarted", "in_progress", "sent_back"])
       )
@@ -139,6 +166,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         .from(volumes)
         .where(
           and(
+            eq(volumes.tenantId, tenant.id),
             eq(volumes.assignedReviewer, user.id),
             eq(volumes.status, "segmented")
           )
@@ -159,6 +187,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     .from(entries)
     .where(
       and(
+        eq(entries.tenantId, tenant.id),
         eq(entries.assignedDescriber, user.id),
         inArray(entries.descriptionStatus, [
           "assigned",
@@ -183,6 +212,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         .from(entries)
         .where(
           and(
+            eq(entries.tenantId, tenant.id),
             eq(entries.assignedDescriptionReviewer, user.id),
             eq(entries.descriptionStatus, "described")
           )
@@ -207,7 +237,12 @@ export async function loader({ context }: Route.LoaderArgs) {
         name: volumes.name,
       })
       .from(volumes)
-      .where(inArray(volumes.id, allVolumeIds))
+      .where(
+        and(
+          inArray(volumes.id, allVolumeIds),
+          eq(volumes.tenantId, tenant.id)
+        )
+      )
       .all();
     for (const v of volumeRows) {
       volumeProjectMap.set(v.id, { projectId: v.projectId, volumeName: v.name });
@@ -239,7 +274,12 @@ export async function loader({ context }: Route.LoaderArgs) {
       projectId: activityLog.projectId,
     })
     .from(activityLog)
-    .where(inArray(activityLog.projectId, projectIds))
+    .where(
+      and(
+        eq(activityLog.tenantId, tenant.id),
+        inArray(activityLog.projectId, projectIds)
+      )
+    )
     .orderBy(desc(activityLog.createdAt))
     .limit(50)
     .all();
@@ -285,6 +325,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       .from(qcFlags)
       .where(
         and(
+          eq(qcFlags.tenantId, tenant.id),
           inArray(qcFlags.volumeId, segVolumeIds),
           eq(qcFlags.status, "open")
         )

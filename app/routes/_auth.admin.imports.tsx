@@ -37,6 +37,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { formatIsoDateTime } from "../lib/format-date";
+import { useFormatters } from "../lib/use-formatters";
 import { StepRail, MiniRail, type RailStep, type RailStepState } from "../components/imports/step-rail";
 import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit";
 import type { Route } from "./+types/_auth.admin.imports";
@@ -342,12 +343,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   return { ok: false as const, intent: "unknown" as const };
 }
 
-function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** The mini-rail dot states for one in-progress row. */
 function dotsFor(row: ProgressRow): RailStepState[] {
   const check: RailStepState =
@@ -406,6 +401,7 @@ function DeleteControl({
 
 export default function AdminImportsPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("imports");
+  const { formatBytes } = useFormatters();
   const actionData = useActionData<typeof action>();
   const { inProgress, finished, ownProfiles, sharedProfiles, starters } = loaderData;
   // Busy while the file upload is in flight — a large CSV takes a visible

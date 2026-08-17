@@ -4,7 +4,7 @@
  * This module aggregates every namespace under `locales/en/*` into
  * the single resource bundle i18next loads for English users.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 import type { ResourceLanguage } from "i18next";
 import common from "./en/common";
@@ -36,6 +36,11 @@ import landing from "./en/landing";
 import operator from "./en/operator";
 import authorities from "./en/authorities";
 import imports from "./en/imports";
+import decisions from "./en/decisions";
+import emails from "./en/emails";
+import search from "./en/search";
+import handlists from "./en/handlists";
+import exports_ns from "./en/exports";
 
 export default {
   common,
@@ -67,4 +72,9 @@ export default {
   operator,
   authorities,
   imports,
+  decisions,
+  emails,
+  search,
+  handlists,
+  exports: exports_ns,
 } satisfies ResourceLanguage;

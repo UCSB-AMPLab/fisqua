@@ -14,7 +14,7 @@
  * capability flags to the `<Sidebar>` so capability-off nav surfaces
  * are hidden.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { useState, useEffect } from "react";
@@ -24,6 +24,7 @@ import { impersonationContext, tenantContext, userContext } from "../context";
 import { Sidebar } from "../components/layout/sidebar";
 import { Footer } from "../components/layout/footer";
 import { ImpersonationBanner } from "../components/layout/impersonation-banner";
+import { WorkspaceSwitcher } from "../components/layout/workspace-switcher";
 import type { Route } from "./+types/_auth";
 
 export const middleware = [
@@ -36,8 +37,8 @@ export const middleware = [
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { getAppConfig } = await import("../lib/config.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq } = await import("drizzle-orm");
-  const { projectMembers } = await import("../db/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const { projectMembers, projects } = await import("../db/schema");
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
@@ -51,11 +52,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Compute hasAnyProjectMembership so the sidebar can show the
   // Collaborative Cataloguing section to project-member-only users.
+  // Memberships held on other tenants' projects must not raise the
+  // section here: it is the affordance that leads into the
+  // crowdsourcing tree, and on this host that tree holds this
+  // tenant's work only.
   const db = drizzle(env.DB);
   const membershipRows = await db
     .select({ id: projectMembers.id })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, user.id))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        eq(projects.tenantId, tenant.id),
+      ),
+    )
     .limit(1);
   const hasAnyProjectMembership = membershipRows.length > 0;
 
@@ -74,22 +85,26 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     importsEnabled: tenant.importsEnabled,
   };
 
-  // Possible-duplicates badge for the Authorities sidebar entry —
-  // computed only for admins on authorities-on tenants AND only while
-  // the current request is inside the authorities section. The count
-  // is two GROUP BY scans over lower(display_name) (which no index
-  // serves) plus a join over the separate ledger rows; running that on
-  // every admin navigation is disproportionate for a badge, so pages
-  // outside /admin/entities and /admin/places render the nav entry
-  // without a pill. Within the section the pill is always fresh.
-  // The count itself is the CHEAP approximation (exact lowercase-name
-  // collision pairs minus dismissed pairs), not the worklist's
-  // accent-normalised number; see `getDuplicateBadgeCounts`.
+  // Pending-decisions badge for its sidebar entry: the whole open
+  // queue, not one tab — candidate duplicate pairs plus open authority
+  // proposals plus proposed vocabulary terms. Computed only for admins
+  // on authorities-on tenants AND only while the current request is
+  // inside the authorities section: the duplicates part is two
+  // GROUP BY scans over lower(display_name) (which no index serves)
+  // plus a join over the separate ledger rows, and running that on
+  // every admin navigation is disproportionate for a badge. Pages
+  // outside /admin/entities, /admin/places, and /admin/decisions
+  // render the nav entry without a pill; within the section the pill
+  // is always fresh.
+  // The duplicates part is the CHEAP approximation (exact
+  // lowercase-name collision pairs minus dismissed pairs), not the
+  // worklist's accent-normalised number; see `getDuplicateBadgeCounts`.
   let duplicateCount = 0;
   const pathname = new URL(request.url).pathname;
   const inAuthoritiesSection =
     pathname.startsWith("/admin/entities") ||
-    pathname.startsWith("/admin/places");
+    pathname.startsWith("/admin/places") ||
+    pathname.startsWith("/admin/decisions");
   if (
     inAuthoritiesSection &&
     tenant.authoritiesEnabled &&
@@ -98,8 +113,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const { getDuplicateBadgeCounts } = await import(
       "../lib/authority-duplicates.server"
     );
-    const counts = await getDuplicateBadgeCounts(db, tenant.federationId);
-    duplicateCount = counts.entities + counts.places;
+    const { loadPendingDecisionCounts } = await import(
+      "../lib/pending-decisions.server"
+    );
+    const [counts, pending] = await Promise.all([
+      getDuplicateBadgeCounts(db, tenant.federationId),
+      loadPendingDecisionCounts(db, tenant),
+    ]);
+    duplicateCount =
+      counts.entities +
+      counts.places +
+      pending.authorityProposals +
+      pending.vocabularyProposals;
   }
 
   // Surface a narrow `impersonating` payload for the banner. Empty
@@ -110,9 +135,61 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ? { role: impersonating.role, tenantName: tenant.name }
     : null;
 
+  // Workspace switcher (multi-workspace users only): the user's home
+  // tenant plus every active tenant in a federation they hold a grant
+  // into. Single-workspace users get `null` and the top bar renders
+  // the tenant name as plain text — the switcher affordance exists
+  // only where there is somewhere to switch to. Links are absolute
+  // (sessions are host-scoped; a first hop may ask for a sign-in).
+  let workspaces: Array<{ name: string; url: string; current: boolean }> | null =
+    null;
+  {
+    const { federationMemberships, tenants } = await import("../db/schema");
+    const { inArray, isNull, and: andOp, eq: eqOp } = await import("drizzle-orm");
+    const grants = await db
+      .select({ federationId: federationMemberships.federationId })
+      .from(federationMemberships)
+      .where(eqOp(federationMemberships.userId, user.id))
+      .all();
+    if (grants.length > 0) {
+      const fedIds = grants.map((g) => g.federationId);
+      const reachable = await db
+        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+        .from(tenants)
+        .where(
+          andOp(
+            inArray(tenants.federationId, fedIds),
+            eqOp(tenants.status, "active"),
+            isNull(tenants.disabledAt),
+          ),
+        )
+        .all();
+      const home = await db
+        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+        .from(tenants)
+        .where(eqOp(tenants.id, user.tenantId))
+        .get();
+      const byId = new Map(reachable.map((t) => [t.id, t]));
+      if (home) byId.set(home.id, home);
+      if (byId.size > 1) {
+        const reqUrl = new URL(request.url);
+        const hostSuffix = reqUrl.hostname.split(".").slice(1).join(".");
+        workspaces = [...byId.values()]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((t2) => ({
+            name: t2.name,
+            url: `${reqUrl.protocol}//${t2.slug}.${hostSuffix}${reqUrl.port ? ":" + reqUrl.port : ""}/dashboard`,
+            current: t2.id === tenant.id,
+          }));
+      }
+    }
+  }
+
   return {
     user,
     appName,
+    tenantName: tenant.name,
+    workspaces,
     hasAnyProjectMembership,
     tenant: tenantCaps,
     impersonating: impersonatingForBanner,
@@ -203,7 +280,7 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
             Fisqua
           </span>
           <div className="mx-3 h-5 w-px bg-stone-200" aria-hidden="true" />
-          <span className="font-sans text-sm text-stone-500">Neogranadina</span>
+          <WorkspaceSwitcher />
         </div>
         <div className="flex items-center gap-3">
           <span className="font-sans text-sm text-stone-500">

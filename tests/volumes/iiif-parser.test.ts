@@ -90,7 +90,7 @@ describe("IIIF manifest parser", () => {
         defaultEnv
       );
       expect(result.valid).toBe(false);
-      expect(result.error).toMatch(/manifests\.zasqua\.org/);
+      expect(result.error).toBe("manifest_host");
     });
 
     it("rejects URLs not ending in /manifest.json", () => {
@@ -99,13 +99,13 @@ describe("IIIF manifest parser", () => {
         defaultEnv
       );
       expect(result.valid).toBe(false);
-      expect(result.error).toMatch(/manifest\.json/);
+      expect(result.error).toBe("manifest_path");
     });
 
     it("rejects invalid URL format", () => {
       const result = validateManifestUrl("not a url", defaultEnv);
       expect(result.valid).toBe(false);
-      expect(result.error).toMatch(/Invalid URL/i);
+      expect(result.error).toBe("manifest_invalid_url");
     });
 
     it("uses hosts from env var", () => {
@@ -223,7 +223,7 @@ describe("IIIF manifest parser", () => {
       );
 
       await expect(parseManifest(sampleManifestUrl)).rejects.toThrow(
-        /Failed to fetch manifest/
+        "manifest_fetch_failed",
       );
     });
 
@@ -239,7 +239,7 @@ describe("IIIF manifest parser", () => {
       );
 
       await expect(parseManifest(sampleManifestUrl)).rejects.toThrow(
-        /reference code/i
+        "manifest_ref_code",
       );
     });
 

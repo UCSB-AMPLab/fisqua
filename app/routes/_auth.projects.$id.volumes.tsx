@@ -9,13 +9,13 @@
  * from a IIIF manifest URL here; per-volume deep management lives on
  * the `$volumeId/manage` page.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Form, useActionData } from "react-router";
 import { useTranslation, Trans } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { VolumeCard } from "../components/volumes/volume-card";
 import type { Route } from "./+types/_auth.projects.$id.volumes";
 
@@ -33,11 +33,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { getProjectVolumes } = await import("../lib/volumes.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
   // Only leads (and admins) can access volume management
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const volumes = await getProjectVolumes(db, params.id);
   return { volumes, projectId: params.id };
@@ -45,18 +46,21 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProjectVolumes, createVolume, deleteVolume } = await import("../lib/volumes.server");
-  const { validateManifestUrl, parseManifest } = await import("../lib/iiif.server");
+  const { validateManifestUrl, parseManifest, ManifestError } = await import("../lib/iiif.server");
   const { getInstance } = await import("~/middleware/i18next");
+  const { volumes: volumesTable } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
 
   // Only leads (and admins) can mutate volumes
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -73,13 +77,44 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return { _action: "add-volumes" as const, results: [] as AddResult[], error: i18n.t("project:error.at_least_one_url") };
       }
 
+      // iiif.server surfaces stable tokens, never prose (CR-04
+      // shape); resolve each known token to a localised message
+      // here, anything else to the generic key.
+      const manifestErrorMessage = (
+        token: string | undefined,
+        values: { hosts?: string; status?: number } = {}
+      ): string => {
+        switch (token) {
+          case "manifest_https":
+            return i18n.t("project:manifest.manifest_https");
+          case "manifest_host":
+            return i18n.t("project:manifest.manifest_host", { hosts: values.hosts });
+          case "manifest_path":
+            return i18n.t("project:manifest.manifest_path");
+          case "manifest_invalid_url":
+            return i18n.t("project:manifest.manifest_invalid_url");
+          case "manifest_fetch_failed":
+            return i18n.t("project:manifest.manifest_fetch_failed", { status: values.status });
+          case "manifest_ref_code":
+            return i18n.t("project:manifest.manifest_ref_code");
+          default:
+            return i18n.t("project:error.process_manifest_failed");
+        }
+      };
+
       const results: AddResult[] = [];
 
       for (const url of urls) {
         // Validate URL format and host
         const validation = validateManifestUrl(url, env);
         if (!validation.valid) {
-          results.push({ url, success: false, error: validation.error });
+          results.push({
+            url,
+            success: false,
+            error: manifestErrorMessage(validation.error, {
+              hosts: validation.hosts?.join(", "),
+            }),
+          });
           continue;
         }
 
@@ -95,7 +130,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           });
         } catch (err) {
           const message =
-            err instanceof Error ? err.message : i18n.t("project:error.process_manifest_failed");
+            err instanceof ManifestError
+              ? manifestErrorMessage(err.message, { status: err.status })
+              : i18n.t("project:error.process_manifest_failed");
           results.push({ url, success: false, error: message });
         }
       }
@@ -109,13 +146,34 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return { _action: "delete-volume" as const, error: i18n.t("project:error.volume_id_required") };
       }
 
+      // Being a lead of params.id authorises deleting volumes OF
+      // params.id. deleteVolume cascades pages, entries, comments,
+      // flags and activity rows, so an unlinked volume id here is a
+      // destructive cross-project write.
+      const [target] = await db
+        .select({ id: volumesTable.id })
+        .from(volumesTable)
+        .where(
+          and(
+            eq(volumesTable.id, volumeId),
+            eq(volumesTable.projectId, params.id)
+          )
+        )
+        .limit(1)
+        .all();
+
+      if (!target) {
+        throw new Response("Volume not found", { status: 404 });
+      }
+
       try {
         await deleteVolume(db, volumeId);
         return { _action: "delete-volume" as const, deleted: true };
       } catch (err) {
-        if (err instanceof Response) {
-          const text = await err.text();
-          return { _action: "delete-volume" as const, error: text };
+        // deleteVolume throws 400 only for the not-unstarted guard;
+        // never surface the Response body.
+        if (err instanceof Response && err.status === 400) {
+          return { _action: "delete-volume" as const, error: i18n.t("project:error.delete_requires_unstarted") };
         }
         return { _action: "delete-volume" as const, error: i18n.t("project:error.delete_failed") };
       }

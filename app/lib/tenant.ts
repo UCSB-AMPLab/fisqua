@@ -159,17 +159,20 @@ export const RESERVED_SLUGS: ReadonlyArray<string> = [
  * The schema's `.regex` mirrors the SQLite CHECK on `tenants.slug`
  * (lowercase ASCII, leading letter, no leading/trailing hyphen);
  * the `.refine` adds the reserved-slug ban.
+ *
+ * Messages are stable i18n tokens, not prose: the render boundary
+ * (`_operator.tenants.new.tsx` `fieldError()`) maps each token to a
+ * locale key.
  */
 export const SlugSchema = z
   .string()
-  .min(1, { message: "Slug must be at least 1 character" })
-  .max(63, { message: "Slug must be at most 63 characters" })
+  .min(1, { message: "slug_length" })
+  .max(63, { message: "slug_length" })
   .regex(/^[a-z]([a-z0-9-]*[a-z0-9])?$/, {
-    message:
-      "Slug must be lowercase, start with a letter, and contain only letters, digits, and hyphens",
+    message: "slug_format",
   })
   .refine((s) => !RESERVED_SLUGS.includes(s), {
-    message: "Slug is reserved",
+    message: "slug_reserved_word",
   });
 
 /**

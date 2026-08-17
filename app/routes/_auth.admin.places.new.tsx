@@ -5,14 +5,20 @@
  * essential identity fields -- label, display name, place type,
  * country -- plus optional coordinates and a parent-place pointer for
  * hierarchical places (town within province within gobernación). The
- * server action mints an `nl-xxxxxx` place code and inserts the row.
+ * server action mints a place code under the maintaining agency's own
+ * prefix (migration 0068: `nl-xxxxxx` for Neogranadina's shared
+ * authority space, `<agency>-p-xxxxxx` for a tenant that maintains its
+ * own records) and inserts the row.
  * Historical administrative divisions and external authority links
  * are editable on the edit page.
  *
  * Authority scope is the federation (migrations 0045-0048): the new place row
  * is attributed to the session tenant's federation (`tenant.federationId`).
+ * Migration 0067 adds the owner: `tenant_id` = the session tenant when
+ * its federation keeps authorities private, NULL when it shares them,
+ * with the same setting deciding whether a steward is required.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { useState } from "react";
@@ -60,12 +66,16 @@ export async function action({ request, context }: Route.ActionArgs) {
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  // Authority mutation gate (ruled 2026-07-08): creating a place is a
-  // canonical authority mutation subject to federation steward review.
-  // Member-tenant admins keep READ access to shared places elsewhere but
-  // are denied here. Behaviour-neutral today (lead admin = steward).
-  const { requireFederationSteward } = await import("~/lib/federation.server");
-  await requireFederationSteward(db, user, tenant);
+  // Authority mint gate (migration 0067, extending the 2026-07-08 rule).
+  // Where the federation SHARES its authority space, creating a place
+  // adds to that shared space and still needs a federation steward; where
+  // it does not, the tenant is minting its own record and its admins may
+  // do so freely. The same call returns the owner to stamp on the row, so
+  // the gate and the stamp cannot drift apart.
+  const { requireAuthorityMint } = await import(
+    "~/lib/authority-ownership.server"
+  );
+  const ownerTenantId = await requireAuthorityMint(db, user, tenant);
 
   const formData = await request.formData();
 
@@ -99,10 +109,20 @@ export async function action({ request, context }: Route.ActionArgs) {
     (formData.get("whgId") as string)?.trim() || undefined;
   // wikidataId dropped on places in 0036.
 
-  // Auto-generate place code
+  // Auto-generate place code. The prefix names the agency that
+  // MAINTAINS the record and comes from the owner the mint gate just
+  // resolved: the federation's prefix for a shared mint, the minting
+  // tenant's for an owned one. It is never re-derived later — ownership
+  // is transferable, a published code is not.
+  const { resolveAuthorityCodePrefix } = await import("~/lib/codes.server");
   const placeCode = await generateUniqueCode(
     db,
-    "nl",
+    await resolveAuthorityCodePrefix(
+      db,
+      "place",
+      tenant.federationId,
+      ownerTenantId
+    ),
     places,
     places.placeCode
   );
@@ -135,6 +155,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await db.insert(places).values({
       federationId: tenant.federationId,
+      tenantId: ownerTenantId,
       id,
       ...parsed.data,
       nameVariants: parsed.data.nameVariants ?? "[]",
@@ -184,7 +205,7 @@ export default function NewPlacePage() {
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex items-center gap-1">
           <li>
             <Link

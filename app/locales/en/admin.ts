@@ -6,7 +6,7 @@
  * project sections, and the all/archived project pickers the admin
  * landing page uses.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   heading: {
@@ -35,6 +35,7 @@ export default {
     email: "Email",
     role: "Role",
     admin: "Admin",
+    collab_admin: "Collab admin",
     admin_status: "Admin",
     user: "User",
     last_active: "Last active",
@@ -76,6 +77,8 @@ export default {
     self_admin: "You cannot change your own admin status.",
     user_not_found: "User not found.",
     invalid_email: "Please enter a valid email address.",
+    invalid_role: "That is not a role that can be given at invite time.",
+    role_not_assignable: "You cannot grant that role.",
     duplicate_email: "A user with this email already exists.",
     user_created: "User {{email}} created.",
     user_invited: "Invite sent to {{email}}.",

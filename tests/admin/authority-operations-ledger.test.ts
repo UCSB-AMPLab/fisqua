@@ -70,7 +70,7 @@ import "../../app/routes/_auth.admin.places.$id";
 import "../../app/routes/_auth.admin.places.$id.merge";
 import "../../app/routes/_auth.admin.places.$id.split";
 import "../../app/routes/_auth.admin.vocabularies.functions.$id";
-import "../../app/routes/_auth.admin.vocabularies.review";
+import "../../app/routes/_auth.admin.decisions.vocabulary";
 
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
@@ -878,7 +878,7 @@ describe("authority_operations — vocabulary merge", () => {
       .where(eq(schema.entities.id, entity.id));
 
     const { action } = await import(
-      "../../app/routes/_auth.admin.vocabularies.review"
+      "../../app/routes/_auth.admin.decisions.vocabulary"
     );
     const result = (await action({
       request: form({

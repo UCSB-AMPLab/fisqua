@@ -9,6 +9,7 @@
  * @version v0.3.0
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 
 type AnnouncementBannerProps = {
@@ -16,6 +17,7 @@ type AnnouncementBannerProps = {
 };
 
 export function AnnouncementBanner({ text }: AnnouncementBannerProps) {
+  const { t } = useTranslation("dashboard");
   const [dismissed, setDismissed] = useState(false);
 
   if (!text || dismissed) {
@@ -29,7 +31,7 @@ export function AnnouncementBanner({ text }: AnnouncementBannerProps) {
         type="button"
         onClick={() => setDismissed(true)}
         className="absolute right-2 top-2 rounded p-1 text-saffron-deep hover:bg-saffron-tint"
-        aria-label="Dismiss announcement"
+        aria-label={t("announcement.dismiss")}
       >
         <X className="h-4 w-4" />
       </button>

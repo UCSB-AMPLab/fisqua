@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Pencil } from "lucide-react";
 
 interface InlineEditCellProps {
@@ -19,6 +20,7 @@ interface InlineEditCellProps {
 }
 
 export function InlineEditCell({ value, onSave, ariaLabel }: InlineEditCellProps) {
+  const { t } = useTranslation("common");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,7 +77,7 @@ export function InlineEditCell({ value, onSave, ariaLabel }: InlineEditCellProps
           setEditing(true);
         }}
         className="invisible rounded p-0.5 text-stone-500 hover:text-stone-700 group-hover:visible"
-        aria-label={ariaLabel ?? "Edit"}
+        aria-label={ariaLabel ?? t("label.edit")}
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>

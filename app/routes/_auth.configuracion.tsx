@@ -7,23 +7,107 @@
  * administrative surfaces live here. Reachable from the sidebar
  * footer and the top-bar user menu.
  *
- * @version v0.3.0
+ * The digest-frequency radios and the locale toggle both write to
+ * `users` columns the notification sweep and the digest renderer
+ * already read (0074) — this page is where a user actually sets
+ * them, not just where the profile form and the language buttons
+ * live. `userContext`'s `User` type carries neither field (it is
+ * populated once per request by the auth middleware from a narrower
+ * select), so the loader runs its own small query for them and
+ * merges the result onto the context user rather than widening the
+ * shared type for one route.
+ *
+ * The language buttons persist to `users.locale` in the background
+ * via a fetcher, alongside their existing client-side
+ * `i18n.changeLanguage` + localStorage write — the digest renderer
+ * needs a server-known locale, but the on-page language switch stays
+ * instant and does not wait on the round trip.
+ *
+ * Save feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. Before that, this page confirmed a successful
+ * profile update but rendered nothing at all on failure, so a name
+ * change that the action rejected looked identical to one that landed.
+ * The locale fetcher deliberately does NOT feed the banner — a
+ * fetcher submission never populates `actionData`, so the shared
+ * feedback naturally stays scoped to the profile and preferences
+ * forms.
+ *
+ * `actionData` arrives as a component prop rather than through
+ * `useActionData` so the feedback states can be rendered — and
+ * asserted — without standing up a live submission.
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
-import { Form, useActionData } from "react-router";
+import { Form, useFetcher, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Github } from "lucide-react";
 import { userContext } from "../context";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.configuracion";
+
+// The sweep's frequency floor is the cron tick (15min) down to a full
+// off; order matches the schema's own `DIGEST_FREQUENCIES` sequence.
+// Kept as a local literal rather than importing `~/db/schema` at module
+// level — that module also carries the Drizzle table definitions, which
+// have no business in the client bundle for a page that only needs five
+// string values. The type-only import below is erased at build time and
+// makes the compiler reject any entry that drifts from the schema enum.
+import type { DIGEST_FREQUENCIES } from "~/db/schema";
+
+type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];
+
+const DIGEST_FREQUENCY_OPTIONS = [
+  "15min",
+  "hourly",
+  "daily",
+  "weekly",
+  "off",
+] as const satisfies readonly DigestFrequency[];
+
+const FREQ_LABEL_KEYS: Record<DigestFrequency, string> = {
+  "15min": "freq_15min",
+  hourly: "freq_hourly",
+  daily: "freq_daily",
+  weekly: "freq_weekly",
+  off: "freq_off",
+};
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { drizzle } = await import("drizzle-orm/d1");
+  const { eq } = await import("drizzle-orm");
+  const { users } = await import("~/db/schema");
+
   const user = context.get(userContext);
-  return { user };
+  const db = drizzle(context.cloudflare.env.DB);
+
+  // The context User carries no preference columns, so the page reads
+  // its own row. locale is deliberately NOT loaded: its consumer is the
+  // digest renderer, and the language buttons key off the live i18n
+  // state, which is what the reader is actually seeing.
+  const [prefs] = await db
+    .select({ digestFrequency: users.digestFrequency })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1)
+    .all();
+
+  return {
+    user: {
+      ...user,
+      digestFrequency: (prefs?.digestFrequency ??
+        "hourly") as DigestFrequency,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -33,7 +117,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq } = await import("drizzle-orm");
-  const { users } = await import("~/db/schema");
+  const { users, DIGEST_FREQUENCIES } = await import("~/db/schema");
 
   const user = context.get(userContext);
   const env = context.cloudflare.env;
@@ -57,8 +141,48 @@ export async function action({ request, context }: Route.ActionArgs) {
       return { ok: true, intent: "updateProfile" };
     }
 
+    case "updatePreferences": {
+      const digestFrequency = formData.get("digestFrequency") as string;
+
+      if (!(DIGEST_FREQUENCIES as readonly string[]).includes(digestFrequency)) {
+        return { ok: false };
+      }
+
+      await db
+        .update(users)
+        .set({
+          digestFrequency: digestFrequency as (typeof DIGEST_FREQUENCIES)[number],
+          updatedAt: Date.now(),
+        })
+        .where(eq(users.id, user.id));
+
+      return { ok: true, intent: "updatePreferences" };
+    }
+
+    case "updateLocale": {
+      const locale = formData.get("locale") as string;
+
+      if (locale !== "en" && locale !== "es") {
+        return { ok: false };
+      }
+
+      await db
+        .update(users)
+        .set({
+          locale,
+          updatedAt: Date.now(),
+        })
+        .where(eq(users.id, user.id));
+
+      return { ok: true, intent: "updateLocale" };
+    }
+
     default:
-      return { ok: false, error: "Unknown action" };
+      // No `error` message: the intent is not reachable from the UI, so
+      // there is nothing user-meaningful to say. The feedback banner
+      // falls back to the localised "not saved" line rather than
+      // surfacing an untranslated developer string.
+      return { ok: false };
   }
 }
 
@@ -68,10 +192,22 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function ConfiguracionPage({
   loaderData,
+  actionData,
 }: Route.ComponentProps) {
   const { user } = loaderData;
-  const actionData = useActionData<typeof action>();
   const { t, i18n } = useTranslation("settings");
+  const navigation = useNavigation();
+  const localeFetcher = useFetcher();
+  const savingProfile = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "updateProfile",
+  );
+  const savingPreferences = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "updatePreferences",
+  );
   const [activeLang, setActiveLang] = useState(i18n.language?.startsWith("es") ? "es" : "en");
 
   function handleLanguageChange(lang: string) {
@@ -82,6 +218,10 @@ export default function ConfiguracionPage({
     } catch {
       // localStorage may not be available
     }
+    localeFetcher.submit(
+      { _action: "updateLocale", locale: lang },
+      { method: "post" },
+    );
   }
 
   return (
@@ -90,12 +230,13 @@ export default function ConfiguracionPage({
         {t("title")}
       </h1>
 
-      {/* Success feedback */}
-      {actionData?.ok && actionData?.intent === "updateProfile" && (
-        <div className="mt-4 flex items-center gap-2 rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {t("saved")}
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={actionData}
+        pending={savingProfile || savingPreferences}
+        labels={{ success: t("saved"), error: t("common:save.failed") }}
+        className="mt-4"
+      />
 
       {/* Profile section */}
       <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
@@ -127,12 +268,11 @@ export default function ConfiguracionPage({
               {user.email}
             </p>
           </div>
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save")}
-          </button>
+          <SaveButton
+            pending={savingProfile}
+            label={t("save")}
+            pendingLabel={t("common:save.saving")}
+          />
         </Form>
       </div>
 
@@ -165,6 +305,44 @@ export default function ConfiguracionPage({
             {t("language_en")}
           </button>
         </div>
+      </div>
+
+      {/* Notifications section */}
+      <div className="mt-6 rounded-lg border border-stone-200 bg-white p-6">
+        <h2 className="text-lg font-semibold text-stone-700">
+          {t("notifications")}
+        </h2>
+        <p className="mt-1 text-sm text-stone-500">{t("notificationsHint")}</p>
+        <Form method="post" className="mt-4 space-y-4">
+          <input type="hidden" name="_action" value="updatePreferences" />
+          <fieldset>
+            <legend className="block font-sans text-xs font-medium text-indigo">
+              {t("freqLegend")}
+            </legend>
+            <div className="mt-2 space-y-2">
+              {DIGEST_FREQUENCY_OPTIONS.map((freq) => (
+                <label
+                  key={freq}
+                  className="flex items-center gap-2 text-sm text-stone-700"
+                >
+                  <input
+                    type="radio"
+                    name="digestFrequency"
+                    value={freq}
+                    defaultChecked={user.digestFrequency === freq}
+                    className="accent-indigo"
+                  />
+                  {t(FREQ_LABEL_KEYS[freq])}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <SaveButton
+            pending={savingPreferences}
+            label={t("save")}
+            pendingLabel={t("common:save.saving")}
+          />
+        </Form>
       </div>
 
       {/* Connected accounts section */}

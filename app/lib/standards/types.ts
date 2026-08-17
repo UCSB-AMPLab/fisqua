@@ -73,7 +73,8 @@ export type Primitive =
   | "checkbox"
   | "iiif-url"
   | "entity-linker"
-  | "place-linker";
+  | "place-linker"
+  | "legacy-ids";
 
 /**
  * A single field inside a section. `column` MUST exist on
@@ -91,6 +92,21 @@ export type FieldConfig = {
   requiredAt: ReadonlyArray<DescriptionLevel>;
   /** Optional pass-through hints to the renderer (rows, placeholder, etc.). */
   hints?: { rows?: number; placeholder?: string };
+  /**
+   * The element number this column answers to IN THIS STANDARD — e.g.
+   * `"3.1.1"` for ISAD(G) reference code. Its presence declares that
+   * the form should offer the standard's own words about the field,
+   * and the number is rendered as the citation beside them.
+   *
+   * The quoted text itself lives in the locale bundles under
+   * `guidance.<standard>.<column>`, because it is translated. The two
+   * halves are deliberately keyed by standard with NO cross-standard
+   * fallback: a DACS tenant falling back to ISAD(G)'s wording under a
+   * DACS citation would be a false attribution, which is worse than
+   * no guidance at all. `tests/standards/guidance-coverage.test.ts`
+   * holds citation and text in lockstep so neither can appear alone.
+   */
+  guidance?: string;
 };
 
 /**
@@ -120,6 +136,30 @@ export type SectionConfig = {
  */
 export type StandardConfig = {
   standard: Standard;
+  /**
+   * How the standard names itself in a citation ("ISAD(G)", "DACS",
+   * "RAD"). It lives here rather than in a locale bundle because it
+   * is a proper noun, identical in every language, and because the
+   * description surface is forbidden from naming a standard in copy
+   * (tests/standards/no-hardcoded-standards.test.ts) — the config is
+   * the sanctioned home for the literal. An attributed quotation is
+   * the one place the name legitimately reaches the reader.
+   */
+  displayName: string;
+  /**
+   * Whether this standard's field guidance is the standard's OWN words
+   * or our summary of them. It governs presentation, not storage: a
+   * verbatim statement renders inside quotation marks over a bare
+   * citation, a summary renders unquoted and the citation says the text
+   * is based on the element rather than taken from it.
+   *
+   * RAD is the reason this exists. Its text is all rights reserved, so
+   * it is summarised rather than quoted; showing a summary in quotation
+   * marks would attribute our sentence to the Canadian Council of
+   * Archives, which is the misattribution this whole feature is built
+   * to avoid.
+   */
+  guidanceVerbatim: boolean;
   sections: ReadonlyArray<SectionConfig>;
   /** Derived helper: which columns are required at this level. */
   requiredFieldsForLevel: (level: DescriptionLevel) => ReadonlyArray<string>;

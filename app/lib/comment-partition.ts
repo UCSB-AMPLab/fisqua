@@ -28,8 +28,10 @@ export interface PartitionInputComment {
   regionW: number | null;
   regionH: number | null;
   /** Author id threaded through regionsByPage for task 15 per-pin
- *  move-mode gating (non-authors can't drag someone else's pin). */
-  authorId: string;
+ *  move-mode gating (non-authors can't drag someone else's pin).
+ *  NULL for label-authored comments (author user-XOR-label): they
+ *  match no user, so gated affordances simply never light up. */
+  authorId: string | null;
   // Other fields pass through unchanged; the helper is generic over extras.
   [key: string]: unknown;
 }
@@ -51,7 +53,7 @@ export interface PartitionResult<C extends PartitionInputComment> {
  y: number;
  w: number;
  h: number;
- authorId: string;
+ authorId: string | null;
  }>
   >;
   commentCountByEntry_attached: Record<string, number>;
@@ -79,7 +81,7 @@ export function partitionComments<C extends PartitionInputComment>(
  y: number;
  w: number;
  h: number;
- authorId: string;
+ authorId: string | null;
  }>
   > = {};
   const commentCountByEntry_attached: Record<string, number> = {};

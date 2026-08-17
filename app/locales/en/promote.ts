@@ -6,12 +6,16 @@
  * lets a superadmin lift entries out of the cataloguing tree into the
  * published archival data model.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   heading: {
     title: "Promote entries",
   },
+  superadmin_only: "Only superadmins can access this page.",
+  approved_entries_one: "{{count}} approved entry",
+  approved_entries_other: "{{count}} approved entries",
+  viewer_placeholder: "IIIF viewer — {{url}}",
   volume: {
     heading: "Select a volume",
     empty: "No volumes have approved entries ready for promotion.",
@@ -60,5 +64,9 @@ export default {
       "Promotion failed. Please try again or contact an administrator.",
     noSelection: "Select at least one entry to promote.",
     duplicateRefCode: 'Reference code "{{code}}" already exists.',
+    batch_too_large: "The batch exceeds the maximum of {{max}}",
+    volume_not_found: "Volume not found: {{id}}",
+    no_matching_description:
+      "No description matches the volume's reference code {{code}}",
   },
 } as const;

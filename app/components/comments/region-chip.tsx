@@ -26,12 +26,10 @@ export type RegionChipProps = {
 export function computeChipLabelArgs(pageNumber: number): {
   key: string;
   vars: { page: number };
-  defaultValue: string;
 } {
   return {
- key: "regions:chip.label",
+ key: "viewer:regions.chip_label",
  vars: { page: pageNumber },
- defaultValue: `Región · p. ${pageNumber}`,
   };
 }
 
@@ -58,8 +56,8 @@ export function RegionChip({
   pageNumber,
   onScrollToRegion,
 }: RegionChipProps) {
-  const { t } = useTranslation(["regions"]);
-  const { key, vars, defaultValue } = computeChipLabelArgs(pageNumber);
+  const { t } = useTranslation(["viewer"]);
+  const { key, vars } = computeChipLabelArgs(pageNumber);
 
   return (
  <button
@@ -69,7 +67,7 @@ export function RegionChip({
  data-testid="region-chip"
  >
  <MapPin size={10} color="#1F2E4D" aria-hidden="true" />
- <span>{t(key, { ...vars, defaultValue })}</span>
+ <span>{t(key, vars)}</span>
  </button>
   );
 }

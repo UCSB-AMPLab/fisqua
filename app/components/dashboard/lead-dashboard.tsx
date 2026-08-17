@@ -15,14 +15,14 @@
  * all loaders run on the parent route, which keeps this file safe to
  * mount under SSR without round-tripping the database.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { StackedProgressBar } from "./progress-bar";
 import { DescriptionProgressBar } from "./description-progress-bar";
-import { relativeTime } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
 
 export type AttentionItem = {
   type: "waiting" | "inactive" | "unassigned" | "description-review" | "resegmentation";
@@ -182,6 +182,7 @@ function AttentionItemDescription({ item }: { item: AttentionItem }) {
 
 function ProjectCard({ project }: { project: ProjectOverview }) {
   const { t } = useTranslation(["dashboard", "common", "workflow", "description"]);
+  const { relativeTime } = useFormatters();
   const hasDescription = project.descriptionStatusCounts &&
     Object.values(project.descriptionStatusCounts).some((n) => n > 0);
 

@@ -408,7 +408,7 @@ describe("promoteEntries", () => {
         standard: "isadg",
         manifestBaseUrl: "https://manifests.zasqua.org",
       })
-    ).rejects.toThrow("exceeds maximum");
+    ).rejects.toThrow("batch_too_large");
   });
 
   it("rejects entries with type other than item", async () => {

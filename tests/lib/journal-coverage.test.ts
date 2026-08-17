@@ -163,6 +163,14 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|update|descriptionPlaces`, count: 1, reason: "Manual place-link edit; un-journaled today. Stage 2." },
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|delete|descriptionPlaces`, count: 1, reason: "Manual place unlink; recorded nowhere today. Stage 2 writes an unlink row." },
 
+  // --- Accepting an authority proposal links the new heading to the
+  //     record that justified it. Linking is un-journaled everywhere in
+  //     the product today (see the manual link sites above), so these
+  //     close with the rest of linking in stage 2 rather than making
+  //     one accept path claim a completeness the ledger does not have.
+  { key: `${P}lib/pending-decisions.server.ts|insert|descriptionEntities`, count: 1, reason: "Link-on-accept for an entity proposal; linking is un-journaled product-wide. Stage 2 writes a link row." },
+  { key: `${P}lib/pending-decisions.server.ts|insert|descriptionPlaces`, count: 1, reason: "Link-on-accept for a place proposal; linking is un-journaled product-wide. Stage 2 writes a link row." },
+
   // --- Description list/tree bulk operations (move, reorder, bulk
   //     publish, bulk delete). Hierarchy + status mutations; structural
   //     cache recompute is derived, not journaled content.
@@ -210,8 +218,10 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   { key: `${P}routes/_auth.admin.repositories.new.tsx|insert|repositories`, count: 1, reason: "Repository create; no create row today. Stage 2." },
 
   // --- Vocabulary review re-links entities to a merged term; the entity
-  //     row's function fields change as a side effect.
-  { key: `${P}routes/_auth.admin.vocabularies.review.tsx|update|entities`, count: 1, reason: "Vocab review remaps entity primary_function on term merge; ledger-adjacent. Stage 2." },
+  //     row's function fields change as a side effect. The surface moved
+  //     under the unified decisions route, so the key follows the file;
+  //     the site and its justification are unchanged.
+  { key: `${P}routes/_auth.admin.decisions.vocabulary.tsx|update|entities`, count: 1, reason: "Vocab review remaps entity primary_function on term merge; ledger-adjacent. Stage 2." },
   { key: `${P}routes/_auth.admin.vocabularies.functions.$id.tsx|update|entities`, count: 2, reason: "Function-vocabulary rename cascades to entity function fields; legacy createChangelogEntry. Stage 2." },
 
   // --- Promote pipeline: crowdsourced entry -> published description.

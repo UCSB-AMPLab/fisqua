@@ -105,7 +105,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 
 export async function action({ context, request }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { promoteEntries } = await import("../lib/promote/promote.server");
+  const { promoteEntries, PromotionError } = await import(
+    "../lib/promote/promote.server"
+  );
 
   const user = context.get(userContext);
   if (!user.isSuperAdmin) {
@@ -176,7 +178,13 @@ export async function action({ context, request }: Route.ActionArgs) {
 
     return { success: true, result };
   } catch (err: any) {
-    return { error: err.message || "Promotion failed" };
+    // Stable tokens only: PromotionError's message IS the token and
+    // `detail` carries the interpolation values; anything else stays
+    // server-side and the client renders its generic copy.
+    if (err instanceof PromotionError) {
+      return { error: err.message, errorDetail: err.detail };
+    }
+    return { error: "generic" };
   }
 }
 
@@ -210,6 +218,14 @@ function countMappedFields(entry: Record<string, any>): number {
 // ---------------------------------------------------------------------------
 
 type Step = "select-volume" | "select-entries" | "review";
+
+// Token -> promote-namespace key for the action's PromotionError
+// tokens; anything unrecognised renders the generic copy.
+const PROMOTE_ERROR_KEYS: Record<string, string> = {
+  batch_too_large: "error.batch_too_large",
+  volume_not_found: "error.volume_not_found",
+  no_matching_description: "error.no_matching_description",
+};
 
 export default function PromotePage({
   loaderData,
@@ -246,7 +262,7 @@ export default function PromotePage({
     return (
       <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3">
         <p className="font-sans text-sm text-saffron-deep">
-          Only superadmins can access this page.
+          {t("superadmin_only")}
         </p>
       </div>
     );
@@ -327,11 +343,13 @@ export default function PromotePage({
 
       const data = (await response.json()) as {
         error?: string;
+        errorDetail?: Record<string, string | number>;
         result?: { promoted?: unknown[] };
       };
 
       if (data.error) {
-        setToastMessage(data.error);
+        const key = PROMOTE_ERROR_KEYS[data.error];
+        setToastMessage(key ? t(key, data.errorDetail) : t("error.generic"));
         setTimeout(() => setToastMessage(null), 5000);
       } else if (data.result) {
         const count = data.result.promoted?.length ?? 0;
@@ -467,7 +485,7 @@ export default function PromotePage({
               {volumeManifestUrl ? (
                 <div className="flex h-[600px] items-center justify-center rounded-lg bg-stone-100 text-sm text-stone-500">
                   <p>
-                    IIIF Viewer — {volumeManifestUrl}
+                    {t("viewer_placeholder", { url: volumeManifestUrl })}
                   </p>
                 </div>
               ) : (

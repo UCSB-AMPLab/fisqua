@@ -161,7 +161,7 @@ type IIIFViewerProps = {
  y: number;
  w: number;
  h: number;
- authorId: string;
+ authorId: string | null;
  }>
   >;
   /**

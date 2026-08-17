@@ -7,9 +7,11 @@
  * additionally enforces the lead-only resolver rule. GET lists open
  * flags for the requested volume or entry.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
+import { apiErrorToken } from "../lib/api-error.server";
 import type { Route } from "./+types/api.qc-flags";
 import {
   QC_PROBLEM_TYPES,
@@ -41,7 +43,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { z } = await import("zod");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "POST") {
  let body: any;
@@ -81,6 +88,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // Access guard — any project member can raise a flag.
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin
@@ -98,6 +106,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // call mirrors other mutation sites for parity.
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -137,12 +146,11 @@ export async function action({ request, context }: Route.ActionArgs) {
  return Response.json({ ok: true, flagId: result.id });
  } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to create QC flag";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
  }
   }
 
@@ -208,6 +216,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  ["lead"],
@@ -246,12 +255,11 @@ export async function action({ request, context }: Route.ActionArgs) {
  return Response.json({ ok: true });
  } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to resolve QC flag";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
  }
   }
 
@@ -270,7 +278,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { volumes } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const url = new URL(request.url);
   const volumeId = url.searchParams.get("volumeId");
@@ -310,6 +323,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
  await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -320,12 +334,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
  return Response.json({ flags });
   } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to load QC flags";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
   }
 }
 

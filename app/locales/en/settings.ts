@@ -23,4 +23,15 @@ export default {
   github_connected: "Connected",
   github_not_connected: "Not connected",
   github_connect: "Connect",
+
+  // Notifications: the digest-frequency preference the sweep reads.
+  notifications: "Notifications",
+  notificationsHint:
+    "An email summary of activity on your pending decisions: rulings on questions you raised, new comments, new proposals.",
+  freqLegend: "Summary frequency",
+  freq_15min: "Every 15 minutes",
+  freq_hourly: "Hourly",
+  freq_daily: "Daily",
+  freq_weekly: "Weekly",
+  freq_off: "Off",
 } as const;

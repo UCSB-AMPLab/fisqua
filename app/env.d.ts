@@ -12,7 +12,7 @@
  * declaration for the typecheck step to pass without first running a
  * wrangler build.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 interface Env {
   DB: D1Database;
@@ -27,6 +27,9 @@ interface Env {
   RESEND_API_KEY: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
+  // Suffix the tenant subdomains hang off (".fisqua.org"). Read only by
+  // the cron sweep, which has no request to derive a host from.
+  PUBLIC_HOST_SUFFIX?: string;
   // Import staging store (spec §7.4). BACKEND is the explicit selector —
   // "b2" in production, unset/anything else means R2 over BUCKET (dev,
   // tests). The four S3 vars back the B2 store and are only read when

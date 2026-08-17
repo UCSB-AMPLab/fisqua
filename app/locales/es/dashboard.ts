@@ -5,15 +5,17 @@
  * authenticated-tree chrome — the primary side-nav (Inicio, Proyectos,
  * Miembros, Mis asignaciones, Todas las unidades compuestas,
  * Configuración, Cerrar sesión, Administración) and the per-section
- * headings on the dashboard surface.
+ * headings on the dashboard surface, including the admin-only "Pending
+ * decisions" card (`pending_decisions`).
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 export default {
   nav: {
     home: "Inicio",
     projects: "Proyectos",
     members: "Miembros",
+    switch_workspace: "Cambiar de espacio de trabajo",
     my_assignments: "Mis asignaciones",
     all_volumes: "Todas las unidades compuestas",
     settings: "Configuración",
@@ -70,6 +72,11 @@ export default {
     reseg_pending: "Re-segmentación pendiente",
   },
   empty: {
+    records_title: "Todo listo para catalogar",
+    records_body:
+      "Crea descripciones archivísticas, administra repositorios o importa registros existentes.",
+    go_to_descriptions: "Ir a descripciones",
+    go_to_imports: "Ir a importaciones",
     no_projects_title: "Aún no hay proyectos",
     no_projects_body: "Crea uno para empezar.",
     no_projects_admin_body: "Crea un proyecto o administra los usuarios para empezar.",
@@ -95,11 +102,23 @@ export default {
   announcement_label: "Anuncio del sistema (visible para todos los usuarios)",
   set_announcement: "Establecer anuncio",
   clear_announcement: "Borrar",
+  announcement: {
+    dismiss: "Descartar el anuncio",
+  },
   today: "Hoy",
   days_waiting_one: "{{count}} día en espera",
   days_waiting_other: "{{count}} días en espera",
   new_project: "Nuevo proyecto",
   manage_users: "Administrar usuarios",
+  pending_decisions: {
+    waiting_one: "{{count}} pregunta espera tu decisión",
+    waiting_other: "{{count}} preguntas esperan tu decisión",
+    title: "Decisiones pendientes",
+    authority_proposals_one: "{{count}} propuesta de autoridad",
+    authority_proposals_other: "{{count}} propuestas de autoridad",
+    vocabulary_proposals_one: "{{count}} propuesta de vocabulario",
+    vocabulary_proposals_other: "{{count}} propuestas de vocabulario",
+  },
   by: "por {{name}}",
   unnamed: "Sin nombre",
   vol_abbr: "uds.",

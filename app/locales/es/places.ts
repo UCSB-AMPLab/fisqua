@@ -6,7 +6,7 @@
  * primary call-to-action. Places follow the Linked Places conventions
  * the rest of the entities surface uses.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 export default {
   // Page
@@ -25,7 +25,7 @@ export default {
   deleteButton: "Eliminar lugar",
   deleteTitle: "Eliminar lugar",
   deleteBody:
-    "¿Está seguro de que desea eliminar {{name}}? Esta acción no se puede deshacer.",
+    "¿Estás seguro de que deseas eliminar {{name}}? Esta acción no se puede deshacer.",
   deleteBlocked: "No se puede eliminar — {{count}} descripciones vinculadas",
   cascadeWarning: "Este lugar tiene {{count}} descripciones vinculadas.",
   cascadeExamples: "Ejemplos:",
@@ -215,6 +215,12 @@ export default {
   coordPrecisionLabel: "Precisión",
   // Opción vacía (sin definir) del selector de precisión.
   coordPrecisionUnset: "Sin registrar",
+  "coord.latitude": "Latitud",
+  "coord.longitude": "Longitud",
+  "coord.precision": "Precisión",
+  "coord.precision_approximate": "Aproximada",
+  "coord.precision_exact": "Exacta",
+  "coord.precision_centroid": "Centroide",
 
   // Combined places surface (spec §5 — una sola página de lista y mapa)
   linkCount_one: "{{count}} vínculo",

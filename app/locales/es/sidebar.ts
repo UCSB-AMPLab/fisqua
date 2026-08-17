@@ -3,13 +3,16 @@
  *
  * This locale namespace carries the Spanish strings for the staff
  * sidebar — the top-level navigation links that anchor the `_auth`
- * chrome (Inicio, Mis proyectos, Descripciones, Entidades, Lugares,
- * Repositorios, Publicar, Promover, Catalogación colaborativa).
+ * chrome (Inicio, Listas de trabajo, Mis proyectos, Descripciones,
+ * Entidades, Lugares, Repositorios, Publicar, Promover,
+ * Catalogación colaborativa).
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 export default {
+  search: "Buscar",
   home: "Inicio",
+  handlists: "Listas de trabajo",
   my_projects: "Mis proyectos",
   descriptions: "Descripciones",
   entities: "Entidades",
@@ -25,7 +28,11 @@ export default {
   records_management: "Gestión documental",
   authorities: "Autoridades",
   imports: "Importaciones",
+  exports: "Exportaciones",
+  import_and_export: "Importación y exportación",
   possible_duplicates: "Posibles duplicados",
+  // ES value pending — drafted separately with the decisions namespace.
+  pending_decisions: "Decisiones pendientes",
   my_settings: "Mi configuración",
   system_users: "Usuarios del sistema",
   no_users: "No se encontraron usuarios.",

@@ -4,16 +4,17 @@
  * This page is the landing surface for one project: headline stats,
  * the list of volumes with their descrption-workflow status, and
  * quick links into the
- * more specialised project surfaces. Read-only — every mutation lives
+ * more specialised project surfaces. The one mutation it hosts is the
+ * describer assignment on the kanban card; every other mutation lives
  * on the dedicated sub-pages.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import { useState, useCallback } from "react";
 import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { PipelineColumn } from "../components/pipeline/pipeline-column";
 import { AssignDescriberPopover } from "../components/pipeline/assign-describer-popover";
 import type { Route } from "./+types/_auth.projects.$id.overview";
@@ -28,11 +29,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
   await requireProjectRole(
     db,
+    tenant.id,
     user.id,
     params.id,
     [...PROJECT_ROLES],
@@ -40,23 +43,40 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const [columns, teamMembers] = await Promise.all([
-    getPipelineData(db, params.id),
-    getTeamMembers(db, params.id),
+    getPipelineData(db, tenant.id, params.id),
+    getTeamMembers(db, tenant.id, params.id),
   ]);
 
   return { columns, teamMembers, user, projectId: params.id };
 }
 
-export async function action({ request, context }: Route.ActionArgs) {
+export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
+  const { eq, and } = await import("drizzle-orm");
   const { z } = await import("zod");
+  const { requireProjectRole } = await import("../lib/permissions.server");
   const { assignDescriber } = await import(
     "../lib/pipeline/pipeline.server"
   );
+  const { entries, volumes, projectMembers } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+
+  // Loaders and actions are separately reachable, so the action needs
+  // its own guard — the loader's proves nothing about this request.
+  // Roles mirror the loader's: any member of the project may work the
+  // kanban, which is also what the UI offers.
+  await requireProjectRole(
+    db,
+    tenant.id,
+    user.id,
+    params.id,
+    [...PROJECT_ROLES],
+    user.isAdmin
+  );
 
   const formData = await request.formData();
   const intent = formData.get("intent");
@@ -76,7 +96,50 @@ export async function action({ request, context }: Route.ActionArgs) {
       return { success: false, error: "Invalid input" };
     }
 
-    return assignDescriber(db, parsed.data.entryId, parsed.data.describerId);
+    // Holding a role on params.id authorises writes to params.id only.
+    // Resolve the submitted entry back to its own project and refuse
+    // anything that does not land in the project we authorised against
+    // — 404, not 403, so a foreign entry id is not confirmed to exist.
+    const [linked] = await db
+      .select({ projectId: volumes.projectId })
+      .from(entries)
+      .innerJoin(volumes, eq(entries.volumeId, volumes.id))
+      .where(eq(entries.id, parsed.data.entryId))
+      .limit(1)
+      .all();
+
+    if (!linked || linked.projectId !== params.id) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // The describer must already be a member of this project. Without
+    // this an arbitrary user id — including one from another tenant —
+    // could be written into entries.assigned_describer.
+    const [describerMembership] = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, params.id),
+          eq(projectMembers.userId, parsed.data.describerId)
+        )
+      )
+      .limit(1)
+      .all();
+
+    if (!describerMembership) {
+      return Response.json(
+        { success: false, error: "Describer is not a project member" },
+        { status: 400 }
+      );
+    }
+
+    return assignDescriber(
+      db,
+      tenant.id,
+      parsed.data.entryId,
+      parsed.data.describerId
+    );
   }
 
   return { success: false, error: "Unknown intent" };

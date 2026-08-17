@@ -73,4 +73,20 @@ describe("i18n setup", () => {
     expect(initReactI18next).toHaveProperty("type", "3rdParty");
     expect(initReactI18next).toHaveProperty("init");
   });
+
+  it("disables i18next's own interpolation escaping on both bootstraps", async () => {
+    // Without `escapeValue: false`, i18next HTML-escapes interpolated
+    // values (e.g. a workflow step label like "create-batch:3/113"
+    // becomes "create-batch:3&#x2F;113") before React ever renders
+    // them -- React's JSX escaping does not run a second pass to undo
+    // that, so the entity is what a reader sees. React already escapes
+    // on render, so i18next must not escape first. Read via Vite's
+    // `?raw` suffix rather than `node:fs`: the Workers pool sandbox has
+    // no real filesystem, but the raw-source transform still runs at
+    // bundle time.
+    const { default: middlewareSrc } = await import("../app/middleware/i18next.ts?raw");
+    const { default: clientEntrySrc } = await import("../app/entry.client.tsx?raw");
+    expect(middlewareSrc).toMatch(/interpolation:\s*{\s*escapeValue:\s*false\s*}/);
+    expect(clientEntrySrc).toMatch(/interpolation:\s*{\s*escapeValue:\s*false\s*}/);
+  });
 });

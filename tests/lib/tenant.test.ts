@@ -54,8 +54,11 @@ describe("SlugSchema", () => {
         const result = SlugSchema.safeParse(slug);
         expect(result.success).toBe(false);
         if (!result.success) {
+          // Server-side validators emit stable tokens, not prose: the
+          // route maps the token to a localized string, so the token is
+          // the contract this test pins.
           const messages = result.error.issues.map((i) => i.message);
-          expect(messages).toContain("Slug is reserved");
+          expect(messages).toContain("slug_reserved_word");
         }
       });
     }

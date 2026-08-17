@@ -54,6 +54,125 @@ export default {
   ref_code_helper:
     "Sugerido a partir del registro padre. Lo puedes editar.",
   parent_helper: "Padre: {{parentTitle}}",
+  level_required_helper:
+    "El nivel {{level}} también exige estos campos. Los puedes ajustar después en la misma descripción.",
+
+  // Orientación por campo: lo que la propia norma dice que es cada
+  // elemento, citado textualmente. Se organiza por norma y NO hereda de
+  // una norma a otra: ver FieldConfig.guidance en
+  // app/lib/standards/types.ts, porque heredar equivaldría a atribuirle
+  // a una norma palabras de otra. La cita viene del config, no de aquí.
+  //
+  // ISAD(G): Norma Internacional General de Descripción Archivística,
+  // 2a ed. (Consejo Internacional de Archivos, Madrid, 2000), tomado
+  // del "Objetivo" de cada elemento. Esta versión española es una
+  // traducción de referencia, no un documento oficial; se transcribe
+  // tal cual, corrigiendo únicamente los errores de digitalización del
+  // ejemplar escaneado.
+  guidance: {
+    "referenceCode.isadg":
+      "Identificar de un modo único la unidad de descripción y establecer el vínculo con la descripción que la representa.",
+    "title.isadg": "Denominar la unidad de descripción.",
+    "dateExpression.isadg":
+      "Identificar y consignar la(s) fecha(s) de la unidad de descripción.",
+    "descriptionLevel.isadg":
+      "Identificar el nivel de organización de la unidad de descripción.",
+    "extent.isadg":
+      "Identificar y describir: a. la extensión física o lógica y b. el soporte de la unidad de descripción.",
+    "creatorDisplay.isadg":
+      "Identificar el productor o los productores de la unidad de descripción.",
+    "scopeContent.isadg":
+      "Proporcionar a los usuarios la información necesaria para apreciar el valor potencial de la unidad de descripción.",
+    "provenance.isadg":
+      "Proporcionar información sobre la historia de la unidad de descripción que sea significativa para su autenticidad, integridad e interpretación.",
+    "arrangement.isadg":
+      "Informar sobre la estructura interna, la ordenación y/o el sistema de clasificación de la unidad de descripción.",
+    "accessConditions.isadg":
+      "Informar sobre la situación jurídica y cualquier otra normativa que restrinja o afecte el acceso a la unidad de descripción.",
+    "reproductionConditions.isadg":
+      "Identificar cualquier tipo de restricción relativa a la reproducción de la unidad de descripción.",
+    "language.isadg":
+      "Identificar la(s) lengua(s), escritura(s) y sistemas de símbolos utilizados en la unidad de descripción.",
+    "findingAids.isadg":
+      "Identificar cualquier tipo de instrumento de descripción relativo a la unidad de descripción.",
+    "locationOfOriginals.isadg":
+      "En el caso de que la unidad de descripción esté formada por copias, indicar la existencia, localización, disponibilidad y/o eliminación de los originales.",
+    "locationOfCopies.isadg":
+      "Indicar la existencia, localización y disponibilidad de copias de la unidad de descripción.",
+    "notes.isadg":
+      "Dar información que no haya podido ser incluida en ninguna de las otras áreas.",
+    // DACS: Describing Archives: A Content Standard, 2019.0.3 (Society
+    // of American Archivists), del "Purpose and Scope" de cada elemento.
+    // A diferencia de ISAD(G), DACS NO tiene edición en español: estas
+    // son traducciones nuestras, que la licencia CC-BY permite como obra
+    // derivada. «Atribuido» (nunca «atributado») traduce el "devised"
+    // de DACS, siguiendo los «títulos atribuidos» de la ISAD(G) española
+    // para que ambas normas usen el mismo término.
+    "referenceCode.dacs":
+      "Este elemento proporciona un identificador único para la unidad que se describe. El identificador puede constar de tres subelementos: un identificador local, un código del repositorio y un código del país.",
+    "repositoryId.dacs":
+      "Este elemento identifica el nombre y la ubicación del repositorio que custodia los materiales descritos.",
+    "title.dacs":
+      "Este elemento proporciona una palabra o frase por la cual se conoce o se puede identificar el material descrito. El título puede ser atribuido o formal.",
+    "dateExpression.dacs":
+      "Este elemento identifica y consigna la o las fechas relacionadas con la creación, reunión, acumulación y/o conservación y uso de los materiales descritos.",
+    "extent.dacs":
+      "Este elemento indica el volumen y la naturaleza física de los materiales descritos. Se expresa en dos partes: una cantidad y una expresión del volumen o del tipo de material.",
+    "creatorDisplay.dacs":
+      "Este elemento identifica las entidades, personas y familias vinculadas con la creación, reunión, acumulación y/o conservación y uso de los materiales descritos, para dejarlas debidamente documentadas y usarlas como puntos de acceso con los que los usuarios puedan buscar y recuperar los registros descriptivos.",
+    "adminBiogHistory.dacs":
+      "La historia administrativa o reseña biográfica aporta información relevante sobre las entidades, personas o familias que se identifican en el elemento Nombre del productor y que, por lo tanto, funcionan como puntos de acceso onomásticos.",
+    "scopeContent.dacs":
+      "Este elemento aporta información sobre la naturaleza de los materiales y las actividades que refleja la unidad descrita, para que los usuarios puedan juzgar su posible relevancia.",
+    "accessConditions.dacs":
+      "Este elemento aporta información sobre las restricciones de acceso derivadas de la naturaleza de la información contenida en los materiales descritos, como las que imponen el donante, el repositorio o requisitos legales o reglamentarios.",
+    "language.dacs":
+      "Este elemento identifica las lenguas, escrituras y sistemas de símbolos empleados en los materiales descritos, sobre todo en cuanto puedan afectar su uso.",
+    // RAD: Rules for Archival Description (Canadian Council of
+    // Archives), capítulo 1, versión revisada de julio de 2008. El texto
+    // de RAD tiene todos los derechos reservados, así que estos son
+    // RESÚMENES nuestros, no citas: el config marca la norma con
+    // `guidanceVerbatim: false` y la ayuda no pone comillas.
+    "title.rad":
+      "Transcribe el título formal que traen los propios documentos; si no lo traen, redacta uno.",
+    "editionStatement.rad":
+      "Transcribe la mención de edición del documento. Solo en el nivel de unidad documental.",
+    "dateExpression.rad":
+      "La fecha o las fechas de creación. En los niveles de agrupación se consignan las fechas de creación, no los datos de publicación.",
+    "extent.rad":
+      "Cuántas unidades físicas hay, en cifras arábigas, con la designación específica del tipo de material.",
+    "dimensions.rad":
+      "Las dimensiones del material, según las reglas de su clase.",
+    "seriesStatement.rad":
+      "El título de la serie del editor o del artista a la que pertenece el documento; no se trata de una serie archivística.",
+    "adminBiogHistory.rad":
+      "La historia de la entidad, la persona o la familia responsable de crear, acumular y usar los documentos.",
+    "provenance.rad":
+      "Los traspasos sucesivos de propiedad, custodia o control de los documentos, con sus fechas, hasta donde se puedan establecer. No se confunde con la historia del productor.",
+    "scopeContent.rad":
+      "Las funciones o actividades de las que provienen los documentos, la relación entre ellos, cómo están organizados y sus tipos documentales, además del periodo, la materia y el ámbito geográfico que abarcan.",
+    "systemOfArrangement.rad":
+      "La organización que ayuda a entender los documentos pero no cabe en alcance y contenido: una reorganización hecha por el productor, la ordenación hecha por el archivista, un cambio en el cuadro de clasificación.",
+    "notes.rad":
+      "Información descriptiva que no cabe en ninguna otra área.",
+  },
+  guidance_source: "{{standard}} {{element}}",
+  guidance_source_summary: "Según {{standard}} {{element}}",
+  guidance_example_label: "p. ej.",
+  // Ejemplos tomados de los bloques de Ejemplos de las propias normas.
+  // Cada idioma usa los de su edición, así que el español muestra
+  // ejemplos de archivos de habla hispana y no la traducción de uno en
+  // inglés. Solo se incluyen los que se leen de un vistazo: los de
+  // alcance y contenido ocupan un párrafo, así que ese campo lleva
+  // únicamente el objetivo.
+  guidance_example: {
+    "referenceCode.isadg": "ES AGI CORREOS",
+    "title.isadg": "Consejo de Inquisición",
+    "dateExpression.isadg": "1752-1839",
+    "descriptionLevel.isadg": "Fondo",
+    "extent.isadg": "895 unidades de instalación",
+    "creatorDisplay.isadg": "Consejo Real de España e Indias",
+  },
 
   // Etiquetas de sección: identificadas por el id estable en
   // inglés desde los configs de estándar
@@ -106,6 +225,7 @@ export default {
     // Área de identificación
     referenceCode: "Código de referencia",
     localIdentifier: "Identificador local",
+    legacyIds: "Identificadores anteriores",
     title: "Título",
     translatedTitle: "Título traducido",
     uniformTitle: "Título uniforme",

@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Form, useActionData, useNavigate, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Loader2, GripVertical, Plus, X } from "lucide-react";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/_auth.projects.$id.settings";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -30,12 +30,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { getDocumentSubtypes } = await import("../lib/project-settings");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
-  const project = await getProject(db, params.id);
+  const project = await getProject(db, tenant.id, params.id);
   if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -62,11 +63,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;

@@ -10,12 +10,13 @@
  * relative path so the module loads cleanly under the workers
  * vitest pool (which does not alias `~/`).
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { formatIsoDateTime } from "../../lib/format-date";
+import { useFormatters } from "../../lib/use-formatters";
 
 export interface ExportHistoryRow {
   id: string;
@@ -31,15 +32,6 @@ export interface ExportHistoryRow {
 
 interface ExportHistoryProps {
   history: ExportHistoryRow[];
-}
-
-function formatDuration(startedAt: number | null, completedAt: number | null): string {
-  if (!startedAt || !completedAt) return "\u2014";
-  const seconds = Math.round((completedAt - startedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes}m ${remainder}s`;
 }
 
 interface RecordTotals {
@@ -87,10 +79,6 @@ function parseRecordTotals(recordCounts: string | null): RecordTotals | null {
   };
 }
 
-function formatNumber(n: number): string {
-  return n.toLocaleString("en-US");
-}
-
 const STATUS_STYLES: Record<string, string> = {
   complete: "bg-verdigris-tint text-verdigris-deep",
   error: "bg-madder-tint text-madder-deep",
@@ -100,6 +88,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function ExportHistory({ history }: ExportHistoryProps) {
   const { t } = useTranslation("publish");
+  const { formatNumber, formatDuration } = useFormatters();
 
   if (history.length === 0) {
     return (
@@ -174,19 +163,31 @@ export function ExportHistory({ history }: ExportHistoryProps) {
                     const parts: string[] = [];
                     if (totals.descriptions > 0)
                       parts.push(
-                        `${formatNumber(totals.descriptions)} ${t("history.recordsDescriptions")}`
+                        t("history.recordsDescriptions_count", {
+                          count: totals.descriptions,
+                          formattedCount: formatNumber(totals.descriptions),
+                        })
                       );
                     if (totals.entities > 0)
                       parts.push(
-                        `${formatNumber(totals.entities)} ${t("history.recordsEntities")}`
+                        t("history.recordsEntities_count", {
+                          count: totals.entities,
+                          formattedCount: formatNumber(totals.entities),
+                        })
                       );
                     if (totals.places > 0)
                       parts.push(
-                        `${formatNumber(totals.places)} ${t("history.recordsPlaces")}`
+                        t("history.recordsPlaces_count", {
+                          count: totals.places,
+                          formattedCount: formatNumber(totals.places),
+                        })
                       );
                     if (totals.repositories > 0)
                       parts.push(
-                        `${formatNumber(totals.repositories)} ${t("history.recordsRepositories")}`
+                        t("history.recordsRepositories_count", {
+                          count: totals.repositories,
+                          formattedCount: formatNumber(totals.repositories),
+                        })
                       );
                     return parts.length > 0 ? parts.join(" · ") : "\u2014";
                   })()}

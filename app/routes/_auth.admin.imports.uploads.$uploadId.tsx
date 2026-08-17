@@ -34,6 +34,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { formatIsoDateTime } from "../lib/format-date";
+import { useFormatters } from "../lib/use-formatters";
 import type { DryRunReport } from "../lib/import/dry-run.server";
 import type { CheckState } from "../lib/import/check.server";
 import type { Finding, DecisionFinding, BlockingFinding, InfoFinding } from "../lib/import/check";
@@ -41,6 +42,7 @@ import { StepRail, type RailStep, type RailStepState } from "../components/impor
 import { withReturnTo } from "../lib/return-to";
 import { commitBlockedReason } from "../lib/import/commit-blocked";
 import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit";
+import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.uploads.$uploadId";
 
 type StepId = "upload" | "check" | "dryRun" | "import";
@@ -526,12 +528,6 @@ async function commitImport(args: {
 
 // ── Presentation helpers ────────────────────────────────────────────────
 
-function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** Render one reject reason with its detail named (design §5). */
 function reasonText(
   t: ReturnType<typeof useTranslation>["t"],
@@ -574,6 +570,7 @@ function levelLabel(t: ReturnType<typeof useTranslation>["t"], level: string): s
 
 export default function ImportJourneyPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("imports");
+  const { formatBytes } = useFormatters();
   const actionData = useActionData<typeof action>();
   const {
     upload,
@@ -737,11 +734,15 @@ function UploadPane({
   t: ReturnType<typeof useTranslation>["t"];
   upload: Route.ComponentProps["loaderData"]["upload"];
 }) {
+  const { formatBytes } = useFormatters();
   return (
     <section aria-labelledby="upload-h">
-      <h2 id="upload-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-        {t("journey.step.upload")}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id="upload-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+          {t("journey.step.upload")}
+        </h2>
+        <DocsHelpLink topic="importsUpload" />
+      </div>
       <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-xs uppercase tracking-wider text-stone-400">{t("uploads.colRows")}</dt>
@@ -800,9 +801,12 @@ function CheckPane({
   if (readOnly && !check) {
     return (
       <section aria-labelledby="check-h">
-        <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-          {t("check.heading")}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+            {t("check.heading")}
+          </h2>
+          <DocsHelpLink topic="importsCheck" />
+        </div>
         <p className="mt-2 text-sm text-stone-500">{t("check.noRecord")}</p>
       </section>
     );
@@ -814,9 +818,12 @@ function CheckPane({
   if (!readOnly && (!currentProfile || !check)) {
     return (
       <section aria-labelledby="check-h">
-        <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-          {t("check.chooseProfileHeading")}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+            {t("check.chooseProfileHeading")}
+          </h2>
+          <DocsHelpLink topic="importsProfile" />
+        </div>
         <p className="mt-2 text-sm text-stone-500">{t("check.chooseProfileHelp")}</p>
         {selectError && (
           <div role="alert" className="mt-4 rounded-md border border-madder bg-madder-tint px-4 py-3 text-sm text-madder-deep">
@@ -886,9 +893,12 @@ function CheckPane({
 
   return (
     <section aria-labelledby="check-h">
-      <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-        {t("check.heading")}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id="check-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+          {t("check.heading")}
+        </h2>
+        <DocsHelpLink topic="importsCheck" />
+      </div>
 
       {(runError || acceptError) && (
         <div role="alert" className="mt-3 rounded-md border border-madder bg-madder-tint px-4 py-3 text-sm text-madder-deep">
@@ -1200,9 +1210,12 @@ function DryRunPane({
   const running = isPendingIntent(navigation.state, navigation.formData, "run");
   return (
     <section aria-labelledby="dryrun-h">
-      <h2 id="dryrun-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-        {t("report.runHeading")}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id="dryrun-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+          {t("report.runHeading")}
+        </h2>
+        <DocsHelpLink topic="importsDryRun" />
+      </div>
       <p className="mt-2 text-sm text-stone-500">{t("report.runHelp")}</p>
 
       {runError && (
@@ -1393,9 +1406,12 @@ function ImportPane({
 
   return (
     <section aria-labelledby="import-h">
-      <h2 id="import-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
-        {t("report.commitHeading")}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id="import-h" className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+          {t("report.commitHeading")}
+        </h2>
+        <DocsHelpLink topic="importsImport" />
+      </div>
 
       {commitError && (
         <div role="alert" className="mt-3 rounded-md border border-madder bg-madder-tint px-4 py-3 text-sm text-madder-deep">

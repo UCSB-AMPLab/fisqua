@@ -177,6 +177,9 @@ function requiredAtFor(col: string): ReadonlyArray<DescriptionLevel> {
 
 export const RAD_CONFIG: StandardConfig = {
   standard: "rad",
+  displayName: "RAD",
+  // summarised; RAD text is all rights reserved.
+  guidanceVerbatim: false,
   sections: [
     {
       // RAD — Title and statement of responsibility area.
@@ -185,7 +188,12 @@ export const RAD_CONFIG: StandardConfig = {
       // "Title proper" instead of plain "Title" for RAD tenants.
       id: "identity",
       fields: [
-        { column: "title", primitive: "text", requiredAt: requiredAtFor("title") },
+        {
+          column: "title",
+          primitive: "text",
+          requiredAt: requiredAtFor("title"),
+          guidance: "1.1B",
+        },
         { column: "translatedTitle", primitive: "text", requiredAt: requiredAtFor("translatedTitle") },
         {
           column: "descriptionLevel",
@@ -194,6 +202,9 @@ export const RAD_CONFIG: StandardConfig = {
         },
         { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode") },
         { column: "localIdentifier", primitive: "text", requiredAt: requiredAtFor("localIdentifier") },
+        // System-managed provenance (import legacyIds providers); the
+        // renderer displays it read-only and never submits it.
+        { column: "legacyIds", primitive: "legacy-ids", requiredAt: [] },
         {
           column: "repositoryId",
           primitive: "repository-select",
@@ -205,7 +216,12 @@ export const RAD_CONFIG: StandardConfig = {
       // RAD — Edition area (typically item-level only).
       id: "edition",
       fields: [
-        { column: "editionStatement", primitive: "text", requiredAt: [] },
+        {
+          column: "editionStatement",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "1.2B",
+        },
       ],
     },
     {
@@ -227,6 +243,7 @@ export const RAD_CONFIG: StandardConfig = {
           column: "dateExpression",
           primitive: "date-range",
           requiredAt: requiredAtFor("dateExpression"),
+          guidance: "1.4B",
         },
         { column: "dateStart", primitive: "date", requiredAt: requiredAtFor("dateStart") },
         { column: "dateEnd", primitive: "date", requiredAt: requiredAtFor("dateEnd") },
@@ -237,8 +254,18 @@ export const RAD_CONFIG: StandardConfig = {
       // RAD — Physical description area.
       id: "physical_description",
       fields: [
-        { column: "extent", primitive: "text", requiredAt: requiredAtFor("extent") },
-        { column: "dimensions", primitive: "text", requiredAt: requiredAtFor("dimensions") },
+        {
+          column: "extent",
+          primitive: "text",
+          requiredAt: requiredAtFor("extent"),
+          guidance: "1.5B",
+        },
+        {
+          column: "dimensions",
+          primitive: "text",
+          requiredAt: requiredAtFor("dimensions"),
+          guidance: "1.5D",
+        },
         { column: "medium", primitive: "text", requiredAt: requiredAtFor("medium") },
         {
           column: "physicalCharacteristics",
@@ -253,7 +280,12 @@ export const RAD_CONFIG: StandardConfig = {
       id: "publishers_series",
       fields: [
         { column: "imprint", primitive: "text", requiredAt: [] },
-        { column: "seriesStatement", primitive: "text", requiredAt: [] },
+        {
+          column: "seriesStatement",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "1.6B",
+        },
         { column: "publicationTitle", primitive: "text", requiredAt: [] },
       ],
     },
@@ -274,24 +306,28 @@ export const RAD_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: requiredAtFor("provenance"),
           hints: { rows: 4 },
+          guidance: "1.7C",
         },
         {
           column: "scopeContent",
           primitive: "textarea",
           requiredAt: requiredAtFor("scopeContent"),
           hints: { rows: 6 },
+          guidance: "1.7D",
         },
         {
           column: "adminBiogHistory",
           primitive: "textarea",
           requiredAt: requiredAtFor("adminBiogHistory"),
           hints: { rows: 6 },
+          guidance: "1.7B",
         },
         {
           column: "systemOfArrangement",
           primitive: "textarea",
           requiredAt: requiredAtFor("systemOfArrangement"),
           hints: { rows: 4 },
+          guidance: "1.8B13",
         },
       ],
     },
@@ -304,6 +340,7 @@ export const RAD_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 4 },
+          guidance: "1.8",
         },
         {
           column: "internalNotes",

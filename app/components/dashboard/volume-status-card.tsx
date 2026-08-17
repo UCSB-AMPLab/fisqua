@@ -6,13 +6,13 @@
  * reviewer avatars. Clicking the card opens the viewer in the caller's
  * default mode.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Flag } from "lucide-react";
 import { StatusBadge } from "../workflow/status-badge";
-import { relativeTime } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
 
 export type VolumeCardData = {
   id: string;
@@ -35,6 +35,7 @@ type VolumeStatusCardProps = {
 
 export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
   const { t } = useTranslation(["common", "dashboard", "qc_flags"]);
+  const { relativeTime } = useFormatters();
   const openFlagCount = volume.openQcFlagCount ?? 0;
 
   return (

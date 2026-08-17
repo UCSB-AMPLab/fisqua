@@ -22,11 +22,28 @@
  * already-fetched fonds rows + repository map + fonds code +
  * datestamp as input and returns the document as a UTF-8 string.
  *
- * @version v0.4.0
+ * THE MAPPING MOVED OUT; THE DOCUMENT STAYED (v0.7.0). Dublin Core is
+ * a FORM rather than a format (self-service export design, ruling 1),
+ * so the fifteen element assignments now live in `./crosswalk.ts` as
+ * data and this builder renders them as the OAI-PMH document it always
+ * did. It asks for the `oai-bulk` reading, which is the behaviour this
+ * file shipped in v0.4 element for element: `dc:description` is scope
+ * and content alone and `dc:rights` is the repository's licence
+ * statement. The workspace export surface asks for the other reading;
+ * neither can change without changing the crosswalk, which is the
+ * point of moving it.
+ *
+ * @version v0.7.0
  */
 
-import { escapeXml, el, sanitiseRefForKey } from "../xml/escape";
+import { escapeXml, el } from "../xml/escape";
 import type { EadInput, EadRepository } from "../types";
+import {
+  DC_ELEMENTS,
+  DC_IDENTIFIER_PREFIX,
+  dcDescriptionRecord,
+  dcIdentifier,
+} from "./crosswalk";
 
 // ---------------------------------------------------------------------------
 // Namespaces (OAI-PMH 2.0 + OAI-DC + DC simple)
@@ -40,42 +57,14 @@ const OAI_DC_SCHEMA_LOCATION =
   "http://www.openarchives.org/OAI/2.0/oai_dc/ http://www.openarchives.org/OAI/2.0/oai_dc.xsd";
 
 // ---------------------------------------------------------------------------
-// Mappings (lifted from mets-builder.ts:36-53; LANGUAGE_MAP extended with
-// `spa` / `eng` ISO 639-3 codes that mets-builder did not have but the
-// EadInput.language column can carry — the EAD3 builder already uses these,
-// so DC matches for cross-builder consistency)
+// Mappings
+//
+// `DC_TYPE_MAP`, the language map, the default rights string and the
+// identifier prefix moved to `./crosswalk.ts` in v0.7.0 so a second
+// serialisation of the same form could reach them. They were lifted
+// from mets-builder.ts:36-53 originally; nothing about them changed in
+// the move.
 // ---------------------------------------------------------------------------
-
-const DC_TYPE_MAP: Record<string, string> = {
-  fonds: "Collection",
-  subfonds: "Collection",
-  series: "Collection",
-  subseries: "Collection",
-  collection: "Collection",
-  section: "Collection",
-  file: "Collection",
-  item: "Text",
-  volume: "Text",
-};
-
-const LANGUAGE_MAP: Record<string, string> = {
-  "192": "Español",
-  "173": "Español",
-  "195": "Español",
-  Spanish: "Español",
-  spa: "Español",
-  eng: "English",
-  fra: "Français",
-  por: "Português",
-};
-
-// Default rights string used when the repository has no `rightsText`. Matches
-// the v0.4 multi-tenant default — repositories that need a different licence
-// override via the `rightsText` column on `repositories`.
-const RIGHTS_DEFAULT =
-  "All materials in the public domain. Please credit the institution.";
-
-const IDENTIFIER_PREFIX = "fisqua:";
 
 // ---------------------------------------------------------------------------
 // Builder
@@ -146,7 +135,14 @@ export function buildDcBulk(
  * `dc:contributor` is intentionally omitted in v0.4 — entity-level
  * contributors are OAI-PMH-endpoint scope, not bulk-export scope
  * (RESEARCH §Pattern 3). The slot stays in the documented ordering so
- * the future v0.5+ insertion lands without renumbering the rest.
+ * the future v0.5+ insertion lands without renumbering the rest; the
+ * crosswalk holds it as a permanently-null element for the same reason.
+ *
+ * The element VALUES come from `dcDescriptionRecord`; this function
+ * decides only where they sit in the OAI envelope and how deep they are
+ * indented. Iterating `DC_ELEMENTS` rather than naming fifteen calls
+ * keeps the emission order and the crosswalk's order the same order by
+ * construction.
  */
 function renderRecord(
   row: EadInput,
@@ -154,11 +150,12 @@ function renderRecord(
   datestamp: string,
 ): string {
   const repo = repos.get(row.repositoryId);
-  const ref = sanitiseRefForKey(row.referenceCode);
+  const ref = dcIdentifier(row.referenceCode);
+  const record = dcDescriptionRecord(row, repo, "oai-bulk");
 
   let r = `  <record>\n`;
   r += `    <header>\n`;
-  r += `      <identifier>${escapeXml(IDENTIFIER_PREFIX + ref)}</identifier>\n`;
+  r += `      <identifier>${escapeXml(DC_IDENTIFIER_PREFIX + ref)}</identifier>\n`;
   r += `      <datestamp>${escapeXml(datestamp)}</datestamp>\n`;
   r += `    </header>\n`;
   r += `    <metadata>\n`;
@@ -166,49 +163,11 @@ function renderRecord(
 
   // Spec order: title, creator, subject, description, publisher,
   // contributor, date, type, format, identifier, source, language,
-  // relation, coverage, rights.
-  r += elIndented("dc:title", row.title);
-  r += elIndented("dc:creator", row.creatorDisplay);
-  r += elIndented("dc:subject", row.placeDisplay);
-  r += elIndented("dc:description", row.scopeContent);
-  r += elIndented("dc:publisher", row.imprint);
-  // dc:contributor — intentionally empty for v0.4 (RESEARCH §Pattern 3).
-  r += elIndented("dc:date", row.dateExpression);
-
-  const dcType = DC_TYPE_MAP[row.descriptionLevel] ?? null;
-  r += elIndented("dc:type", dcType);
-
-  r += elIndented("dc:format", row.extent);
-  r += elIndented("dc:identifier", ref);
-
-  // dc:source — repository name + city when both are populated; emit
-  // nothing (via el() null-safety) when the repo is unknown.
-  const source =
-    repo && repo.name && repo.city ? `${repo.name}, ${repo.city}` : null;
-  r += elIndented("dc:source", source);
-
-  // dc:language — map known codes to human-readable labels; pass-through
-  // unknown codes so the consumer still sees the original value.
-  const langName = row.language
-    ? (LANGUAGE_MAP[row.language] ?? row.language)
-    : null;
-  r += elIndented("dc:language", langName);
-
-  r += elIndented("dc:relation", row.parentReferenceCode);
-  // dc:coverage — DCMI permits dates here; reusing dateExpression is
-  // canonical for archival materials (one source, two facets).
-  r += elIndented("dc:coverage", row.dateExpression);
-
-  // dc:rights — repository override → fall back to RIGHTS_DEFAULT.
-  // Matches mets-builder.ts:128-132's rights logic, less the hasDigital
-  // gate (DC bulk emits for every published description, not only
-  // digitised items, so the repository-level rights string is the
-  // canonical override).
-  const rights =
-    repo?.rightsText && repo.rightsText.trim().length > 0
-      ? repo.rightsText
-      : RIGHTS_DEFAULT;
-  r += elIndented("dc:rights", rights);
+  // relation, coverage, rights. `el()` emits nothing for a null or
+  // blank element, so an absent field leaves no empty tag behind.
+  for (const element of DC_ELEMENTS) {
+    r += elIndented(`dc:${element}`, record[element]);
+  }
 
   r += `      </oai_dc:dc>\n`;
   r += `    </metadata>\n`;
@@ -234,4 +193,4 @@ function elIndented(tag: string, text: string | null | undefined): string {
   return out.replace(/^    /, "        ");
 }
 
-/* @version v0.4.0 */
+/* @version v0.7.0 */

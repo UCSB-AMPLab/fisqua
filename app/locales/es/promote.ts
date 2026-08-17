@@ -6,12 +6,16 @@
  * lets a superadmin lift entries out of the cataloguing tree into the
  * published archival data model.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   heading: {
     title: "Promover entradas",
   },
+  superadmin_only: "Solo superadministradores pueden acceder a esta página.",
+  approved_entries_one: "{{count}} entrada aprobada",
+  approved_entries_other: "{{count}} entradas aprobadas",
+  viewer_placeholder: "Visor IIIF — {{url}}",
   volume: {
     heading: "Seleccionar un volumen",
     empty: "No hay volúmenes con entradas aprobadas listas para promoción.",
@@ -57,8 +61,12 @@ export default {
     noParent:
       "No se encontró descripción padre para el volumen {{code}}. Importe primero la descripción del volumen.",
     generic:
-      "La promoción falló. Intente de nuevo o contacte a un administrador.",
+      "La promoción falló. Intenta de nuevo o contacta a un administrador.",
     noSelection: "Seleccione al menos una entrada para promover.",
     duplicateRefCode: 'El código de referencia "{{code}}" ya existe.',
+    batch_too_large: "El lote supera el máximo de {{max}}",
+    volume_not_found: "No se encontró la unidad: {{id}}",
+    no_matching_description:
+      "Ninguna descripción coincide con el código de referencia {{code}}",
   },
 } as const;

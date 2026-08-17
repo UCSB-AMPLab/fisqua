@@ -54,6 +54,11 @@ export default defineWorkersConfig({
       "tests/export/ead/schema-*.test.ts",
       "tests/export/ead/dacs-*.test.ts",
       "tests/export/dc/**/*.test.ts",
+      // The AST-based i18n guards import the `typescript` package,
+      // whose Node system layer the Workers sandbox can't host. They
+      // run under `vitest.node.config.ts`.
+      "tests/i18n-coverage.test.ts",
+      "tests/i18n-keys.test.ts",
     ],
     testTimeout: 60000,
     hookTimeout: 60000,

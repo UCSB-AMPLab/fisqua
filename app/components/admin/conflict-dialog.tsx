@@ -19,6 +19,7 @@
  */
 
 import { Form } from "react-router";
+import { useFormatters } from "~/lib/use-formatters";
 
 export function ConflictDialog({
   modifiedByName,
@@ -33,13 +34,14 @@ export function ConflictDialog({
   onCancel: () => void;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const { formatDateTime } = useFormatters();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
         <h2 className="text-lg font-semibold text-stone-700">
           {t("overwrite_confirm", {
             name: modifiedByName,
-            time: modifiedAt != null ? new Date(modifiedAt).toLocaleString() : "",
+            time: modifiedAt != null ? formatDateTime(modifiedAt) : "",
           })}
         </h2>
         <div className="mt-4 flex justify-end gap-3">

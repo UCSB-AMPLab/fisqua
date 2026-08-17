@@ -10,6 +10,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { useFormatters } from "~/lib/use-formatters";
 
 interface DraftsBannerProps {
   userName: string;
@@ -28,12 +29,13 @@ export function DraftsBanner({
   namespace = "descriptions_admin",
 }: DraftsBannerProps) {
   const { t } = useTranslation(namespace);
+  const { formatDateTime } = useFormatters();
 
   return (
     <div className="rounded-lg border border-saffron bg-saffron-tint px-4 py-3 text-sm text-saffron-deep">
       {t("conflict_banner", {
         name: userName,
-        time: new Date(updatedAt).toLocaleString(),
+        time: formatDateTime(updatedAt),
       })}
     </div>
   );

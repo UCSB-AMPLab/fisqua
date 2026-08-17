@@ -6,10 +6,21 @@
  * from. Writes are atomic per volume so a half-written manifest never
  * surfaces on the public site.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import type { ManifestSpec, VolumePage } from "./types";
+
+/**
+ * Bucket key (and URL path) for a promoted document's manifest. The
+ * manifests host serves bucket keys 1:1 under the same path, and the
+ * canonical serving convention places every IIIF manifest under the
+ * `iiif/` prefix — a manifest written anywhere else is unreachable.
+ * The stored `iiifManifestUrl` must be `<host>/` + this path.
+ */
+export function manifestObjectPath(referenceCode: string): string {
+  return `iiif/${referenceCode}/manifest.json`;
+}
 
 /**
  * Build a IIIF Presentation API v3 manifest for a single promoted document,

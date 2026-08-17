@@ -1,16 +1,43 @@
 /**
  * User Admin — Detail Page
  *
- * This page is the superadmin surface for one user account: email, display name,
- * all five role flags, session state, and the audit log of
- * administrative changes. The edit form is guarded behind
- * `requireSuperAdmin`; the audit panel is read-only.
+ * This page is the administrative surface for one user account: email,
+ * display name, the role flags, session state, and the audit log of
+ * administrative changes. The audit panel is read-only.
+ *
+ * Who may change WHICH role is decided in one place,
+ * `assignableRoleFlags` in `app/lib/permissions.server.ts`, and read
+ * twice: once by the loader, which hands the resulting list to the JSX
+ * so a role the caller cannot assign renders as a disabled checkbox
+ * with an explanatory tooltip; and once by the action, which reads
+ * only those fields out of the form body. The two tenant-scoped roles
+ * (`isAdmin`, `isArchiveUser`) are assignable by a tenant admin — which
+ * a federation steward's effective member-tenant flags include — and
+ * the rest stay super-admin-only. Before that split every role change
+ * required a super admin, so a steward onboarding a partner workspace
+ * could invite colleagues but could not give them any role, and the
+ * people they invited arrived at an empty dashboard.
+ *
+ * The action treats the form body as hostile. It does not ask what the
+ * form said about `isSuperAdmin`; it asks what the caller is allowed to
+ * set, and refuses outright if the body carries a field outside that
+ * set. A disabled checkbox is not submitted by the browser, so such a
+ * field never arrives from the rendered page — its presence means the
+ * request was crafted.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Every read/update/delete of the `users` table is
  * filtered by `tenant.id`, including the role-flag update and the
  * email-uniqueness check, so cross-tenant id-guessing 404s and
- * writes cannot reattribute users between tenants.
+ * writes cannot reattribute users between tenants. The action resolves
+ * the target inside the request tenant ONCE, before any intent runs,
+ * and 404s if it is not there, so a cross-tenant id never gets so much
+ * as a "you are not allowed" out of the surface. The project intents
+ * do the same for the ids THEY take from the body: `project_members`
+ * carries no tenant column, so a membership is resolved through its
+ * owning project, the way `requireProjectRole` does it. Without that,
+ * widening the page's gate to tenant admins would have widened who
+ * could write a membership row into another tenant's project.
  *
  * When the request tenant has `crowdsourcingEnabled === false`, the
  * JSX omits the `isCollabAdmin` and `isCataloguer` checkboxes
@@ -20,24 +47,42 @@
  * crowdsourcing was disabled) is left intact rather than silently
  * cleared by an unchecked-as-false read of the form body. The four
  * other role flags (`isAdmin`, `isSuperAdmin`, `isArchiveUser`,
- * `isUserManager`) always render and always update normally.
+ * `isUserManager`) always render; whether they update depends on the
+ * caller's assignable set, which is the other half of the same filter.
  *
- * `applyUpdateRoles` is exported so the
- * `tests/admin/users-capability.test.ts` test pool can exercise the
- * dormant-flag-preserved behaviour without paying the cost of the
- * full route-action wiring (the i18n middleware in particular pulls
- * in `~/locales` which the Workers test pool does not alias).
+ * `applyUpdateRoles` is exported so `tests/admin/users-capability.test.ts`
+ * can exercise the dormant-flag-preserved behaviour on its own, without
+ * the surrounding request. The role-scope suite drives the real
+ * `action` instead, so the guards are exercised in the order a request
+ * meets them.
  *
- * @version v0.4.2
+ * Every form on the page — profile, role flags, project assignment,
+ * per-row role change and removal — shares ONE fetcher, so there is one
+ * page-level `SaveFeedbackBanner` rather than one per form: a second
+ * banner fed by the same fetcher would announce every result twice.
+ * The banner sits directly under the breadcrumb as the page's result
+ * region. Each submit button keys its own pending state off the
+ * `_action` value carried by the in-flight submission, so clicking
+ * "Save profile" does not grey out "Save roles".
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Form, Link, useFetcher, redirect } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "../lib/format";
+import { useFormatters } from "../lib/use-formatters";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.users.$id";
 import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
+// Type-only: erased at build time, so the server module is not pulled
+// into the client bundle.
+import type { RoleFlag } from "../lib/permissions.server";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -47,9 +92,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull } = await import("drizzle-orm");
   const { users, projectMembers, projects } = await import("../db/schema");
+  const { assignableRoleFlags, canManageTenantUsers } = await import(
+    "../lib/permissions.server"
+  );
 
   const currentUser = context.get(userContext);
-  if (!currentUser.isSuperAdmin && !currentUser.isUserManager) {
+  if (!canManageTenantUsers(currentUser)) {
     throw new Response("Forbidden", { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -96,12 +144,22 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     (p) => !memberProjectIds.has(p.id)
   );
 
+  // The exact set of role flags this caller may hand out. The JSX
+  // enables precisely these checkboxes and disables the rest, so the
+  // form can never offer what the action would refuse.
+  const editableRoles = [...assignableRoleFlags(currentUser)];
+
   return {
     targetUser,
     memberships,
     assignableProjects,
     isSelf: currentUser.id === params.id,
-    canEditRoles: currentUser.isSuperAdmin,
+    editableRoles,
+    canEditRoles: editableRoles.length > 0,
+    // True only for a caller who may set every flag the form can show.
+    // Drives the "some roles are not yours to give" notice rather than
+    // the blanket "roles are read-only" one.
+    canEditAllRoles: currentUser.isSuperAdmin,
     // Surface only the capability flag the JSX gates on. The JSX
     // hides isCollabAdmin and isCataloguer when crowdsourcing is
     // off; the other three capabilities are not consumed here.
@@ -117,17 +175,22 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 /**
  * Applies the role-flag update for one user. Extracted from `action`
- * so the test pool can exercise the capability-aware skip-write
- * behaviour without paying for the full i18n / Host-header /
- * middleware wiring (the route module imports `~/locales` which is
+ * so the test pool can exercise the capability-aware skip-write and
+ * role-scope behaviours without paying for the full i18n / Host-header
+ * / middleware wiring (the route module imports `~/locales` which is
  * not aliased in `vitest.config.ts`).
  *
  * Behaviour contract:
  *
- *   - The four always-rendered flags (`isAdmin`, `isSuperAdmin`,
- *     `isArchiveUser`, `isUserManager`) are always written from the
- *     form-data; an unchecked checkbox arrives as missing and reads
- *     as `false`, which clears the flag (existing v0.3 semantics).
+ *   - `assignableFlags` is the ALLOWLIST of fields read out of the
+ *     form. It comes from `assignableRoleFlags(currentUser)` and is
+ *     the reason a hostile body cannot escalate: a flag outside the
+ *     set is never read, so whatever the body claims about it is not
+ *     merely rejected, it is never consulted. The stored value of such
+ *     a flag is left exactly as it was.
+ *   - Within that set, a flag is written from the form-data; an
+ *     unchecked checkbox arrives as missing and reads as `false`,
+ *     which clears the flag (existing v0.3 semantics).
  *   - When `crowdsourcingEnabled === false`, `isCollabAdmin` and
  *     `isCataloguer` are NOT included in the UPDATE — their DB
  *     values stay intact. This is the "no auto-clear of dormant
@@ -138,11 +201,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
  *     avoids accidentally toggling state from the admin UI either
  *     way).
  *   - When `crowdsourcingEnabled === true`, both flags are written
- *     from the form-data; an unchecked checkbox clears the flag,
- *     same as the always-rendered four.
+ *     from the form-data if the caller may assign them.
  *
  * The UPDATE is scoped to `(tenantId, userId)` so a cross-tenant
- * id-guess on the URL cannot rewrite another tenant's user row.
+ * id-guess on the URL cannot rewrite another tenant's user row. The
+ * caller resolves the target inside the request tenant first and 404s
+ * if it is absent, so this predicate is the second of two locks, not
+ * the only one.
  */
 export async function applyUpdateRoles(args: {
   db: import("drizzle-orm/d1").DrizzleD1Database<any>;
@@ -150,26 +215,25 @@ export async function applyUpdateRoles(args: {
   crowdsourcingEnabled: boolean;
   targetUserId: string;
   formData: FormData;
+  assignableFlags: readonly RoleFlag[];
 }): Promise<void> {
   const { eq, and } = await import("drizzle-orm");
   const { users } = await import("../db/schema");
 
-  const isAdmin = args.formData.get("isAdmin") === "on";
-  const isSuperAdmin = args.formData.get("isSuperAdmin") === "on";
-  const isArchiveUser = args.formData.get("isArchiveUser") === "on";
-  const isUserManager = args.formData.get("isUserManager") === "on";
+  // Capability filter on top of the privilege filter: the two
+  // crowdsourcing flags drop out of the write when the tenant has
+  // crowdsourcing off, whoever is asking.
+  const writableFlags = args.assignableFlags.filter(
+    (flag) =>
+      args.crowdsourcingEnabled ||
+      (flag !== "isCollabAdmin" && flag !== "isCataloguer"),
+  );
 
-  // Build the update set. Only include the two capability-dependent
-  // fields when the tenant has crowdsourcing on.
-  const updateSet: Record<string, unknown> = {
-    isAdmin,
-    isSuperAdmin,
-    isArchiveUser,
-    isUserManager,
-  };
-  if (args.crowdsourcingEnabled) {
-    updateSet.isCollabAdmin = args.formData.get("isCollabAdmin") === "on";
-    updateSet.isCataloguer = args.formData.get("isCataloguer") === "on";
+  if (writableFlags.length === 0) return;
+
+  const updateSet: Record<string, unknown> = {};
+  for (const flag of writableFlags) {
+    updateSet[flag] = args.formData.get(flag) === "on";
   }
 
   await args.db
@@ -185,12 +249,17 @@ export async function applyUpdateRoles(args: {
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and } = await import("drizzle-orm");
-  const { users, projectMembers } = await import("../db/schema");
+  const { users, projectMembers, projects } = await import("../db/schema");
 
   const { getInstance } = await import("~/middleware/i18next");
+  const {
+    assignableRoleFlags,
+    canManageTenantUsers,
+    unassignableSubmittedRoleFlags,
+  } = await import("../lib/permissions.server");
   const currentUser = context.get(userContext);
   const i18n = getInstance(context);
-  if (!currentUser.isSuperAdmin && !currentUser.isUserManager) {
+  if (!canManageTenantUsers(currentUser)) {
     throw new Response(i18n.t("user_admin:error_forbidden"), { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -199,6 +268,23 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const db = drizzle(env.DB);
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
+
+  // Target scoping, once, for every intent on this page: they all act
+  // on the user named in the URL. The request tenant comes from
+  // `tenantContext`, never from the acting user's row — under a
+  // federation grant a steward's home tenant is not the tenant being
+  // served. A target outside the request tenant 404s with the same
+  // shape a missing id gets, so probing cannot distinguish "belongs to
+  // someone else" from "does not exist".
+  const [targetUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id)))
+    .limit(1)
+    .all();
+  if (!targetUser) {
+    throw new Response("User not found", { status: 404 });
+  }
 
   if (intent === "updateProfile") {
     const name = (formData.get("name") as string)?.trim() || null;
@@ -232,11 +318,23 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   if (intent === "updateRoles") {
-    if (!currentUser.isSuperAdmin) {
+    const assignableFlags = assignableRoleFlags(currentUser);
+    if (assignableFlags.length === 0) {
       return { ok: false, error: i18n.t("user_admin:error_only_superadmin_roles") };
     }
+    // Unchanged self-protection: nobody edits their own roles, however
+    // many they can hand out.
     if (currentUser.id === params.id) {
       return { ok: false, error: i18n.t("user_admin:error_cannot_change_own_roles") };
+    }
+
+    // The form is hostile until proven otherwise. A checkbox the page
+    // rendered disabled is not submitted at all, so a super-admin-only
+    // field in the body of a tenant admin's post is a crafted request,
+    // not a stray unchecked box — refuse the whole submission.
+    const refused = unassignableSubmittedRoleFlags(currentUser, formData);
+    if (refused.length > 0) {
+      return { ok: false, error: i18n.t("user_admin:error_role_not_assignable") };
     }
 
     await applyUpdateRoles({
@@ -245,6 +343,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       crowdsourcingEnabled: tenant.crowdsourcingEnabled,
       targetUserId: params.id,
       formData,
+      assignableFlags,
     });
 
     return { ok: true, message: i18n.t("user_admin:success_roles_updated") };
@@ -256,6 +355,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     if (!projectId || !(PROJECT_ROLES as readonly string[]).includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+    }
+
+    // The loader only offers projects of the request tenant, but the
+    // id arrives in the body and the body is not the loader. Resolve it
+    // inside the tenant before writing a membership row: `project_members`
+    // carries no tenant of its own, so nothing downstream can catch a
+    // foreign projectId later.
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.tenantId, tenant.id), eq(projects.id, projectId)))
+      .limit(1)
+      .all();
+    if (!project) {
+      throw new Response("Project not found", { status: 404 });
     }
 
     const existing = await db
@@ -284,6 +398,34 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return { ok: true, message: i18n.t("user_admin:success_assigned") };
   }
 
+  /**
+   * Resolve a membership id from the form back to a row that belongs
+   * to THIS user AND to a project of the request tenant.
+   * `project_members` carries no tenant column, so the owning
+   * `projects` row is the only thing that can answer the tenant
+   * question — the same reasoning `requireProjectRole` uses. Returns
+   * the id, or 404s.
+   */
+  async function resolveMembershipId(membershipId: string): Promise<string> {
+    const [membership] = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.id, membershipId),
+          eq(projectMembers.userId, params.id),
+          eq(projects.tenantId, tenant.id)
+        )
+      )
+      .limit(1)
+      .all();
+    if (!membership) {
+      throw new Response("Membership not found", { status: 404 });
+    }
+    return membership.id;
+  }
+
   if (intent === "changeRole") {
     const membershipId = formData.get("membershipId") as string;
     const role = formData.get("role") as ProjectRole;
@@ -295,7 +437,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     await db
       .update(projectMembers)
       .set({ role })
-      .where(eq(projectMembers.id, membershipId));
+      .where(eq(projectMembers.id, await resolveMembershipId(membershipId)));
 
     return { ok: true, message: i18n.t("user_admin:success_role_updated") };
   }
@@ -306,7 +448,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     await db
       .delete(projectMembers)
-      .where(eq(projectMembers.id, membershipId));
+      .where(eq(projectMembers.id, await resolveMembershipId(membershipId)));
 
     return { ok: true, message: i18n.t("user_admin:success_removed") };
   }
@@ -330,21 +472,30 @@ const ROLE_BADGE_COLORS: Record<string, string> = {
   reviewer: "bg-madder-tint text-madder-deep",
 };
 
+/**
+ * One role toggle. `disabled` carries a `tooltip` with it: a checkbox
+ * a caller cannot use should say why, and a disabled input is not
+ * submitted at all, which is also the property the action relies on
+ * to read a super-admin-only field in the body as tampering.
+ */
 function RoleCheckbox({
   label,
   description,
   name,
   checked,
   disabled,
+  tooltip,
 }: {
   label: string;
   description: string;
   name: string;
   checked: boolean;
   disabled?: boolean;
+  tooltip?: string;
 }) {
   return (
     <label
+      title={disabled ? tooltip : undefined}
       className={`font-medium flex items-start gap-3 rounded-lg border border-stone-200 px-4 py-3 ${ disabled ? "opacity-60" : "hover:bg-stone-50 cursor-pointer" }`}
     >
       <input
@@ -372,16 +523,44 @@ export default function UserDetailPage({
     memberships,
     assignableProjects,
     isSelf,
+    editableRoles,
     canEditRoles,
+    canEditAllRoles,
     tenant,
   } = loaderData;
   const { t } = useTranslation("user_admin");
+  const { formatDate } = useFormatters();
   const fetcher = useFetcher();
   const [showAssignForm, setShowAssignForm] = useState(false);
 
-  const result = fetcher.data as
-    | { ok: boolean; message?: string; error?: string }
-    | undefined;
+  const formData = fetcher.formData ?? undefined;
+  const savingProfile = isPendingSubmission(
+    fetcher.state,
+    formData,
+    "updateProfile",
+  );
+  const savingRoles = isPendingSubmission(fetcher.state, formData, "updateRoles");
+  const assigning = isPendingSubmission(
+    fetcher.state,
+    formData,
+    "assignToProject",
+  );
+  // Any in-flight submission clears the previous result, so a stale
+  // error never sits under a retry that is already running.
+  const submitting = fetcher.state !== "idle";
+
+  // A role toggle is live only when the caller may assign that
+  // particular flag and is not looking at their own account. The
+  // tooltip explains which of the two rules is holding it shut.
+  const roleFieldState = (name: RoleFlag) => {
+    if (isSelf) {
+      return { disabled: true, tooltip: t("self_role_badge_tooltip") };
+    }
+    if (!editableRoles.includes(name)) {
+      return { disabled: true, tooltip: t("platform_role_tooltip") };
+    }
+    return { disabled: false, tooltip: undefined };
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8 space-y-8">
@@ -393,6 +572,17 @@ export default function UserDetailPage({
         <span className="mx-2">&rsaquo;</span>
         <span className="text-stone-700">{u.name || u.email}</span>
       </nav>
+
+      {/* Save feedback — transient on success, persistent on failure.
+          One region for the whole page: every form shares one fetcher. */}
+      <SaveFeedbackBanner
+        source={fetcher.data}
+        pending={submitting}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+      />
 
       {/* Profile */}
       <fetcher.Form method="post" className="space-y-4">
@@ -436,26 +626,13 @@ export default function UserDetailPage({
             {" · "}
             {t("created_label")}: {formatDate(u.createdAt)}
           </p>
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save_profile")}
-          </button>
+          <SaveButton
+            pending={savingProfile}
+            label={t("save_profile")}
+            pendingLabel={t("common:save.saving")}
+          />
         </div>
       </fetcher.Form>
-
-      {/* Feedback */}
-      {result?.ok && result.message && (
-        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {result.message}
-        </div>
-      )}
-      {result && !result.ok && result.error && (
-        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {result.error}
-        </div>
-      )}
 
       {/* Role edit warnings */}
       {isSelf && (
@@ -466,6 +643,11 @@ export default function UserDetailPage({
       {!canEditRoles && !isSelf && (
         <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
           {t("non_superadmin_notice")}
+        </div>
+      )}
+      {canEditRoles && !canEditAllRoles && !isSelf && (
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
+          {t("tenant_admin_roles_notice")}
         </div>
       )}
 
@@ -485,14 +667,14 @@ export default function UserDetailPage({
                 description={t("super_admin_description")}
                 name="isSuperAdmin"
                 checked={!!u.isSuperAdmin}
-                disabled={isSelf || !canEditRoles}
+                {...roleFieldState("isSuperAdmin")}
               />
               <RoleCheckbox
                 label={t("role_user_manager")}
                 description={t("user_manager_description")}
                 name="isUserManager"
                 checked={!!u.isUserManager}
-                disabled={isSelf || !canEditRoles}
+                {...roleFieldState("isUserManager")}
               />
             </div>
           </div>
@@ -514,14 +696,14 @@ export default function UserDetailPage({
                   description={t("cataloguing_admin_description")}
                   name="isCollabAdmin"
                   checked={!!u.isCollabAdmin}
-                  disabled={isSelf || !canEditRoles}
+                  {...roleFieldState("isCollabAdmin")}
                 />
                 <RoleCheckbox
                   label={t("role_cataloguer")}
                   description={t("cataloguer_description")}
                   name="isCataloguer"
                   checked={!!u.isCataloguer}
-                  disabled={isSelf || !canEditRoles}
+                  {...roleFieldState("isCataloguer")}
                 />
               </div>
             </div>
@@ -538,25 +720,24 @@ export default function UserDetailPage({
                 description={t("records_admin_description")}
                 name="isAdmin"
                 checked={!!u.isAdmin}
-                disabled={isSelf || !canEditRoles}
+                {...roleFieldState("isAdmin")}
               />
               <RoleCheckbox
                 label={t("role_archive_user")}
                 description={t("archive_user_description")}
                 name="isArchiveUser"
                 checked={!!u.isArchiveUser}
-                disabled={isSelf || !canEditRoles}
+                {...roleFieldState("isArchiveUser")}
               />
             </div>
           </div>
 
           {canEditRoles && !isSelf && (
-            <button
-              type="submit"
-              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-            >
-              {t("save_roles")}
-            </button>
+            <SaveButton
+              pending={savingRoles}
+              label={t("save_roles")}
+              pendingLabel={t("common:save.saving")}
+            />
           )}
         </div>
       </fetcher.Form>
@@ -617,12 +798,11 @@ export default function UserDetailPage({
                 <option value="reviewer">{t("role_reviewer")}</option>
               </select>
             </div>
-            <button
-              type="submit"
-              className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-            >
-              {t("assign")}
-            </button>
+            <SaveButton
+              pending={assigning}
+              label={t("assign")}
+              pendingLabel={t("common:save.saving")}
+            />
           </fetcher.Form>
         )}
 

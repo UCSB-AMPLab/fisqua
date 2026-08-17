@@ -27,7 +27,7 @@ export type RegionPin = {
   w: number;
   h: number;
   draft?: boolean;
-  authorId?: string;
+  authorId?: string | null;
 };
 
 export type RegionPinOverlayProps = {

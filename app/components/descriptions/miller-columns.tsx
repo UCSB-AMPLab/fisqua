@@ -58,16 +58,166 @@ type TreeAction =
   | { type: "LOAD_CHILDREN_START"; parentId: string }
   | { type: "LOAD_CHILDREN_SUCCESS"; parentId: string; children: TreeItem[]; title: string }
   | { type: "FILTER_COLUMN"; depth: number; query: string }
-  | { type: "RESTORE_STATE"; state: SerializedTreeState };
+  | { type: "RESTORE_STATE"; state: SerializedTreeState }
+  | { type: "REVALIDATE_SUCCESS"; fresh: Map<string, TreeItem[]> };
 
-interface SerializedTreeState {
+/**
+ * The sessionStorage payload. Note what is NOT here: the parentId ->
+ * children cache. Persisting the whole cache is what let a branch that
+ * was empty at save time stay empty for the rest of the browser
+ * session, surviving reloads, because a cached empty list is
+ * indistinguishable from a genuinely childless node. The visible
+ * columns already carry everything needed to repaint, so the cache is
+ * rebuilt from them on restore and every restored list is refetched in
+ * the background.
+ */
+export interface SerializedTreeState {
+  version: number;
+  savedAt: number; // epoch ms, stamped at save time
   columns: Column[];
   selectionPath: string[];
   filterQueries: string[];
-  cache: Record<string, TreeItem[]>;
 }
 
+/**
+ * Storage key. Deliberately NOT namespaced by tenant: every tenant is
+ * served from its own origin (`<slug>.fisqua.org`, `<slug>.localhost`,
+ * `<slug>.fisqua.test`, plus the legacy single-tenant host
+ * `catalogacion.zasqua.org` — see `app/lib/tenant.ts`
+ * `getTenantFromRequest`), and the workspace switcher navigates by
+ * absolute cross-subdomain URL rather than swapping tenants in place.
+ * sessionStorage is partitioned per origin, so the browser already
+ * isolates one workspace's tree state from another's; a tenant prefix
+ * would add a key the component has no way to derive client-side
+ * without new prop plumbing, and would buy nothing.
+ */
 const SESSION_KEY = "descriptions-tree-state";
+
+/**
+ * Bump whenever `SerializedTreeState` changes shape. A payload written
+ * by an older build is discarded rather than coerced — a half-understood
+ * restore paints a tree that does not match the database.
+ * v2 dropped the persisted children cache (see above).
+ */
+export const TREE_STATE_SCHEMA_VERSION = 2;
+
+/**
+ * How long a saved tree may be trusted for the instant repaint. Thirty
+ * minutes is longer than the gap between two page views in one
+ * cataloguing sitting, and short enough that a tab left open over lunch
+ * repaints from the server instead of from a pre-import snapshot. The
+ * TTL is a floor on staleness, not the correctness guarantee: every
+ * restored column is revalidated against the API on mount regardless of
+ * age.
+ */
+export const TREE_STATE_TTL_MS = 30 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Persistence helpers (pure — exported for tests)
+// ---------------------------------------------------------------------------
+
+/** The persisted slice of the reducer state. */
+type PersistableTreeState = Pick<
+  TreeState,
+  "columns" | "selectionPath" | "filterQueries"
+>;
+
+export function serializeTreeState(
+  state: PersistableTreeState,
+  now: number,
+): SerializedTreeState {
+  return {
+    version: TREE_STATE_SCHEMA_VERSION,
+    savedAt: now,
+    columns: state.columns,
+    selectionPath: state.selectionPath,
+    filterQueries: state.filterQueries,
+  };
+}
+
+/**
+ * Parse a sessionStorage payload, returning `null` for anything that
+ * must not be trusted: absent, unparseable, written by another schema
+ * version, missing or non-numeric `savedAt`, older than the TTL, or
+ * carrying no columns to paint. A clock that moved backwards (savedAt
+ * in the future) also fails — negative age is not evidence of freshness.
+ */
+export function parseSavedTreeState(
+  raw: string | null,
+  now: number,
+): SerializedTreeState | null {
+  if (!raw) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+
+  const candidate = parsed as Partial<SerializedTreeState>;
+  if (candidate.version !== TREE_STATE_SCHEMA_VERSION) return null;
+  if (typeof candidate.savedAt !== "number" || !Number.isFinite(candidate.savedAt)) {
+    return null;
+  }
+
+  const age = now - candidate.savedAt;
+  if (age < 0 || age > TREE_STATE_TTL_MS) return null;
+
+  if (!Array.isArray(candidate.columns) || candidate.columns.length === 0) return null;
+
+  return {
+    version: candidate.version,
+    savedAt: candidate.savedAt,
+    columns: candidate.columns,
+    selectionPath: Array.isArray(candidate.selectionPath) ? candidate.selectionPath : [],
+    filterQueries: Array.isArray(candidate.filterQueries) ? candidate.filterQueries : [],
+  };
+}
+
+/**
+ * Fold freshly-fetched children back into the painted columns. Each
+ * column whose parent was successfully refetched takes the fresh list;
+ * a column whose fetch failed keeps what it had, so a network blip
+ * blanks nothing. Where the item selected in a column is no longer in
+ * that column's fresh list, the branch below it is gone: the selection
+ * and every deeper column are dropped rather than left pointing at
+ * records that no longer exist.
+ */
+export function reconcileRevalidatedColumns(
+  state: PersistableTreeState,
+  fresh: Map<string, TreeItem[]>,
+): PersistableTreeState {
+  const columns: Column[] = [];
+  const selectionPath: string[] = [];
+  const filterQueries: string[] = [];
+
+  for (let depth = 0; depth < state.columns.length; depth++) {
+    const column = state.columns[depth];
+    const freshItems = fresh.get(column.parentId);
+    const items = freshItems ?? column.items;
+
+    columns.push(freshItems ? { ...column, items: freshItems } : column);
+    filterQueries.push(state.filterQueries[depth] ?? "");
+
+    const selectedId = state.selectionPath[depth];
+    if (selectedId === undefined) break;
+    if (!items.some((item) => item.id === selectedId)) break;
+    selectionPath.push(selectedId);
+  }
+
+  return { columns, selectionPath, filterQueries };
+}
+
+/** Children cache derived from the columns currently on screen. */
+function cacheFromColumns(columns: Column[]): Map<string, TreeItem[]> {
+  const cache = new Map<string, TreeItem[]>();
+  for (const column of columns) {
+    cache.set(column.parentId, column.items);
+  }
+  return cache;
+}
 
 // ---------------------------------------------------------------------------
 // Reducer
@@ -117,17 +267,25 @@ function treeReducer(state: TreeState, action: TreeAction): TreeState {
     }
 
     case "RESTORE_STATE": {
-      const restoredCache = new Map<string, TreeItem[]>();
-      for (const [key, val] of Object.entries(action.state.cache)) {
-        restoredCache.set(key, val);
-      }
       return {
         columns: action.state.columns,
         selectionPath: action.state.selectionPath,
-        cache: restoredCache,
+        // Rebuilt from the painted columns only. Nothing off the visible
+        // path survives a reload, so a collapsed branch cannot serve a
+        // list captured before an import.
+        cache: cacheFromColumns(action.state.columns),
         loading: null,
         filterQueries: action.state.filterQueries,
       };
+    }
+
+    case "REVALIDATE_SUCCESS": {
+      const reconciled = reconcileRevalidatedColumns(state, action.fresh);
+      const nextCache = new Map(state.cache);
+      for (const [parentId, children] of action.fresh) {
+        nextCache.set(parentId, children);
+      }
+      return { ...state, ...reconciled, cache: nextCache };
     }
 
     default:
@@ -179,34 +337,65 @@ export function MillerColumns({ onSelectItem }: MillerColumnsProps) {
   }, []);
 
   // -----------------------------------------------------------------------
-  // Initialise: restore from sessionStorage or fetch root
+  // Initialise: stale-while-revalidate.
+  //
+  // A usable saved state paints immediately so the columns do not flash
+  // empty, but it is treated as a picture of the tree rather than as
+  // the tree: the root level and every expanded node are refetched in
+  // the background and the fresh lists replace what was painted. This
+  // is what makes the tree recover on its own after an import, where
+  // the saved snapshot predates the new records.
   // -----------------------------------------------------------------------
 
   useEffect(() => {
     if (initialised.current) return;
     initialised.current = true;
 
-    const saved = sessionStorage.getItem(SESSION_KEY);
-    if (saved) {
-      try {
-        const parsed: SerializedTreeState = JSON.parse(saved);
-        if (parsed.columns && parsed.columns.length > 0) {
-          dispatch({ type: "RESTORE_STATE", state: parsed });
-          return;
-        }
-      } catch {
-        // Ignore corrupt state
-      }
+    const loadRoot = () => {
+      fetchChildren("root")
+        .then((items) => {
+          dispatch({
+            type: "LOAD_CHILDREN_SUCCESS",
+            parentId: "root",
+            children: items,
+            title: t("root_column_title"),
+          });
+        })
+        .catch((error) => {
+          console.error("Error fetching root items:", error);
+        });
+    };
+
+    const saved = parseSavedTreeState(sessionStorage.getItem(SESSION_KEY), Date.now());
+    if (!saved) {
+      // Drop the rejected payload so a stale or foreign-version blob is
+      // not re-examined on every mount for the rest of the session.
+      sessionStorage.removeItem(SESSION_KEY);
+      loadRoot();
+      return;
     }
 
-    // Fetch root items
-    fetchChildren("root").then((items) => {
-      dispatch({
-        type: "LOAD_CHILDREN_SUCCESS",
-        parentId: "root",
-        children: items,
-        title: t("root_column_title"),
-      });
+    dispatch({ type: "RESTORE_STATE", state: saved });
+
+    // Revalidate the whole visible chain at once. `allSettled`, not
+    // `all`: one failed level must not discard the levels that did come
+    // back, and a column with no fresh list keeps the one it painted.
+    const parentIds = [...new Set(saved.columns.map((col) => col.parentId))];
+    Promise.allSettled(
+      parentIds.map(async (parentId) => {
+        const children = await fetchChildren(parentId);
+        return [parentId, children] as const;
+      }),
+    ).then((results) => {
+      const fresh = new Map<string, TreeItem[]>();
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          fresh.set(result.value[0], result.value[1]);
+        }
+      }
+      if (fresh.size > 0) {
+        dispatch({ type: "REVALIDATE_SUCCESS", fresh });
+      }
     });
   }, [fetchChildren, t]);
 
@@ -285,13 +474,10 @@ export function MillerColumns({ onSelectItem }: MillerColumnsProps) {
   // -----------------------------------------------------------------------
 
   const saveState = useCallback(() => {
-    const serialized: SerializedTreeState = {
-      columns: state.columns,
-      selectionPath: state.selectionPath,
-      filterQueries: state.filterQueries,
-      cache: Object.fromEntries(state.cache),
-    };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(serialized));
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(serializeTreeState(state, Date.now())),
+    );
   }, [state]);
 
   // Save on visibility/unload only — never on cleanup, which races with state updates.

@@ -1,14 +1,33 @@
 /**
  * Descriptions Admin — Tree and Column Views
  *
- * This page is the archival descriptions explorer. It renders the hierarchy of
- * fonds-to-item records either as a lazy-loaded tree or as a Miller
- * column view for deeper browsing, backed by the FTS5 search index
- * for accent-insensitive find-as-you-type across reference codes and
- * titles. Supports inline edit of a handful of frequently-touched
- * fields, drag-to-reorder within a parent, and cross-subtree moves
- * through the move dialog. The "New description" button opens the
- * create form; each row deep-links into the edit page.
+ * This page is the archival descriptions explorer. It offers two ways
+ * in: a lazy-loaded tree that walks the hierarchy of fonds-to-item
+ * records, and — despite the "column view" name the toggle wears — a
+ * flat, filterable table of those same records, backed by the FTS5
+ * search index for accent-insensitive find-as-you-type across
+ * reference codes and titles. Supports inline edit of a handful of
+ * frequently-touched fields, drag-to-reorder within a parent, and
+ * cross-subtree moves through the move dialog. The "New description"
+ * button opens the create form; each row deep-links into the edit
+ * page.
+ *
+ * SELECTION LIVES IN THE TABLE, NOT THE TREE. The flat view carries a
+ * leading checkbox column and the shared `BulkActionBar`, so a page of
+ * results can be kept (added to a handlist) or taken somewhere (sent
+ * to export). The tree gets no checkboxes: bulk selection does not
+ * belong in a hierarchy browser, where a tick would read as a claim
+ * about a subtree. Ticking a row here selects THAT record and nothing
+ * under it — a fonds row means the fonds description, not the
+ * thousands of records beneath it. "Everything beneath" already has
+ * its own door in the export page's branch picker, and a handlist is
+ * a list of records somebody chose. Across pagination the selection
+ * survives — the cursor controls are client-side links within this
+ * same route, so the set carries forward and a cataloguer can gather
+ * records across several pages — while any filter or search change
+ * reloads the page and drops it. That is exactly how the entity and
+ * place lists behave, and the two surfaces are deliberately kept in
+ * step.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Every read/update/delete of `descriptions` and
@@ -35,7 +54,7 @@
  * tenant.descriptiveStandard` read from `tenantContext`. Level
  * labels — even in a future breadcrumb — stay flat.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -45,6 +64,8 @@ import { Plus, Search, Check } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { MillerColumns } from "~/components/descriptions/miller-columns";
 import { MetadataPreview } from "~/components/descriptions/metadata-preview";
+import { BulkActionBar } from "~/components/admin/bulk-action-bar";
+import { toggleSelection } from "~/lib/list-selection";
 import { DataTable } from "~/components/data-table/data-table";
 import { ColumnToggle } from "~/components/data-table/column-toggle";
 import { CursorPagination } from "~/components/data-table/cursor-pagination";
@@ -195,12 +216,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     }
 
     if (searchIds !== null && searchIds.length > 0) {
-      // Use rowid IN (...)
+      // Use rowid IN (...). The rowids are inlined as integer literals,
+      // not bound parameters: D1 caps a statement at 100 bindings, and a
+      // broad match (up to the LIMIT 200 above) would blow past it and
+      // fail the whole query. parseInt + isFinite keeps the inlining
+      // injection-proof — anything non-numeric from FTS is dropped.
+      const rowidLiterals = searchIds
+        .map((id) => parseInt(id, 10))
+        .filter((n) => Number.isFinite(n));
       baseConditions.push(
-        sql`${descriptions}.rowid IN (${sql.join(
-          searchIds.map((id) => sql`${parseInt(id, 10)}`),
-          sql`, `
-        )})`
+        rowidLiterals.length > 0
+          ? sql`${descriptions}.rowid IN (${sql.raw(rowidLiterals.join(", "))})`
+          : sql`1 = 0`
       );
     } else if (searchIds === null) {
       // LIKE fallback (parameterised).
@@ -768,7 +795,17 @@ function TreeView({
 
 function ColumnView({ loaderData }: { loaderData: any }) {
   const { t } = useTranslation("descriptions_admin");
+  const { t: ta } = useTranslation("authorities");
   const [searchParams] = useSearchParams();
+
+  // Ticked rows, for the bulk action bar. One id per ticked row and
+  // nothing inferred from the hierarchy — a fonds row contributes the
+  // fonds record alone. The set outlives a cursor page turn (a
+  // client-side link within this route) and dies with any filter or
+  // search change (a full reload), matching the authority lists.
+  const [selIds, setSelIds] = useState<Set<string>>(() => new Set());
+  const toggleSel = (id: string) =>
+    setSelIds((prev) => toggleSelection(prev, id));
 
   // Table ref for ColumnToggle
   const tableRef = useRef<Table<DescriptionRow> | null>(null);
@@ -807,6 +844,24 @@ function ColumnView({ loaderData }: { loaderData: any }) {
   // Column definitions
   const columns = useMemo<ColumnDef<DescriptionRow, unknown>[]>(
     () => [
+      {
+        id: "_select",
+        header: () => null,
+        enableHiding: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            aria-label={ta("bulkSelectRow")}
+            checked={selIds.has(row.original.id)}
+            onChange={() => toggleSel(row.original.id)}
+            // The reference-code cell is the row's link; a tick must
+            // never carry the reader off the page.
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-indigo"
+          />
+        ),
+      },
       {
         accessorKey: "referenceCode",
         header: t("col_reference_code"),
@@ -874,7 +929,8 @@ function ColumnView({ loaderData }: { loaderData: any }) {
           ),
       },
     ],
-    [t]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, ta, selIds]
   );
 
   const defaultColumnVisibility = useMemo(
@@ -993,6 +1049,13 @@ function ColumnView({ loaderData }: { loaderData: any }) {
         </div>
       ) : (
         <>
+          {/* Bulk action bar (appears at ≥1 ticked) */}
+          <BulkActionBar
+            recordType="records"
+            selectedIds={Array.from(selIds)}
+            label={t("page_title")}
+            onClear={() => setSelIds(new Set())}
+          />
           <DataTable
             data={loaderData.items}
             columns={columns}

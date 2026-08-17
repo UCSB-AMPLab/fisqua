@@ -54,7 +54,7 @@
  * `unsaved_dialog_leave` — carry the strings for the in-app
  * `<UnsavedChangesDialog>` that replaces the native `window.confirm`.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 export default {
   status: {
@@ -236,6 +236,11 @@ export default {
   error_required: "This field is required for the active standard.",
   error_invalid_level:
     "This level is not valid for the parent description's level.",
+  error_required_title: "Title is required",
+  error_required_date_expression: "Date expression is required",
+  error_required_scope: "Scope and content is required",
+  error_required_language: "Language is required",
+  error_required_extent: "Extent is required",
 } as const;
 
-/* @version v0.4.1 */
+/* @version v0.7.0 */

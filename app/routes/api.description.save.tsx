@@ -18,10 +18,11 @@
  * over a cataloguer's draft, a cataloguer cannot approve their own
  * entry, etc.).
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import type { WorkflowRole } from "../lib/workflow";
 import type { Route } from "./+types/api.description.save";
 
@@ -40,7 +41,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   } = await import("../lib/description.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   let body: any;
   try {
@@ -59,6 +65,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     // Check description access
     const { memberships } = await requireDescriptionAccess(
       db,
+      tenant.id,
       entryId,
       user.id,
       user.isAdmin
@@ -104,10 +111,14 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json({ ok: true });
   } catch (err) {
     if (err instanceof Response) {
-      const text = await err.text();
-      return Response.json({ error: text }, { status: err.status });
+      const { apiErrorToken } = await import("../lib/api-error.server");
+      return Response.json(
+        { error: apiErrorToken(err.status) },
+        { status: err.status }
+      );
     }
-    const message = err instanceof Error ? err.message : "Save failed";
-    return Response.json({ error: message }, { status: 500 });
+    // Server internals never reach the client: the 500 carries the
+    // same stable token the catch helper uses for unknown statuses.
+    return Response.json({ error: "generic" }, { status: 500 });
   }
 }

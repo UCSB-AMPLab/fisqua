@@ -8,12 +8,12 @@
  * member. Cross-references the cataloguing admin team page so the
  * project lead can work without an admin round-trip.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { Form, useActionData, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id.members";
 
@@ -27,19 +27,20 @@ type MemberRow = {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq } = await import("drizzle-orm");
+  const { eq, and } = await import("drizzle-orm");
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProject } = await import("../lib/projects.server");
   const { users, projectMembers } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
   // Only leads (or admins) can access member management
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
-  const project = await getProject(db, params.id);
+  const project = await getProject(db, tenant.id, params.id);
   if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -58,10 +59,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .where(eq(projectMembers.projectId, params.id))
     .all();
 
-  // Load all registered users (for the add-member picker)
+  // Load this tenant's registered users (for the add-member picker).
+  // Unscoped, this select hands every project lead on the platform the
+  // name and email address of every account on it.
   const allUsers = await db
     .select({ id: users.id, name: users.name, email: users.email })
     .from(users)
+    .where(eq(users.tenantId, tenant.id))
     .all();
 
   return {
@@ -80,11 +84,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { projectMembers, users } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -102,11 +107,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { ok: false, error: i18n.t("project:error.role_required") };
     }
 
-    // Verify user exists
+    // Verify the user exists WITHIN this tenant. A bare PK read lets a
+    // lead bind a foreign-tenant account to their project, and that
+    // membership then satisfies every project-role guard downstream —
+    // a durable cross-tenant grant made outside the federation
+    // mechanism, with no audit trail.
     const [targetUser] = await db
       .select({ id: users.id, email: users.email })
       .from(users)
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
       .limit(1)
       .all();
     if (!targetUser) {
@@ -153,10 +162,20 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { ok: false, error: i18n.t("project:error.role_required") };
     }
 
+    // Compound predicate: a membership id alone is not scoped to
+    // anything. Keyed on the id only, a lead who learns a membership
+    // UUID from another project (or another tenant) can promote its
+    // holder. The projectId term ties the write to the project this
+    // request was authorised against.
     await db
       .update(projectMembers)
       .set({ role: role as ProjectRole })
-      .where(eq(projectMembers.id, membershipId));
+      .where(
+        and(
+          eq(projectMembers.id, membershipId),
+          eq(projectMembers.projectId, params.id)
+        )
+      );
 
     return { ok: true };
   }
@@ -167,9 +186,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return { ok: false, error: "Missing membership ID" };
     }
 
+    // Same compound predicate as the role change, for the same reason.
     await db
       .delete(projectMembers)
-      .where(eq(projectMembers.id, membershipId));
+      .where(
+        and(
+          eq(projectMembers.id, membershipId),
+          eq(projectMembers.projectId, params.id)
+        )
+      );
 
     return { ok: true };
   }

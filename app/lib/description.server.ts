@@ -32,7 +32,17 @@
  * the behaviour from both angles: title persists, and the additive
  * contract still holds.
  *
- * @version v0.4.1
+ * Tenant scope is the CALLER'S responsibility, and the contract is
+ * strict: every `entryId` and `volumeId` passed in must already have
+ * been resolved through `requireDescriptionAccess`, `requireEntryAccess`
+ * or an equivalent guard that takes the REQUEST tenant id. Nothing in
+ * this module re-derives the tenant, so a raw client-supplied id
+ * reaching one of these helpers is a cross-tenant write. The keystone
+ * (`tests/db/cross-tenant-coverage.test.ts`) exempts this module on
+ * exactly that basis and fails if the contract stops being stated
+ * here.
+ *
+ * @version v0.7.0
  */
 
 import { eq, sql } from "drizzle-orm";
@@ -57,13 +67,15 @@ export { DESCRIPTION_FIELD_KEYS, type DescriptionFields };
 
 // --- Validation schema for submit-for-review ---
 
+// Messages are stable i18n tokens, not prose (CR-04): the render
+// boundary (description-form.tsx) maps each token to a locale key.
 const submitSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string().min(1, "required_title"),
   resourceType: z.enum(RESOURCE_TYPES_ES),
-  dateExpression: z.string().min(1, "Date expression is required"),
-  scopeContent: z.string().min(1, "Scope and content is required"),
-  language: z.string().min(1, "Language is required"),
-  extent: z.string().min(1, "Extent is required"),
+  dateExpression: z.string().min(1, "required_date_expression"),
+  scopeContent: z.string().min(1, "required_scope"),
+  language: z.string().min(1, "required_language"),
+  extent: z.string().min(1, "required_extent"),
 });
 
 /**

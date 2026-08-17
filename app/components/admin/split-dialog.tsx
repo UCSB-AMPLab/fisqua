@@ -167,10 +167,8 @@ export function SplitDialog({
               onToggle={handleToggleLink}
               defaultChecked={false}
               loadMoreLabel={t("loadMore")}
-              selectAllLabel={t("selectAll", { defaultValue: "Select all" })}
-              deselectAllLabel={t("deselectAll", {
-                defaultValue: "Deselect all",
-              })}
+              selectAllLabel={t("selectAll")}
+              deselectAllLabel={t("deselectAll")}
               onSelectAll={handleSelectAll}
               onDeselectAll={handleDeselectAll}
             />

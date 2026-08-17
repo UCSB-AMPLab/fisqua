@@ -10,7 +10,10 @@
  * Authority scope is the federation (migrations 0045-0048). Usage counts on
  * `entities` and `places` are scoped to `tenant.federationId`;
  * descriptionEntities and descriptionPlaces inherit tenant scope via
- * FK chain.
+ * FK chain. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
  * @version v0.4.2
  */
@@ -58,6 +61,7 @@ type VocabKey = keyof typeof VOCAB_MAP;
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
@@ -114,7 +118,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           sql`${entities.mergedInto} IS NULL`
         )
       )
@@ -128,7 +132,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`,
       })
       .from(places)
-      .where(eq(places.federationId, tenant.federationId))
+      .where(authorityScope(places, tenant.federationId, tenant.id))
       .groupBy(places.placeType)
       .all();
     for (const row of rows) usageMap.set(row.type ?? "", row.count);
@@ -311,7 +315,7 @@ export default function EnumVocabularyPage({
   return (
     <div className="mx-auto max-w-7xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex items-center gap-1">
           <li>
             <Link

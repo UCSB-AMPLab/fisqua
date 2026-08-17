@@ -17,13 +17,13 @@
  * outline is being reshaped would only churn the workflow, so the
  * banner prompts the lead to resolve the request first.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
 import {
   DescriptionAssignmentTable,
   type DescriptionEntryRow,
@@ -65,9 +65,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { volumes, projectMembers, users } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
 
   // Load volume info
   const [volume] = await db
@@ -134,16 +135,40 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { requireProjectRole } = await import("../lib/permissions.server");
+  const { requireProjectRole, requireEntryAccess } = await import(
+    "../lib/permissions.server"
+  );
   const {
     assignDescriber,
     assignDescriptionReviewer,
   } = await import("../lib/description.server");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
 
-  await requireProjectRole(db, user.id, params.id, ["lead"], user.isAdmin);
+  await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
+
+  /**
+   * Resolve a submitted entry id back to its own volume and refuse
+   * anything that does not sit in the volume AND project this request
+   * was authorised against. requireEntryAccess does the tenant assert
+   * and the membership read; the two comparisons below close the
+   * remaining gap, since an entry id in a form body is attacker-chosen
+   * and the route params prove nothing about it.
+   */
+  async function assertEntryInScope(entryId: string) {
+    const { volume } = await requireEntryAccess(
+      db,
+      tenant.id,
+      entryId,
+      user.id,
+      user.isAdmin
+    );
+    if (volume.id !== params.volumeId || volume.projectId !== params.id) {
+      throw new Response("Entry not found", { status: 404 });
+    }
+  }
 
   const formData = await request.formData();
   const actionType = formData.get("_action") as string;
@@ -156,6 +181,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!entryId) {
       return Response.json({ error: "entryId required" }, { status: 400 });
     }
+
+    await assertEntryInScope(entryId);
 
     if (describerId) {
       await assignDescriber(db, entryId, describerId);
@@ -184,6 +211,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
 
     for (const eid of entryIds) {
+      await assertEntryInScope(eid);
       if (describerId) {
         await assignDescriber(db, eid, describerId);
       }

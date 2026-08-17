@@ -6,7 +6,7 @@
  * the general-settings form (name, manifest URL, contact email, role,
  * description, conventions) and the surrounding section labels.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   settings: {
@@ -122,6 +122,15 @@ export default {
     title: "New project",
     create: "Create project",
   },
+  // Manifest validation tokens returned by the IIIF server helpers.
+  manifest: {
+    manifest_https: "The manifest URL must use HTTPS",
+    manifest_host: "The manifest must come from {{hosts}}",
+    manifest_path: "The URL must point to a manifest.json file",
+    manifest_invalid_url: "The URL is not valid",
+    manifest_fetch_failed: "The manifest could not be fetched (status {{status}})",
+    manifest_ref_code: "A reference code could not be read from the manifest",
+  },
   error: {
     name_required: "Project name is required.",
     name_too_long: "Project name must be 200 characters or less.",
@@ -139,6 +148,8 @@ export default {
     volume_id_required: "Volume ID is required.",
     process_manifest_failed: "Failed to process manifest.",
     delete_failed: "Failed to delete volume.",
+    delete_requires_unstarted:
+      "Only volumes still marked 'not started' can be deleted",
   },
   invite: {
     placeholder: "colleague@example.com",

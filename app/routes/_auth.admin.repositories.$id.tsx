@@ -46,6 +46,7 @@ import {
   RepoCountryCodeInput,
 } from "~/components/admin/repository-country-fields";
 import { DescriptionTree } from "~/components/descriptions/description-tree";
+import { useFormatters } from "~/lib/use-formatters";
 import type { Route } from "./+types/_auth.admin.repositories.$id";
 
 // ---------------------------------------------------------------------------
@@ -375,6 +376,7 @@ export default function RepositoryDetailPage({
     loaderData;
   const actionData = useActionData<typeof action>();
   const { t } = useTranslation("repositories");
+  const { formatDateTime } = useFormatters();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -441,7 +443,7 @@ export default function RepositoryDetailPage({
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex items-center gap-1">
           <li>
             <Link
@@ -656,9 +658,7 @@ export default function RepositoryDetailPage({
                   name: "",
                   time:
                     "modifiedAt" in actionData
-                      ? new Date(
-                          actionData.modifiedAt as number
-                        ).toLocaleString()
+                      ? formatDateTime(actionData.modifiedAt as number)
                       : "",
                 })}
               </h2>

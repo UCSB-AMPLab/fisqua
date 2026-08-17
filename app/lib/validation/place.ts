@@ -6,9 +6,15 @@
  * import, and autosave draft. The
  * `placeSchema` captures the full Linked Places-adjacent shape with
  * coordinates and external authority IDs (Getty TGN, WHG, HGIS).
- * The `placeCode` regex pins the `nl-xxxxxx` format (6 lowercase
- * alphanumeric characters from a 32-char alphabet) so external
- * references stay stable across merges and renames.
+ * The `placeCode` regex pins the agency-prefixed code format — a
+ * configured prefix, a hyphen, and six characters from the
+ * 30-character code alphabet — so external references stay stable
+ * across merges and renames. It accepts `nl-abc234` (Neogranadina) and
+ * `sbmal-p-abc234` (SBMAL) alike: since migration 0068 the prefix names
+ * whichever agency maintains the record, so the format can no longer
+ * pin one institution's literal. The rule itself lives in
+ * `app/lib/validation/authority-code.ts`, shared with the entity schema
+ * and with the generator's alphabet.
  *
  * Migration `drizzle/0036_union_schema.sql` dropped
  * historical_gobernacion, historical_partido, historical_region,
@@ -17,15 +23,17 @@
  * `fclass` column (5-value GeoNames feature class) with a CHECK
  * constraint and `legacyIds` JSON for migration provenance.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { z } from "zod/v4";
 import { PLACE_TYPES, GEONAMES_FCLASSES, COORDINATE_PRECISIONS } from "./enums";
+import { AUTHORITY_CODE_RE } from "./authority-code";
 
 export const placeSchema = z.object({
   id: z.string().uuid(),
-  placeCode: z.string().regex(/^nl-[a-z2-9]{6}$/), // 6-char from 32-char alphabet
+  // Agency prefix + 6 characters from the 30-char code alphabet.
+  placeCode: z.string().regex(AUTHORITY_CODE_RE),
   label: z.string().min(1).max(255),
   displayName: z.string().min(1).max(500),
   placeType: z.enum(PLACE_TYPES).nullable().optional(),

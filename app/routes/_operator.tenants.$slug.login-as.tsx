@@ -79,7 +79,7 @@
  * impersonating session's lastActivityAt) captures the timeframe
  * without per-action audit traffic during impersonation.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 
 import { redirect } from "react-router";
@@ -148,9 +148,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // platform via canImpersonate=false; this is the action-boundary
   // backstop catching a hostile direct-POST.
   if (target.kind === "platform") {
-    return new Response("Cannot impersonate into platform tenant", {
-      status: 400,
-    });
+    return Response.json({ error: "platform_tenant" }, { status: 400 });
   }
 
   const handoffId = crypto.randomUUID();
@@ -217,4 +215,4 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   );
 }
 
-// @version v0.4.0
+// @version v0.7.0

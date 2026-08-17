@@ -122,9 +122,22 @@ export default {
 
   // Bulk-merge toolbar (list surfaces)
   bulkSelected: "{{count}} seleccionados",
+  // Cada frase de conteo se escribe completa por tipo: el participio
+  // concuerda con el sustantivo, así que «{{count}} entidades
+  // seleccionadas» y «{{count}} lugares seleccionados» no salen del
+  // mismo molde.
+  bulkCountRecords_one: "{{count}} registro seleccionado",
+  bulkCountRecords_other: "{{count}} registros seleccionados",
+  bulkCountEntities_one: "{{count}} entidad seleccionada",
+  bulkCountEntities_other: "{{count}} entidades seleccionadas",
+  bulkCountPlaces_one: "{{count}} lugar seleccionado",
+  bulkCountPlaces_other: "{{count}} lugares seleccionados",
   bulkClear: "Quitar selección",
   bulkMerge: "Combinar…",
   bulkHintPickTwo: "Selecciona exactamente dos registros para combinar.",
+  bulkAddToHandlist: "Agregar a una lista de trabajo",
+  bulkSendToExport: "Exportar la selección",
+  bulkSelectRow: "Seleccionar este registro",
 
   // Show-merged toggle + merged row indicator
   showMerged: "Mostrar combinados",
@@ -143,6 +156,9 @@ export default {
     "Revisa las parejas candidatas a duplicados: combina los duplicados reales o descarta las coincidencias falsas dejando el motivo en el historial.",
   dupCountLine: "parejas candidatas · ordenadas de mayor a menor coincidencia",
   dupSignalName: "nombre normalizado",
+  dupSignalNearName: "escritura parecida",
+  dupNearSpellingHint:
+    "Los dos nombres normalizados se diferencian en un solo carácter.",
   dupSignalDates: "fechas que se superponen",
   dupSignalWikidata: "Wikidata compartido",
   dupSignalTgn: "TGN de Getty compartido",

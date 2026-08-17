@@ -5,10 +5,11 @@
  * (Wikidata, VIAF, TGN) with a click-through link icon that opens the
  * resolved URL in a new tab.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 
 type LodService = "wikidata" | "viaf" | "tgn" | "hgis" | "whg";
@@ -48,6 +49,7 @@ export function LodLinkField({
   disabled = false,
   error: externalError,
 }: LodLinkFieldProps) {
+  const { t } = useTranslation("entities");
   const [localError, setLocalError] = useState<string | null>(null);
 
   function handleBlur() {
@@ -56,7 +58,7 @@ export function LodLinkField({
       return;
     }
     if (!SERVICE_PATTERNS[service].test(value)) {
-      setLocalError("Invalid format");
+      setLocalError(t("lod.invalid_format"));
     } else {
       setLocalError(null);
     }
@@ -74,7 +76,7 @@ export function LodLinkField({
             href={SERVICE_URLS[service](value)}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`Open ${service} record in new tab`}
+            aria-label={t("lod.open_record", { service })}
           >
             <ExternalLink className="h-3.5 w-3.5 text-indigo-deep" />
           </a>

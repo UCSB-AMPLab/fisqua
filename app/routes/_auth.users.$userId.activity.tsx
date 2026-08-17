@@ -17,27 +17,42 @@
  * each other — that would turn the timeline into a surveillance
  * surface and erode the workflow's trust assumptions.
  *
- * @version v0.4.2
+ * The tiering is per-tenant, not per-account. Leading a project at
+ * home confers nothing on the host being served, and the target user
+ * is resolved inside the request tenant — a user id from another
+ * tenant is a 404 here, not a profile. The only entry point is the
+ * lead dashboard's team table, so the page carries the crowdsourcing
+ * capability gate the rest of that surface carries.
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
-import { relativeTime } from "~/lib/format";
+import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "~/lib/use-formatters";
+import { getLocale } from "../middleware/i18next";
 import { StatusBadge } from "../components/workflow/status-badge";
 import type { Route } from "./+types/_auth.users.$userId.activity";
 
 export function meta({ data }: Route.MetaArgs) {
-  const name = data?.targetUser?.name ?? "Usuario";
+  const lang = data?.lang === "es" ? "es" : "en";
+  const name =
+    data?.targetUser?.name ?? (lang === "es" ? "Usuario" : "User");
   return [
-    { title: `${name} - Actividad` },
-    { name: "description", content: `Actividad de ${name}` },
+    { title: lang === "es" ? `${name} — Actividad` : `${name} — Activity` },
+    {
+      name: "description",
+      content:
+        lang === "es" ? `Actividad de ${name}` : `Activity of ${name}`,
+    },
   ];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq, inArray, sql } = await import("drizzle-orm");
+  const { and, eq, inArray, isNotNull, or, sql } = await import("drizzle-orm");
   const { getActivityForUser } = await import("../lib/activity.server");
   const {
     users,
@@ -48,21 +63,32 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   } = await import("../db/schema");
 
   const currentUser = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
   const targetUserId = params.userId;
+
+  requireCapability(tenant, "crowdsourcing");
 
   // --- Visibility check ---
   const isSelf = currentUser.id === targetUserId;
 
   if (!isSelf && !currentUser.isAdmin) {
-    // Check if current user is lead on any project where target is a member
+    // Lead-of-a-shared-project is the visibility rule, and both halves
+    // of it are read inside the request tenant: a lead role held on a
+    // project elsewhere grants nothing here.
     const currentUserMemberships = await db
       .select({
         projectId: projectMembers.projectId,
         role: projectMembers.role,
       })
       .from(projectMembers)
-      .where(eq(projectMembers.userId, currentUser.id))
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.userId, currentUser.id),
+          eq(projects.tenantId, tenant.id)
+        )
+      )
       .all();
 
     const leadProjectIds = currentUserMemberships
@@ -77,7 +103,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     const targetMemberships = await db
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
-      .where(eq(projectMembers.userId, targetUserId))
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.userId, targetUserId),
+          eq(projects.tenantId, tenant.id)
+        )
+      )
       .all();
 
     const targetProjectIds = new Set(
@@ -93,6 +125,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   }
 
   // --- Fetch target user info ---
+  // The target must be REACHABLE in the request tenant, which is a
+  // slightly wider test than being homed in it: a federation
+  // grant-holder's `users` row still names their home tenant while
+  // they hold memberships, assignments and a trail here, and they are
+  // in the team table this page is reached from. So: homed here, or
+  // holding a membership on one of this tenant's projects. Anything
+  // else is a 404 — a bare PK read handed out any account's name and
+  // last-active time by uuid, platform-wide.
   const targetUserRows = await db
     .select({
       id: users.id,
@@ -100,7 +140,21 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(eq(users.id, targetUserId))
+    .leftJoin(projectMembers, eq(projectMembers.userId, users.id))
+    .leftJoin(
+      projects,
+      and(
+        eq(projectMembers.projectId, projects.id),
+        eq(projects.tenantId, tenant.id)
+      )
+    )
+    .where(
+      and(
+        eq(users.id, targetUserId),
+        or(eq(users.tenantId, tenant.id), isNotNull(projects.id))
+      )
+    )
+    .limit(1)
     .all();
 
   if (targetUserRows.length === 0) {
@@ -109,17 +163,28 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   const targetUser = targetUserRows[0];
 
-  // Target user's roles across projects
+  // Target user's roles on THIS tenant's projects
   const targetRoles = await db
     .select({ role: projectMembers.role })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, targetUserId))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, targetUserId),
+        eq(projects.tenantId, tenant.id)
+      )
+    )
     .all();
 
   const roles = [...new Set(targetRoles.map((r) => r.role))];
 
   // --- Activity log ---
-  const activityEntries = await getActivityForUser(db, targetUserId, 50);
+  const activityEntries = await getActivityForUser(
+    db,
+    tenant.id,
+    targetUserId,
+    50
+  );
 
   // Enrich activity entries with project names
   const activityProjectIds = [
@@ -131,7 +196,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     const projectRows = await db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
-      .where(inArray(projects.id, activityProjectIds))
+      .where(
+        and(
+          inArray(projects.id, activityProjectIds),
+          eq(projects.tenantId, tenant.id)
+        )
+      )
       .all();
     projectNameMap = new Map(projectRows.map((p) => [p.id, p.name]));
   }
@@ -155,7 +225,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       updatedAt: volumes.updatedAt,
     })
     .from(volumes)
-    .where(eq(volumes.assignedTo, targetUserId))
+    .where(
+      and(
+        eq(volumes.tenantId, tenant.id),
+        eq(volumes.assignedTo, targetUserId)
+      )
+    )
     .all();
 
   // Also get volumes where target is reviewer
@@ -169,7 +244,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       updatedAt: volumes.updatedAt,
     })
     .from(volumes)
-    .where(eq(volumes.assignedReviewer, targetUserId))
+    .where(
+      and(
+        eq(volumes.tenantId, tenant.id),
+        eq(volumes.assignedReviewer, targetUserId)
+      )
+    )
     .all();
 
   // Merge unique volumes
@@ -189,7 +269,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`.as("count"),
       })
       .from(entries)
-      .where(inArray(entries.volumeId, volumeIds))
+      .where(
+        and(
+          eq(entries.tenantId, tenant.id),
+          inArray(entries.volumeId, volumeIds)
+        )
+      )
       .groupBy(entries.volumeId)
       .all();
     entryCountMap = new Map(entryCounts.map((e) => [e.volumeId, e.count]));
@@ -201,7 +286,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     const projectRows = await db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
-      .where(inArray(projects.id, volProjectIds))
+      .where(
+        and(
+          inArray(projects.id, volProjectIds),
+          eq(projects.tenantId, tenant.id)
+        )
+      )
       .all();
     for (const p of projectRows) {
       projectNameMap.set(p.id, p.name);
@@ -221,6 +311,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
+  // Locale channel for `meta()`: `getLocale` throws if the i18next
+  // middleware did not run on this request (direct loader invocation
+  // from tests) — fall back to "en".
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+
   return {
     targetUser: {
       ...targetUser,
@@ -228,6 +328,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     },
     activity,
     volumes: volumeData,
+    lang,
   };
 }
 
@@ -241,6 +342,7 @@ export default function UserActivity({ loaderData }: Route.ComponentProps) {
   const { targetUser, activity, volumes } = loaderData;
   const [tab, setTab] = useState<"activity" | "volumes">("activity");
   const { t } = useTranslation(["dashboard", "workflow", "project", "common"]);
+  const { relativeTime } = useFormatters();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -318,6 +420,7 @@ function ActivityTab({
   }[];
 }) {
   const { t } = useTranslation("dashboard");
+  const { relativeTime } = useFormatters();
 
   if (activity.length === 0) {
     return (
@@ -402,6 +505,7 @@ function VolumesTab({
   }[];
 }) {
   const { t } = useTranslation(["dashboard", "project"]);
+  const { relativeTime } = useFormatters();
 
   if (volumes.length === 0) {
     return (

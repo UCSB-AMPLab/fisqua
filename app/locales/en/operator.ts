@@ -9,7 +9,7 @@
  * (`tests/i18n-coverage.test.ts`) runs equally over the parallel
  * ES file.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 export default {
   brand: "Fisqua Operator",
@@ -113,6 +113,15 @@ export default {
     not_operator: "You are not an instance operator.",
     no_session: "Sign in to continue.",
   },
+  // Per-field validation tokens returned by the tenant-create action.
+  field_error: {
+    name_required: "Name is required",
+    email_invalid: "The email address is not valid",
+    slug_format:
+      "The slug must be lowercase, start with a letter, and contain only letters, digits, and hyphens",
+    slug_length: "The slug must be between 1 and 63 characters",
+    slug_reserved_word: "This slug is reserved",
+  },
 } as const;
 
-// @version v0.4.0
+// @version v0.7.0

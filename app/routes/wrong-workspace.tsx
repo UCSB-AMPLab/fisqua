@@ -40,11 +40,18 @@ import {
   findTenantBySlug,
   getTenantFromRequest,
 } from "../lib/tenant";
+import { getLocale } from "../middleware/i18next";
 
 export function meta({ data }: Route.MetaArgs) {
-  // Static title — i18next is component-side; meta runs on the server
-  // without an i18n context. Match the EN page_title literal.
-  return [{ title: "Wrong workspace | Fisqua" }];
+  const lang = data?.lang === "es" ? "es" : "en";
+  return [
+    {
+      title:
+        lang === "es"
+          ? "Espacio de trabajo equivocado | Fisqua"
+          : "Wrong workspace | Fisqua",
+    },
+  ];
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -80,10 +87,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     : null;
   const ctaUrl = origin !== null ? `${origin}/login` : null;
 
+  // Locale channel for `meta()`: `getLocale` throws if the i18next
+  // middleware did not run on this request (direct loader invocation
+  // from tests) — fall back to "en".
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+
   return {
     wrongTenant: { slug: tenant.slug, name: tenant.name },
     homeTenant,
     ctaUrl,
+    lang,
   };
 }
 
@@ -131,7 +149,7 @@ export default function WrongWorkspacePage({ loaderData }: Route.ComponentProps)
           {hasHome && (
             <div
               className="my-6 flex items-center justify-center gap-2.5 font-mono text-sm text-indigo"
-              aria-label="Workspace comparison"
+              aria-label={t("wrong_workspace.comparison_aria")}
             >
               <span className="text-stone-500 line-through decoration-stone-400">
                 {wrongTenant.slug}.fisqua.org

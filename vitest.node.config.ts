@@ -34,6 +34,10 @@ export default defineConfig({
       "tests/export/ead/schema-*.test.ts",
       "tests/export/ead/dacs-*.test.ts",
       "tests/export/dc/**/*.test.ts",
+      // AST-based i18n guards: the `typescript` package needs the Node
+      // system layer the Workers pool doesn't expose.
+      "tests/i18n-coverage.test.ts",
+      "tests/i18n-keys.test.ts",
     ],
   },
 });

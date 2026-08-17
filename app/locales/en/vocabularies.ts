@@ -7,7 +7,7 @@
  * the merge/split workflow labels that authority editors use to keep
  * the function and subject vocabularies tidy.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 export default {
   // Page
@@ -37,10 +37,23 @@ export default {
   deprecate_confirm:
     "Deprecate '{{term}}'? {{count}} entities currently use this function. They will retain the function label but it will no longer appear in typeahead suggestions.",
   reject_confirm: "Reject '{{term}}'? Provide a reason for rejection.",
+  reject_reason_placeholder: "Reason for rejection...",
   error_save:
     "Could not save the term. Check your connection and try again.",
   error_merge:
     "Merge failed. The target term may have been deleted. Refresh and try again.",
+  // Action-error tokens surfaced through the shared SaveFeedbackBanner.
+  error: {
+    invalid_input: "Invalid input",
+    term_not_found: "The term was not found",
+    missing_target: "A target term is required",
+    merge_into_self: "A term cannot be merged into itself",
+    target_not_found: "The target term was not found",
+    source_not_found: "The source term was not found",
+    name_required: "The new term name is required",
+    invalid_name: "The name is not valid",
+    unknown_intent: "Unknown action",
+  },
 
   // Statuses
   status_approved: "Approved",
@@ -86,6 +99,7 @@ export default {
   col_category: "Category",
   col_usage: "Usage",
   col_status: "Status",
+  col_date: "Date",
   col_actions: "Actions",
 
   // Detail

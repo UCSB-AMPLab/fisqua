@@ -17,28 +17,42 @@
  * subtypes, conventions, JSON settings blob) live on the per-project
  * settings page once the row exists.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { Form, redirect, useActionData, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
+import { getLocale } from "../middleware/i18next";
 import type { Route } from "./+types/_auth.projects.new";
 
-export function meta() {
-  return [{ title: "Nuevo proyecto" }];
+export function meta({ data }: Route.MetaArgs) {
+  const lang = data?.lang === "es" ? "es" : "en";
+  return [{ title: lang === "es" ? "Nuevo proyecto" : "New project" }];
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { requireAdmin } = await import("../lib/permissions.server");
+  const { requireCapability } = await import("../lib/tenant");
   const user = context.get(userContext);
   requireAdmin(user);
-  return {};
+  requireCapability(context.get(tenantContext), "crowdsourcing");
+  // Locale channel for `meta()`: `getLocale` throws if the i18next
+  // middleware did not run on this request (direct loader invocation
+  // from tests) — fall back to "en".
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+  return { lang };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { requireAdmin } = await import("../lib/permissions.server");
+  const { requireCapability } = await import("../lib/tenant");
   const {
     validateProjectForm,
     createProject,
@@ -46,6 +60,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   requireAdmin(user);
+  requireCapability(context.get(tenantContext), "crowdsourcing");
 
   const formData = await request.formData();
   const raw = {

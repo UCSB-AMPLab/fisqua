@@ -1,24 +1,45 @@
 /**
  * User Admin — List
  *
- * This page is the superadmin-only directory of every user in the
- * system, with filter chips for role flags and a search box for name
- * or email. Each row
- * deep-links to the user detail page for edits.
+ * This page is the directory of every user in the request tenant, with
+ * role pills and project counts. Each row deep-links to the user detail
+ * page for edits.
+ *
+ * Reaching it takes `canManageTenantUsers`: a super admin, a user
+ * manager, or a tenant admin. The tenant admin is the addition — on a
+ * records-management tenant they are the only person in a position to
+ * put a newly invited colleague to work, and gating the directory on
+ * the platform roles left a federation steward able to send invitations
+ * and unable to do anything with them afterwards.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Loader filters `users` by `tenant.id`; the
  * action plumbs `tenant.id` into `handleUsersAction` so the invite
  * path attributes the new user row to the calling tenant.
  *
- * @version v0.4.0
+ * The invite modal carries an opening-role picker, shown only to a
+ * caller who may assign the tenant-scoped roles. It offers those two
+ * roles and "no role"; the platform roles are not on offer here and
+ * the action refuses them regardless of what the body says.
+ *
+ * Invite feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. The banner sits on the page rather than inside
+ * the invite modal because the modal closes on submit — a result
+ * rendered inside it would be unmounted before it could be read.
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
 import { Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
-import { formatDate } from "../lib/format";
+import { useFormatters } from "../lib/use-formatters";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.users";
 
 // ---------------------------------------------------------------------------
@@ -30,8 +51,12 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { asc, eq } = await import("drizzle-orm");
   const { users, projectMembers, projects } = await import("../db/schema");
 
+  const { canAssignTenantRoles, canManageTenantUsers } = await import(
+    "../lib/permissions.server"
+  );
+
   const user = context.get(userContext);
-  if (!user.isSuperAdmin && !user.isUserManager) {
+  if (!canManageTenantUsers(user)) {
     throw new Response("Forbidden", { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -67,6 +92,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projects.tenantId, tenant.id))
     .all();
 
   const membershipsByUser = new Map<string, { projectName: string; role: string }[]>();
@@ -81,7 +107,13 @@ export async function loader({ context }: Route.LoaderArgs) {
     projects: membershipsByUser.get(u.id) || [],
   }));
 
-  return { users: usersWithProjects };
+  return {
+    users: usersWithProjects,
+    // Drives the invite modal's role picker. A caller who cannot hand
+    // out the tenant-scoped roles is not offered the field at all,
+    // rather than shown a control whose every value the action refuses.
+    canAssignTenantRoles: canAssignTenantRoles(user),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -90,9 +122,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
+  const { canManageTenantUsers } = await import("../lib/permissions.server");
 
   const user = context.get(userContext);
-  if (!user.isSuperAdmin && !user.isUserManager) {
+  if (!canManageTenantUsers(user)) {
     throw new Response("Forbidden", { status: 403 });
   }
   const tenant = context.get(tenantContext);
@@ -112,7 +145,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     return handleUsersAction(user, tenant.id, db, formData, env, i18n, origin);
   }
 
-  return { ok: false, error: "Unknown action" };
+  // No `error` text: the branch is not reachable from the UI, so the
+  // feedback banner falls back to the localised "not saved" line
+  // rather than surfacing an untranslated developer string.
+  return { ok: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,15 +197,17 @@ const ROLE_PILL_COLORS: Record<RoleKey, string> = {
 export default function SystemUsersPage({
   loaderData,
 }: Route.ComponentProps) {
-  const { users: allUsers } = loaderData;
+  const { users: allUsers, canAssignTenantRoles } = loaderData;
   const { t } = useTranslation(["user_admin", "sidebar", "admin"]);
+  const { formatDate } = useFormatters();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const inviteFetcher = useFetcher();
 
-  const inviteResult = inviteFetcher.data as
-    | { ok: boolean; message?: string; error?: string }
-    | undefined;
-  const inviteSuccess = inviteResult?.ok === true;
+  const inviting = isPendingSubmission(
+    inviteFetcher.state,
+    inviteFetcher.formData ?? undefined,
+    "inviteUser",
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-8 py-8 space-y-6">
@@ -186,17 +224,15 @@ export default function SystemUsersPage({
         </button>
       </div>
 
-      {inviteSuccess && inviteResult?.message && (
-        <div className="rounded-md border border-verdigris bg-verdigris-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {inviteResult.message}
-        </div>
-      )}
-
-      {inviteResult && !inviteResult.ok && inviteResult.error && (
-        <div className="rounded-md border border-indigo bg-indigo-tint px-4 py-3 font-sans text-sm text-stone-700">
-          {inviteResult.error}
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={inviteFetcher.data}
+        pending={inviting}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+      />
 
       {showInviteModal && (
         <div
@@ -254,6 +290,41 @@ export default function SystemUsersPage({
                   className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
+              {/* Opening role. Only the tenant-scoped roles are on
+                  offer, and only to a caller who may assign them —
+                  the same split `assignableRoleFlags` enforces
+                  server-side. Without this the invited user landed on
+                  an empty dashboard, because every records-management
+                  surface requires Records admin. */}
+              {canAssignTenantRoles && (
+                <div>
+                  <label
+                    htmlFor="invite-role"
+                    className="mb-1 block font-sans text-xs font-medium text-indigo"
+                  >
+                    {t("user_admin:invite_role_label")}
+                  </label>
+                  <select
+                    id="invite-role"
+                    name="role"
+                    defaultValue="none"
+                    className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                  >
+                    <option value="none">
+                      {t("user_admin:invite_role_none")}
+                    </option>
+                    <option value="records_admin">
+                      {t("user_admin:role_records_admin")}
+                    </option>
+                    <option value="archive_user">
+                      {t("user_admin:role_archive_user")}
+                    </option>
+                  </select>
+                  <p className="mt-1 font-sans text-xs text-stone-400">
+                    {t("user_admin:invite_role_hint")}
+                  </p>
+                </div>
+              )}
               <div className="flex justify-end gap-3 border-t border-stone-200 pt-4">
                 <button
                   type="button"
@@ -262,12 +333,11 @@ export default function SystemUsersPage({
                 >
                   {t("admin:action.cancel")}
                 </button>
-                <button
-                  type="submit"
-                  className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-                >
-                  {t("sidebar:send_invite")}
-                </button>
+                <SaveButton
+                  pending={inviting}
+                  label={t("sidebar:send_invite")}
+                  pendingLabel={t("common:save.saving")}
+                />
               </div>
             </inviteFetcher.Form>
           </div>

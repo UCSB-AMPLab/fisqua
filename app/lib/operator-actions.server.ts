@@ -109,7 +109,9 @@ const checkboxSchema = z
  */
 export const CreateTenantSchema = z.object({
   slug: SlugSchema,
-  name: z.string().min(1, { message: "Name is required" }).max(120),
+  // Stable i18n tokens, not prose — mapped to locale keys by the
+  // render boundary's `fieldError()`.
+  name: z.string().min(1, { message: "name_required" }).max(120),
   descriptiveStandard: z.enum(DESCRIPTIVE_STANDARDS),
   crowdsourcingEnabled: checkboxSchema.default(false),
   vocabularyHubEnabled: checkboxSchema.default(true),
@@ -128,7 +130,7 @@ export const CreateTenantSchema = z.object({
     .default(null),
   bootstrapEmail: z
     .string()
-    .email({ message: "Invalid email" })
+    .email({ message: "email_invalid" })
     .transform((s) => s.toLowerCase()),
 });
 

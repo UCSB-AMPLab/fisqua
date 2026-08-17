@@ -12,7 +12,7 @@
  * `/auth/github`). The verbatim copy, divider, and error strings are
  * unchanged.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 export default {
   email_label: "Email address",
@@ -30,9 +30,14 @@ export default {
       "No account found for your GitHub email. Ask a project admin for an invite.",
   },
   placeholder: "you@example.com",
+  // Email-magic-link render-boundary tokens (`login.*`) — distinct from
+  // `error.no_account`, which is the GitHub-OAuth-specific message.
+  login: {
+    no_account: "No account found for this email.",
+  },
   page_title: "Log in | Fisqua",
   footer_note:
-    "Log in with GitHub or your Neogranadina institutional email.",
+    "Log in with GitHub or the email address on your account.",
   wrong_workspace: {
     page_title: "Wrong workspace | Fisqua",
     eyebrow: "Wrong workspace",
@@ -42,5 +47,6 @@ export default {
     cta: "Go to your {{name}} workspace",
     cta_fallback: "Sign in again",
     sign_out_link: "This isn't my account? Sign out",
+    comparison_aria: "Workspace comparison",
   },
 } as const;

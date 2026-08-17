@@ -3,20 +3,20 @@
  *
  * This suite pins the two pure helpers that back the region-chip
  * display: `computeChipLabelArgs` (builds the `t(...)` invocation
- * shape — key, vars, defaultValue) and `computeChipClassName` (the
- * Tailwind class composition that carries the chip's status
- * variant). The label helper carries a Colombian-Spanish
- * `defaultValue` ("Región · p. N" with the U+00B7 middle dot) so
- * the chip renders correctly even before the locale key is
- * registered upstream.
+ * shape — key + vars) and `computeChipClassName` (the Tailwind class
+ * composition that carries the chip's status variant). The label key
+ * lives in the registered `viewer` namespace
+ * (`viewer:regions.chip_label`, "Región · p. {{page}}" with the
+ * U+00B7 middle dot); the old Spanish `defaultValue` is gone — a
+ * prose defaultValue is how a missing key hides in one language, and
+ * the i18n-keys guard now bans the pattern outright.
  *
  * No React rendering — the helpers are pure functions returning
- * scalars or struct args, and the i18n contract (key + vars +
- * defaultValue) is exactly what's pinned here so a future refactor
- * cannot silently drop the middle-dot separator or change the page
- * interpolation contract.
+ * scalars or struct args, and the i18n contract (key + vars) is
+ * exactly what's pinned here so a future refactor cannot silently
+ * change the page interpolation contract.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -25,18 +25,15 @@ import {
 } from "../../app/components/comments/region-chip";
 
 describe("computeChipLabelArgs", () => {
-  it("returns the 'regions:chip.label' key with the page interpolation var --", () => {
+  it("returns the registered 'viewer:regions.chip_label' key with the page interpolation var", () => {
     const args = computeChipLabelArgs(3);
-    expect(args.key).toBe("regions:chip.label");
+    expect(args.key).toBe("viewer:regions.chip_label");
     expect(args.vars).toEqual({ page: 3 });
   });
 
-  it("produces a Colombian-Spanish default value until the locale key is registered", () => {
+  it("carries no defaultValue — the key resolves from the bundles in both languages", () => {
     const args = computeChipLabelArgs(7);
-    // "Región · p. 7" -- middle dot U+00B7 per CONTEXT.
-    expect(args.defaultValue).toBe("Región · p. 7");
-    expect(args.defaultValue).toContain("Región");
-    expect(args.defaultValue).toContain("p. 7");
+    expect("defaultValue" in args).toBe(false);
   });
 
   it("uses the raw pageNumber for the page var (no conversion)", () => {

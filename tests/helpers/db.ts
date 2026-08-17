@@ -13,7 +13,7 @@
  * here so downstream test files share a single import surface for
  * tenant-aware fixtures.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
@@ -70,6 +70,11 @@ export async function applyMigrations() {
       // federations, created just below — SQLite allows a forward FK
       // reference at CREATE time (checked only at row ops).
       "federation_id TEXT REFERENCES federations(id) ON DELETE RESTRICT, " +
+      // Authority code prefixes (migration 0068). Set only on tenants
+      // that mint their OWN authority records; NULL everywhere else,
+      // where the federation row carries the pair instead.
+      "entity_code_prefix TEXT, " +
+      "place_code_prefix TEXT, " +
       "created_at INTEGER NOT NULL, " +
       "updated_at INTEGER NOT NULL, " +
       // SQLite CHECK only rejects on FALSE (not NULL). The second
@@ -99,6 +104,16 @@ export async function applyMigrations() {
       "lead_tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
       "status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended')), " +
       "multi_member_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // shared_authorities_enabled (migration 0067): the minting default
+      // for this federation's authority space. DEFAULT 0 — a federation
+      // mints tenant-owned entities/places until it says otherwise.
+      "shared_authorities_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // Authority code prefixes (migration 0068): the mark the minting
+      // agency puts on the codes it issues. Carried here for records
+      // minted into a federation's SHARED authority space; the same
+      // pair on `tenants` covers tenant-owned records.
+      "entity_code_prefix TEXT, " +
+      "place_code_prefix TEXT, " +
       "created_at INTEGER NOT NULL" +
     ")",
   );
@@ -107,8 +122,10 @@ export async function applyMigrations() {
 
   // users carries tenant_id NOT NULL FK to tenants(id) ON DELETE
   // RESTRICT, immediately after id (mirrors drizzle/0035 column
-  // order).
-  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
+  // order), plus the three notification/language preference columns
+  // migration 0074 adds: digest_frequency (default 'hourly'),
+  // last_digest_at (the sweep's per-user clock) and locale.
+  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, digest_frequency TEXT NOT NULL DEFAULT 'hourly', last_digest_at INTEGER, locale TEXT, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
 
   // federation_memberships (migration 0049): the grant join table.
   // Declared after users + federations so both FKs resolve. Both FKs are
@@ -273,18 +290,27 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS qc_flags_reporter_idx ON qc_flags(reported_by)");
   await db.exec("CREATE INDEX IF NOT EXISTS qc_flags_region_comment_idx ON qc_flags(region_comment_id)");
 
-  // comments target exactly one of entry_id, page_id, or
-  // qc_flag_id (three-way XOR CHECK). Nullable region_x/y/w/h REAL columns
-  // carry optional image-region coordinates on page-targeted comments.
-  // task 13 (migration 0033): five additional nullable columns
-  // for soft-delete + resolve + last-edit tracking. All nullable, no
-  // backfill, no new CHECK constraints.
-  await db.exec("CREATE TABLE comments (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'c50bfa92-1223-4f00-ba15-d50c39ae3c0b', volume_id TEXT NOT NULL REFERENCES volumes(id) ON DELETE CASCADE, entry_id TEXT REFERENCES entries(id) ON DELETE CASCADE, page_id TEXT REFERENCES volume_pages(id) ON DELETE CASCADE, qc_flag_id TEXT REFERENCES qc_flags(id) ON DELETE CASCADE, region_x REAL, region_y REAL, region_w REAL, region_h REAL, parent_id TEXT, author_id TEXT NOT NULL REFERENCES users(id), author_role TEXT NOT NULL CHECK(author_role IN ('cataloguer', 'reviewer', 'lead')), text TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, deleted_by TEXT REFERENCES users(id), resolved_at INTEGER, resolved_by TEXT REFERENCES users(id), edited_at INTEGER, CHECK ((entry_id IS NOT NULL AND page_id IS NULL AND qc_flag_id IS NULL) OR (entry_id IS NULL AND page_id IS NOT NULL AND qc_flag_id IS NULL) OR (entry_id IS NULL AND page_id IS NULL AND qc_flag_id IS NOT NULL)))");
+  // comments (post-0071, the platform's one comment store) target
+  // exactly one of entry_id, page_id, qc_flag_id, or decision_id
+  // (four-way XOR CHECK); the author is exactly one of a user or an
+  // agency label (CHECK). tenant_id and volume_id stay required for
+  // the three volume-anchored targets (CHECKs); tenant_id keeps the
+  // harness DEFAULT so pre-0042 tests that omit it still resolve.
+  // decision_id's FK target (pending_decisions) is created further
+  // down this function — SQLite does not resolve FK targets at CREATE
+  // time, and no DML runs until applyMigrations() completes. Nullable
+  // region_x/y/w/h REAL columns carry optional image-region
+  // coordinates on page-targeted comments; quote/quote_ref/note carry
+  // one quoted passage with its reference and an epistemic qualifier;
+  // migration 0033's five nullable soft-delete/resolve/edit columns
+  // complete the shape.
+  await db.exec("CREATE TABLE comments (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT DEFAULT 'c50bfa92-1223-4f00-ba15-d50c39ae3c0b', volume_id TEXT REFERENCES volumes(id) ON DELETE CASCADE, entry_id TEXT REFERENCES entries(id) ON DELETE CASCADE, page_id TEXT REFERENCES volume_pages(id) ON DELETE CASCADE, qc_flag_id TEXT REFERENCES qc_flags(id) ON DELETE CASCADE, decision_id TEXT REFERENCES pending_decisions(id) ON DELETE RESTRICT, region_x REAL, region_y REAL, region_w REAL, region_h REAL, parent_id TEXT, author_id TEXT REFERENCES users(id), author_label TEXT, author_role TEXT, text TEXT NOT NULL, quote TEXT, quote_ref TEXT, note TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, deleted_by TEXT REFERENCES users(id), resolved_at INTEGER, resolved_by TEXT REFERENCES users(id), edited_at INTEGER, CHECK ((entry_id IS NOT NULL AND page_id IS NULL AND qc_flag_id IS NULL AND decision_id IS NULL) OR (entry_id IS NULL AND page_id IS NOT NULL AND qc_flag_id IS NULL AND decision_id IS NULL) OR (entry_id IS NULL AND page_id IS NULL AND qc_flag_id IS NOT NULL AND decision_id IS NULL) OR (entry_id IS NULL AND page_id IS NULL AND qc_flag_id IS NULL AND decision_id IS NOT NULL)), CHECK ((author_id IS NULL) != (author_label IS NULL)), CHECK (decision_id IS NOT NULL OR volume_id IS NOT NULL), CHECK (decision_id IS NOT NULL OR tenant_id IS NOT NULL))");
   await db.exec("CREATE INDEX IF NOT EXISTS comment_volume_idx ON comments(volume_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS comment_entry_idx ON comments(entry_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS comment_page_idx ON comments(page_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS comment_qc_flag_idx ON comments(qc_flag_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS comment_parent_idx ON comments(parent_id)");
+  await db.exec("CREATE INDEX IF NOT EXISTS comment_decision_idx ON comments(decision_id, created_at)");
 
   await db.exec("DROP TABLE IF EXISTS resegmentation_flags");
   await db.exec("CREATE TABLE resegmentation_flags (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'c50bfa92-1223-4f00-ba15-d50c39ae3c0b', volume_id TEXT NOT NULL REFERENCES volumes(id), reported_by TEXT NOT NULL REFERENCES users(id), entry_id TEXT NOT NULL REFERENCES entries(id), problem_type TEXT NOT NULL CHECK(problem_type IN ('incorrect_boundaries', 'merged_documents', 'split_document', 'missing_pages', 'other')), affected_entry_ids TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'resolved')), resolved_by TEXT REFERENCES users(id), resolved_at INTEGER, created_at INTEGER NOT NULL)");
@@ -313,6 +339,31 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS desc_repo_idx ON descriptions(repository_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS desc_local_id_idx ON descriptions(local_identifier)");
 
+  // descriptions_fts mirrors drizzle/0075 (the widened global-search
+  // column set) with the 0041 trigger shape — direct row deletion in
+  // AD/AU, because the external-content "delete command" idiom raises
+  // `SQL logic error` on regular FTS5 tables under D1's trusted-schema
+  // mode. Kept in lockstep with the migration, like entities_fts and
+  // places_fts below.
+  await db.exec(
+    "CREATE VIRTUAL TABLE IF NOT EXISTS descriptions_fts USING fts5(reference_code, title, scope_content, notes, legacy_ids, tokenize='unicode61')",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS descriptions_fts_ai AFTER INSERT ON descriptions BEGIN " +
+      "INSERT INTO descriptions_fts(rowid, reference_code, title, scope_content, notes, legacy_ids) " +
+      "VALUES (new.rowid, new.reference_code, new.title, new.scope_content, new.notes, new.legacy_ids); END",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS descriptions_fts_ad AFTER DELETE ON descriptions BEGIN " +
+      "DELETE FROM descriptions_fts WHERE rowid = old.rowid; END",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS descriptions_fts_au AFTER UPDATE ON descriptions BEGIN " +
+      "DELETE FROM descriptions_fts WHERE rowid = old.rowid; " +
+      "INSERT INTO descriptions_fts(rowid, reference_code, title, scope_content, notes, legacy_ids) " +
+      "VALUES (new.rowid, new.reference_code, new.title, new.scope_content, new.notes, new.legacy_ids); END",
+  );
+
   // vocabulary_terms carries federation_id NOT NULL FK (migration 0045):
   // authorities are federation-scoped. The harness builds a fresh table
   // so it can declare the FK inline (production went through ADD COLUMN +
@@ -326,7 +377,10 @@ export async function applyMigrations() {
   // entities carries federation_id NOT NULL FK (migrations 0045-0048):
   // authorities are federation-scoped, and the code index is unique per
   // federation. tenant_id was dropped by 0048.
-  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // entities.tenant_id (migration 0067) is the OPTIONAL owner: NULL =
+  // federation-shared, set = owned by that tenant. Nullable with a real
+  // FK and no index, exactly as the migration adds it.
+  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS entity_code_idx ON entities(federation_id, entity_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_sort_name_idx ON entities(sort_name)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_wikidata_idx ON entities(wikidata_id)");
@@ -365,7 +419,8 @@ export async function applyMigrations() {
   // admin_level_1, admin_level_2, wikidata_id — all 0% populated)
   // and gains fclass (5-value GeoNames feature class with CHECK
   // enforcement at the DB layer) + legacy_ids JSON.
-  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, fclass TEXT CHECK (fclass IS NULL OR fclass IN ('P','H','A','T','S')), legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  // places.tenant_id (migration 0067): same optional owner as entities.
+  await db.exec("CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, place_code TEXT, label TEXT NOT NULL, display_name TEXT NOT NULL, place_type TEXT, name_variants TEXT DEFAULT '[]', parent_id TEXT, latitude REAL, longitude REAL, coordinate_precision TEXT, merged_into TEXT, tgn_id TEXT, hgis_id TEXT, whg_id TEXT, fclass TEXT CHECK (fclass IS NULL OR fclass IN ('P','H','A','T','S')), legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS place_code_idx ON places(federation_id, place_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_label_idx ON places(label)");
   await db.exec("CREATE INDEX IF NOT EXISTS place_tgn_idx ON places(tgn_id)");
@@ -492,6 +547,201 @@ export async function applyMigrations() {
       "BEGIN SELECT RAISE(ABORT, 'authority_operations is immutable'); END",
   );
 
+  // pending_decisions (migration 0069): the ruling queue and its audit
+  // trail. FKs to federations/tenants/users are all RESTRICT, so
+  // cleanDatabase() wipes this table before it deletes any of those.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS pending_decisions (" +
+      "id TEXT PRIMARY KEY, " +
+      "federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, " +
+      "tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "kind TEXT NOT NULL, " +
+      "payload TEXT NOT NULL DEFAULT '{}', " +
+      "source_module TEXT NOT NULL, " +
+      "source_ref TEXT, " +
+      "status TEXT NOT NULL DEFAULT 'open', " +
+      "ruling TEXT, " +
+      "ruling_note TEXT, " +
+      "result_id TEXT, " +
+      "ruled_by TEXT REFERENCES users(id) ON DELETE RESTRICT, " +
+      "ruled_at INTEGER, " +
+      "filed_by_user_id TEXT REFERENCES users(id), " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_pending_decisions_queue ON pending_decisions(federation_id, status, kind)",
+  );
+
+  // notification_outbox (migration 0074): one pending row per
+  // recipient per event, coalesced into a digest by the sweep.
+  // Declared after pending_decisions and users, whose FKs it carries
+  // (RESTRICT on the decision, CASCADE on the user); cleanDatabase()
+  // therefore wipes it before both.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS notification_outbox (" +
+      "id TEXT PRIMARY KEY, " +
+      "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, " +
+      "kind TEXT NOT NULL, " +
+      "decision_id TEXT NOT NULL REFERENCES pending_decisions(id) ON DELETE RESTRICT, " +
+      "actor_user_id TEXT REFERENCES users(id), " +
+      "created_at INTEGER NOT NULL, " +
+      "sent_at INTEGER" +
+    ")",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_notification_outbox_pending ON notification_outbox (user_id, sent_at)",
+  );
+
+  // external_authority_links (migration 0076): what an outside
+  // vocabulary calls a record we already hold. Declared after
+  // federations and pending_decisions, whose FKs it carries (both
+  // RESTRICT); cleanDatabase() therefore wipes it before both.
+  // record_id carries no FK by design — record_type spans three
+  // tables. `scheme` has no CHECK: the set of vocabularies is a
+  // deployment fact.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS external_authority_links (" +
+      "id TEXT PRIMARY KEY, " +
+      "federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, " +
+      "record_type TEXT NOT NULL CHECK (record_type IN ('entity','place','vocabulary_term')), " +
+      "record_id TEXT NOT NULL, " +
+      "scheme TEXT NOT NULL, " +
+      "external_id TEXT NOT NULL, " +
+      "matched_label TEXT NOT NULL, " +
+      "matched_by TEXT NOT NULL CHECK (matched_by IN ('hand-picked','reconciled-confirmed','import')), " +
+      "decision_id TEXT REFERENCES pending_decisions(id) ON DELETE RESTRICT, " +
+      "status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','deprecated','redirected')), " +
+      "label_checked_at INTEGER, " +
+      "created_at INTEGER NOT NULL, " +
+      "updated_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS eal_record_scheme_idx ON external_authority_links (record_type, record_id, scheme, external_id)",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS eal_federation_scheme_idx ON external_authority_links (federation_id, scheme)",
+  );
+
+  // carried_scopes (migration 0077): a search selection handed forward
+  // to the export surface, materialised as a JSON id list at carry
+  // time. Declared after tenants and users, whose FKs it carries
+  // (tenant RESTRICT, user CASCADE); cleanDatabase() therefore wipes it
+  // before both. member_ids carries no FK by design — it spans
+  // descriptions, entities and places.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS carried_scopes (" +
+      "id TEXT PRIMARY KEY, " +
+      "tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, " +
+      "record_type TEXT NOT NULL CHECK (record_type IN ('records','entities','places')), " +
+      "constraint_summary TEXT NOT NULL DEFAULT '{}', " +
+      "member_ids TEXT NOT NULL DEFAULT '[]', " +
+      "total INTEGER NOT NULL, " +
+      "created_at INTEGER NOT NULL, " +
+      "consumed_at INTEGER" +
+    ")",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS carried_scopes_owner_idx ON carried_scopes (tenant_id, user_id, created_at)",
+  );
+
+  // handlists + handlist_members + handlist_shares (migration 0078): the
+  // ordered, named, persistent sets a person keeps and works from.
+  // Declared after tenants and users, whose FKs they carry (tenant
+  // RESTRICT, owner RESTRICT, share user CASCADE); cleanDatabase()
+  // therefore wipes all three before both. member_id carries no FK by
+  // design — it spans descriptions, entities and places, and a deleted
+  // record must stay in the handlist as a tombstone rather than
+  // vanishing from it.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS handlists (" +
+      "id TEXT PRIMARY KEY, " +
+      "tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, " +
+      "name TEXT NOT NULL, " +
+      "description TEXT, " +
+      "record_type TEXT CHECK (record_type IS NULL OR record_type IN ('records','entities','places')), " +
+      "workspace_visible INTEGER NOT NULL DEFAULT 0, " +
+      "created_at INTEGER NOT NULL, " +
+      "updated_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS handlists_owner_idx ON handlists (tenant_id, owner_id)",
+  );
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS handlist_members (" +
+      "id TEXT PRIMARY KEY, " +
+      "handlist_id TEXT NOT NULL REFERENCES handlists(id) ON DELETE CASCADE, " +
+      "member_id TEXT NOT NULL, " +
+      "position INTEGER NOT NULL, " +
+      "added_by TEXT REFERENCES users(id) ON DELETE SET NULL, " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS handlist_members_member_idx ON handlist_members (handlist_id, member_id)",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS handlist_members_position_idx ON handlist_members (handlist_id, position)",
+  );
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS handlist_shares (" +
+      "id TEXT PRIMARY KEY, " +
+      "handlist_id TEXT NOT NULL REFERENCES handlists(id) ON DELETE CASCADE, " +
+      "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, " +
+      "role TEXT NOT NULL CHECK (role IN ('viewer','editor')), " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS handlist_shares_user_idx ON handlist_shares (handlist_id, user_id)",
+  );
+
+  // workspace_export_runs (migration 0079): the self-service export
+  // ledger. Distinct from export_runs, which is the publish pipeline's
+  // federation-attributed table and is created above. Both FKs RESTRICT
+  // (tenant and user), so cleanDatabase() wipes this table before
+  // tenants and users. The scope descriptor is stored JSON and is never
+  // re-resolved, so no FK reaches into descriptions or handlists.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS workspace_export_runs (" +
+      "id TEXT PRIMARY KEY, " +
+      "tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
+      "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT, " +
+      "scope_kind TEXT NOT NULL CHECK (scope_kind IN ('workspace','branch','carried','handlist')), " +
+      "scope_descriptor TEXT NOT NULL DEFAULT '{}', " +
+      "record_class TEXT CHECK (record_class IS NULL OR record_class IN ('records','entities','places')), " +
+      "include_authorities INTEGER NOT NULL DEFAULT 1, " +
+      "form TEXT CHECK (form IS NULL OR form IN ('isadg','dacs','rad','dc','canonical')), " +
+      "format TEXT CHECK (format IS NULL OR format IN ('csv','ead-xml','json','pdf')), " +
+      "status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','completed','failed','cancelled')), " +
+      "stage TEXT, " +
+      "progress_done INTEGER, " +
+      "progress_total INTEGER, " +
+      "count_records INTEGER, " +
+      "count_entities INTEGER, " +
+      "count_places INTEGER, " +
+      "file_name TEXT, " +
+      "file_size INTEGER, " +
+      "r2_key TEXT, " +
+      "failure TEXT, " +
+      "started_at INTEGER NOT NULL, " +
+      "finished_at INTEGER, " +
+      "created_at INTEGER NOT NULL" +
+    ")",
+  );
+  await db.exec(
+    "CREATE INDEX IF NOT EXISTS workspace_export_runs_tenant_idx ON workspace_export_runs (tenant_id, created_at DESC)",
+  );
+
+  // Decision threads live in `comments` (decision_id target) since
+  // migration 0071 folded the short-lived decision_comments table in.
+  // The comments CREATE above carries the post-0071 shape; comments is
+  // wiped before pending_decisions (RESTRICT) in cleanDatabase().
+
   // The 5 domain tables carry a NOT NULL FK to tenants(id). Seed
   // the two locked tenants here so any suite that calls
   // applyMigrations() but doesn't manage tenant rows itself can
@@ -557,6 +807,34 @@ export async function cleanDatabase() {
       "BEGIN SELECT RAISE(ABORT, 'audit_log is immutable'); END",
   );
 
+  // comments and notification_outbox before pending_decisions: both
+  // RESTRICT their decision (0071, 0074). The tables loop below
+  // deletes comments again, harmlessly. pending_decisions before
+  // federations/tenants/users, whose FKs are all RESTRICT.
+  await db.exec("DELETE FROM notification_outbox");
+  await db.exec("DELETE FROM comments");
+  // external_authority_links RESTRICTs both its decision and its
+  // federation (0076), so it goes before pending_decisions here and
+  // before federations in the loop below.
+  await db.exec("DELETE FROM external_authority_links");
+  await db.exec("DELETE FROM pending_decisions");
+  // carried_scopes RESTRICTs its tenant (0077), so it goes before
+  // tenants — and before users, whose CASCADE would otherwise take the
+  // rows out silently rather than by this wipe.
+  await db.exec("DELETE FROM carried_scopes");
+  // Handlists (0078) RESTRICT both their tenant and their owner, so all
+  // three tables go before tenants and users. Members and shares would
+  // CASCADE with the handlist, but they are wiped explicitly so a
+  // half-migrated harness fails loudly rather than leaving orphans.
+  await db.exec("DELETE FROM handlist_members");
+  await db.exec("DELETE FROM handlist_shares");
+  await db.exec("DELETE FROM handlists");
+  // workspace_export_runs (0079) RESTRICTs both its tenant and its user,
+  // so it goes before tenants and users. The publish pipeline's
+  // export_runs is wiped in the tables loop below; the two are separate
+  // ledgers and neither cascades into the other.
+  await db.exec("DELETE FROM workspace_export_runs");
+
   // authority_operations immutability triggers prevent DELETE — same
   // DROP / DELETE / re-CREATE dance as audit_log, and wiped here (before
   // the tables loop below) because its FKs to users + federations
@@ -573,6 +851,24 @@ export async function cleanDatabase() {
       "BEGIN SELECT RAISE(ABORT, 'authority_operations is immutable'); END",
   );
 
+  // changelog carries the same append-only triggers (migration 0063) and
+  // therefore needs the same dance. It was in the tables loop below until
+  // a test first left journal rows behind: a BEFORE DELETE trigger fires
+  // per ROW, so `DELETE FROM changelog` on an empty table never aborted
+  // and the gap stayed invisible. Wiped here, before the loop, because
+  // changelog.user_id RESTRICTs users.
+  await db.exec("DROP TRIGGER IF EXISTS changelog_no_update");
+  await db.exec("DROP TRIGGER IF EXISTS changelog_no_delete");
+  await db.exec("DELETE FROM changelog");
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS changelog_no_update BEFORE UPDATE ON changelog " +
+      "BEGIN SELECT RAISE(ABORT, 'changelog is append-only'); END",
+  );
+  await db.exec(
+    "CREATE TRIGGER IF NOT EXISTS changelog_no_delete BEFORE DELETE ON changelog " +
+      "BEGIN SELECT RAISE(ABORT, 'changelog is immutable'); END",
+  );
+
   // Break the tenants <-> federations circular FK before deleting either:
   // clear tenants.federation_id so federations has no incoming refs, then
   // the loop can DELETE federations before tenants (D1 enforces FK RESTRICT
@@ -582,7 +878,6 @@ export async function cleanDatabase() {
 
   const tables = [
     "export_runs",
-    "changelog",
     "drafts",
     "description_places",
     "description_entities",
@@ -763,23 +1058,46 @@ export const DISABLED_TEST_FEDERATION_ID = "f3333333-3333-4333-8333-333333333333
  * lead_tenant_id points at a tenant row, and each tenant's federation_id
  * is UPDATE-set here. neogranadina + AMPL-style leads carry
  * multi_member_enabled=1; the rest are federations-of-one (0).
+ *
+ * `shared_authorities_enabled` (migration 0067) mirrors what the
+ * migration leaves in production: 1 for Neogranadina, whose authority
+ * space is genuinely shared and whose new records must keep landing in
+ * it, and 0 everywhere else. Fixtures that need the other setting flip
+ * the single row themselves rather than changing this baseline.
+ *
+ * The authority code prefixes (migration 0068) mirror it in the same
+ * way: 'ne'/'nl' on the Neogranadina federation, whose shared space
+ * mints those codes and always has, and NULL on every other fixture
+ * federation — NULL being the production truth for an agency that has
+ * not been given a prefix, and the state the mint path must refuse to
+ * paper over.
  */
 export async function seedFederations(): Promise<void> {
   const now = Date.now();
-  // [federationId, slug, name, leadTenantId, multiMemberEnabled]
-  const feds: Array<[string, string, string, string, number]> = [
-    [NEOGRANADINA_FEDERATION_ID, "neogranadina", "Neogranadina", NEOGRANADINA_TENANT_ID, 1],
-    [PLATFORM_FEDERATION_ID, "platform", "Platform", PLATFORM_TENANT_ID, 0],
-    [SECOND_TEST_FEDERATION_ID, "second-tenant", "Second Test Federation", SECOND_TEST_TENANT_ID, 0],
-    [DACS_TEST_FEDERATION_ID, "dacs-test", "DACS Test Federation", DACS_TEST_TENANT_ID, 0],
-    [RAD_TEST_FEDERATION_ID, "rad-test", "RAD Test Federation", RAD_TEST_TENANT_ID, 0],
+  // [federationId, slug, name, leadTenantId, multiMemberEnabled, sharedAuthoritiesEnabled]
+  // [federationId, slug, name, leadTenantId, multiMemberEnabled,
+  //  sharedAuthoritiesEnabled, entityCodePrefix, placeCodePrefix]
+  const feds: Array<
+    [string, string, string, string, number, number, string | null, string | null]
+  > = [
+    [NEOGRANADINA_FEDERATION_ID, "neogranadina", "Neogranadina", NEOGRANADINA_TENANT_ID, 1, 1, "ne", "nl"],
+    [PLATFORM_FEDERATION_ID, "platform", "Platform", PLATFORM_TENANT_ID, 0, 0, null, null],
+    [SECOND_TEST_FEDERATION_ID, "second-tenant", "Second Test Federation", SECOND_TEST_TENANT_ID, 0, 0, null, null],
+    [DACS_TEST_FEDERATION_ID, "dacs-test", "DACS Test Federation", DACS_TEST_TENANT_ID, 0, 0, null, null],
+    [RAD_TEST_FEDERATION_ID, "rad-test", "RAD Test Federation", RAD_TEST_TENANT_ID, 0, 0, null, null],
   ];
-  for (const [id, slug, name, leadTenantId, multiMember] of feds) {
+  for (const [
+    id, slug, name, leadTenantId, multiMember, sharedAuthorities,
+    entityCodePrefix, placeCodePrefix,
+  ] of feds) {
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO federations (id, slug, name, lead_tenant_id, status, multi_member_enabled, created_at) " +
-        "VALUES (?,?,?,?,?,?,?)",
+      "INSERT OR IGNORE INTO federations (id, slug, name, lead_tenant_id, status, multi_member_enabled, shared_authorities_enabled, entity_code_prefix, place_code_prefix, created_at) " +
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
     )
-      .bind(id, slug, name, leadTenantId, "active", multiMember, now)
+      .bind(
+        id, slug, name, leadTenantId, "active", multiMember, sharedAuthorities,
+        entityCodePrefix, placeCodePrefix, now,
+      )
       .run();
     await env.DB.prepare("UPDATE tenants SET federation_id = ? WHERE id = ?")
       .bind(id, leadTenantId)

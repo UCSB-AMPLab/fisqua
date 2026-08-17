@@ -7,9 +7,11 @@
  * project-role guard so a cataloguer never sees a thread on a project
  * they do not belong to.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
+import { apiErrorToken } from "../lib/api-error.server";
 import type { WorkflowRole } from "../lib/workflow";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.comments";
@@ -25,7 +27,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { z } = await import("zod");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   if (request.method === "POST") {
  let body: any;
@@ -90,6 +97,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  if (entryId) {
  const { memberships, volume } = await requireEntryAccess(
  db,
+ tenant.id,
  entryId,
  user.id,
  user.isAdmin
@@ -105,6 +113,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  } else if (pageId) {
  const { volume } = await requirePageAccess(
  db,
+ tenant.id,
  pageId,
  user.id,
  user.isAdmin
@@ -120,6 +129,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  // correct provenance on page-targeted posts too.
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -164,6 +174,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
  const memberships = await requireProjectRole(
  db,
+ tenant.id,
  user.id,
  volume.projectId,
  [...PROJECT_ROLES],
@@ -205,12 +216,11 @@ export async function action({ request, context }: Route.ActionArgs) {
  return Response.json({ ok: true, commentId: result.id });
  } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to create comment";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
  }
   }
 
@@ -236,7 +246,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const url = new URL(request.url);
   const entryId = url.searchParams.get("entryId");
@@ -254,22 +269,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   try {
  if (entryId) {
- await requireEntryAccess(db, entryId, user.id, user.isAdmin);
+ await requireEntryAccess(db, tenant.id, entryId, user.id, user.isAdmin);
  const comments = await getCommentsForEntry(db, entryId);
  return Response.json({ comments });
  }
 
- await requirePageAccess(db, pageId!, user.id, user.isAdmin);
+ await requirePageAccess(db, tenant.id, pageId!, user.id, user.isAdmin);
  const comments = await getCommentsForPage(db, pageId!);
  return Response.json({ comments });
   } catch (err) {
  if (err instanceof Response) {
- const errText = await err.text();
- return Response.json({ error: errText }, { status: err.status });
+ return Response.json({ error: apiErrorToken(err.status) }, { status: err.status });
  }
- const message =
- err instanceof Error ? err.message : "Failed to load comments";
- return Response.json({ error: message }, { status: 500 });
+  // Server internals never reach the client: the 500 carries the
+ // same stable token the catch helper uses for unknown statuses.
+ return Response.json({ error: "generic" }, { status: 500 });
   }
 }
 

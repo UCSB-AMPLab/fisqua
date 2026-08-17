@@ -140,6 +140,7 @@ function TreeNodeRow({
   onToggle: (id: string) => void;
   onChildrenLoaded: (parentId: string, children: TreeNode[]) => void;
 }) {
+  const { t } = useTranslation("repositories");
   const fetcher = useFetcher();
   const isExpanded = expandedNodes.has(node.id);
   const hasChildren = node.childCount > 0;
@@ -179,7 +180,7 @@ function TreeNodeRow({
             type="button"
             onClick={() => onToggle(node.id)}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-stone-500 hover:text-stone-700"
-            aria-label={isExpanded ? "Collapse" : "Expand"}
+            aria-label={isExpanded ? t("common:collapse") : t("common:expand")}
           >
             {isLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

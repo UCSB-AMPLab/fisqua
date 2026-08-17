@@ -13,14 +13,24 @@
  * different button set (add-child / edit / delete, no merge/split and
  * no merged state). That route keeps its own header markup.
  *
- * Both components are i18n-agnostic: callers resolve their namespace's
- * strings (`AdminBreadcrumb`) or pass a `t` for the button labels
- * (`AuthorityDetailHeader`).
+ * Callers resolve their namespace's strings (`AdminBreadcrumb`) or pass
+ * a `t` for the button labels (`AuthorityDetailHeader`); only the shared
+ * breadcrumb aria-label resolves internally, from `common`.
  *
- * @version v0.4.1
+ * `extraActions` opens the row to a control this component has no
+ * business knowing about — the handlist picker, which carries its own
+ * dialog and its own namespace. It renders FIRST, before merge, because
+ * it is the one action in the row that changes nothing about the
+ * record. It obeys the row's own visibility rule: while the record is
+ * being edited, or once it has been merged away, the row is absent and
+ * so is everything in it.
+ *
+ * @version v0.7.0
  */
 
+import type { ReactNode } from "react";
 import { Link } from "react-router";
+import { useTranslation } from "react-i18next";
 import { ChevronRight, Pencil, Trash2, Merge, Split } from "lucide-react";
 
 export function AdminBreadcrumb({
@@ -32,8 +42,9 @@ export function AdminBreadcrumb({
   rootLabel: string;
   current: string;
 }) {
+  const { t } = useTranslation("common");
   return (
-    <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+    <nav aria-label={t("aria.breadcrumb")} className="mb-4 text-sm">
       <ol className="flex items-center gap-1">
         <li>
           <Link to={rootTo} className="text-stone-500 hover:text-stone-700">
@@ -59,6 +70,7 @@ export function AuthorityDetailHeader({
   splitTo,
   onEdit,
   onDelete,
+  extraActions,
   t,
 }: {
   title: string;
@@ -70,6 +82,8 @@ export function AuthorityDetailHeader({
   splitTo: string;
   onEdit: () => void;
   onDelete: () => void;
+  /** Rendered first in the action row; see the header. */
+  extraActions?: ReactNode;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   return (
@@ -80,6 +94,7 @@ export function AuthorityDetailHeader({
 
       {!isEditing && !isMerged && (
         <div className="flex gap-2">
+          {extraActions}
           <Link
             to={mergeTo}
             className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"

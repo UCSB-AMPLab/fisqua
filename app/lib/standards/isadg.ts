@@ -151,21 +151,30 @@ function requiredAtFor(col: string): ReadonlyArray<DescriptionLevel> {
 
 export const ISADG_CONFIG: StandardConfig = {
   standard: "isadg",
+  displayName: "ISAD(G)",
+  // quoted from the ICA text.
+  guidanceVerbatim: true,
   sections: [
     {
       // ISAD 3.1 — Identity Statement Area
       id: "identity",
       fields: [
-        { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode") },
+        { column: "referenceCode", primitive: "text", requiredAt: requiredAtFor("referenceCode"),
+          guidance: "3.1.1" },
         // RELAXED in 0036; ISAD(G) does not mandate it (see header).
         { column: "localIdentifier", primitive: "text", requiredAt: requiredAtFor("localIdentifier") },
-        { column: "title", primitive: "text", requiredAt: requiredAtFor("title") },
+        // System-managed provenance (import legacyIds providers); the
+        // renderer displays it read-only and never submits it.
+        { column: "legacyIds", primitive: "legacy-ids", requiredAt: [] },
+        { column: "title", primitive: "text", requiredAt: requiredAtFor("title"),
+          guidance: "3.1.2" },
         { column: "translatedTitle", primitive: "text", requiredAt: requiredAtFor("translatedTitle") },
         { column: "uniformTitle", primitive: "text", requiredAt: requiredAtFor("uniformTitle") },
         {
           column: "descriptionLevel",
           primitive: "level-select",
           requiredAt: requiredAtFor("descriptionLevel"),
+          guidance: "3.1.4"
         },
         {
           column: "resourceType",
@@ -177,11 +186,13 @@ export const ISADG_CONFIG: StandardConfig = {
           column: "dateExpression",
           primitive: "date-range",
           requiredAt: requiredAtFor("dateExpression"),
+          guidance: "3.1.3"
         },
         { column: "dateStart", primitive: "date", requiredAt: requiredAtFor("dateStart") },
         { column: "dateEnd", primitive: "date", requiredAt: requiredAtFor("dateEnd") },
         { column: "dateCertainty", primitive: "text", requiredAt: requiredAtFor("dateCertainty") },
-        { column: "extent", primitive: "text", requiredAt: requiredAtFor("extent") },
+        { column: "extent", primitive: "text", requiredAt: requiredAtFor("extent"),
+          guidance: "3.1.5" },
         { column: "dimensions", primitive: "text", requiredAt: requiredAtFor("dimensions") },
         { column: "medium", primitive: "text", requiredAt: requiredAtFor("medium") },
         {
@@ -200,6 +211,7 @@ export const ISADG_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 4 },
+          guidance: "3.2.3",
         },
         // creatorDisplay is denormalised for display/search; ISAD(G)
         // mandates a creator at top-of-hierarchy levels.
@@ -207,6 +219,7 @@ export const ISADG_CONFIG: StandardConfig = {
           column: "creatorDisplay",
           primitive: "text",
           requiredAt: requiredAtFor("creatorDisplay"),
+          guidance: "3.2.1"
         },
       ],
     },
@@ -219,12 +232,14 @@ export const ISADG_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: requiredAtFor("scopeContent"),
           hints: { rows: 6 },
+          guidance: "3.3.1",
         },
         {
           column: "arrangement",
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 4 },
+          guidance: "3.3.4",
         },
         {
           column: "ocrText",
@@ -246,25 +261,47 @@ export const ISADG_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 3 },
+          guidance: "3.4.1",
         },
         {
           column: "reproductionConditions",
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 3 },
+          guidance: "3.4.2",
         },
-        { column: "language", primitive: "text", requiredAt: [] },
+        {
+          column: "language",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "3.4.3",
+        },
       ],
     },
     {
       // ISAD 3.5 — Allied Materials Area
       id: "allied",
       fields: [
-        { column: "locationOfOriginals", primitive: "text", requiredAt: [] },
-        { column: "locationOfCopies", primitive: "text", requiredAt: [] },
+        {
+          column: "locationOfOriginals",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "3.5.1",
+        },
+        {
+          column: "locationOfCopies",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "3.5.2",
+        },
         // relatedMaterials field was dropped in
         // drizzle/0036_union_schema.sql (0% populated in the audit).
-        { column: "findingAids", primitive: "text", requiredAt: [] },
+        {
+          column: "findingAids",
+          primitive: "text",
+          requiredAt: [],
+          guidance: "3.4.5",
+        },
       ],
     },
     {
@@ -276,6 +313,7 @@ export const ISADG_CONFIG: StandardConfig = {
           primitive: "textarea",
           requiredAt: [],
           hints: { rows: 4 },
+          guidance: "3.6.1",
         },
         {
           column: "internalNotes",

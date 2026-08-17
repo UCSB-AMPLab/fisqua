@@ -5,10 +5,11 @@
  * known name variants. Users type a new variant and press Enter to append;
  * each chip carries a close button to remove it.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 
 interface NameVariantInputProps {
@@ -20,8 +21,9 @@ interface NameVariantInputProps {
 export function NameVariantInput({
   value,
   onChange,
-  addLabel = "Agregar variante",
+  addLabel,
 }: NameVariantInputProps) {
+  const { t } = useTranslation("entities");
   const [inputValue, setInputValue] = useState("");
 
   function addVariant() {
@@ -57,7 +59,7 @@ export function NameVariantInput({
               <button
                 type="button"
                 onClick={() => removeVariant(index)}
-                aria-label={`Remove variant: ${variant}`}
+                aria-label={t("name_variants.remove", { variant })}
                 className="text-stone-400 hover:text-stone-700"
               >
                 <X className="h-3.5 w-3.5" />
@@ -72,7 +74,7 @@ export function NameVariantInput({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          aria-label="Add name variant"
+          aria-label={t("name_variants.add")}
           className="flex-1 rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
         />
         <button
@@ -80,7 +82,7 @@ export function NameVariantInput({
           onClick={addVariant}
           className="rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-stone-50"
         >
-          {addLabel}
+          {addLabel ?? t("name_variants.add")}
         </button>
       </div>
     </div>

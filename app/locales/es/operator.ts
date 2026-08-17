@@ -12,7 +12,7 @@
  * son `tú prefieres / quieres / sabes / eres / tienes`. NUNCA usar
  * `preferís / querés / sabés / sos / tenés`.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 export default {
   brand: "Fisqua Operador",
@@ -116,6 +116,15 @@ export default {
     not_operator: "No eres un operador de la instancia.",
     no_session: "Inicia sesión para continuar.",
   },
+  // Tokens de validación por campo de la acción de crear inquilino.
+  field_error: {
+    name_required: "El nombre es obligatorio",
+    email_invalid: "El correo electrónico no es válido",
+    slug_format:
+      "El identificador debe ir en minúsculas, empezar con una letra y contener solo letras, dígitos y guiones",
+    slug_length: "El identificador debe tener entre 1 y 63 caracteres",
+    slug_reserved_word: "Este identificador está reservado",
+  },
 } as const;
 
-// @version v0.4.0
+// @version v0.7.0
