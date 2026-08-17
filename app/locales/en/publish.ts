@@ -11,7 +11,7 @@
  * raw step prefixes. EN labels are presented for review alongside the
  * matching ES translations in the plan summary.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 export default {
   title: "Publish",
@@ -59,6 +59,8 @@ export default {
     complete: "Export complete",
     error: "Export error",
     records: "records",
+    records_count_one: "{{formattedCount}} record",
+    records_count_other: "{{formattedCount}} records",
     stepElapsed: "Step time: {{minutes}}m {{seconds}}s",
     totalElapsed: "Total time: {{minutes}}m {{seconds}}s",
     lastUpdate: "Last update: {{timestamp}}",
@@ -86,9 +88,17 @@ export default {
     duration: "Duration",
     records: "Records",
     recordsDescriptions: "desc",
+    recordsDescriptions_count_one: "{{formattedCount}} desc",
+    recordsDescriptions_count_other: "{{formattedCount}} desc",
     recordsEntities: "ent",
+    recordsEntities_count_one: "{{formattedCount}} ent",
+    recordsEntities_count_other: "{{formattedCount}} ent",
     recordsPlaces: "pl",
+    recordsPlaces_count_one: "{{formattedCount}} pl",
+    recordsPlaces_count_other: "{{formattedCount}} pl",
     recordsRepositories: "repo",
+    recordsRepositories_count_one: "{{formattedCount}} repo",
+    recordsRepositories_count_other: "{{formattedCount}} repo",
     noHistory: "No previous exports",
     complete: "Complete",
     error: "Error",

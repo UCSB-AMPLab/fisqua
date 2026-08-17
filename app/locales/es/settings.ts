@@ -23,4 +23,16 @@ export default {
   github_connected: "Conectado",
   github_not_connected: "No conectado",
   github_connect: "Conectar",
+
+  // Notificaciones: la preferencia de frecuencia que lee el barrido.
+  // "Desactivado" concuerda con "el resumen".
+  notifications: "Notificaciones",
+  notificationsHint:
+    "Un resumen por correo de la actividad en tus decisiones pendientes: preguntas tuyas resueltas, comentarios nuevos y propuestas nuevas.",
+  freqLegend: "Frecuencia del resumen",
+  freq_15min: "Cada 15 minutos",
+  freq_hourly: "Cada hora",
+  freq_daily: "Una vez al día",
+  freq_weekly: "Una vez a la semana",
+  freq_off: "Desactivado",
 } as const;

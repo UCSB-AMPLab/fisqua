@@ -20,9 +20,9 @@ export default {
   time_today: "hoy",
   go_to_promote: "Ir a promover",
   error_load:
-    "No se pudo cargar el pipeline. Actualice la p\u00e1gina o intente m\u00e1s tarde.",
+    "No se pudo cargar el pipeline. Actualiza la p\u00e1gina o intenta m\u00e1s tarde.",
   error_assign:
-    "No se pudo asignar el descriptor. La entrada pudo haber sido reasignada. Actualice e intente de nuevo.",
+    "No se pudo asignar el descriptor. La entrada pudo haber sido reasignada. Actualiza e intenta de nuevo.",
   col_unstarted: "Sin iniciar",
   col_segmenting: "Segmentando",
   col_seg_review: "Rev. segmentaci\u00f3n",

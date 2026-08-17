@@ -25,7 +25,7 @@
  * descripción para que el catalogador vea el mismo diálogo en los
  * dos editores. Forma tú (sin voseo).
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 export default {
   toolbar: {
@@ -37,6 +37,8 @@ export default {
     delete_boundary: "Eliminar división",
     zoom_in: "Acercar",
     zoom_out: "Alejar",
+    fullscreen: "Pantalla completa",
+    readonly_tooltip: "Solo lectura — no tienes permisos para crear",
     fit_to_width: "Ajustar al ancho",
     go_to_image: "Ir a imagen",
     back_to_volumes: "Volver a unidades compuestas",
@@ -110,7 +112,6 @@ export default {
     comment_doc_prefix: "Doc {{n}}",
     comment_img_prefix: "img {{n}}",
     comment_reply: "Responder",
-    comment_mark_seen: "Marcar como visto",
     comment_thread_header: "Hilo de conversación",
     add_comment: "Añadir comentario",
     delete_with_attached_count:
@@ -138,6 +139,15 @@ export default {
     message: "No se pudo cargar el visor de imágenes. Revisa tu conexión e intenta de nuevo.",
     retry: "Reintentar",
   },
+  // Tarjeta de propuesta de resegmentación (estructura).
+  resegmentation: {
+    proposed: "Resegmentación propuesta",
+    open_dialog: "Abrir diálogo de resegmentación",
+  },
+  // Chip de región de comentario.
+  regions: {
+    chip_label: "Región · p. {{page}}",
+  },
 } as const;
 
-/* @version v0.4.2 */
+/* @version v0.7.0 */

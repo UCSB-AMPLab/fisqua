@@ -6,7 +6,7 @@
  * the general-settings form (name, manifest URL, contact email, role,
  * description, conventions) and the surrounding section labels.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 export default {
   settings: {
@@ -18,7 +18,7 @@ export default {
     description: "Descripción",
     description_optional: "(opcional)",
     conventions: "Convenciones",
-    conventions_help: "Lineamientos y convenciones del proyecto (soporta Markdown)",
+    conventions_help: "Lineamientos y convenciones del proyecto (admite Markdown)",
     settings_json: "Configuración",
     settings_json_help: "Configuración específica de la aplicación (JSON)",
     save: "Guardar configuración",
@@ -122,6 +122,15 @@ export default {
     title: "Nuevo proyecto",
     create: "Crear proyecto",
   },
+  // Tokens de validación del manifiesto devueltos por los helpers IIIF.
+  manifest: {
+    manifest_https: "La URL del manifiesto debe usar HTTPS",
+    manifest_host: "El manifiesto debe venir de {{hosts}}",
+    manifest_path: "La URL debe apuntar a un archivo manifest.json",
+    manifest_invalid_url: "La URL no es válida",
+    manifest_fetch_failed: "No se pudo obtener el manifiesto (estado {{status}})",
+    manifest_ref_code: "No se pudo leer un código de referencia del manifiesto",
+  },
   error: {
     name_required: "El nombre del proyecto es obligatorio.",
     name_too_long: "El nombre no puede exceder 200 caracteres.",
@@ -139,6 +148,8 @@ export default {
     volume_id_required: "Se requiere el ID de la unidad compuesta.",
     process_manifest_failed: "No se pudo procesar el manifiesto.",
     delete_failed: "No se pudo eliminar la unidad compuesta.",
+    delete_requires_unstarted:
+      "Solo se pueden eliminar unidades que sigan marcadas como 'sin iniciar'",
   },
   invite: {
     placeholder: "colega@ejemplo.com",

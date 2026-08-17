@@ -7,7 +7,7 @@
  * the merge/split workflow labels that authority editors use to keep
  * the function and subject vocabularies tidy.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 export default {
   // Page
@@ -38,10 +38,23 @@ export default {
     "Deprecar '{{term}}'? {{count}} entidades usan esta funci\u00f3n actualmente. Conservar\u00e1n la etiqueta pero ya no aparecer\u00e1 en las sugerencias.",
   reject_confirm:
     "Rechazar '{{term}}'? Incluye una raz\u00f3n para el rechazo.",
+  reject_reason_placeholder: "Motivo del rechazo...",
   error_save:
     "No se pudo guardar el t\u00e9rmino. Verifica tu conexi\u00f3n e intenta de nuevo.",
   error_merge:
     "La fusi\u00f3n fall\u00f3. El t\u00e9rmino destino puede haber sido eliminado. Actualiza e intenta de nuevo.",
+  // Tokens de error de las acciones, mostrados por el SaveFeedbackBanner.
+  error: {
+    invalid_input: "Entrada no v\u00e1lida",
+    term_not_found: "No se encontr\u00f3 el t\u00e9rmino",
+    missing_target: "Falta el t\u00e9rmino de destino",
+    merge_into_self: "No se puede fusionar un t\u00e9rmino consigo mismo",
+    target_not_found: "No se encontr\u00f3 el t\u00e9rmino de destino",
+    source_not_found: "No se encontr\u00f3 el t\u00e9rmino de origen",
+    name_required: "El nuevo nombre del t\u00e9rmino es obligatorio",
+    invalid_name: "El nombre no es v\u00e1lido",
+    unknown_intent: "Acci\u00f3n desconocida",
+  },
 
   // Statuses
   status_approved: "Aprobado",
@@ -87,6 +100,7 @@ export default {
   col_category: "Categor\u00eda",
   col_usage: "Uso",
   col_status: "Estado",
+  col_date: "Fecha",
   col_actions: "Acciones",
 
   // Detail

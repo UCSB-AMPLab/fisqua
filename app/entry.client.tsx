@@ -34,6 +34,10 @@ async function main() {
         order: ["htmlTag"],
         caches: [],
       },
+      // Mirrors the server middleware's i18next config (app/middleware/i18next.ts):
+      // React already escapes interpolated text, so i18next must not
+      // double-escape it first.
+      interpolation: { escapeValue: false },
     });
 
   startTransition(() => {

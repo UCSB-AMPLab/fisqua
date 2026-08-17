@@ -6,7 +6,7 @@
  * primary call-to-action. Places follow the Linked Places conventions
  * the rest of the entities surface uses.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 export default {
   // Page
@@ -215,6 +215,12 @@ export default {
   coordPrecisionLabel: "Precision",
   // Empty (unset) option label for the precision select.
   coordPrecisionUnset: "Not recorded",
+  "coord.latitude": "Latitude",
+  "coord.longitude": "Longitude",
+  "coord.precision": "Precision",
+  "coord.precision_approximate": "Approximate",
+  "coord.precision_exact": "Exact",
+  "coord.precision_centroid": "Centroid",
 
   // Combined places surface (spec §5 — one list+map page)
   linkCount_one: "{{count}} link",

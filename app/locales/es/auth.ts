@@ -13,7 +13,7 @@
  * divisor y los mensajes de error se mantienen sin cambios. Español
  * colombiano: tuteo, sin voseo.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 export default {
   email_label: "Correo electrónico",
@@ -32,9 +32,14 @@ export default {
       "No existe una cuenta con el correo de tu GitHub. Pide una invitación al administrador del proyecto.",
   },
   placeholder: "tu@ejemplo.com",
+  // Tokens del enlace mágico por correo (`login.*`), distintos de
+  // `error.no_account`, que es el mensaje específico de GitHub OAuth.
+  login: {
+    no_account: "No encontramos una cuenta con este correo.",
+  },
   page_title: "Iniciar sesión | Fisqua",
   footer_note:
-    "Inicia sesión con GitHub o tu correo institucional de Neogranadina.",
+    "Inicia sesión con GitHub o con el correo de tu cuenta.",
   wrong_workspace: {
     page_title: "Espacio incorrecto | Fisqua",
     eyebrow: "Espacio incorrecto",
@@ -44,5 +49,6 @@ export default {
     cta: "Ir a tu espacio {{name}}",
     cta_fallback: "Volver a iniciar sesión",
     sign_out_link: "¿No es tu cuenta? Cerrar sesión",
+    comparison_aria: "Comparación de espacios de trabajo",
   },
 } as const;

@@ -22,8 +22,8 @@ export default {
   delete_modal_dismiss: "Volver",
   delete_modal_title: "Eliminar repositorio",
   delete_modal_body:
-    "¿Está seguro de que desea eliminar {{name}}? Esta acción no se puede deshacer.",
-  delete_modal_confirm_label: 'Escriba "{{code}}" para confirmar',
+    "¿Estás seguro de que deseas eliminar {{name}}? Esta acción no se puede deshacer.",
+  delete_modal_confirm_label: 'Escribe "{{code}}" para confirmar',
   delete_blocked:
     "No se puede eliminar — {{count}} descripciones vinculadas",
   cascade_warning:

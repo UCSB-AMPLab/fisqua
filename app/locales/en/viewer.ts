@@ -27,7 +27,7 @@
  * verbatim so cataloguers see the same dialog in both editors. The
  * legacy `unsaved_confirm_leave` key stays in place.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 export default {
   toolbar: {
@@ -39,6 +39,8 @@ export default {
     delete_boundary: "Delete boundary",
     zoom_in: "Zoom in",
     zoom_out: "Zoom out",
+    fullscreen: "Full screen",
+    readonly_tooltip: "Read only — you do not have permission to create",
     fit_to_width: "Fit to width",
     go_to_image: "Go to image",
     back_to_volumes: "Back to volumes",
@@ -112,7 +114,6 @@ export default {
     comment_doc_prefix: "Doc {{n}}",
     comment_img_prefix: "img {{n}}",
     comment_reply: "Reply",
-    comment_mark_seen: "Mark as seen",
     comment_thread_header: "Conversation thread",
     add_comment: "Add comment",
     delete_with_attached_count:
@@ -140,6 +141,15 @@ export default {
     message: "The image viewer failed to load. Check your connection and try again.",
     retry: "Retry",
   },
+  // Resegmentation proposal card (outline).
+  resegmentation: {
+    proposed: "Resegmentation proposed",
+    open_dialog: "Open resegmentation dialog",
+  },
+  // Comment region chip.
+  regions: {
+    chip_label: "Region · p. {{page}}",
+  },
 } as const;
 
-/* @version v0.4.2 */
+/* @version v0.7.0 */

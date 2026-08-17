@@ -3,13 +3,16 @@
  *
  * This locale namespace carries the English strings for the staff
  * sidebar — the top-level navigation links that anchor the
- * `_auth` chrome (Home, My projects, Descriptions, Entities, Places,
- * Repositories, Publish, Promote, Collaborative cataloguing).
+ * `_auth` chrome (Home, Handlists, My projects, Descriptions, Entities,
+ * Places, Repositories, Publish, Promote, Collaborative
+ * cataloguing).
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 export default {
+  search: "Search",
   home: "Home",
+  handlists: "Handlists",
   my_projects: "My projects",
   descriptions: "Descriptions",
   entities: "Entities",
@@ -25,7 +28,10 @@ export default {
   records_management: "Records management",
   authorities: "Authorities",
   imports: "Imports",
+  exports: "Exports",
+  import_and_export: "Import and export",
   possible_duplicates: "Possible duplicates",
+  pending_decisions: "Pending decisions",
   my_settings: "My settings",
   system_users: "System users",
   no_users: "No users found.",

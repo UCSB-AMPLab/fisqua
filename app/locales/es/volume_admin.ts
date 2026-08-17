@@ -28,7 +28,7 @@ export default {
   change_status_to: "Cambiar estado a",
   select_new_status: "Seleccionar nuevo estado...",
   apply: "Aplicar",
-  no_transitions: "No hay transiciones de estado disponibles para su rol.",
+  no_transitions: "No hay transiciones de estado disponibles para tu rol.",
   sent_back_prefix: "Devuelto:",
   sent_back_reason: "Motivo de la devolución",
   name_label: "Nombre",
@@ -46,16 +46,16 @@ export default {
   error_transition_failed: "La transición falló",
   delete_eligible: "Esta unidad está sin iniciar y sin asignar. Se puede eliminar.",
   delete_ineligible:
-    "Esta unidad no se puede eliminar. Solo se pueden eliminar las unidades sin iniciar y sin asignar. Cambie el estado a \"sin iniciar\" y desasígnela primero.",
+    "Esta unidad no se puede eliminar. Solo se pueden eliminar las unidades sin iniciar y sin asignar. Cambia el estado a \"sin iniciar\" y desasígnala primero.",
   delete_confirm: "¿Eliminar {{name}}? Esto no se puede deshacer.",
   delete_button: "Eliminar unidad",
   force_delete_heading: "Eliminación forzada (superadministrador)",
   force_delete_warning:
     "Esto eliminará permanentemente la unidad y todas las entradas, comentarios, alertas y registros de actividad relacionados. Todo el trabajo de catalogación sobre esta unidad se perderá. Esto no se puede deshacer.",
-  force_delete_type_name: "Escriba \"{{name}}\" para confirmar",
+  force_delete_type_name: "Escribe \"{{name}}\" para confirmar",
   force_delete_confirm:
     "¿Realmente forzar la eliminación de {{name}}? Se destruirá todo el trabajo de catalogación.",
   force_delete_name_mismatch:
-    "El nombre escrito no coincide. Escriba \"{{name}}\" exactamente.",
+    "El nombre escrito no coincide. Escribe \"{{name}}\" exactamente.",
   force_delete_button: "Forzar eliminación de la unidad",
 } as const;

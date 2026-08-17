@@ -10,7 +10,7 @@
  * (`descriptions:`, `children:`, `mets:`, `ead:`, `dc:`) con etiquetas
  * localizadas en español colombiano (sin voseo: tú, prefieres, sabes).
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 export default {
   title: "Publicar",
@@ -58,6 +58,8 @@ export default {
     complete: "Exportación completada",
     error: "Error en la exportación",
     records: "registros",
+    records_count_one: "{{formattedCount}} registro",
+    records_count_other: "{{formattedCount}} registros",
     stepElapsed: "Tiempo del paso: {{minutes}}m {{seconds}}s",
     totalElapsed: "Tiempo total: {{minutes}}m {{seconds}}s",
     lastUpdate: "Última actualización: {{timestamp}}",
@@ -85,9 +87,17 @@ export default {
     duration: "Duración",
     records: "Registros",
     recordsDescriptions: "desc",
+    recordsDescriptions_count_one: "{{formattedCount}} desc",
+    recordsDescriptions_count_other: "{{formattedCount}} desc",
     recordsEntities: "ent",
+    recordsEntities_count_one: "{{formattedCount}} ent",
+    recordsEntities_count_other: "{{formattedCount}} ent",
     recordsPlaces: "lug",
+    recordsPlaces_count_one: "{{formattedCount}} lug",
+    recordsPlaces_count_other: "{{formattedCount}} lug",
     recordsRepositories: "repo",
+    recordsRepositories_count_one: "{{formattedCount}} repo",
+    recordsRepositories_count_other: "{{formattedCount}} repo",
     noHistory: "No hay exportaciones previas",
     complete: "Completada",
     error: "Error",
@@ -99,7 +109,7 @@ export default {
     backToPublish: "Volver a publicar",
     overview: "Resumen",
     runId: "ID de ejecución",
-    workflowInstanceId: "ID de instancia del workflow",
+    workflowInstanceId: "ID de instancia del flujo de trabajo",
     status: "Estado",
     triggeredBy: "Iniciada por",
     selectedFonds: "Fondos seleccionados",
