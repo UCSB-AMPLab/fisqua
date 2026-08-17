@@ -13,7 +13,19 @@
  * hard-code; user reads/updates are also filtered by tenant so
  * cross-tenant id-guessing 404s.
  *
- * @version v0.4.0
+ * The invite path lets the inviter choose the new account's opening
+ * role instead of hard-coding every flag to false. That hard-code was
+ * a real dead end on a records-management tenant, where every working
+ * surface requires Records admin: an invited colleague signed in to a
+ * dashboard with nothing on it and no in-product way out. The choice is
+ * bounded by `INVITE_ROLE_CHOICES` — the tenant-scoped roles only — and
+ * checked twice: the posted value must name a known choice, and the
+ * flag it maps to must be one the inviter may actually assign
+ * (`assignableRoleFlags`). Platform roles are not on offer to anyone
+ * here; promoting somebody to super admin stays a deliberate second
+ * step on the user detail page.
+ *
+ * @version v0.7.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -143,15 +155,35 @@ export async function handleUsersAction(
     }
 
     case "inviteUser": {
+      const { INVITE_ROLE_CHOICES, assignableRoleFlags } = await import(
+        "../lib/permissions.server"
+      );
+
       const email = ((formData.get("email") as string) || "")
         .trim()
         .toLowerCase();
       const name = ((formData.get("name") as string) || "").trim() || null;
       const grantCollabAdmin =
         (formData.get("isCollabAdmin") as string | null) === "on";
+      const roleChoice =
+        ((formData.get("role") as string | null) || "none").trim() || "none";
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return { ok: false, error: i18n.t("admin:error.invalid_email") };
+      }
+
+      // The posted role must name one of the bounded choices. Anything
+      // else -- including a platform role somebody hoped would be read
+      // straight through -- is an invalid request, whoever sent it.
+      if (!(roleChoice in INVITE_ROLE_CHOICES)) {
+        return { ok: false, error: i18n.t("admin:error.invalid_role") };
+      }
+      const roleFlag = INVITE_ROLE_CHOICES[roleChoice];
+
+      // ...and the inviter must be allowed to hand that role out. Same
+      // split the user detail page enforces, read from the same helper.
+      if (roleFlag !== null && !assignableRoleFlags(user).includes(roleFlag)) {
+        return { ok: false, error: i18n.t("admin:error.role_not_assignable") };
       }
 
       // Only a superadmin can grant isCollabAdmin at invite time.
@@ -179,10 +211,13 @@ export async function handleUsersAction(
         id: newUserId,
         email,
         name,
-        isAdmin: false,
+        // Exactly the chosen role, and nothing implied alongside it.
+        isAdmin: roleFlag === "isAdmin",
+        isArchiveUser: roleFlag === "isArchiveUser",
+        // Platform roles are never granted at invite time.
         isSuperAdmin: false,
+        isUserManager: false,
         isCollabAdmin: grantCollabAdmin,
-        isArchiveUser: false,
         createdAt: now,
         updatedAt: now,
       });

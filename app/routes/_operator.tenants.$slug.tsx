@@ -33,7 +33,7 @@
  * The role-picker form's POST target is
  * `/operator/tenants/:slug/login-as`.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { Form, useLoaderData, useActionData } from "react-router";
@@ -106,7 +106,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // gate; this guard catches a hostile direct-POST that bypasses the
   // UI affordances.
   if (tenant.kind === "platform") {
-    return new Response("Cannot modify platform tenant", { status: 400 });
+    return Response.json({ error: "platform_tenant" }, { status: 400 });
   }
 
   switch (intent) {
@@ -257,7 +257,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
 
     default:
-      return new Response("Unknown intent", { status: 400 });
+      return Response.json({ error: "unknown_intent" }, { status: 400 });
   }
 }
 
@@ -275,6 +275,7 @@ interface ActionData {
   noop?: boolean;
   disabled?: boolean;
   reenabled?: boolean;
+  error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
 }
 
@@ -529,4 +530,4 @@ export default function TenantDetailPage() {
   );
 }
 
-// @version v0.6.0
+// @version v0.7.0

@@ -9,9 +9,10 @@
  * `generateMagicLink` looks up a user by email, mints a one-time token,
  * stores it in the `magic_links` table with a fifteen-minute expiry,
  * builds the verification URL, and sends it through Resend. It returns
- * a `{ success }` shape on the happy path and `{ error }` when the
- * email is not associated with any user -- callers surface the error
- * verbatim on the login form.
+ * a `{ success }` shape on the happy path and a stable `{ error }`
+ * token (`"no_account"`) when the email is not associated with any
+ * user -- the login form maps the token to a translated message at
+ * the render boundary, never the raw token.
  *
  * `verifyMagicLink` takes the token from the callback query string and
  * returns the user id if the token is valid (exists, unused, and not
@@ -29,7 +30,7 @@
  * before letting any loader run, and downstream loaders read it from
  * `userContext` to scope domain-table queries.
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 
 import { eq, and, isNull } from "drizzle-orm";
@@ -40,8 +41,9 @@ import { getAppConfig } from "./config.server";
 
 /**
  * Generates a magic link for the given email address.
- * Returns { success: true } if the email was sent, or { error: string } if
- * the email is not associated with any user.
+ * Returns { success: true } if the email was sent, or a stable error
+ * token ({ error: "no_account" }) if the email is not associated with
+ * any user; callers translate the token, never render it.
  */
 export async function generateMagicLink(
   db: DrizzleD1Database<any>,
@@ -58,7 +60,7 @@ export async function generateMagicLink(
     .get();
 
   if (!user) {
-    return { error: "No account found for this email." };
+    return { error: "no_account" };
   }
 
   // Generate token

@@ -105,6 +105,7 @@ describe("multi-role membership (DB-backed row-order regression)", () => {
 
     const memberships = await requireProjectRole(
       db,
+      DEFAULT_TEST_TENANT_ID,
       user.id,
       projectId,
       [...PROJECT_ROLES],

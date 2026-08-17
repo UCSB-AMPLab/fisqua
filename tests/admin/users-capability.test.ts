@@ -32,6 +32,11 @@
  *       the route module from the Workers test pool would pull in
  *       `~/locales` which `vitest.config.ts` does not alias).
  *
+ * `applyUpdateRoles` now also takes the caller's `assignableFlags` —
+ * the privilege half of the write filter, covered in
+ * `users-role-scope.test.ts`. These cases pass a super admin's full
+ * set so the capability half is what they exercise, in isolation.
+ *
  * Test mechanics: each route case constructs a `RouterContextProvider`
  * pre-populated with `userContext`, `tenantContext`, and
  * `cloudflare.env`, then invokes the loader directly. The synthetic
@@ -39,7 +44,7 @@
  * runs (the middleware is bypassed and we set `tenantContext` on the
  * context directly).
  *
- * @version v0.4.0
+ * @version v0.7.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -212,12 +217,20 @@ describe("admin user-edit capability filter", () => {
     const { applyUpdateRoles } = await import(
       "../../app/routes/_auth.admin.users.$id"
     );
+    const { assignableRoleFlags } = await import(
+      "../../app/lib/permissions.server"
+    );
     await applyUpdateRoles({
       db,
       tenantId: SECOND_TEST_TENANT_ID,
       crowdsourcingEnabled: false,
       targetUserId: targetId,
       formData,
+      // A super admin: every flag is assignable, so the only thing
+      // that can hold the crowdsourcing pair back is the capability.
+      assignableFlags: assignableRoleFlags(
+        makeUserContext({ isSuperAdmin: true }),
+      ),
     });
 
     // The dormant flags are still set; the helper skipped them
@@ -257,12 +270,18 @@ describe("admin user-edit capability filter", () => {
     const { applyUpdateRoles } = await import(
       "../../app/routes/_auth.admin.users.$id"
     );
+    const { assignableRoleFlags } = await import(
+      "../../app/lib/permissions.server"
+    );
     await applyUpdateRoles({
       db,
       tenantId: DEFAULT_TEST_TENANT_ID,
       crowdsourcingEnabled: true,
       targetUserId: targetId,
       formData,
+      assignableFlags: assignableRoleFlags(
+        makeUserContext({ isSuperAdmin: true }),
+      ),
     });
 
     const after = await db

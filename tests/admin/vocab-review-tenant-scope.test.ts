@@ -36,7 +36,7 @@ import { makeTenantContext, makeUserContext } from "../helpers/context";
 // import inside a timed test body can exceed testTimeout when this file
 // is scheduled late against a saturated Workers-pool module runner on a
 // resource-constrained (2-core CI) runner.
-import "../../app/routes/_auth.admin.vocabularies.review";
+import "../../app/routes/_auth.admin.decisions.vocabulary";
 
 function buildContext(user: User): any {
   const isSecond = user.tenantId === SECOND_TEST_TENANT_ID;
@@ -121,11 +121,11 @@ async function seedProposals() {
 
 async function runLoader(user: User) {
   const { loader } = await import(
-    "../../app/routes/_auth.admin.vocabularies.review"
+    "../../app/routes/_auth.admin.decisions.vocabulary"
   );
   return (await loader({
     request: new Request(
-      "http://catalogacion.zasqua.org/admin/vocabularies/review",
+      "http://catalogacion.zasqua.org/admin/decisions/vocabulary",
     ),
     context: buildContext(user),
     params: {},

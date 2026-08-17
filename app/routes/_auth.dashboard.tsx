@@ -9,13 +9,33 @@
  * or `CataloguerDashboard`) with the role-specific payload the loader
  * assembled from volumes, entries, and assignments.
  *
- * @version v0.4.2
+ * Admins additionally get a "Pending decisions" card — open authority
+ * proposals (from `pending-decisions.server.ts`) plus open vocabulary
+ * proposals (the same federation-scoped `proposed`/`mergedInto`
+ * predicate the vocabularies review queue uses). Both are cheap COUNT
+ * queries, not row fetches, and (like the records-management empty
+ * state) the gate is `user.isAdmin` alone — these are federation admin
+ * functions, not crowdsourcing-module content, so they don't wait on
+ * `caps.crowdsourcing`. The card renders nothing at all when both
+ * counts are zero.
+ *
+ * Admins also get the workspace search box, directly under the heading
+ * row: a plain GET form posting to /search, mirroring that page's own
+ * box. It holds no state and shows no results — it is a door, and the
+ * search page behind it carries the same admin gate.
+ *
+ * @version v0.7.0
  */
 
 import { useState } from "react";
-import { Link } from "react-router";
+import { Form, Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import {
+  ChevronRight,
+  ClipboardList,
+  Search as SearchIcon,
+} from "lucide-react";
+import { tenantContext, userContext, type Tenant } from "../context";
 import {
   CataloguerDashboard,
   type CataloguerGroups,
@@ -51,13 +71,21 @@ import {
   entries,
   comments,
   resegmentationFlags,
+  vocabularyTerms,
 } from "../db/schema";
 import { highestProjectRole } from "../lib/workflow";
+import { getLocale } from "../middleware/i18next";
+import type { PendingDecisionCounts } from "../lib/pending-decisions.server";
 
-export function meta() {
+export function meta({ data }: Route.MetaArgs) {
+  const lang = data?.lang === "es" ? "es" : "en";
   return [
-    { title: "Inicio" },
-    { name: "description", content: "Inicio" },
+    { title: lang === "es" ? "Inicio" : "Home" },
+    {
+      name: "description",
+      content:
+        lang === "es" ? "Tu trabajo de un vistazo" : "Your work at a glance",
+    },
   ];
 }
 
@@ -75,24 +103,72 @@ export function determinePrimaryRole(
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { loadPendingDecisionCounts } = await import(
+    "../lib/pending-decisions.server"
+  );
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  // Get all memberships for role determination
+  // Locale channel for `meta()`: `getLocale` throws if the i18next
+  // middleware did not run on this request (direct loader invocation
+  // from tests) — fall back to "en".
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+
+  // Pending-decision counts (authority + vocabulary proposals) are a
+  // federation admin function, not crowdsourcing-module content — they
+  // are computed for admins on every tenant, crowdsourcing on or off,
+  // same as the records-management empty-state links below. The count
+  // helpers live in the server lib: this file also exports components,
+  // so a module-scope value import of server code would leak into the
+  // client bundle.
+  const pendingDecisions = user.isAdmin
+    ? await loadPendingDecisionCounts(db, tenant)
+    : null;
+
+  // The dashboard's project/volume/queue content is crowdsourcing-module
+  // data. On a crowdsourcing-off tenant there is nothing of it to show —
+  // and, critically, none of it may leak in from the user's OTHER
+  // tenants (a grant-holding steward's user row carries home-tenant
+  // memberships; the first grant session, 2026-08-11, rendered the
+  // home tenant's projects on a member-tenant host). Capability gate
+  // first, tenant-scoped queries after.
+  const caps = {
+    crowdsourcing: tenant.crowdsourcingEnabled,
+    imports: tenant.importsEnabled,
+  };
+
+  if (!tenant.crowdsourcingEnabled) {
+    return { user, caps, primaryRole: "none" as const, data: null, pendingDecisions, lang };
+  }
+
+  // Memberships for role determination — scoped to THIS tenant's
+  // projects. A lead at home is not a lead here.
   const memberships = await db
     .select({
       projectId: projectMembers.projectId,
       role: projectMembers.role,
     })
     .from(projectMembers)
-    .where(eq(projectMembers.userId, user.id))
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        eq(projects.tenantId, tenant.id),
+      ),
+    )
     .all();
 
   const primaryRole = user.isAdmin ? "lead" : determinePrimaryRole(memberships);
 
   if (primaryRole === "none") {
-    return { user, primaryRole, data: null };
+    return { user, caps, primaryRole, data: null, pendingDecisions, lang };
   }
 
   if (primaryRole === "cataloguer") {
@@ -102,8 +178,11 @@ export async function loader({ context }: Route.LoaderArgs) {
     ]);
     return {
       user,
+      caps,
       primaryRole,
       data: { ...segData, descriptionEntries: descData },
+      pendingDecisions,
+      lang,
     };
   }
 
@@ -114,16 +193,22 @@ export async function loader({ context }: Route.LoaderArgs) {
     ]);
     return {
       user,
+      caps,
       primaryRole,
       data: { ...segData, descriptionData: descData },
+      pendingDecisions,
+      lang,
     };
   }
 
   // lead or admin
   return {
     user,
+    caps,
     primaryRole,
-    data: await loadLeadData(db, user.id, user.isAdmin),
+    data: await loadLeadData(db, user.id, user.isAdmin, tenant.id),
+    pendingDecisions,
+    lang,
   };
 }
 
@@ -356,16 +441,19 @@ export async function loadReviewerData(
 export async function loadLeadData(
   db: DrizzleD1Database<any>,
   userId: string,
-  isAdmin: boolean
+  isAdmin: boolean,
+  tenantId: string
 ): Promise<{ projects: ProjectOverview[]; attentionItems: AttentionItem[] }> {
-  // Get projects where user is lead (or all projects if admin)
+  // Get projects where user is lead (or all of THIS tenant's projects
+  // if admin — never platform-wide; the tenant filter is what keeps a
+  // grant-holder's dashboard honest on a member-tenant host).
   let leadProjectIds: string[];
 
   if (isAdmin) {
     const allProjects = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(isNull(projects.archivedAt))
+      .where(and(isNull(projects.archivedAt), eq(projects.tenantId, tenantId)))
       .all();
     leadProjectIds = allProjects.map((p: any) => p.id);
   } else {
@@ -708,7 +796,12 @@ export async function loadCataloguerDescriptionData(
         createdAt: comments.createdAt,
       })
       .from(comments)
-      .where(inArray(comments.entryId, sentBackIds))
+      .where(
+        and(
+          inArray(comments.entryId, sentBackIds),
+          isNull(comments.deletedAt)
+        )
+      )
       .orderBy(desc(comments.createdAt))
       .all();
 
@@ -982,9 +1075,60 @@ function ReviewerTabs({
   );
 }
 
-export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { user, primaryRole, data } = loaderData;
+/**
+ * Admin-only pending-decisions card. Renders nothing when both counts
+ * are zero — the loader always computes the counts for an admin, but
+ * an empty queue means the card itself doesn't exist, not an empty
+ * state.
+ */
+function PendingDecisionsCard({ counts }: { counts: PendingDecisionCounts }) {
   const { t } = useTranslation("dashboard");
+
+  const total = counts.authorityProposals + counts.vocabularyProposals;
+  if (total === 0) {
+    return null;
+  }
+
+  const parts = [
+    counts.authorityProposals > 0
+      ? t("pending_decisions.authority_proposals", {
+          count: counts.authorityProposals,
+        })
+      : null,
+    counts.vocabularyProposals > 0
+      ? t("pending_decisions.vocabulary_proposals", {
+          count: counts.vocabularyProposals,
+        })
+      : null,
+  ].filter(Boolean);
+
+  return (
+    <Link
+      to="/admin/decisions"
+      className="group mt-6 flex items-center gap-4 rounded-lg border border-stone-200 bg-white p-4 transition-shadow hover:border-indigo hover:shadow-sm"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-saffron-tint">
+        <ClipboardList className="h-5 w-5 text-saffron-deep" strokeWidth={1.5} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-stone-900">
+          {t("pending_decisions.waiting", { count: total })}
+        </span>
+        <span className="mt-0.5 block truncate text-sm text-stone-500">
+          {parts.join(" · ")}
+        </span>
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-stone-400 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo" />
+    </Link>
+  );
+}
+
+export default function Dashboard({ loaderData }: Route.ComponentProps) {
+  const { user, caps, primaryRole, data, pendingDecisions } = loaderData;
+  const { t } = useTranslation("dashboard");
+  // Aliased: the search box borrows the search page's own strings so
+  // the two surfaces cannot drift apart.
+  const { t: tSearch } = useTranslation("search");
   const [activeTab, setActiveTab] = useState<"segmentation" | "description">("segmentation");
 
   // Compute tab counts for cataloguer
@@ -1031,7 +1175,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
               ? t("heading.my_reviews")
               : t("heading.dashboard")}
         </h1>
-        {user.isAdmin && (
+        {user.isAdmin && caps.crowdsourcing && (
           <div className="flex items-center gap-3">
             <Link
               to="/admin/cataloguing/users"
@@ -1049,6 +1193,33 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         )}
       </div>
 
+      {/* Workspace search: a door onto /search, nothing more — no
+          state here, no results here. */}
+      {user.isAdmin && (
+        <Form method="get" action="/search" className="mt-6 flex gap-2">
+          <div className="relative flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <input
+              type="search"
+              name="q"
+              placeholder={tSearch("placeholder")}
+              aria-label={tSearch("placeholder")}
+              className="h-11 w-full rounded-lg border border-stone-300 bg-white pl-10 pr-3 font-sans text-15 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+            />
+          </div>
+          <button
+            type="submit"
+            className="inline-flex h-11 items-center rounded-lg bg-indigo px-5 text-15 font-semibold text-parchment hover:bg-indigo-deep"
+          >
+            {tSearch("title")}
+          </button>
+        </Form>
+      )}
+
+      {user.isAdmin && pendingDecisions && (
+        <PendingDecisionsCard counts={pendingDecisions} />
+      )}
+
       <div className="mt-6">
         {primaryRole === "none" || !data ? (
           <div className="mt-12 flex justify-center">
@@ -1058,6 +1229,33 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
               </div>
+              {!caps.crowdsourcing ? (
+                <>
+                  <h3 className="mt-4 font-serif text-lg font-semibold text-indigo">{t("empty.records_title")}</h3>
+                  <p className="mt-2 font-serif text-15 text-stone-500 max-w-measure mx-auto">
+                    {t("empty.records_body")}
+                  </p>
+                  {user.isAdmin && (
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                      <Link
+                        to="/admin/descriptions"
+                        className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
+                      >
+                        {t("empty.go_to_descriptions")}
+                      </Link>
+                      {caps.imports && (
+                        <Link
+                          to="/admin/imports"
+                          className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                        >
+                          {t("empty.go_to_imports")}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+              <>
               <h3 className="mt-4 font-serif text-lg font-semibold text-indigo">{t("empty.no_projects_title")}</h3>
               {user.isAdmin ? (
                 <>
@@ -1083,6 +1281,8 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                 <p className="mt-2 font-serif text-15 text-stone-500 max-w-measure mx-auto">
                   {t("empty.no_projects_member_body")}
                 </p>
+              )}
+              </>
               )}
             </div>
           </div>
