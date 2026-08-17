@@ -8,8 +8,9 @@
  * the ledger row (with the required `detail.reason`) is the sole durable
  * record of the merge.
  *
- * Gated on the `authorities` capability; the mutation requires a
- * federation steward.
+ * Gated on the `authorities` capability; the mutation follows the
+ * authority ownership rule (migration 0067): no steward needed when this
+ * tenant owns both sides of the pair, steward-gated otherwise.
  *
  * Both merge sides load rich linked-description context cards
  * (`loadLinkedDescriptionCards`); the survivor's cards are read-only.
@@ -28,6 +29,7 @@ import {
 import type { Route } from "./+types/_auth.admin.places.$id.merge";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
@@ -48,7 +50,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const loser = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, id)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)))
     .get();
   if (!loser) throw new Response("Not found", { status: 404 });
 
@@ -66,7 +68,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       (await db
         .select()
         .from(places)
-        .where(and(eq(places.federationId, tenant.federationId), eq(places.id, survivorId)))
+        .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, survivorId)))
         .get()) ?? null;
     if (survivor) {
       survivorCards = await loadLinkedDescriptionCards(db, {
@@ -81,11 +83,13 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { places, descriptionPlaces } = await import("~/db/schema");
-  const { requireFederationSteward } = await import("~/lib/federation.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
@@ -95,7 +99,6 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
-  await requireFederationSteward(db, user, tenant);
 
   const formData = await request.formData();
   const reason = (formData.get("reason") as string)?.trim() || "";
@@ -104,6 +107,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const loserId = (formData.get("loserId") as string) || params.id;
   const survivorId = formData.get("survivorId") as string;
   if (!survivorId) return { ok: false as const, error: "survivor" as const };
+
+  // Pair rule (see the entity merge): both sides must be this tenant's
+  // own for the steward gate to be skipped.
+  await requireAuthorityMutation(db, user, tenant, "place", [
+    survivorId,
+    loserId,
+  ]);
 
   const addVariants = formData.get("addVariants") === "true";
   let linkIds: string[] = [];
@@ -116,12 +126,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const survivor = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, survivorId)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, survivorId)))
     .get();
   const loser = await db
     .select()
     .from(places)
-    .where(and(eq(places.federationId, tenant.federationId), eq(places.id, loserId)))
+    .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, loserId)))
     .get();
   if (!survivor || !loser) return { ok: false as const, error: "generic" as const };
 
@@ -212,14 +222,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     db
       .update(places)
       .set({ mergedInto: survivorId, updatedAt: timestamp })
-      .where(and(eq(places.federationId, tenant.federationId), eq(places.id, loserId))),
+      .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, loserId))),
   ];
   if (addVariants) {
     batch.push(
       db
         .update(places)
         .set({ nameVariants: survivorVariants, updatedAt: timestamp })
-        .where(and(eq(places.federationId, tenant.federationId), eq(places.id, survivorId))),
+        .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, survivorId))),
     );
   }
   batch.push(

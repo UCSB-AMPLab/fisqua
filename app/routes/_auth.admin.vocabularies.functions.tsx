@@ -654,7 +654,7 @@ export default function AdminVocabularyFunctionsPage({
                 onClick={() => handlePageChange(data.page - 1)}
                 className="rounded-lg border border-stone-200 px-3 py-1 text-sm disabled:opacity-50"
               >
-                Previous
+                {t("common:pagination.previous")}
               </button>
               <span className="flex items-center px-2 text-sm">
                 {data.page} / {totalPages}
@@ -665,7 +665,7 @@ export default function AdminVocabularyFunctionsPage({
                 onClick={() => handlePageChange(data.page + 1)}
                 className="rounded-lg border border-stone-200 px-3 py-1 text-sm disabled:opacity-50"
               >
-                Next
+                {t("common:pagination.next")}
               </button>
             </div>
           </div>

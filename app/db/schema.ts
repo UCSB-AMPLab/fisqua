@@ -21,13 +21,15 @@
  * `entries` represents the tree of documentary units cataloguers
  * segment out of each volume, and `resegmentationFlags` + `qcFlags`
  * capture quality-control signals at the entry and page scope. The
- * `comments` table targets exactly one of an entry, a page, or a QC
- * flag (enforced by a three-way DB CHECK), and page-targeted comments
- * can carry optional image-region coordinates so that a single click
- * becomes a pin and a drag becomes a bounding box. The
- * "region requires a page target" invariant lives in application code
- * because SQLite CHECK cannot express it cleanly alongside the
- * three-way XOR. `activityLog` records every workflow event for the
+ * `comments` table is the platform's one comment store -- comments are
+ * one archival record class. A row targets exactly one of an entry, a
+ * page, a QC flag, or a pending decision (four-way DB CHECK), and its
+ * author is exactly one of a user or an agency label (CHECK). Page-
+ * targeted comments can carry optional image-region coordinates so
+ * that a single click becomes a pin and a drag becomes a bounding box.
+ * The "region requires a page target" invariant lives in application
+ * code because SQLite CHECK cannot express it cleanly alongside the
+ * four-way XOR. `activityLog` records every workflow event for the
  * per-user activity page and the project messages feed.
  *
  * Third, the archival data layer: `repositories`, `descriptions`,
@@ -82,9 +84,10 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
+import { sql } from "drizzle-orm";
 import {
   sqliteTable,
   text,
@@ -106,6 +109,7 @@ import {
   ENTRY_TYPES,
   RESOURCE_TYPES_ES,
   PROJECT_ROLES,
+  COMMENT_AUTHOR_ROLES,
   DESCRIPTIVE_STANDARDS,
   QC_PROBLEM_TYPES,
   QC_RESOLUTION_ACTIONS,
@@ -130,8 +134,13 @@ import { AUDIT_LOG_ACTIONS } from "../lib/audit-actions";
 // prohibited for these populated cascade-parent tables (0042 header), and
 // because no writer omits the column, that default is never consulted.
 // The authority tables (entities/places/vocabulary_terms) carry
-// `federation_id`, not `tenant_id`; drafts sit at a root (session tenant),
-// keyed by (record_id, record_type) rather than under a volume.
+// `federation_id` as their required scope; drafts sit at a root (session
+// tenant), keyed by (record_id, record_type) rather than under a volume.
+// entities and places additionally carry an OPTIONAL `tenant_id`
+// (migration 0067) whose NULL means "federation-shared" — it is an
+// ownership marker inside the federation, not a second required scope,
+// and it is the one `tenant_id` in the schema that a writer may leave
+// unset.
 
 export const tenants = sqliteTable(
   "tenants",
@@ -181,6 +190,21 @@ export const tenants = sqliteTable(
     // the SQL migration (0044) and the test harness; this is the one
     // side dropped to break the type cycle.
     federationId: text("federation_id").notNull(),
+    // Authority code prefixes for records this tenant MAINTAINS
+    // (migration 0068). Set only on a tenant that mints its OWN
+    // authority records — i.e. one whose federation keeps sharing off,
+    // so `requireAuthorityMint` resolves the tenant as the owner. SBMAL
+    // carries 'sbmal-e' / 'sbmal-p'; every other tenant is NULL because
+    // its mints resolve to the federation row instead.
+    //
+    // The prefix names the maintaining agency, and is stored rather than
+    // derived from anything: it must NOT follow `entities.tenantId`,
+    // which is mutable, because a later ownership transfer would then
+    // falsify codes already published as citable identifiers. NULL means
+    // "no prefix configured", and the mint path throws on it rather than
+    // fall back to another institution's mark.
+    entityCodePrefix: text("entity_code_prefix"),
+    placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -219,6 +243,36 @@ export const federations = sqliteTable(
     multiMemberEnabled: integer("multi_member_enabled", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Operator-set gate on whether this federation's authority space is
+    // SHARED by default (migration 0067). Sibling of
+    // `multiMemberEnabled` in every respect: boolean, NOT NULL, default
+    // off. It governs what new authority minting DEFAULTS to, not what
+    // is permitted — off mints tenant-owned entities/places (the minting
+    // tenant's id lands in `entities.tenantId` / `places.tenantId`), on
+    // mints federation-shared ones (NULL owner, steward-gated as
+    // before). A federation whose members genuinely share people and
+    // places turns it on; one whose members are unrelated archives
+    // co-located for operational reasons leaves it off.
+    sharedAuthoritiesEnabled: integer("shared_authorities_enabled", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    // Authority code prefixes for records this federation MAINTAINS
+    // (migration 0068) — the shared-space counterpart of the identical
+    // pair on `tenants`. A record minted into a shared authority space
+    // (`entities.tenantId` NULL) takes its prefix from here; a
+    // tenant-owned one takes it from the tenant row. The Neogranadina
+    // federation carries 'ne' / 'nl', the series its ~78K existing codes
+    // already use; every other federation is NULL until provisioned.
+    //
+    // Stored as the FINISHED prefix string, not a slug plus a derived
+    // type letter, because Neogranadina's form fuses the type letter
+    // into a two-letter mnemonic ('ne' = entidad, 'nl' = lugar) while
+    // the general form separates it ('sbmal-e', 'sbmal-p'). The
+    // generator's `${prefix}-${chars}` covers both with no branching.
+    entityCodePrefix: text("entity_code_prefix"),
+    placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -226,6 +280,18 @@ export const federations = sqliteTable(
     index("federations_lead_tenant_idx").on(table.leadTenantId),
   ],
 );
+
+// How often the notification sweep may email a user (0074). `15min` is
+// the floor because it is the cron tick; `off` writes no outbox rows at
+// all — the preference is prospective, so switching back on does not
+// replay events accrued while off.
+export const DIGEST_FREQUENCIES = [
+  "15min",
+  "hourly",
+  "daily",
+  "weekly",
+  "off",
+] as const;
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -240,6 +306,16 @@ export const users = sqliteTable("users", {
   isArchiveUser: integer("is_archive_user", { mode: "boolean" }).notNull().default(false),
   isUserManager: integer("is_user_manager", { mode: "boolean" }).notNull().default(false),
   isCataloguer: integer("is_cataloguer", { mode: "boolean" }).notNull().default(false),
+  // Notification and language preferences (0074). `lastDigestAt` is the
+  // sweep's per-user clock: due when now - lastDigestAt >= interval,
+  // drift-based rather than wall-clock-anchored. `locale` is persisted
+  // from the /configuracion language toggle and read by the digest
+  // renderer; NULL falls back to the app's fallback language (es).
+  digestFrequency: text("digest_frequency", { enum: [...DIGEST_FREQUENCIES] })
+    .notNull()
+    .default("hourly"),
+  lastDigestAt: integer("last_digest_at"),
+  locale: text("locale", { enum: ["en", "es"] }),
   lastActiveAt: integer("last_active_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
@@ -653,25 +729,38 @@ export const qcFlags = sqliteTable(
   ]
 );
 
-// A comment targets exactly one of: an entry, a page, or a QC flag --
-// enforced by a three-way DB CHECK constraint. Page-targeted comments
-// may carry image-region coordinates (region_x/y/w/h as REALs in 0-1
+// A comment targets exactly one of: an entry, a page, a QC flag, or a
+// pending decision -- enforced by a four-way DB CHECK constraint
+// (migration 0071 folded the short-lived decision_comments table in;
+// comments are one archival record class). Its author is exactly one
+// of a user or an agency label ("Fisqua" for the system's own
+// comments) -- CHECK-enforced either/or. tenant_id and volume_id stay
+// required for the three volume-anchored targets (DB CHECKs); only
+// decision-targeted rows may omit them. Page-targeted comments may
+// carry image-region coordinates (region_x/y/w/h as REALs in 0-1
 // normalised page space); the "region requires page_id" invariant
 // lives in `app/lib/comments.server.ts` rather than a CHECK because
-// expressing it alongside the three-way XOR would read awkwardly.
+// expressing it alongside the four-way XOR would read awkwardly.
 export const comments = sqliteTable(
   "comments",
   {
     id: text("id").primaryKey(),
-    tenantId: text("tenant_id").notNull(),
-    // Denormalised for cheap volume-scoped queries.
-    volumeId: text("volume_id")
-      .notNull()
-      .references(() => volumes.id, { onDelete: "cascade" }),
+    // Required unless decision-targeted (DB CHECK); a decision comment
+    // copies its decision's tenant (null for federation-level rows).
+    tenantId: text("tenant_id"),
+    // Denormalised for cheap volume-scoped queries. Required unless
+    // decision-targeted (DB CHECK).
+    volumeId: text("volume_id").references(() => volumes.id, {
+      onDelete: "cascade",
+    }),
     // Nullable target columns -- exactly one must be set (DB CHECK).
     entryId: text("entry_id").references(() => entries.id, { onDelete: "cascade" }),
     pageId: text("page_id").references(() => volumePages.id, { onDelete: "cascade" }),
     qcFlagId: text("qc_flag_id").references(() => qcFlags.id, { onDelete: "cascade" }),
+    // RESTRICT: a decision carrying its case file is never hard-deleted.
+    decisionId: text("decision_id").references(() => pendingDecisions.id, {
+      onDelete: "restrict",
+    }),
     // Image-region coordinates for page-targeted pins. All four nullable;
     // a single click stores a pin (w=h=0 or NULL), a drag stores a box.
     regionX: real("region_x"),
@@ -679,11 +768,20 @@ export const comments = sqliteTable(
     regionW: real("region_w"),
     regionH: real("region_h"),
     parentId: text("parent_id"), // null = top-level, references comments.id for nesting
-    authorId: text("author_id").notNull().references(() => users.id),
-    authorRole: text("author_role", {
-      enum: [...PROJECT_ROLES],
-    }).notNull(),
+    // Exactly one of authorId/authorLabel is set (DB CHECK): a person,
+    // or an agency ("Fisqua", an import pipeline).
+    authorId: text("author_id").references(() => users.id),
+    authorLabel: text("author_label"),
+    // Role snapshot at post time -- project roles on volume surfaces,
+    // tenant roles (admin) on decision threads; null for label authors.
+    authorRole: text("author_role", { enum: [...COMMENT_AUTHOR_ROLES] }),
     text: text("text").notNull(),
+    // One quoted passage per comment, with its reference ("CMD 134")
+    // and an optional epistemic qualifier. The "quoted from this
+    // workspace's own catalogue" line is render-time i18n, never stored.
+    quote: text("quote"),
+    quoteRef: text("quote_ref"),
+    note: text("note"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     // Soft-delete, resolve, and last-edit markers. All nullable; a fresh
@@ -705,6 +803,7 @@ export const comments = sqliteTable(
     index("comment_page_idx").on(table.pageId),
     index("comment_qc_flag_idx").on(table.qcFlagId),
     index("comment_parent_idx").on(table.parentId),
+    index("comment_decision_idx").on(table.decisionId, table.createdAt),
   ]
 );
 
@@ -913,7 +1012,36 @@ export const entities = sqliteTable(
     federationId: text("federation_id")
       .notNull()
       .references(() => federations.id, { onDelete: "restrict" }),
-    entityCode: text("entity_code"), // ne-xxxxxx format
+    // OPTIONAL owner one level below the federation (migration 0067).
+    // Deliberately NULLABLE at both the DB and the type layer, because
+    // NULL is a meaningful value here rather than a gap:
+    //
+    //   set  -> tenant-owned. Visible to that tenant only; mutated by
+    //           that tenant's own admins with no steward gate.
+    //   NULL -> federation-shared. Visible to every member tenant;
+    //           mutated only by a federation steward (the 2026-07-08
+    //           rule, unchanged).
+    //
+    // INVARIANT: when `tenantId` is set, this row's `federationId` MUST
+    // equal that tenant's federation. Ownership NARROWS scope; it never
+    // moves a record between federations. Upheld by construction — the
+    // owner is only ever the REQUEST tenant, whose federation is the one
+    // the query already filters on — not by a DB constraint (SQLite has
+    // no cross-table CHECK).
+    //
+    // The unique code index below stays (federationId, entityCode):
+    // codes are unique federation-wide whether or not a record is owned,
+    // so an owned record can later be shared without a collision.
+    // Reads must never filter on `federationId` alone — go through
+    // `authorityScope()` in `app/lib/authority-ownership.server.ts`.
+    tenantId: text("tenant_id").references(() => tenants.id, {
+      onDelete: "restrict",
+    }),
+    // `<agency prefix>-xxxxxx`: `ne-abc234` for a record Neogranadina
+    // maintains, `sbmal-e-abc234` for one SBMAL maintains (migration
+    // 0068). The prefix names the MAINTAINING agency and is issued once
+    // — it is not derived from `tenantId`, which is transferable.
+    entityCode: text("entity_code"),
     displayName: text("display_name").notNull(),
     sortName: text("sort_name").notNull(),
     surname: text("surname"),
@@ -964,7 +1092,21 @@ export const places = sqliteTable(
     federationId: text("federation_id")
       .notNull()
       .references(() => federations.id, { onDelete: "restrict" }),
-    placeCode: text("place_code"), // nl-xxxxxx format
+    // OPTIONAL owner, identical in meaning and invariant to
+    // `entities.tenantId` (migration 0067): set = tenant-owned (that
+    // tenant's admins mutate it freely), NULL = federation-shared
+    // (steward-gated). When set, `federationId` MUST equal that tenant's
+    // federation — ownership narrows scope, never moves a record between
+    // federations. Reads go through `authorityScope()` in
+    // `app/lib/authority-ownership.server.ts`, never through a bare
+    // `federationId` filter.
+    tenantId: text("tenant_id").references(() => tenants.id, {
+      onDelete: "restrict",
+    }),
+    // `<agency prefix>-xxxxxx`, same rule as `entities.entityCode`:
+    // `nl-abc234` for Neogranadina, `sbmal-p-abc234` for SBMAL
+    // (migration 0068).
+    placeCode: text("place_code"),
     label: text("label").notNull(),
     displayName: text("display_name").notNull(),
     placeType: text("place_type", { enum: [...PLACE_TYPES] }),
@@ -1427,5 +1569,509 @@ export const authorityOperations = sqliteTable(
     index("authority_operations_federation_idx").on(table.federationId),
     index("authority_operations_source_idx").on(table.sourceId),
     index("authority_operations_target_idx").on(table.targetId),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Pending decisions (migration 0069; pairs reshaped by 0072): the
+// queue where a workspace's open questions wait for a ruling, kept
+// afterwards as the audit trail of who ruled what, on which evidence,
+// and what it produced. Two kinds: 'authority-proposal' (created open;
+// accept mints or links and stamps result_id) and 'duplicate-pair' (a
+// pair the scan flagged, made durable — the scan itself stays live and
+// unpersisted, so a row exists only once something durable happens: a
+// comment lands on the pair, or it is ruled. Ruled 'merged' stamps the
+// survivor in result_id; ruled 'kept_both' is the persisted "not a
+// duplicate" the scan subtracts. source_ref carries the sorted pairKey
+// so the lazy get-or-create can find an existing row. 0072 absorbed
+// the earlier 'duplicate-dismissal' kind into this shape).
+// Vocabulary proposals do NOT get rows here: vocabulary_terms keeps its
+// own status machine and the surface reads it directly.
+//
+// tenant_id follows the 0067 ownership shape: set = the tenant's own
+// question (its admins rule); NULL = shared-space question (steward
+// rules). payload is JSON because the kinds carry different shapes and
+// no query filters on its parts; everything the queue filters on is a
+// real column.
+// ---------------------------------------------------------------------------
+
+export const PENDING_DECISION_KINDS = [
+  "authority-proposal",
+  "duplicate-pair",
+] as const;
+
+// accepted / amended / rejected rule proposals; merged / kept_both rule
+// duplicate pairs. Rulings are final: a ruled row 409s any re-rule.
+export const PENDING_DECISION_RULINGS = [
+  "accepted",
+  "amended",
+  "rejected",
+  "merged",
+  "kept_both",
+] as const;
+
+export const pendingDecisions = sqliteTable(
+  "pending_decisions",
+  {
+    id: text("id").primaryKey(),
+    federationId: text("federation_id")
+      .notNull()
+      .references(() => federations.id, { onDelete: "restrict" }),
+    tenantId: text("tenant_id").references(() => tenants.id, {
+      onDelete: "restrict",
+    }),
+    kind: text("kind", { enum: [...PENDING_DECISION_KINDS] }).notNull(),
+    payload: text("payload").notNull().default("{}"), // JSON
+    sourceModule: text("source_module").notNull(),
+    sourceRef: text("source_ref"),
+    status: text("status", { enum: ["open", "ruled"] })
+      .notNull()
+      .default("open"),
+    ruling: text("ruling", { enum: [...PENDING_DECISION_RULINGS] }),
+    rulingNote: text("ruling_note"),
+    resultId: text("result_id"),
+    ruledBy: text("ruled_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    ruledAt: integer("ruled_at"),
+    // Proposer identity (0071): null for pipeline filings, which speak
+    // through a label-authored comment; set for human-filed proposals.
+    filedByUserId: text("filed_by_user_id").references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_pending_decisions_queue").on(
+      table.federationId,
+      table.status,
+      table.kind,
+    ),
+    // One decision row per duplicate pair (0073). Partial: proposals
+    // reuse source_ref for non-unique provenance strings.
+    uniqueIndex("idx_pending_decisions_pair_key")
+      .on(table.federationId, table.sourceRef)
+      .where(sql`kind = 'duplicate-pair' AND source_ref IS NOT NULL`),
+  ]
+);
+
+// Decision threads live in `comments` (decision_id target) since
+// migration 0071 folded the short-lived decision_comments table in --
+// comments are one archival record class.
+
+// ---------------------------------------------------------------------------
+// Notification outbox (0074). Tier-1 email notifications never send
+// inline: each event fans out one row per recipient at action time
+// (snapshotting the recipient set -- the actor never gets a row, and
+// neither does a recipient whose digest_frequency is 'off'), and the
+// 15-minute cron sweep coalesces every pending row for a due recipient
+// into one digest email. sent_at NULL = pending; the sweep sends via
+// Resend first and marks after, so a failure between the two retries
+// next tick (a rare double email is accepted over a silently lost
+// one). decision_id is RESTRICT for the same reason comments' is: a
+// decision carrying its case file is never hard-deleted.
+// ---------------------------------------------------------------------------
+
+export const NOTIFICATION_KINDS = [
+  "decision_ruled",
+  "decision_comment",
+  "proposal_filed",
+] as const;
+
+export const notificationOutbox = sqliteTable(
+  "notification_outbox",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: [...NOTIFICATION_KINDS] }).notNull(),
+    decisionId: text("decision_id")
+      .notNull()
+      .references(() => pendingDecisions.id, { onDelete: "restrict" }),
+    // Who acted; null when the actor is an agency (a pipeline comment).
+    actorUserId: text("actor_user_id").references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+    sentAt: integer("sent_at"),
+  },
+  (table) => [
+    // The sweep's read: pending rows (sent_at NULL) grouped by
+    // recipient.
+    index("idx_notification_outbox_pending").on(table.userId, table.sentAt),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// External authority links (0076). What an outside vocabulary calls a
+// record we already hold: one row per (record, scheme, external id).
+//
+// The registry sits BESIDE the authority record rather than inside it,
+// because the columns entities/places already carry for this
+// (wikidata_id, viaf_id, tgn_id) are one-per-scheme and cannot say who
+// matched, on what evidence, or whether the match still holds. A row
+// here names the maintaining agency's federation, the record, the
+// scheme, the identifier the scheme issued, the label it carried at
+// match time, and how the match was made.
+//
+// `scheme` is deliberately open text, not an enum: the set of
+// vocabularies a partner reconciles against is a deployment fact, not a
+// platform one, and a new scheme must not need a migration. The
+// enumerated column is `matched_by`, which is about US — hand-picked by
+// a cataloguer, confirmed off a reconciliation candidate, or carried in
+// by an import.
+//
+// `decision_id` is the audit trail when the match was confirmed while
+// ruling a proposal: RESTRICT, for the same reason comments' decision
+// FK is — a decision carrying its case file is never hard-deleted.
+// `status` lets a link be retired without losing the record of it, and
+// `label_checked_at` stamps the last time the remote label was
+// re-read, so drift can be found later. UNIQUE(record_type, record_id,
+// scheme, external_id) makes a repeat confirmation a no-op.
+// ---------------------------------------------------------------------------
+
+export const EXTERNAL_LINK_RECORD_TYPES = [
+  "entity",
+  "place",
+  "vocabulary_term",
+] as const;
+
+export const EXTERNAL_LINK_MATCHED_BY = [
+  "hand-picked",
+  "reconciled-confirmed",
+  "import",
+] as const;
+
+export const EXTERNAL_LINK_STATUSES = [
+  "active",
+  "deprecated",
+  "redirected",
+] as const;
+
+export const externalAuthorityLinks = sqliteTable(
+  "external_authority_links",
+  {
+    id: text("id").primaryKey(),
+    federationId: text("federation_id")
+      .notNull()
+      .references(() => federations.id, { onDelete: "restrict" }),
+    recordType: text("record_type", {
+      enum: [...EXTERNAL_LINK_RECORD_TYPES],
+    }).notNull(),
+    recordId: text("record_id").notNull(),
+    // Open by design — see the note above.
+    scheme: text("scheme").notNull(),
+    externalId: text("external_id").notNull(),
+    matchedLabel: text("matched_label").notNull(),
+    matchedBy: text("matched_by", {
+      enum: [...EXTERNAL_LINK_MATCHED_BY],
+    }).notNull(),
+    decisionId: text("decision_id").references(() => pendingDecisions.id, {
+      onDelete: "restrict",
+    }),
+    status: text("status", { enum: [...EXTERNAL_LINK_STATUSES] })
+      .notNull()
+      .default("active"),
+    labelCheckedAt: integer("label_checked_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("eal_record_scheme_idx").on(
+      table.recordType,
+      table.recordId,
+      table.scheme,
+      table.externalId,
+    ),
+    index("eal_federation_scheme_idx").on(table.federationId, table.scheme),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Carried scopes (0077). A search selection handed forward to the
+// export surface: the records a person ticked (or the whole matching
+// set they took), materialised as a list of ids at carry time.
+//
+// The set is stored, not the query. A carry is a promise about a fixed
+// set of records — the export must produce what was ticked, not what
+// the same question would answer later — and storing the query would
+// also hand the export code a second copy of the search's scope rules
+// to get wrong. "All matching" is therefore resolved to ids under the
+// SAME scoped statement the results page ran, at the moment of the
+// carry, and every consumer downstream reads a list.
+//
+// `constraint_summary` is display-only: the pills as they read on
+// screen plus the faceted total, so the export page can say what the
+// set was chosen under without re-deriving it. Nothing reads it back as
+// structure.
+//
+// `record_type` speaks the search tabs' vocabulary ('records' for
+// descriptions), because that is what the export page says to a person.
+// member_ids carries no FK: it spans three tables, and a JSON array
+// could not carry one — the polymorphic precedent is 0076's record_id.
+//
+// tenant_id + user_id are the whole of the read gate: the consuming
+// query keys on both, so another person's scope is indistinguishable
+// from one that never existed. tenant_id RESTRICTs like every tenant
+// FK; user_id CASCADEs because an unconsumed selection is scratch state
+// that should leave with the person who made it.
+// ---------------------------------------------------------------------------
+
+export const CARRIED_SCOPE_RECORD_TYPES = [
+  "records",
+  "entities",
+  "places",
+] as const;
+
+export const carriedScopes = sqliteTable(
+  "carried_scopes",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recordType: text("record_type", {
+      enum: [...CARRIED_SCOPE_RECORD_TYPES],
+    }).notNull(),
+    /** JSON, display-only: { pills: [{ label }], total }. */
+    constraintSummary: text("constraint_summary").notNull().default("{}"),
+    /** JSON array of the member ids, in the order the page showed them. */
+    memberIds: text("member_ids").notNull().default("[]"),
+    /** What the person was told they were taking (the faceted total). */
+    total: integer("total").notNull(),
+    createdAt: integer("created_at").notNull(),
+    /** Set by the export surface when the scope is spent; never here. */
+    consumedAt: integer("consumed_at"),
+  },
+  (table) => [
+    index("carried_scopes_owner_idx").on(
+      table.tenantId,
+      table.userId,
+      table.createdAt,
+    ),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Handlists (0078). An ordered, named, persistent set of references a
+// person keeps and works from — the archival term, and it carries the
+// rule: a handlist is true of its material at the moment it was drawn
+// up. It is a SNAPSHOT (it never grows on its own) and it REFERENCES
+// rather than contains (removing a member touches no record).
+//
+// `record_type` speaks the search tabs' vocabulary ('records' for
+// descriptions) and is what makes a handlist a coherent export scope. It
+// is NULL until the first member arrives and immutable after — the app
+// fixes it on that first add, so the column is nullable rather than
+// carrying a placeholder.
+//
+// tenant_id RESTRICTs like every tenant FK. owner_id RESTRICTs too,
+// deliberately: a person leaving must not take their colleagues' shared
+// working sets with them, so the user delete is blocked until ownership
+// is transferred. `workspace_visible` is the third visibility arm beside
+// owner and share.
+//
+// handlist_members.member_id carries NO foreign key — it spans three
+// tables (the 0076/0077 polymorphic precedent), and the absence is also
+// semantic: a member deleted from the workspace stays as a tombstone,
+// shown but uncounted for export, because a handlist may never lie about
+// its count. `position` is explicit because the order is carried into
+// the export; `created_at` is the arrival stamp the integrity read
+// compares an authority split against. UNIQUE (handlist_id, member_id)
+// is what makes a repeat add a no-op.
+//
+// handlist_shares: viewer reads, editor adds/removes/reorders; the owner
+// alone renames, shares, deletes and transfers. Both FKs CASCADE — a
+// share is meaningless once its handlist or its person is gone. Sharing
+// conveys no module access and no export right.
+// ---------------------------------------------------------------------------
+
+export const HANDLIST_RECORD_TYPES = ["records", "entities", "places"] as const;
+
+export const HANDLIST_SHARE_ROLES = ["viewer", "editor"] as const;
+
+export const handlists = sqliteTable(
+  "handlists",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** NULL until the first member fixes it; immutable afterwards. */
+    recordType: text("record_type", { enum: [...HANDLIST_RECORD_TYPES] }),
+    workspaceVisible: integer("workspace_visible", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("handlists_owner_idx").on(table.tenantId, table.ownerId)]
+);
+
+export const handlistMembers = sqliteTable(
+  "handlist_members",
+  {
+    id: text("id").primaryKey(),
+    handlistId: text("handlist_id")
+      .notNull()
+      .references(() => handlists.id, { onDelete: "cascade" }),
+    /** A description, entity or place id — no FK; see the note above. */
+    memberId: text("member_id").notNull(),
+    position: integer("position").notNull(),
+    addedBy: text("added_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("handlist_members_member_idx").on(
+      table.handlistId,
+      table.memberId,
+    ),
+    index("handlist_members_position_idx").on(table.handlistId, table.position),
+  ]
+);
+
+export const handlistShares = sqliteTable(
+  "handlist_shares",
+  {
+    id: text("id").primaryKey(),
+    handlistId: text("handlist_id")
+      .notNull()
+      .references(() => handlists.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: [...HANDLIST_SHARE_ROLES] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("handlist_shares_user_idx").on(table.handlistId, table.userId),
+  ]
+);
+
+// ---------------------------------------------------------------------------
+// Workspace export runs (0079). The ledger behind the self-service
+// export surface: one row per export a workspace took of its own
+// records, recorded so the workspace can always say what left, in what
+// shape, and when.
+//
+// This is NOT `export_runs`, which belongs to the publish pipeline: that
+// table is federation-attributed, has no tenant scoping root, and is
+// driven by a Cloudflare Workflow. A self-service export belongs to one
+// workspace and one person and runs inside a request's waitUntil. The
+// two lifecycles were kept apart rather than merged behind a `kind`
+// column — see the 0079 migration header for the full reasoning.
+//
+// The three axes are recorded as they were chosen: `scope_kind` +
+// `scope_descriptor` (what), `form` (the descriptive shape), `format`
+// (the serialisation). `scope_descriptor` is the ledger row's OWN WORDS
+// — a branch's code and title chain, a carried scope's pills and
+// arithmetic, a handlist's id and name — and is never re-resolved, so
+// renaming the branch or editing the handlist cannot rewrite history.
+//
+// `record_class` says what kind of thing the scope holds, in the search
+// tabs' vocabulary. It reshapes both other axes (an authority scope has
+// no descriptive-standard form and no finding aid), which is why the
+// legality matrix keys on it. `include_authorities` is Not applicable
+// for an authority scope and keeps its default there.
+//
+// Lifecycle: running → completed | failed | cancelled. `stage` is an
+// unconstrained machine code for the dialog's working line (a new
+// emitter may add stages without a migration); progress_done/total feed
+// "800 of 1,204 records"; `failure` is JSON {code, detail} so the failed
+// row can be rendered in the reader's language rather than replaying a
+// stored English sentence. `r2_key` is nulled by the 30-day read-time
+// sweep, which is what lets a history row outlive its own artifact.
+// ---------------------------------------------------------------------------
+
+export const WORKSPACE_EXPORT_SCOPE_KINDS = [
+  "workspace",
+  "branch",
+  "carried",
+  "handlist",
+] as const;
+
+export const WORKSPACE_EXPORT_RECORD_CLASSES = [
+  "records",
+  "entities",
+  "places",
+] as const;
+
+export const WORKSPACE_EXPORT_FORMS = [
+  "isadg",
+  "dacs",
+  "rad",
+  "dc",
+  "canonical",
+] as const;
+
+export const WORKSPACE_EXPORT_FORMATS = [
+  "csv",
+  "ead-xml",
+  "json",
+  "pdf",
+] as const;
+
+export const WORKSPACE_EXPORT_STATUSES = [
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+
+export const workspaceExportRuns = sqliteTable(
+  "workspace_export_runs",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    scopeKind: text("scope_kind", {
+      enum: [...WORKSPACE_EXPORT_SCOPE_KINDS],
+    }).notNull(),
+    /** JSON, display + re-run provenance only: never re-resolved. */
+    scopeDescriptor: text("scope_descriptor").notNull().default("{}"),
+    recordClass: text("record_class", {
+      enum: [...WORKSPACE_EXPORT_RECORD_CLASSES],
+    }),
+    includeAuthorities: integer("include_authorities", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    form: text("form", { enum: [...WORKSPACE_EXPORT_FORMS] }),
+    format: text("format", { enum: [...WORKSPACE_EXPORT_FORMATS] }),
+    status: text("status", { enum: [...WORKSPACE_EXPORT_STATUSES] })
+      .notNull()
+      .default("running"),
+    /** Machine code for the working line; deliberately unconstrained. */
+    stage: text("stage"),
+    progressDone: integer("progress_done"),
+    progressTotal: integer("progress_total"),
+    countRecords: integer("count_records"),
+    countEntities: integer("count_entities"),
+    countPlaces: integer("count_places"),
+    fileName: text("file_name"),
+    fileSize: integer("file_size"),
+    /** Nulled by the 30-day sweep once the object is deleted. */
+    r2Key: text("r2_key"),
+    /** JSON {code, detail} — never a stored English sentence. */
+    failure: text("failure"),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("workspace_export_runs_tenant_idx").on(
+      table.tenantId,
+      table.createdAt,
+    ),
   ]
 );

@@ -171,7 +171,7 @@ describe("project settings", () => {
         createdAt: now,
       });
 
-      const result = await requireProjectRole(db, user.id, "proj-s4", ["lead"]);
+      const result = await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, user.id, "proj-s4", ["lead"]);
       expect(result).toHaveLength(1);
     });
 
@@ -198,7 +198,7 @@ describe("project settings", () => {
       });
 
       try {
-        await requireProjectRole(db, user.id, "proj-s5", ["lead"]);
+        await requireProjectRole(db, DEFAULT_TEST_TENANT_ID, user.id, "proj-s5", ["lead"]);
         expect.fail("Should have thrown");
       } catch (e) {
         expect(e).toBeInstanceOf(Response);

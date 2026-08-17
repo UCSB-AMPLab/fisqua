@@ -63,6 +63,7 @@ export interface ExportRunRow {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { sql, desc, eq, and, isNull, gt, inArray } = await import("drizzle-orm");
   const {
@@ -229,7 +230,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   let placeCount: { count: number } | undefined;
   if (tenant.authoritiesEnabled) {
     const entityCountConditions = [
-      eq(entities.federationId, tenant.federationId),
+      authorityScope(entities, tenant.federationId, memberTenantIds),
       inArray(descriptions.tenantId, memberTenantIds),
       eq(descriptions.isPublished, true),
       isNull(entities.mergedInto),
@@ -252,7 +253,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       .get();
 
     const placeCountConditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, memberTenantIds),
       inArray(descriptions.tenantId, memberTenantIds),
       eq(descriptions.isPublished, true),
       isNull(places.mergedInto),

@@ -44,13 +44,14 @@
  * MARK_SAVING / MARK_SAVED / MARK_ERROR transitions inside the
  * hook itself.
  *
- * @version v0.4.1
+ * @version v0.7.0
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRevalidator, useBlocker } from "react-router";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { IIIFViewer, type PinMode } from "../components/viewer/iiif-viewer";
 import { ViewerToolbar } from "../components/viewer/viewer-toolbar";
 import { ViewerTopBar } from "../components/viewer/viewer-top-bar";
@@ -91,11 +92,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { volumes, volumePages, users, projects } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // The viewer is a full-page route outside the `/projects/:id`
+  // layout, so it carries its own crowdsourcing gate.
+  requireCapability(tenant, "crowdsourcing");
 
   // Any project member can access the viewer (access level determined by role + assignment)
   const memberships = await requireProjectRole(
- db, user.id, params.projectId,
+ db, tenant.id, user.id, params.projectId,
  [...PROJECT_ROLES],
  user.isAdmin
   );
@@ -941,9 +947,7 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
  moveMode={pinMode === "move"}
  currentUserId={userId}
  onPinMove={accessLevel !== "readonly" ? handlePinMove : undefined}
- notAuthorTooltip={t("viewer:move_tool.not_author", {
- defaultValue: "Solo puedes mover tus propias anotaciones.",
- })}
+ notAuthorTooltip={t("viewer:move_tool.not_author")}
  />
  </div>
 

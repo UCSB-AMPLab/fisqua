@@ -26,13 +26,17 @@ import {
   assertNonPlatformOrAllowlisted,
   getTenantFromRequest,
 } from "../lib/tenant";
+import { getLocale } from "../middleware/i18next";
 
 const emailSchema = z.object({
   email: z.string().email(),
 });
 
-export function meta() {
-  return [{ title: "Iniciar sesión | Fisqua" }];
+export function meta({ data }: Route.MetaArgs) {
+  const lang = data?.lang === "es" ? "es" : "en";
+  return [
+    { title: lang === "es" ? "Iniciar sesión | Fisqua" : "Sign in | Fisqua" },
+  ];
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -64,7 +68,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // identical to an unknown slug's /login.
   assertNonPlatformOrAllowlisted(tenant, new URL(request.url).pathname);
 
+  // Locale channel for `meta()`: `getLocale` throws if the i18next
+  // middleware did not run on this request (direct loader invocation
+  // from tests) — fall back to "en".
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+
   return {
+    lang,
     tenantSlug: tenant.slug,
     // Surface the workspace name as a subtitle under the Fisqua
     // mark/title so users know which tenant they're about to sign
@@ -216,7 +231,16 @@ export default function LoginPage({
                     strokeWidth={1.5}
                     aria-hidden="true"
                   />
-                  <span>{actionData.error}</span>
+                  {/*
+                    `no_account` is the stable token auth.server returns
+                    when the email has no user; every other error value
+                    arrives pre-translated by the action.
+                  */}
+                  <span>
+                    {actionData.error === "no_account"
+                      ? t("login.no_account")
+                      : actionData.error}
+                  </span>
                 </div>
               )}
 

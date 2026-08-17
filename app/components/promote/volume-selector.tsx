@@ -56,7 +56,7 @@ export function VolumeSelector({ volumes, onSelect }: VolumeSelectorProps) {
               {volume.name}
             </p>
             <p className="mt-2 font-sans text-xs text-stone-500">
-              {volume.promotableCount} approved entries
+              {t("approved_entries", { count: volume.promotableCount })}
             </p>
           </button>
         ))}

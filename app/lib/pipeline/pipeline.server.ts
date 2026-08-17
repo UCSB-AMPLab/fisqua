@@ -8,10 +8,17 @@
  * guarded user in; every mutation writes an audit row so the trail
  * is recoverable.
  *
- * @version v0.3.0
+ * Every exported query takes the REQUEST tenant id as its second
+ * argument -- `context.get(tenantContext).id`, never `user.tenantId`
+ * -- and carries it as a predicate. The project id a caller supplies
+ * cannot answer the tenant question on its own, so neither the
+ * project filter nor a resolved entry PK is allowed to stand alone
+ * here.
+ *
+ * @version v0.7.0
  */
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { eq, and, isNull, notInArray, inArray } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 import {
   volumes,
   entries,
@@ -143,15 +150,20 @@ export function groupEntriesByColumn(
 // DB queries
 // ---------------------------------------------------------------------------
 
+/**
+ * Build the kanban columns for one project.
+ *
+ * `tenantId` is the REQUEST tenant and `projectId` is mandatory. Both
+ * are load-bearing: an optional project filter used to leave
+ * `volumeConditions` undefined, which returned every volume on the
+ * platform, and a project id alone cannot answer the tenant question
+ * once a caller is free to supply it.
+ */
 export async function getPipelineData(
   db: DrizzleD1Database,
-  projectFilter?: string
+  tenantId: string,
+  projectId: string
 ): Promise<PipelineColumn[]> {
-  // Query volumes with project and assignee info
-  const volumeConditions = projectFilter
-    ? eq(volumes.projectId, projectFilter)
-    : undefined;
-
   const volumeRows = await db
     .select({
       id: volumes.id,
@@ -165,7 +177,12 @@ export async function getPipelineData(
     .from(volumes)
     .leftJoin(projects, eq(volumes.projectId, projects.id))
     .leftJoin(users, eq(volumes.assignedTo, users.id))
-    .where(volumeConditions)
+    .where(
+      and(
+        eq(volumes.tenantId, tenantId),
+        eq(volumes.projectId, projectId)
+      )
+    )
     .all();
 
   const volumeItems = volumeRows.map((row) => ({
@@ -183,10 +200,9 @@ export async function getPipelineData(
   // Query entries in the description pipeline (not unassigned, not promoted)
   const entryBaseConditions = [
     notInArray(entries.descriptionStatus, ["unassigned", "promoted"]),
+    eq(entries.tenantId, tenantId),
+    eq(volumes.projectId, projectId),
   ];
-  if (projectFilter) {
-    entryBaseConditions.push(eq(volumes.projectId, projectFilter));
-  }
 
   const entryRows = await db
     .select({
@@ -234,15 +250,22 @@ export async function getPipelineData(
 // Assign describer action
 // ---------------------------------------------------------------------------
 
+/**
+ * `entryId` is attacker-chosen, so both halves of the read-then-write
+ * pair carry the request tenant. Callers must still prove the entry
+ * belongs to the project they authorised against; this predicate is
+ * the floor, not the whole check.
+ */
 export async function assignDescriber(
   db: DrizzleD1Database,
+  tenantId: string,
   entryId: string,
   describerId: string
 ): Promise<{ success: boolean; error?: string }> {
   const entry = await db
     .select({ id: entries.id, descriptionStatus: entries.descriptionStatus })
     .from(entries)
-    .where(eq(entries.id, entryId))
+    .where(and(eq(entries.id, entryId), eq(entries.tenantId, tenantId)))
     .get();
 
   if (!entry) {
@@ -260,7 +283,7 @@ export async function assignDescriber(
       assignedDescriber: describerId,
       updatedAt: Math.floor(Date.now() / 1000),
     })
-    .where(eq(entries.id, entryId));
+    .where(and(eq(entries.id, entryId), eq(entries.tenantId, tenantId)));
 
   return { success: true };
 }
@@ -269,40 +292,33 @@ export async function assignDescriber(
 // Filter helpers
 // ---------------------------------------------------------------------------
 
-export async function getProjectsForFilter(
-  db: DrizzleD1Database
-): Promise<Array<{ id: string; name: string }>> {
-  const rows = await db
-    .select({ id: projects.id, name: projects.name })
-    .from(projects)
-    .where(isNull(projects.archivedAt))
-    .all();
-
-  return rows;
-}
-
+/**
+ * Members of one project, for the assign-describer picker.
+ *
+ * `projectId` is mandatory: the fallback branch selected every user
+ * row on the platform, and no call site ever wanted it. The
+ * `users.tenantId` predicate is belt-and-braces against a stale
+ * cross-tenant `project_members` row surviving in the data.
+ */
 export async function getTeamMembers(
   db: DrizzleD1Database,
-  projectId?: string
+  tenantId: string,
+  projectId: string
 ): Promise<Array<{ id: string; name: string | null; email: string }>> {
-  if (projectId) {
-    const rows = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-      })
-      .from(users)
-      .innerJoin(projectMembers, eq(users.id, projectMembers.userId))
-      .where(eq(projectMembers.projectId, projectId))
-      .all();
-
-    return rows;
-  }
-
   const rows = await db
-    .select({ id: users.id, name: users.name, email: users.email })
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+    })
     .from(users)
+    .innerJoin(projectMembers, eq(users.id, projectMembers.userId))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(users.tenantId, tenantId)
+      )
+    )
     .all();
 
   return rows;

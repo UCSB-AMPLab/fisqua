@@ -109,7 +109,7 @@
  * the wire only (the failure mode behind the title-field incident).
  * Pinned by tests in `tests/description/autosave.test.ts`.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import {
@@ -122,6 +122,7 @@ import {
 import { Link, useNavigate, useRevalidator, useBlocker } from "react-router";
 import { useTranslation } from "react-i18next";
 import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { getSectionCompletion } from "../lib/description-types";
 import type { Standard } from "../lib/standards/types";
 import type { DescriptionEntry, CommentWithAuthor } from "../lib/description-types";
@@ -169,6 +170,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // Full-page route outside the `/projects/:id` layout, so it carries
+  // its own crowdsourcing gate.
+  requireCapability(tenant, "crowdsourcing");
   // `descriptive_standard` is NOT NULL for `kind = 'tenant'` per
   // the schema CHECK in drizzle/0034_tenants_table.sql. The
   // cataloguing form routes do not reach platform-tenant requests,
@@ -185,6 +189,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // Verify project membership
   const memberships = await requireProjectRole(
     db,
+    tenant.id,
     user.id,
     params.projectId,
     [...PROJECT_ROLES],
@@ -1217,7 +1222,7 @@ function ResegmentationDialogStub({
                     }}
                   />
                   #{ne.position + 1}{" "}
-                  {ne.title || ne.translatedTitle || t("viewer:no_title")}
+                  {ne.title || ne.translatedTitle || t("viewer:outline.no_title")}
                 </label>
               ))}
             </div>

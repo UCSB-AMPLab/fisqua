@@ -43,16 +43,14 @@ export function ResegmentationCard({
   flag,
   onOpenDialog,
 }: ResegmentationCardProps) {
-  const { t } = useTranslation(["resegmentation"]);
+  const { t } = useTranslation(["viewer"]);
 
   return (
  <div className="mb-3 flex flex-col gap-2 rounded-lg border border-violet-100 bg-violet-50 p-4 font-sans">
  {/* badge */}
  <div>
  <span className="inline-block rounded bg-violet-600 px-2 py-0.5 text-10 font-bold uppercase tracking-wide text-white">
- {t("resegmentation:proposed", {
- defaultValue: "Resegmentación propuesta",
- })}
+ {t("viewer:resegmentation.proposed")}
  </span>
  </div>
 
@@ -70,9 +68,7 @@ export function ResegmentationCard({
  onClick={onOpenDialog}
  className="mt-2 w-full rounded bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment transition-colors hover:bg-indigo-deep focus:outline-none focus:ring-2 focus:ring-indigo/40"
  >
- {t("resegmentation:openDialog", {
- defaultValue: "Abrir diálogo de resegmentación",
- })}
+ {t("viewer:resegmentation.open_dialog")}
  </button>
  </div>
   );

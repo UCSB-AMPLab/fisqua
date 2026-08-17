@@ -17,10 +17,10 @@
  * end-page slicing — a partial-volume document only includes its
  * own page range, not every page in the volume.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 import { describe, it, expect } from "vitest";
-import { buildDocumentManifest } from "../../app/lib/promote/manifest-builder";
+import { buildDocumentManifest, manifestObjectPath } from "../../app/lib/promote/manifest-builder";
 import type { ManifestSpec, VolumePage } from "../../app/lib/promote/types";
 
 const BASE_URL = "https://manifests.zasqua.org";
@@ -147,6 +147,14 @@ describe("buildDocumentManifest", () => {
     // The single canvas should correspond to page 3
     const imageId = manifest.items[0].items[0].items[0].body.id;
     expect(imageId).toContain("page-3");
+  });
+
+  it("manifestObjectPath places every manifest under the served iiif/ prefix", () => {
+    // The manifests host serves bucket keys 1:1; a key outside iiif/ is
+    // unreachable. The stored iiifManifestUrl is host + this same path.
+    expect(manifestObjectPath("AHRB-001-d001")).toBe(
+      "iiif/AHRB-001-d001/manifest.json"
+    );
   });
 
   it("includes rights field with CC BY-NC 4.0 URI", () => {

@@ -16,7 +16,17 @@
  * `authoritiesEnabled`). When a
  * capability is off, the corresponding nav surface is omitted
  * entirely — no greyed-out, no "coming soon", no tooltip — matching
- * the platform's immutable-capability posture. The gate map is:
+ * the platform's immutable-capability posture.
+ *
+ * The first, unlabelled section carries Home, Handlists and global
+ * search, all of which sit above the module sections because they
+ * read across all of them, and none of which carries a gate here.
+ * Search is member-level (ruled 2026-08-16) with the admin gate kept
+ * only on its authority reach, inside the surface; a handlist belongs
+ * to a person rather than to a module, and the admin gate that guards
+ * an authority-typed one is enforced on the handlist itself.
+ *
+ * The gate map is:
  *
  *   - `crowdsourcingEnabled` → entire `Collaborative Cataloguing`
  *     section (My projects, All projects, Manage users, Promote)
@@ -25,18 +35,22 @@
  *     `/admin/cataloguing/promote`
  *   - `multiRepositoryEnabled` → `/admin/repositories`
  *   - `authoritiesEnabled` → the entire `Authorities` section
- *     (`/admin/entities` and `/admin/places`), its own grouped
- *     section as of the 2026-07-10 module-section ruling
- *   - `importsEnabled` → the entire `Imports` section
- *     (`/admin/imports`), its own grouped section following the
- *     authorities precedent
+ *     (`/admin/entities`, `/admin/places`, and `/admin/decisions`),
+ *     its own grouped section as of the 2026-07-10 module-section
+ *     ruling
+ *   - `importsEnabled` → the `Imports` ITEM inside the
+ *     `Import and export` group (`/admin/imports`). The group itself
+ *     is ungated: its other entry, Exports, carries no capability and
+ *     no role, because portability is not a product tier (the
+ *     2026-08-15 export ruling). A tenant with imports off sees the
+ *     group holding Exports alone.
  *
  * For a tenant with a capability off the corresponding surface is
  * omitted — the gating is invisible to tenants that carry every
  * flag. The `<Sidebar>` component grew a matching `tenant` prop
  * which the `_auth` layout populates from `tenantContext`.
  *
- * @version v0.6.0
+ * @version v0.7.0
  */
 
 import { NavLink } from "react-router";
@@ -52,10 +66,13 @@ import {
   UserCog,
   Upload,
   Import,
+  Download,
   ArrowUpFromLine,
   BookOpen,
   GitCompare,
   Kanban,
+  List,
+  Search,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -118,9 +135,33 @@ export function getSidebarSections(
     {
       items: [
         { path: "/", icon: LayoutDashboard, labelKey: "sidebar:home", end: true },
+        // Handlists sits at the TOP LEVEL, directly under Home, and
+        // ungated. It belongs to no module: one can hold records,
+        // entities or places, it is owned by a person rather than by a
+        // project, and it is reached from search, from a record and
+        // from export. Nesting it under Collaborative cataloguing or
+        // Records management would misdescribe both what it can hold
+        // and who it belongs to. The admin gate that guards an
+        // authority-typed handlist lives on the handlist itself — the
+        // index lists what this person may reach and says why when a
+        // row cannot be opened — so the nav item needs no role of its
+        // own.
+        { path: "/handlists", icon: List, labelKey: "sidebar:handlists" },
       ],
     },
   ];
+
+  // Global search sits directly under Home, above the module sections:
+  // it reads across all three of them, so it belongs to none. Open to
+  // every workspace member (ruled 2026-08-16): a member searching their
+  // own handlists is the ordinary case, not the exception. Only the
+  // authority reach inside the surface keeps the admin gate — for a
+  // non-admin the Entities and Places tabs simply do not exist.
+  sections[0].items.push({
+    path: "/search",
+    icon: Search,
+    labelKey: "sidebar:search",
+  });
 
   // Collaborative cataloguing — visible if member OR any collab/admin
   // flag, AND the tenant has crowdsourcing enabled. When
@@ -211,9 +252,11 @@ export function getSidebarSections(
 
     // Authorities — the module's own section, gated on the
     // authorities capability. When off the whole section is omitted
-    // (the phase-2 route gate 404s any direct hit). The Possible
-    // duplicates entry carries the candidate-count badge computed by
-    // the layout loader.
+    // (the route-level gate 404s any direct hit). The Pending
+    // decisions entry replaced the standalone Possible duplicates
+    // link when the worklist became one tab of that surface; it keeps
+    // the candidate-count badge computed by the layout loader, which
+    // still counts duplicate candidates only.
     if (tenant.authoritiesEnabled) {
       sections.push({
         labelKey: "sidebar:authorities",
@@ -221,28 +264,50 @@ export function getSidebarSections(
           { path: "/admin/entities", icon: Users, labelKey: "sidebar:entities" },
           { path: "/admin/places", icon: MapPin, labelKey: "sidebar:places" },
           {
-            path: "/admin/entities/duplicates",
+            path: "/admin/decisions",
             icon: GitCompare,
-            labelKey: "sidebar:possible_duplicates",
+            labelKey: "sidebar:pending_decisions",
             badge: counts?.duplicates,
           },
         ],
       });
     }
 
-    // Imports — the module's own section, gated on the imports
-    // capability. When off the whole section is omitted (the route
-    // gate 404s any direct hit). Its single entry is the imports
-    // surface; later phases fill the section as the module grows.
-    if (tenant.importsEnabled) {
-      sections.push({
-        labelKey: "sidebar:imports",
-        items: [
-          { path: "/admin/imports", icon: Import, labelKey: "sidebar:imports" },
-        ],
-      });
-    }
   }
+
+  // Import and export — the mirror operations, in one group (ruled
+  // 2026-08-15, export-decisions decision 1 ruling A). Import and
+  // export are read together far more often than either is read beside
+  // Descriptions, and both act on the workspace as a whole rather than
+  // on a module.
+  //
+  // THE TWO ENTRIES CARRY DIFFERENT GATES, and the group carries
+  // neither. Imports keeps the admin role plus the `imports`
+  // capability it has always had. Exports carries no gate at all:
+  // portability is not a product tier (ruling 2, re-ruled), so no
+  // capability can take it away, and it is member-level because the
+  // TIER decides what a person is offered on the page rather than
+  // whether they may open it — a reader sees the PDF finding aid and
+  // no evidence that anything else exists. The group therefore renders
+  // whenever either entry does, which — since Exports always does — is
+  // always, on the same footing as Handlists and Search above.
+  const importExportItems: NavItem[] = [];
+  if ((user.isAdmin || user.isSuperAdmin) && tenant.importsEnabled) {
+    importExportItems.push({
+      path: "/admin/imports",
+      icon: Import,
+      labelKey: "sidebar:imports",
+    });
+  }
+  importExportItems.push({
+    path: "/admin/exports",
+    icon: Download,
+    labelKey: "sidebar:exports",
+  });
+  sections.push({
+    labelKey: "sidebar:import_and_export",
+    items: importExportItems,
+  });
 
   return sections;
 }
@@ -275,7 +340,7 @@ export function Sidebar({
 
   return (
     <nav
-      aria-label="Main navigation"
+      aria-label={t("common:aria.main_navigation")}
       className={`flex flex-col border-r border-stone-200 bg-stone-50 transition-all duration-300 ${
         collapsed ? "w-16" : "w-60"
       }`}

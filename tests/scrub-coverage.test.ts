@@ -50,7 +50,7 @@ import { describe, it, expect } from "vitest";
 // that happen to contain "tenant-1" or "import-2026" are NOT
 // planning labels and must not trip the gate.
 const SCRUB_PATTERN =
-  /Phase [0-9]+|Plan [0-9]+|RQ-[0-9]+|AI-SPEC|RESEARCH\.md|UI-SPEC|scratchpad|GSD|gsd-|TENANT-[0-9]+|STD-[0-9]+|IMPORT-[0-9]+|PARITY-[0-9]+|NORM-[0-9]+|SCHEMA-[0-9]+|CONTRACT-[0-9]+|VERIFY-[0-9]+|MODIFIED-[0-9]+|CUTOVER-[0-9]+|Fase [0-9]+|Claude Code|claude code|claude\.com|claude\.ai|Anthropic|anthropic|Co-Authored-By|co-authored-by|CLAUDE\.md|\.claude\/|\.planning\/|docs\/fisqua\/|\.\.\/docs\/|\/Users\/[A-Za-z0-9._-]+|\/home\/[a-z][A-Za-z0-9._-]+/g;
+  /Phase [0-9]+|Plan [0-9]+|QUA-[0-9]+|AMPL-[0-9]+|RQ-[0-9]+|AI-SPEC|RESEARCH\.md|UI-SPEC|scratchpad|GSD|gsd-|TENANT-[0-9]+|STD-[0-9]+|IMPORT-[0-9]+|PARITY-[0-9]+|NORM-[0-9]+|SCHEMA-[0-9]+|CONTRACT-[0-9]+|VERIFY-[0-9]+|MODIFIED-[0-9]+|CUTOVER-[0-9]+|Fase [0-9]+|Claude Code|claude code|claude\.com|claude\.ai|Anthropic|anthropic|Co-Authored-By|co-authored-by|CLAUDE\.md|\.claude\/|\.planning\/|docs\/fisqua\/|\.\.\/docs\/|\/Users\/[A-Za-z0-9._-]+|\/home\/[a-z][A-Za-z0-9._-]+/g;
 
 // Allowlisted false positives. Each entry MUST carry a comment
 // explaining why the substring is intentional.

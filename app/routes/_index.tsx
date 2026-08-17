@@ -11,9 +11,12 @@
  *      behaviour where hitting `/` on a tenant subdomain takes
  *      authenticated users into the staff app (and `/dashboard`
  *      itself bounces unauthenticated callers to `/login`). On the
- *      apex it reads the active locale via `getLocale(context)`
- *      and returns `{ lang, surface: "landing" }` so the render
- *      layer knows which language to surface.
+ *      apex it reads the active locale via `getLocale(context)` and
+ *      the display version via `APP_VERSION`
+ *      (`app/lib/app-version.server.ts`, derived from
+ *      `package.json`), returning `{ lang, surface: "landing",
+ *      version }` so the render layer knows which language and
+ *      version badge to surface.
  *
  *   2. The action handles the workspace-picker form POST. Per
  *      CONTEXT.md C-03 / SC3, the action does NOT touch D1, does
@@ -42,7 +45,7 @@
  * string check against the existing `LEGACY_HOST_MAP` and
  * `SUBDOMAIN_HOST_SUFFIXES` constants in `app/lib/tenant.ts`.
  *
- * @version v0.4.0
+ * @version v0.6.0
  */
 
 import { redirect } from "react-router";
@@ -57,6 +60,7 @@ import {
   findTenantBySlug,
 } from "../lib/tenant";
 import { getLocale } from "../middleware/i18next";
+import { APP_VERSION } from "../lib/app-version.server";
 import { LandingHeader } from "../components/landing/landing-header";
 import { WorkspacePicker } from "../components/landing/workspace-picker";
 import { LandingFooter } from "../components/landing/landing-footer";
@@ -122,7 +126,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     // `loaderData` directly via the route component.
     lang = "en";
   }
-  return { lang, surface: "landing" as const };
+  return { lang, surface: "landing" as const, version: APP_VERSION };
 }
 
 /**
@@ -230,6 +234,11 @@ export default function LandingRoute({
   const { t } = useTranslation("landing");
   const lang: "en" | "es" = loaderData?.lang === "es" ? "es" : "en";
   const error = actionDataToPickerError(actionData);
+  // Falls back to an empty interpolation rather than importing
+  // `APP_VERSION` directly here -- this component is bundled for the
+  // client, and the version belongs to the server-only loader path
+  // (see `app/lib/app-version.server.ts`).
+  const version = loaderData?.version ?? "";
 
   return (
     <div className="min-h-screen bg-white text-indigo">
@@ -240,7 +249,7 @@ export default function LandingRoute({
         className="mx-auto grid max-w-[1200px] items-center gap-10 px-5 py-14 md:gap-16 md:px-16 md:py-24 md:[grid-template-columns:minmax(0,1fr)_minmax(0,0.85fr)]"
       >
         <div className="flex max-w-[560px] flex-col gap-6 md:gap-9">
-          <p style={eyebrowStyle}>{t("hero.eyebrow")}</p>
+          <p style={eyebrowStyle}>{t("hero.eyebrow", { version })}</p>
           <h1 id="hero-tagline" style={taglineStyle}>
             {t("hero.tagline")}
           </h1>
@@ -271,9 +280,9 @@ export default function LandingRoute({
         </div>
       </section>
 
-      <LandingFooter />
+      <LandingFooter version={version} />
     </div>
   );
 }
 
-// @version v0.4.0
+// @version v0.6.0

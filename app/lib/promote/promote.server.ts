@@ -25,7 +25,7 @@
  * validator factory is the same one the admin form save action
  * consumes.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 import { eq, and, isNull, inArray, sql, desc } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -37,7 +37,7 @@ import {
   volumePages,
 } from "../../db/schema";
 import { mapEntryToDescription } from "./field-mapping";
-import { buildDocumentManifest } from "./manifest-builder";
+import { buildDocumentManifest, manifestObjectPath } from "./manifest-builder";
 import { parseManifest } from "../iiif.server";
 import { descriptionValidatorFor } from "../standards/validator-factory";
 import type { Standard } from "../standards/types";
@@ -61,6 +61,22 @@ const REFERENCE_CODE_PATTERN = /^[\p{L}\p{N}-]{1,50}$/u;
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/**
+ * Batch-level promotion failure. `message` is a STABLE TOKEN, never
+ * prose (CR-04): the route boundary maps it to a locale key, with
+ * `detail` carrying the interpolation values. Unknown tokens fall
+ * back to the route's generic failure copy.
+ */
+export class PromotionError extends Error {
+  constructor(
+    token: "batch_too_large" | "volume_not_found" | "no_matching_description",
+    readonly detail: Record<string, string | number> = {},
+  ) {
+    super(token);
+    this.name = "PromotionError";
+  }
+}
 
 export interface PromotionArgs {
   db: DrizzleD1Database<any>;
@@ -229,9 +245,7 @@ export async function promoteEntries(
 
   // batch size limit
   if (inputEntries.length > MAX_BATCH_SIZE) {
-    throw new Error(
-      `Batch size ${inputEntries.length} exceeds maximum of ${MAX_BATCH_SIZE}`
-    );
+    throw new PromotionError("batch_too_large", { max: MAX_BATCH_SIZE });
   }
 
   // validate reference code format
@@ -367,7 +381,7 @@ export async function promoteEntries(
     .get();
 
   if (!volume) {
-    throw new Error(`Volume not found: ${volumeId}`);
+    throw new PromotionError("volume_not_found", { id: volumeId });
   }
 
   // find description matching volume's referenceCode. Scope by
@@ -392,10 +406,9 @@ export async function promoteEntries(
     .get();
 
   if (!parentDescription) {
-    throw new Error(
-      `No description found matching volume reference code: ${volume.referenceCode}. ` +
-        `The volume's parent description must exist before promotion.`
-    );
+    throw new PromotionError("no_matching_description", {
+      code: volume.referenceCode,
+    });
   }
 
   // ---- (c) Load volume manifest pages ----
@@ -478,14 +491,14 @@ export async function promoteEntries(
     const descData = {
       ...result.description,
       position: nextPosition++,
-      iiifManifestUrl: `${manifestBaseUrl}/${referenceCode}/manifest.json`,
+      iiifManifestUrl: `${manifestBaseUrl}/${manifestObjectPath(referenceCode)}`,
     };
 
     // ---- (e) Build manifest (pure) ----
     const manifest = buildDocumentManifest(
       result.manifestSpec,
       volumePageList,
-      manifestBaseUrl
+      `${manifestBaseUrl}/iiif`
     );
 
     mappings.push({
@@ -518,7 +531,7 @@ export async function promoteEntries(
 
   for (const m of mappings) {
     await manifestsBucket.put(
-      `${m.referenceCode}.json`,
+      manifestObjectPath(m.referenceCode),
       JSON.stringify(m.manifest),
       { httpMetadata: { contentType: "application/ld+json" } }
     );

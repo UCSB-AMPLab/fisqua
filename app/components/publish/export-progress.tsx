@@ -26,6 +26,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { formatIsoDateTime } from "../../lib/format-date";
+import { useFormatters } from "../../lib/use-formatters";
 
 /**
  * Localised label for a heartbeat step ID. The step ID is the workflow's
@@ -78,6 +79,7 @@ interface ExportProgressProps {
 
 export function ExportProgress({ exportId }: ExportProgressProps) {
   const { t } = useTranslation("publish");
+  const { formatNumber } = useFormatters();
   const [data, setData] = useState<ExportProgressData | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 1-second ticker so elapsed times advance smoothly between 4s polls.
@@ -269,7 +271,11 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
               key={key}
               className="inline-flex items-center gap-1 rounded bg-stone-100 px-2 py-0.5 font-sans text-xs text-stone-600"
             >
-              {stepLabel(key, t)}: {count.toLocaleString()} {t("progress.records")}
+              {stepLabel(key, t)}:{" "}
+              {t("progress.records_count", {
+                count,
+                formattedCount: formatNumber(count),
+              })}
             </span>
           ))}
         </div>

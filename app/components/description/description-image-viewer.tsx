@@ -154,7 +154,7 @@ export function DescriptionImageViewer({
           type="button"
           onClick={handleZoomOut}
           className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
-          aria-label="Zoom out"
+          aria-label={t("viewer:toolbar.zoom_out")}
         >
           <ZoomOutIcon />
         </button>
@@ -165,7 +165,7 @@ export function DescriptionImageViewer({
           type="button"
           onClick={handleZoomIn}
           className="flex h-8 w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-100"
-          aria-label="Zoom in"
+          aria-label={t("viewer:toolbar.zoom_in")}
         >
           <ZoomInIcon />
         </button>

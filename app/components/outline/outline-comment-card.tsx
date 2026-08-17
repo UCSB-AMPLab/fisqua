@@ -59,7 +59,6 @@ export interface OutlineCommentCardProps {
   pageNumber?: number;
   onToggleExpand: () => void;
   onScrollToRegion?: (commentId: string) => void;
-  onMarkSeen?: (commentId: string) => void;
   /** Virtualiser remeasure trigger — called on expand toggle. */
   onHeightChange?: () => void;
   /**
@@ -121,7 +120,10 @@ export function formatCommentHeader(
  * Role colour for the 3px left connector bar. Reviewer green, cataloguer
  * / lead blue. Highlighted state overrides with full burgundy.
  */
-function computeConnectorClass(role: string, isHighlighted: boolean): string {
+function computeConnectorClass(
+  role: string | null,
+  isHighlighted: boolean,
+): string {
   if (isHighlighted) return "bg-indigo";
   if (role === "reviewer") return "bg-verdigris/30";
   return "bg-indigo/30";
@@ -185,7 +187,6 @@ export function OutlineCommentCard({
   pageNumber,
   onToggleExpand,
   onScrollToRegion,
-  onMarkSeen,
   onHeightChange,
   onReplyCreated,
   currentUserId,
@@ -495,15 +496,6 @@ export function OutlineCommentCard({
  >
  {t("viewer:outline.comment_reply")}
  </button>
- {onMarkSeen && (
- <button
- type="button"
- onClick={() => onMarkSeen(comment.id)}
- className="font-sans text-10 font-bold uppercase tracking-wider text-stone-500 hover:underline"
- >
- {t("viewer:outline.comment_mark_seen")}
- </button>
- )}
  </div>
  </div>
 

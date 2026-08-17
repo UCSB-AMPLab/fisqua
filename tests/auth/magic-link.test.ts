@@ -97,7 +97,8 @@ describe("magic link authentication", () => {
         "test-resend-key"
       );
 
-      expect(result.error).toBe("No account found for this email.");
+      // Server errors are stable tokens; the route localises them.
+      expect(result.error).toBe("no_account");
       expect(result.success).toBeUndefined();
 
       // Verify no token was created

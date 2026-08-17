@@ -24,9 +24,18 @@
  * Authority scope is the federation (migrations 0045-0048). Every
  * read/update/delete of `entities` and every vocabulary-term lookup is
  * filtered by `tenant.federationId`. The description-search subquery
- * stays `tenant.id`-scoped (descriptions remain tenant-scoped).
+ * stays `tenant.id`-scoped (descriptions remain tenant-scoped). Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.3
+ * The header's "Add to handlist" is the browse-time half of how a
+ * handlist gets built: one record at a time, through the same
+ * type-matched picker the search page's selection bar opens. It offers
+ * only handlists that hold entities, and it reports the resulting count
+ * rather than a bare "Added".
+ *
+ * @version v0.7.0
  */
 
 import { useState, useEffect } from "react";
@@ -43,6 +52,7 @@ import {
   AdminBreadcrumb,
   AuthorityDetailHeader,
 } from "~/components/admin/authority-detail-header";
+import { HandlistPicker } from "~/components/handlists/handlist-picker";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
 import { FieldDisplay } from "~/components/admin/field-display";
@@ -65,6 +75,7 @@ import type { Route } from "./+types/_auth.admin.entities.$id";
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
@@ -84,7 +95,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const entity = await db
     .select()
     .from(entities)
-    .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+    .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
     .get();
 
   if (!entity) {
@@ -306,7 +317,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       .select({ id: entities.id, displayName: entities.displayName })
       .from(entities)
       .where(
-        and(eq(entities.federationId, tenant.federationId), eq(entities.id, entity.mergedInto))
+        and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, entity.mergedInto))
       )
       .get();
     if (target) {
@@ -353,7 +364,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .from(entities)
         .where(
           and(
-            eq(entities.federationId, tenant.federationId),
+            authorityScope(entities, tenant.federationId, tenant.id),
             inArray(entities.id, targetIds),
           ),
         )
@@ -383,7 +394,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .from(entities)
         .where(
           and(
-            eq(entities.federationId, tenant.federationId),
+            authorityScope(entities, tenant.federationId, tenant.id),
             eq(entities.id, fromActor.sourceId),
           ),
         )
@@ -426,8 +437,13 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     };
   }
 
+  const { countHoldingHandlists } = await import("~/lib/handlists.server");
+  const holdingHandlists = await countHoldingHandlists(db, tenant, user, id);
+
   return {
     entity,
+    // How many handlists this person can reach already hold it.
+    holdingHandlists,
     descLinkCount,
     mergeTarget,
     mergeBand,
@@ -457,6 +473,9 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope, requireAuthorityMutation } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, sql } = await import("drizzle-orm");
@@ -477,12 +496,15 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const db = drizzle(env.DB);
   const id = params.id;
 
-  // Authority mutation gate helper (ruled 2026-07-08). Applied per-intent
-  // below to the canonical entity mutations (update, delete, merge,
-  // split) — each requires a federation steward. NOT applied to autosave
-  // (drafts), the read searches, or the description-link intents, which
-  // stay open to member-tenant admins (READ + member-side junction ops).
-  const { requireFederationSteward } = await import("~/lib/federation.server");
+  // Authority mutation gate helper (2026-07-08 rule as reworked by
+  // migration 0067). Applied per-intent below to the canonical entity
+  // mutations (update, delete, merge, split). It reads the record's
+  // OWNER and branches: this tenant's own record needs only the ordinary
+  // admin rights already checked above; a federation-shared record still
+  // needs a steward; another tenant's record 404s. NOT applied to
+  // autosave (drafts), the read searches, or the description-link
+  // intents, which stay open to member-tenant admins (READ + member-side
+  // junction ops).
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -498,7 +520,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "update": {
-      await requireFederationSteward(db, user, tenant);
+      await requireAuthorityMutation(db, user, tenant, "entity", [id]);
       // Parse name variants from hidden field
       let nameVariants: string[] = [];
       try {
@@ -578,7 +600,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const original = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+        .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
         .get();
 
       // Optimistic lock check
@@ -695,7 +717,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
             ...updatedFields,
             updatedAt: Date.now(),
           })
-          .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)));
+          .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)));
 
         // Update entity count on the vocabulary term
         if (resolvedFunctionId) {
@@ -704,7 +726,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
             .from(entities)
             .where(
               and(
-                eq(entities.federationId, tenant.federationId),
+                authorityScope(entities, tenant.federationId, tenant.id),
                 eq(entities.primaryFunctionId, resolvedFunctionId)
               )
             )
@@ -756,7 +778,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "delete": {
-      await requireFederationSteward(db, user, tenant);
+      await requireAuthorityMutation(db, user, tenant, "entity", [id]);
       // Server-side cascade check
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
@@ -775,7 +797,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const original = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id)))
+        .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
         .get();
       if (!original) {
         return redirect("/admin/entities");
@@ -784,7 +806,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       await db.batch([
         db
           .delete(entities)
-          .where(and(eq(entities.federationId, tenant.federationId), eq(entities.id, id))),
+          .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id))),
         logAuthorityOperation(db, {
           federationId: tenant.federationId,
           recordType: "entity",
@@ -922,6 +944,7 @@ export default function EntityDetailPage({
 }: Route.ComponentProps) {
   const {
     entity,
+    holdingHandlists,
     descLinkCount,
     mergeTarget,
     mergeBand,
@@ -943,6 +966,9 @@ export default function EntityDetailPage({
   // Place-role labels for the context card's metadata strip live in the
   // places namespace (an entity's linked description can carry places).
   const { t: tp } = useTranslation("places");
+  // The handlists namespace owns every string the picker says,
+  // including the label on the control that opens it.
+  const { t: th } = useTranslation("handlists");
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -999,6 +1025,14 @@ export default function EntityDetailPage({
         splitTo={`/admin/entities/${entity.id}/split`}
         onEdit={() => setIsEditing(true)}
         onDelete={() => setShowDeleteModal(true)}
+        extraActions={
+          <HandlistPicker
+            recordType="entities"
+            memberIds={[entity.id]}
+            triggerLabel={th("pickerAddTitle")}
+            holdingCount={holdingHandlists}
+          />
+        }
         t={t}
       />
       <p className="mt-0.5 font-mono text-12 text-stone-500">

@@ -11,13 +11,24 @@
  * read/update/delete of `entities` (linked-entity reads,
  * primaryFunction reassignment, count subqueries) and every vocabulary
  * term read/mutation (save/merge/split/deprecate) is filtered by
- * `tenant.federationId`.
+ * `tenant.federationId`. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.2
+ * Save feedback runs through the shared `SaveFeedbackBanner` /
+ * `SaveButton` pair. The page previously confirmed a save by echoing
+ * the button's own label followed by a check mark ("Save term ✓"),
+ * which reads as a restated control rather than as an outcome, and
+ * carried no live region for screen readers. This page discriminates
+ * its forms on `intent` rather than `_action`, hence the field
+ * override on `isPendingSubmission`.
+ *
+ * @version v0.6.0
  */
 
-import { useState, useEffect } from "react";
-import { Form, Link, redirect, useFetcher } from "react-router";
+import { useState, useEffect, useMemo } from "react";
+import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { FUNCTION_CATEGORIES } from "~/lib/validation/enums";
@@ -25,6 +36,11 @@ import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
 import { MergeDialog } from "~/components/admin/merge-dialog";
 import { SplitDialog } from "~/components/admin/split-dialog";
+import {
+  SaveButton,
+  SaveFeedbackBanner,
+  isPendingSubmission,
+} from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.vocabularies.functions.$id";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +70,7 @@ interface LinkedEntity {
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
@@ -94,7 +111,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         eq(entities.primaryFunctionId, id)
       )
     )
@@ -107,7 +124,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         eq(entities.primaryFunctionId, id)
       )
     )
@@ -121,6 +138,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, sql } = await import("drizzle-orm");
@@ -167,7 +185,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       notes,
     });
     if (!parsed.success) {
-      return { error: "Invalid input", fieldErrors: parsed.error.format() };
+      return { error: "invalid_input", fieldErrors: parsed.error.format() };
     }
 
     const existing = await db
@@ -175,7 +193,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(vocabularyTerms)
       .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)))
       .get();
-    if (!existing) return { error: "Term not found" };
+    if (!existing) return { error: "term_not_found" };
 
     await db
       .update(vocabularyTerms)
@@ -223,22 +241,22 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   // ---------------------------------------------------------------------------
   if (intent === "merge") {
     const targetId = formData.get("targetId") as string;
-    if (!targetId) return { error: "Missing target" };
-    if (targetId === id) return { error: "Cannot merge into self" };
+    if (!targetId) return { error: "missing_target" };
+    if (targetId === id) return { error: "merge_into_self" };
 
     const target = await db
       .select()
       .from(vocabularyTerms)
       .where(and(eq(vocabularyTerms.id, targetId), eq(vocabularyTerms.federationId, tenant.federationId)))
       .get();
-    if (!target) return { error: "Target not found" };
+    if (!target) return { error: "target_not_found" };
 
     const source = await db
       .select()
       .from(vocabularyTerms)
       .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)))
       .get();
-    if (!source) return { error: "Source not found" };
+    if (!source) return { error: "source_not_found" };
 
     // Parse selected entity IDs
     const linkIdsRaw = formData.get("linkIds") as string;
@@ -263,7 +281,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           .set({ primaryFunctionId: targetId, updatedAt: now })
           .where(
             and(
-              eq(entities.federationId, tenant.federationId),
+              authorityScope(entities, tenant.federationId, tenant.id),
               inArray(entities.id, entityIds)
             )
           )
@@ -301,7 +319,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, targetId)
         )
       )
@@ -316,7 +334,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, id)
         )
       )
@@ -348,17 +366,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   // ---------------------------------------------------------------------------
   if (intent === "split") {
     const newName = (formData.get("newName") as string)?.trim();
-    if (!newName) return { error: "New term name is required" };
+    if (!newName) return { error: "name_required" };
 
     const parsed = vocabularyTermSchema.safeParse({ canonical: newName });
-    if (!parsed.success) return { error: "Invalid name" };
+    if (!parsed.success) return { error: "invalid_name" };
 
     const source = await db
       .select()
       .from(vocabularyTerms)
       .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)))
       .get();
-    if (!source) return { error: "Source not found" };
+    if (!source) return { error: "source_not_found" };
 
     // Parse selected entity IDs
     const linkIdsRaw = formData.get("linkIds") as string;
@@ -394,7 +412,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           .set({ primaryFunctionId: newId, updatedAt: now })
           .where(
             and(
-              eq(entities.federationId, tenant.federationId),
+              authorityScope(entities, tenant.federationId, tenant.id),
               inArray(entities.id, entityIds)
             )
           )
@@ -420,7 +438,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, id)
         )
       )
@@ -435,7 +453,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           eq(entities.primaryFunctionId, newId)
         )
       )
@@ -470,7 +488,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .from(vocabularyTerms)
       .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)))
       .get();
-    if (!existing) return { error: "Term not found" };
+    if (!existing) return { error: "term_not_found" };
 
     await db
       .update(vocabularyTerms)
@@ -492,7 +510,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     return { success: true };
   }
 
-  return { error: "Unknown intent" };
+  return { error: "unknown_intent" };
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +521,21 @@ const TYPE_BADGE_STYLES: Record<string, string> = {
   person: "bg-indigo-tint text-indigo",
   family: "bg-verdigris-tint text-verdigris",
   corporate: "bg-indigo-tint text-indigo",
+};
+
+// Action error tokens → `vocabularies`-namespace keys. The action
+// returns stable tokens, never prose; a token outside this map falls
+// back to the banner's generic failure label.
+const ACTION_ERROR_KEYS: Record<string, string> = {
+  invalid_input: "error.invalid_input",
+  term_not_found: "error.term_not_found",
+  missing_target: "error.missing_target",
+  merge_into_self: "error.merge_into_self",
+  target_not_found: "error.target_not_found",
+  source_not_found: "error.source_not_found",
+  name_required: "error.name_required",
+  invalid_name: "error.invalid_name",
+  unknown_intent: "error.unknown_intent",
 };
 
 // ---------------------------------------------------------------------------
@@ -516,6 +549,31 @@ export default function AdminVocabularyFunctionDetailPage({
   const { term, linkedEntities, totalLinked } = loaderData;
   const { t } = useTranslation("vocabularies");
   const fetcher = useFetcher();
+  const navigation = useNavigation();
+  const savingTerm = isPendingSubmission(
+    navigation.state,
+    navigation.formData ?? undefined,
+    "save",
+    "intent",
+  );
+
+  // Translate the action's coded errors into the shape the shared
+  // banner reads, so the copy stays in the locale bundle rather than
+  // in the action.
+  const feedbackSource = useMemo(() => {
+    if (
+      !actionData ||
+      !("error" in actionData) ||
+      typeof actionData.error !== "string"
+    ) {
+      return actionData;
+    }
+    const key = ACTION_ERROR_KEYS[actionData.error];
+    return {
+      ...actionData,
+      error: key ? t(key) : t("common:save.failed"),
+    };
+  }, [actionData, t]);
 
   // Merge dialog state
   const [showMerge, setShowMerge] = useState(false);
@@ -566,17 +624,16 @@ export default function AdminVocabularyFunctionDetailPage({
         />
       </div>
 
-      {/* Action result messages */}
-      {actionData && "error" in actionData && (
-        <div className="mt-4 rounded-md border border-madder bg-madder-tint p-3 text-sm text-madder-deep">
-          {actionData.error}
-        </div>
-      )}
-      {actionData && "success" in actionData && (
-        <div className="mt-4 rounded-md border border-verdigris bg-verdigris-tint p-3 text-sm text-verdigris-deep">
-          {t("save_term")} ✓
-        </div>
-      )}
+      {/* Save feedback — transient on success, persistent on failure. */}
+      <SaveFeedbackBanner
+        source={feedbackSource}
+        pending={savingTerm}
+        labels={{
+          success: t("common:save.saved"),
+          error: t("common:save.failed"),
+        }}
+        className="mt-4"
+      />
 
       {/* Edit form card */}
       <Form method="post" className="mt-6 rounded-lg border border-stone-200 p-6">
@@ -664,12 +721,11 @@ export default function AdminVocabularyFunctionDetailPage({
 
         {/* Save button */}
         <div className="mt-6">
-          <button
-            type="submit"
-            className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
-          >
-            {t("save_term")}
-          </button>
+          <SaveButton
+            pending={savingTerm}
+            label={t("save_term")}
+            pendingLabel={t("common:save.saving")}
+          />
         </div>
       </Form>
 

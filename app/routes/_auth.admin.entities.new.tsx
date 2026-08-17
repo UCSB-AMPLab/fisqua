@@ -5,7 +5,10 @@
  * identity fields (display name, sort name, given name, surname,
  * honorific), the entity type (person, corporate body, family), and
  * the primary function, then posts to the server action which mints
- * an `ne-xxxxxx` entity code and inserts the row. Richer biographical
+ * an entity code under the maintaining agency's own prefix (migration
+ * 0068: `ne-xxxxxx` for Neogranadina's shared authority space,
+ * `<agency>-e-xxxxxx` for a tenant that maintains its own records) and
+ * inserts the row. Richer biographical
  * fields -- history, functions over time, linked descriptions -- live
  * on the edit page so the create form stays focused on "what you need
  * to start linking descriptions to this entity".
@@ -13,9 +16,13 @@
  * Authority scope is the federation (migrations 0045-0048): the new entity
  * row is attributed to the session tenant's federation, and the
  * existing-term lookup, vocabulary typeahead, and primary-function-count
- * subqueries are scoped to `tenant.federationId`.
+ * subqueries are scoped to `tenant.federationId`. Migration 0067 adds
+ * the owner: the new row carries `tenant_id` = the session tenant when
+ * its federation keeps authorities private, NULL when the federation
+ * shares them — and that same setting decides whether creating one
+ * needs a steward.
  *
- * @version v0.4.2
+ * @version v0.7.0
  */
 
 import { useState } from "react";
@@ -48,6 +55,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, sql } = await import("drizzle-orm");
@@ -91,14 +99,17 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { searchResults: results };
   }
 
-  // Authority mutation gate (ruled 2026-07-08). Member-tenant admins keep
-  // READ access to the shared authority space (the search-functions
-  // branch above), but creating an entity is a canonical authority
-  // mutation subject to federation steward review. Behaviour-neutral
-  // today: every federation is a federation-of-one whose lead admin is a
-  // steward by branch (A) of isFederationSteward.
-  const { requireFederationSteward } = await import("~/lib/federation.server");
-  await requireFederationSteward(db, user, tenant);
+  // Authority mint gate (migration 0067, extending the 2026-07-08 rule).
+  // Member-tenant admins keep READ access to the shared authority space
+  // (the search-functions branch above). Creating an entity IN that
+  // shared space is still a steward act; creating the tenant's OWN
+  // record is not, because it changes nothing anyone else can see. The
+  // federation's `shared_authorities_enabled` setting decides which of
+  // the two is happening, and the call returns the owner to stamp.
+  const { requireAuthorityMint } = await import(
+    "~/lib/authority-ownership.server"
+  );
+  const ownerTenantId = await requireAuthorityMint(db, user, tenant);
 
   // Parse name variants from hidden field
   let nameVariants: string[] = [];
@@ -110,10 +121,21 @@ export async function action({ request, context }: Route.ActionArgs) {
     nameVariants = [];
   }
 
-  // Auto-generate entity code
+  // Auto-generate entity code. The prefix names the agency that
+  // MAINTAINS the record, and comes from the very owner the mint gate
+  // just resolved: a shared mint carries the federation's prefix, a
+  // tenant-owned one the minting tenant's. Never derived from a
+  // record's `tenantId` afterwards — ownership can be transferred, and
+  // a published code cannot follow it without becoming false.
+  const { resolveAuthorityCodePrefix } = await import("~/lib/codes.server");
   const entityCode = await generateUniqueCode(
     db,
-    "ne",
+    await resolveAuthorityCodePrefix(
+      db,
+      "entity",
+      tenant.federationId,
+      ownerTenantId
+    ),
     entities,
     entities.entityCode
   );
@@ -224,6 +246,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await db.insert(entities).values({
       federationId: tenant.federationId,
+      tenantId: ownerTenantId,
       id,
       ...parsed.data,
       surname: parsed.data.surname ?? null,
@@ -250,7 +273,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .from(entities)
         .where(
           and(
-            eq(entities.federationId, tenant.federationId),
+            authorityScope(entities, tenant.federationId, tenant.id),
             eq(entities.primaryFunctionId, resolvedFunctionId)
           )
         )
@@ -293,7 +316,7 @@ export default function NewEntityPage() {
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex items-center gap-1">
           <li>
             <Link

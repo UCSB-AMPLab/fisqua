@@ -7,12 +7,18 @@
  * record once and passes it to children through the React Router
  * outlet context.
  *
- * @version v0.3.0
+ * The crowdsourcing capability gate lives here rather than on each
+ * child: every `/projects/:id/*` page renders through this layout, so
+ * one `requireCapability` call closes the whole subtree, and a child
+ * added later inherits the gate instead of having to remember it.
+ *
+ * @version v0.7.0
  */
 
 import { Outlet, NavLink, Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id";
 
@@ -24,16 +30,19 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { projectMembers } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
-  const project = await getProject(db, params.id);
+  requireCapability(tenant, "crowdsourcing");
+
+  const project = await getProject(db, tenant.id, params.id);
   if (!project) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  // Check membership (admin bypasses)
-  await requireProjectRole(db, user.id, params.id, [...PROJECT_ROLES], user.isAdmin);
+  // Check membership (admin bypasses the role check, not the tenant scope)
+  await requireProjectRole(db, tenant.id, user.id, params.id, [...PROJECT_ROLES], user.isAdmin);
 
   // Get user's specific role for conditional UI
   const membership = await db

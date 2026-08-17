@@ -21,10 +21,11 @@
  * per-user activity timeline reflect the change without a separate
  * write path.
  *
- * @version v0.3.0
+ * @version v0.7.0
  */
 
-import { userContext } from "../context";
+import { userContext, tenantContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/api.entries.save";
 
@@ -44,7 +45,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { volumes, entries } = await import("../db/schema");
 
   const user = context.get(userContext);
+  const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
+
+  // Crowdsourcing endpoint: 404 where the tenant does not have the
+  // module, matching the member routes that call it.
+  requireCapability(tenant, "crowdsourcing");
 
   const formData = await request.formData();
   const actionType = formData.get("_action") as string | null;
@@ -55,7 +61,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!volumeId) {
       return Response.json({ error: "volumeId is required" }, { status: 400 });
     }
-    return handleAcceptCorrections(db, user.id, user.isAdmin, volumeId, {
+    return handleAcceptCorrections(db, tenant.id, user.id, user.isAdmin, volumeId, {
       eq, and, isNotNull, requireProjectRole, requireVolumeAccess, logActivity, volumes, entries,
     });
   }
@@ -89,6 +95,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   // Extend access: lead, cataloguer, and reviewer can save (not just lead)
   const memberships = await requireProjectRole(
     db,
+    tenant.id,
     user.id,
     volume.projectId,
     [...PROJECT_ROLES],
@@ -147,8 +154,9 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     return Response.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Save failed";
-    return Response.json({ error: message }, { status: 400 });
+    // Server internals never reach the client: a stable token, never
+    // exception prose.
+    return Response.json({ error: "invalid" }, { status: 400 });
   }
 }
 
@@ -158,6 +166,7 @@ export async function action({ request, context }: Route.ActionArgs) {
  */
 async function handleAcceptCorrections(
   db: ReturnType<typeof import("drizzle-orm/d1").drizzle>,
+  tenantId: string,
   userId: string,
   isAdmin: boolean,
   volumeId: string,
@@ -193,6 +202,7 @@ async function handleAcceptCorrections(
   // Verify access: only the assigned cataloguer (or lead/admin) can accept corrections
   const memberships = await requireProjectRole(
     db,
+    tenantId,
     userId,
     volume.projectId,
     ["lead", "cataloguer"],

@@ -22,7 +22,12 @@
  * and the allowlist together close the SSRF surface that an
  * unsanitised cataloguer-supplied URL would otherwise open.
  *
- * @version v0.3.0
+ * Failures never carry prose: `validateManifestUrl` returns stable
+ * error tokens (with the allowed hosts as a separate field) and
+ * `parseManifest` throws `ManifestError` tokens, so the consuming
+ * route translates at the render boundary.
+ *
+ * @version v0.7.0
  */
 
 export interface ParsedManifest {
@@ -54,10 +59,30 @@ export function getAllowedManifestHosts(env: {
 }
 
 /**
+ * Error thrown by `parseManifest`. The `message` is a stable token
+ * (`manifest_fetch_failed`, `manifest_ref_code`) — never prose — and
+ * `status` carries the upstream HTTP status for interpolation at the
+ * render boundary.
+ */
+export class ManifestError extends Error {
+  status?: number;
+
+  constructor(token: string, status?: number) {
+    super(token);
+    this.name = "ManifestError";
+    this.status = status;
+  }
+}
+
+/**
  * Validates that a manifest URL is safe to fetch:
  * - Must use HTTPS
  * - Must be from an allowed host
  * - Must end with /manifest.json
+ *
+ * On failure, `error` is a stable token and `hosts` carries the
+ * allowlist separately so the caller can interpolate it into a
+ * translated message.
  */
 export function validateManifestUrl(
   url: string,
@@ -65,25 +90,27 @@ export function validateManifestUrl(
 ): {
   valid: boolean;
   error?: string;
+  hosts?: string[];
 } {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") {
-      return { valid: false, error: "Manifest URL must use HTTPS" };
+      return { valid: false, error: "manifest_https" };
     }
     const allowedHosts = getAllowedManifestHosts(env);
     if (!allowedHosts.includes(parsed.hostname)) {
       return {
         valid: false,
-        error: `Manifest must be from ${allowedHosts.join(" or ")}`,
+        error: "manifest_host",
+        hosts: allowedHosts,
       };
     }
     if (!parsed.pathname.endsWith("/manifest.json")) {
-      return { valid: false, error: "URL must point to a manifest.json file" };
+      return { valid: false, error: "manifest_path" };
     }
     return { valid: true };
   } catch {
-    return { valid: false, error: "Invalid URL format" };
+    return { valid: false, error: "manifest_invalid_url" };
   }
 }
 
@@ -102,7 +129,7 @@ export async function parseManifest(
 ): Promise<ParsedManifest> {
   const response = await fetch(manifestUrl);
   if (!response.ok) {
-    throw new Error(`Failed to fetch manifest: ${response.status}`);
+    throw new ManifestError("manifest_fetch_failed", response.status);
   }
 
   const manifest = (await response.json()) as any;
@@ -115,16 +142,12 @@ export async function parseManifest(
   // Extract reference code from homepage URL
   const homepageUrl = manifest.homepage?.[0]?.id;
   if (!homepageUrl) {
-    throw new Error(
-      "Cannot extract reference code: manifest is missing homepage field"
-    );
+    throw new ManifestError("manifest_ref_code");
   }
 
   const refMatch = homepageUrl.match(/zasqua\.org\/([^/]+)\/?$/);
   if (!refMatch) {
-    throw new Error(
-      "Cannot extract reference code: homepage URL does not match expected pattern"
-    );
+    throw new ManifestError("manifest_ref_code");
   }
   const referenceCode = refMatch[1];
 
