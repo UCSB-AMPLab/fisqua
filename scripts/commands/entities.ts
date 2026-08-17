@@ -9,6 +9,8 @@
  *     (NEOGRANADINA_FEDERATION_ID) — entities are federation-scoped
  *     after migrations 0045-0048; the Neogranadina import files under the
  *     Neogranadina federation
+ *   - tenant_id (migration 0067) imports as NULL — the optional owner,
+ *     and Neogranadina's authority space is federation-shared
  *   - primary_function_id (vocabulary FK) imports as NULL — the
  *     Django dump does not carry vocabulary-term IDs
  *   - legal_status is dropped (0% populated in audit; gone in
@@ -34,7 +36,7 @@ import { toEpochSeconds, stringifyJsonArray, buildLegacyIdsForEntity } from "../
 import { NEOGRANADINA_FEDERATION_ID } from "../../app/lib/tenant";
 
 const COLUMNS = [
-  "id", "federation_id",
+  "id", "federation_id", "tenant_id",
   "entity_code", "display_name", "sort_name", "surname", "given_name",
   "entity_type", "honorific", "primary_function", "primary_function_id",
   "name_variants", "dates_of_existence", "date_start", "date_end",
@@ -166,6 +168,10 @@ export async function importEntities(
     rows.push([
       escapeSql(newId),
       escapeSql(NEOGRANADINA_FEDERATION_ID),
+      // tenant_id (migration 0067) is the optional owner. NULL:
+      // Neogranadina's authority space is genuinely shared across the
+      // federation, so an imported entity belongs to no single tenant.
+      escapeSql(null),
       escapeSql(code),
       escapeSql(record.display_name),
       escapeSql(record.sort_name),

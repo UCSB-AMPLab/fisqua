@@ -179,7 +179,7 @@ export default function NewRepositoryPage() {
   return (
     <div className="mx-auto max-w-3xl px-8 py-12">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="mb-4 text-sm">
+      <nav aria-label={t("common:aria.breadcrumb")} className="mb-4 text-sm">
         <ol className="flex items-center gap-1">
           <li>
             <Link
