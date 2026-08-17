@@ -9,6 +9,7 @@
  * @version v0.3.0
  */
 import { Link, useSearchParams } from "react-router";
+import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface CursorPaginationProps {
@@ -25,6 +26,7 @@ export function CursorPagination({
   count,
   entityLabel,
 }: CursorPaginationProps) {
+  const { t } = useTranslation("common");
   const [searchParams] = useSearchParams();
 
   function buildUrl(cursor: string, dir: "next" | "prev"): string {
@@ -40,46 +42,46 @@ export function CursorPagination({
         <Link
           to={buildUrl(prevCursor, "prev")}
           className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-white"
-          aria-label="Previous page"
+          aria-label={t("pagination.previous_page")}
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
+          {t("pagination.previous")}
         </Link>
       ) : (
         <button
           type="button"
           disabled
-          aria-label="Previous page"
+          aria-label={t("pagination.previous_page")}
           aria-disabled="true"
           className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-400 opacity-50"
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
+          {t("pagination.previous")}
         </button>
       )}
 
       <span className="text-sm text-stone-500">
-        Mostrando {count} {entityLabel}
+        {t("pagination.showing", { count, label: entityLabel })}
       </span>
 
       {nextCursor ? (
         <Link
           to={buildUrl(nextCursor, "next")}
           className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-700 hover:bg-white"
-          aria-label="Next page"
+          aria-label={t("pagination.next_page")}
         >
-          Next
+          {t("pagination.next")}
           <ChevronRight className="h-4 w-4" />
         </Link>
       ) : (
         <button
           type="button"
           disabled
-          aria-label="Next page"
+          aria-label={t("pagination.next_page")}
           aria-disabled="true"
           className="inline-flex items-center gap-1 rounded-md border border-stone-200 px-3 py-2 font-sans text-sm font-semibold text-stone-400 opacity-50"
         >
-          Next
+          {t("pagination.next")}
           <ChevronRight className="h-4 w-4" />
         </button>
       )}

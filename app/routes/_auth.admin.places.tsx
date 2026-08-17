@@ -36,16 +36,25 @@
  *     them unconditionally).
  * Row↔pin selection is component state: a row click flies the map to the
  * pin; a pin click scrolls the row into view. Both open the same card.
- * Separately, per-row checkboxes drive the two-row merge entry point
- * (spec §4): the bulk-merge toolbar appears at ≥1 selected and deep-links
- * the pair into the merge workbench at exactly 2. Checkbox clicks stop
- * propagation so they never trigger the row's map fly-to.
+ * Separately, per-row checkboxes drive a second, independent selection —
+ * one column serving two errands. It was added for the two-row merge
+ * (spec §4), and merge still deep-links the pair into the workbench at
+ * exactly 2; the same ticks now also feed the shared `BulkActionBar`,
+ * which adds the selection to a handlist or carries it to the export
+ * page at any count. A second checkbox column would have made the reader
+ * choose a column before choosing rows. Checkbox clicks stop propagation
+ * so they never trigger the row's map fly-to. The selection is component
+ * state, and the list pages by appending rows rather than replacing them,
+ * so ticks made on an earlier page stay ticked as more load.
  *
  * Authority scope is the federation (migrations 0045-0048): every read of
  * `places` is filtered by `tenant.federationId`, resolved from the
- * session tenant's federation.
+ * session tenant's federation. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.3
+ * @version v0.7.0
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -67,7 +76,8 @@ import {
   type MapPoint,
   type Viewport,
 } from "~/components/admin/place-maps";
-import { BulkMergeToolbar } from "~/components/admin/bulk-merge-toolbar";
+import { BulkActionBar } from "~/components/admin/bulk-action-bar";
+import { BulkMergeAction } from "~/components/admin/bulk-merge-toolbar";
 import { toggleSelection } from "~/lib/list-selection";
 import {
   nextTriState,
@@ -118,6 +128,7 @@ interface PagePoint extends MapPoint {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, or, gt, asc, isNull, sql } = await import(
@@ -142,7 +153,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const excludeId = sp.get("exclude") || "";
     const likePattern = `%${searchQ}%`;
     const conditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       like(places.label, likePattern),
     ];
     if (excludeId) {
@@ -278,9 +289,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // site — the list drops it under showMerged (spec §4: merged-away
   // records stay findable), while the map points and the coordinate
   // totals keep it unconditionally (merged places have no pin). The
-  // federation-scope predicate (`eq(places.federationId, …)`) is spelt
-  // out INLINE at each query site below — both so the tenant-isolation
-  // static guard sees it and so scoping is never one indirection away.
+  // visibility predicate (`authorityScope(places, tenant.federationId,
+  // tenant.id)` — the federation, narrowed to shared records plus this
+  // tenant's own, migration 0067) is spelt out INLINE at each query site
+  // below rather than folded into this shared helper: the scope stays
+  // one glance away at every site, and the tenant-isolation static guard
+  // sees the `federationId` reference it scans for.
   function searchConditions(includeType = true): any[] {
     const conditions: any[] = [];
     if (q) {
@@ -331,7 +345,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
     .from(descriptionPlaces)
     .innerJoin(places, eq(descriptionPlaces.placeId, places.id))
-    .where(eq(places.federationId, tenant.federationId))
+    .where(authorityScope(places, tenant.federationId, tenant.id))
     .groupBy(descriptionPlaces.placeId)
     .all();
   const countMap = new Map(countRows.map((r) => [r.placeId, r.count]));
@@ -343,7 +357,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     cur: string | null,
   ): Promise<{ rows: PlaceRow[]; next: string | null }> {
     const conditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       ...searchConditions(),
     ];
     if (!showMerged) conditions.push(isNull(places.mergedInto));
@@ -428,7 +442,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           .from(places)
           .where(
             and(
-              eq(places.federationId, tenant.federationId),
+              authorityScope(places, tenant.federationId, tenant.id),
               inArray(places.id, mergedIds),
             ),
           )
@@ -466,7 +480,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     let inViewCount: number | null = null;
     if (bounds) {
       const countConditions = [
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         ...searchConditions(),
         isNull(places.mergedInto),
         sql`${places.latitude} IS NOT NULL`,
@@ -502,7 +516,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`${places.latitude} IS NOT NULL`,
@@ -515,7 +529,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`(${places.latitude} IS NULL OR ${places.longitude} IS NULL)`,
@@ -529,7 +543,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(places)
     .where(
       and(
-        eq(places.federationId, tenant.federationId),
+        authorityScope(places, tenant.federationId, tenant.id),
         isNull(places.mergedInto),
         ...searchConditions(),
         sql`${places.latitude} IS NOT NULL`,
@@ -545,7 +559,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let mergedCount = 0;
   if (showMerged) {
     const mergedConditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       sql`${places.mergedInto} IS NOT NULL`,
       ...searchConditions(),
     ];
@@ -574,7 +588,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // so the control keeps offering sibling types). Liveness and the
   // worklist predicate follow the list's composition.
   const typeCountConditions = [
-    eq(places.federationId, tenant.federationId),
+    authorityScope(places, tenant.federationId, tenant.id),
     ...searchConditions(false),
     sql`${places.placeType} IS NOT NULL`,
   ];
@@ -606,7 +620,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   let points: PagePoint[] = [];
   if (!missingCoords) {
     const pointConditions = [
-      eq(places.federationId, tenant.federationId),
+      authorityScope(places, tenant.federationId, tenant.id),
       isNull(places.mergedInto),
       ...searchConditions(),
       sql`${places.latitude} IS NOT NULL`,
@@ -823,7 +837,8 @@ export default function AdminPlacesPage({
     if (el) el.scrollIntoView({ block: "nearest" });
   };
 
-  // -- Checkbox selection for the two-row merge entry point (spec §4).
+  // -- Checkbox selection, shared by the merge entry point (at exactly
+  // two, spec §4) and the handlist/export actions (at any count).
   // Independent of the map selection above; checkbox clicks stop
   // propagation so they never trigger the row's fly-to.
   const [selIds, setSelIds] = useState<Set<string>>(() => new Set());
@@ -1006,11 +1021,12 @@ export default function AdminPlacesPage({
                     : "hover:bg-stone-50"
                 }`}
               >
-                {/* Two-row merge entry point. stopPropagation keeps the
-                    checkbox from triggering the row's map fly-to. */}
+                {/* The one selection column, serving merge, handlist,
+                    and export alike. stopPropagation keeps the checkbox
+                    from triggering the row's map fly-to. */}
                 <input
                   type="checkbox"
-                  aria-label={ta("bulkMerge")}
+                  aria-label={ta("bulkSelectRow")}
                   checked={selIds.has(row.id)}
                   onChange={() => toggleSel(row.id)}
                   onClick={(e) => e.stopPropagation()}
@@ -1385,14 +1401,24 @@ export default function AdminPlacesPage({
       {/* Honest count line */}
       <p className="mt-3 text-12 nums text-stone-500">{countLine}</p>
 
-      {/* Two-row merge entry point (spec §4): appears at ≥1 selected,
-          deep-links into the merge workbench at exactly 2. */}
+      {/* Bulk action bar: appears at ≥1 selected and carries both
+          errands the one checkbox column serves — merge, which
+          deep-links the pair into the workbench at exactly 2 (spec §4),
+          and the handlist/export actions, which work at any count. The
+          label names this surface for the export page's carried-scope
+          pill. */}
       <div className="mt-3">
-        <BulkMergeToolbar
+        <BulkActionBar
+          recordType="places"
           selectedIds={Array.from(selIds)}
+          label={t("title")}
           onClear={() => setSelIds(new Set())}
-          basePath="/admin/places"
-          t={ta}
+          extraActions={
+            <BulkMergeAction
+              selectedIds={Array.from(selIds)}
+              basePath="/admin/places"
+            />
+          }
         />
       </div>
 

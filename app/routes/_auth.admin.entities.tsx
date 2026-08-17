@@ -22,9 +22,23 @@
  * Authority scope is the federation (migrations 0045-0048): every read of
  * `entities` is filtered by `tenant.federationId` (including the FTS5
  * fast path and every COUNT), resolved from the session tenant's
- * federation.
+ * federation. Migration 0067 narrowed that scope one level:
+ * the filter is now `authorityScope(...)`, the federation plus the
+ * ownership arm (shared records, or this tenant's own), spelt out at
+ * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.3
+ * The row checkboxes serve two errands from one column. They were added
+ * for the two-record merge, and merge still appears at exactly two; but
+ * the same ticks now also feed the shared `BulkActionBar`, which adds
+ * the selection to a handlist or carries it to the export page at any
+ * count. A second checkbox column would have made the reader choose a
+ * column before choosing rows, so there is one — and the bar offers
+ * whatever that number of ticks can actually do. The selection lives in
+ * component state and so survives cursor pagination (client-side
+ * `<Link>` navigation, same mounted route); a filter change reloads the
+ * document and clears it, as it always has.
+ *
+ * @version v0.7.0
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -33,7 +47,8 @@ import { useTranslation } from "react-i18next";
 import { Search, Plus, Check, GitMerge, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { BulkMergeToolbar } from "~/components/admin/bulk-merge-toolbar";
+import { BulkActionBar } from "~/components/admin/bulk-action-bar";
+import { BulkMergeAction } from "~/components/admin/bulk-merge-toolbar";
 import { ENTITY_TYPES } from "~/lib/validation/enums";
 import { DataTable } from "~/components/data-table/data-table";
 import { ColumnToggle } from "~/components/data-table/column-toggle";
@@ -47,6 +62,7 @@ import type {
   Table,
 } from "~/components/data-table/data-table";
 import type { Route } from "./+types/_auth.admin.entities";
+import { useFormatters } from "~/lib/use-formatters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,6 +110,9 @@ interface FunctionOption {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  const { authorityScope, authorityScopeSql } = await import(
+    "~/lib/authority-ownership.server"
+  );
   const { requireAdmin } = await import("~/lib/permissions.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, asc, desc, isNull, eq, like, or, inArray, sql } =
@@ -117,7 +136,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const excludeId = sp.get("exclude") || "";
     const likePattern = `%${q}%`;
     const conditions = [
-      eq(entities.federationId, tenant.federationId),
+      authorityScope(entities, tenant.federationId, tenant.id),
       like(entities.displayName, likePattern),
     ];
     if (excludeId) {
@@ -207,7 +226,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .from(entities)
     .where(
       and(
-        eq(entities.federationId, tenant.federationId),
+        authorityScope(entities, tenant.federationId, tenant.id),
         isNull(entities.mergedInto),
         sql`${entities.primaryFunction} IS NOT NULL AND ${entities.primaryFunction} != ''`,
       ),
@@ -266,7 +285,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // its own filter. The federation predicate is spelt out inline so the
   // tenant-isolation static guard sees it at every site.
   function filterConditions(includeType: boolean): any[] {
-    const c: any[] = [eq(entities.federationId, tenant.federationId)];
+    const c: any[] = [authorityScope(entities, tenant.federationId, tenant.id)];
     if (!showMerged) c.push(isNull(entities.mergedInto));
     if (includeType && typeFilter) c.push(eq(entities.entityType, typeFilter));
     // Year overlap with open-ended bounds: a missing date_end means the
@@ -366,7 +385,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           inArray(descriptionEntities.entityId, ids),
         ),
       )
@@ -389,7 +408,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           inArray(entities.id, mergedIds),
         ),
       )
@@ -432,7 +451,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(true),
         ),
       )
@@ -442,7 +461,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(false),
         ),
       )
@@ -476,7 +495,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .from(entities)
       .where(
         and(
-          eq(entities.federationId, tenant.federationId),
+          authorityScope(entities, tenant.federationId, tenant.id),
           ...filterConditions(true),
         ),
       )
@@ -550,7 +569,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${typeClause}${datedClause}${fromClause}${toClause}${fnClause}
         ORDER BY rank
         LIMIT ${pageSize}
@@ -561,7 +580,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${typeClause}${datedClause}${fromClause}${toClause}${fnClause}
       `)) as { total: number }[];
       total = totalRows[0]?.total ?? 0;
@@ -571,7 +590,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         FROM entities e
         INNER JOIN entities_fts fts ON fts.rowid = e.rowid
         WHERE entities_fts MATCH ${expr}
-        AND e.federation_id = ${tenant.federationId}
+        AND ${authorityScopeSql("e", tenant.federationId, tenant.id)}
         ${mergedClause}${datedClause}${fromClause}${toClause}${fnClause}
         GROUP BY e.entity_type
       `)) as { type: string | null; count: number }[];
@@ -669,9 +688,11 @@ export default function AdminEntitiesPage({
   const data = loaderData;
   const { t } = useTranslation("entities");
   const { t: ta } = useTranslation("authorities");
+  const { formatNumber } = useFormatters();
   const [searchParams] = useSearchParams();
 
-  // Row selection for the two-record bulk-merge entry point.
+  // Row selection, shared by the merge entry point (at exactly two) and
+  // the handlist/export actions (at any count).
   const [selIds, setSelIds] = useState<Set<string>>(() => new Set());
   const toggleSel = (id: string) =>
     setSelIds((prev) => {
@@ -806,7 +827,7 @@ export default function AdminEntitiesPage({
         cell: ({ row }) => (
           <input
             type="checkbox"
-            aria-label={ta("bulkMerge")}
+            aria-label={ta("bulkSelectRow")}
             checked={selIds.has(row.original.id)}
             onChange={() => toggleSel(row.original.id)}
             className="h-4 w-4 accent-indigo"
@@ -1098,7 +1119,7 @@ export default function AdminEntitiesPage({
         <span
           className={`font-mono text-11 ${isActive ? "text-indigo-tint" : "text-stone-400"}`}
         >
-          {data.typeCounts[ty].toLocaleString()}
+          {formatNumber(data.typeCounts[ty])}
         </span>
       </button>
     );
@@ -1267,17 +1288,26 @@ export default function AdminEntitiesPage({
       <p className="mb-3 text-12 text-stone-500">
         {t("countLine", {
           shown: data.entities.length,
-          total: data.totalCount.toLocaleString(),
+          total: formatNumber(data.totalCount),
         })}
         {(data.yearFrom || data.yearTo) && ` · ${t("undatedExcluded")}`}
       </p>
 
-      {/* Bulk-merge toolbar (appears at ≥1 selected) */}
-      <BulkMergeToolbar
+      {/* Bulk action bar (appears at ≥1 selected). One selection, two
+          errands: merge at exactly two, handlist and export at any
+          count. The label names this surface for the export page's
+          carried-scope pill. */}
+      <BulkActionBar
+        recordType="entities"
         selectedIds={Array.from(selIds)}
+        label={t("title")}
         onClear={() => setSelIds(new Set())}
-        basePath="/admin/entities"
-        t={ta}
+        extraActions={
+          <BulkMergeAction
+            selectedIds={Array.from(selIds)}
+            basePath="/admin/entities"
+          />
+        }
       />
 
       {/* Data table */}
