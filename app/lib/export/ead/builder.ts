@@ -36,7 +36,32 @@
  * fonds rows + repository map + profile + createDate as input and
  * returns the document as a string.
  *
- * @version v0.4.0
+ * TWO ENTRY POINTS SINCE v0.7.0, ONE GRAMMAR. `buildEad3` is the
+ * publish pipeline's: a fonds-rooted slice, one `<archdesc>` at the
+ * fonds row, descendants flat under `<dsc>`. `buildEad3ForSet` is the
+ * self-service export's: an ARBITRARY ORDERED SET — a branch rooted at
+ * a series, a handlist, a carried search result — which has no fonds
+ * row to find and may hold rows whose parents were not selected. They
+ * share the `<control>` block, the `<did>` emission and the profile-
+ * gated `<archdesc>` children, so a change to the grammar cannot reach
+ * one and miss the other. `buildEad3`'s output is unchanged byte for
+ * byte; its tests are the guard on that claim.
+ *
+ * WHAT A MULTI-ROOT SET BECOMES, and why. EAD3 permits exactly one
+ * `<archdesc>` inside one `<ead>` — the schema has no element that
+ * holds several finding aids, and the per-standard profiles toggle
+ * inclusion rather than introducing wrappers, so there is no honest way
+ * to emit "one `<archdesc>` per root". A set with several roots
+ * therefore gets ONE synthesised `<archdesc level="otherlevel"
+ * otherlevel="export">` whose `<did>` says what it is — the export
+ * scope, named — with each root as a top-level `<c>` beneath it. The
+ * level attribute is the important part: `otherlevel` is EAD3's way of
+ * saying "this is a unit of description the standard's ladder does not
+ * name", which is precisely true of an export scope, where
+ * `level="collection"` would assert an archival relationship between
+ * fonds that does not exist.
+ *
+ * @version v0.7.0
  */
 
 import { escapeXml, el, sanitiseRefForKey } from "../xml/escape";
@@ -114,99 +139,20 @@ export function buildEad3(
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += `<ead xmlns="${NS_EAD}" xmlns:xlink="${NS_XLINK}" audience="external">\n`;
 
-  // -- <control> (EAD3 replaces EAD2002's <eadheader>) -----------------------
-  xml += `  <control>\n`;
-  xml += `    <recordid>${escapeXml(sanitiseRefForKey(fonds.referenceCode))}</recordid>\n`;
-  xml += `    <filedesc>\n`;
-  xml += `      <titlestmt>\n`;
-  xml += `        <titleproper>${escapeXml(fonds.title)}</titleproper>\n`;
-  xml += `      </titlestmt>\n`;
-  xml += `    </filedesc>\n`;
-  xml += `    <maintenancestatus value="derived"/>\n`;
-  xml += `    <maintenanceagency>\n`;
-  xml += `      <agencyname>${escapeXml(repo?.name ?? "Fisqua")}</agencyname>\n`;
-  xml += `    </maintenanceagency>\n`;
-  xml += `    <maintenancehistory>\n`;
-  xml += `      <maintenanceevent>\n`;
-  xml += `        <eventtype value="created"/>\n`;
-  xml += `        <eventdatetime>${escapeXml(createDate)}</eventdatetime>\n`;
-  xml += `        <agenttype value="machine"/>\n`;
-  xml += `        <agent>Fisqua publish pipeline</agent>\n`;
-  xml += `      </maintenanceevent>\n`;
-  xml += `    </maintenancehistory>\n`;
-  xml += `  </control>\n`;
+  xml += renderControl(
+    sanitiseRefForKey(fonds.referenceCode),
+    fonds.title,
+    repo?.name ?? "Fisqua",
+    createDate,
+    "Fisqua publish pipeline",
+  );
 
   // -- <archdesc> ------------------------------------------------------------
   xml += `  <archdesc level="${escapeXml(fonds.descriptionLevel)}">\n`;
   xml += renderDid(fonds, repo, "    ");
+  xml += renderArchdescChildren(fonds, profile);
 
-  // Optional <archdesc> children — EAD3 universal element order. Profiles
-  // toggle inclusion only; ordering is fixed.
-
-  // 1. <bioghist> (DACS / RAD context placement; ISAD(G) routes to <notestmt>
-  //    later in the order — see step 11).
-  if (profile.bioghistPlacement === "context" && fonds.adminBiogHistory) {
-    xml += `    <bioghist>\n`;
-    xml += `      <p>${escapeXml(fonds.adminBiogHistory)}</p>\n`;
-    xml += `    </bioghist>\n`;
-  }
-
-  // 2. <scopecontent>
-  if (fonds.scopeContent) {
-    xml += `    <scopecontent>\n`;
-    xml += `      <p>${escapeXml(fonds.scopeContent)}</p>\n`;
-    xml += `    </scopecontent>\n`;
-  }
-
-  // 3. <arrangement> — gated by profile.includeSystemOfArrangement so the
-  //    DACS profile (which uses the standard `arrangement` column elsewhere)
-  //    doesn't double-emit. RAD turns this on; ISAD(G) and DACS leave it off.
-  if (profile.includeSystemOfArrangement && fonds.systemOfArrangement) {
-    xml += `    <arrangement>\n`;
-    xml += `      <p>${escapeXml(fonds.systemOfArrangement)}</p>\n`;
-    xml += `    </arrangement>\n`;
-  }
-
-  // 4. <accessrestrict>
-  if (fonds.accessConditions) {
-    xml += `    <accessrestrict>\n`;
-    xml += `      <p>${escapeXml(fonds.accessConditions)}</p>\n`;
-    xml += `    </accessrestrict>\n`;
-  }
-
-  // 5. <prefercite> — DACS § 7.1.5; ISAD(G) leaves this off.
-  if (profile.includePreferredCitation && fonds.preferredCitation) {
-    xml += `    <prefercite>\n`;
-    xml += `      <p>${escapeXml(fonds.preferredCitation)}</p>\n`;
-    xml += `    </prefercite>\n`;
-  }
-
-  // 6. <acqinfo> — ISAD(G) 3.2.4, DACS § 5, RAD §1.7.
-  if (profile.includeAcquisitionInfo && fonds.acquisitionInfo) {
-    xml += `    <acqinfo>\n`;
-    xml += `      <p>${escapeXml(fonds.acquisitionInfo)}</p>\n`;
-    xml += `    </acqinfo>\n`;
-  }
-
-  // 7. <phystech>
-  if (fonds.physicalCharacteristics) {
-    xml += `    <phystech>\n`;
-    xml += `      <p>${escapeXml(fonds.physicalCharacteristics)}</p>\n`;
-    xml += `    </phystech>\n`;
-  }
-
-  // 8. <notestmt> — ISAD(G) 3.4.1 places admin/biog under "Notes". The
-  //    profile gates this branch so DACS and RAD (which use context
-  //    placement) don't double-emit through the <bioghist> branch above.
-  if (profile.bioghistPlacement === "notes" && fonds.adminBiogHistory) {
-    xml += `    <notestmt>\n`;
-    xml += `      <note>\n`;
-    xml += `        <p>${escapeXml(fonds.adminBiogHistory)}</p>\n`;
-    xml += `      </note>\n`;
-    xml += `    </notestmt>\n`;
-  }
-
-  // 9. <dsc> — descendants (series/file/item/etc.) as <c> blocks.
+  // <dsc> — descendants (series/file/item/etc.) as <c> blocks.
   const descendants = fondsRows.filter((r) => r.descriptionLevel !== "fonds");
   if (descendants.length > 0) {
     xml += `    <dsc>\n`;
@@ -222,8 +168,274 @@ export function buildEad3(
 }
 
 // ---------------------------------------------------------------------------
+// The arbitrary-set entry point (self-service export)
+// ---------------------------------------------------------------------------
+
+/** What a synthesised wrapper `<archdesc>` says about itself. */
+export interface EadSetOptions {
+  /**
+   * The `<recordid>` and the wrapper's `<unitid>`. The export run's own
+   * identifier, so a finding aid can be traced back to the run that
+   * produced it.
+   */
+  recordId: string;
+  /**
+   * What the scope is, in the words the export ledger uses for it —
+   * the `<titleproper>` and, for a multi-root set, the wrapper's
+   * `<unittitle>`.
+   */
+  scopeTitle: string;
+  /** `<maintenanceagency><agencyname>`; the workspace's repository name. */
+  agencyName: string;
+  /** `<maintenancehistory>` agent. Names the surface, not the pipeline. */
+  agentName?: string;
+}
+
+/**
+ * Emit one EAD3 finding aid for an ARBITRARY ORDERED SET of descriptions.
+ *
+ * The set's own order is preserved: roots appear in the order they were
+ * given, and so do siblings under every `<c>`. That order came from the
+ * scope resolver — the hierarchy's preorder, the handlist's own
+ * sequence, the carried set's — and is part of what was chosen.
+ *
+ * Structure is read from `parentReferenceCode`: a row whose parent is
+ * not itself in the set is a ROOT, which is how a branch export rooted
+ * at a series knows it is rooted there, and how a handlist that reaches
+ * across three collections knows it has three roots. Unlike
+ * `buildEad3`, descendants nest — the set carries the hierarchy that
+ * relates them and flattening it would throw away the one thing a
+ * finding aid is for.
+ *
+ * @param rows  The set, in the order it should appear. Reference codes
+ *              MUST be unique; the caller checks and fails the run with
+ *              `duplicate-reference-code` before reaching here, because
+ *              a duplicate makes the parent map ambiguous and the
+ *              document unencodable.
+ * @returns The document, or "" for an empty set (matching `buildEad3`).
+ */
+export function buildEad3ForSet(
+  rows: ReadonlyArray<EadInput>,
+  repos: ReadonlyMap<string, EadRepository>,
+  profile: EadProfile,
+  createDate: string,
+  options: EadSetOptions,
+): string {
+  if (rows.length === 0) return "";
+
+  const inSet = new Set(rows.map((r) => r.referenceCode));
+  const childrenOf = new Map<string, EadInput[]>();
+  const roots: EadInput[] = [];
+  for (const row of rows) {
+    const parent = row.parentReferenceCode;
+    if (parent !== null && parent !== "" && inSet.has(parent)) {
+      const siblings = childrenOf.get(parent) ?? [];
+      siblings.push(row);
+      childrenOf.set(parent, siblings);
+    } else {
+      roots.push(row);
+    }
+  }
+
+  const single = roots.length === 1 ? roots[0] : null;
+  const repo = single ? repos.get(single.repositoryId) : undefined;
+
+  let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+  xml += `<ead xmlns="${NS_EAD}" xmlns:xlink="${NS_XLINK}" audience="external">\n`;
+  xml += renderControl(
+    options.recordId,
+    single ? single.title : options.scopeTitle,
+    options.agencyName,
+    createDate,
+    options.agentName ?? "Fisqua export",
+  );
+
+  if (single) {
+    // One root: it IS the unit of description, exactly as a fonds is in
+    // the publish path.
+    xml += `  <archdesc level="${escapeXml(single.descriptionLevel)}">\n`;
+    xml += renderDid(single, repo, "    ");
+    xml += renderArchdescChildren(single, profile);
+    xml += renderDsc(childrenOf.get(single.referenceCode) ?? [], childrenOf, repos, "    ");
+  } else {
+    // Several roots: the synthesised wrapper (see the module header).
+    xml += `  <archdesc level="otherlevel" otherlevel="export">\n`;
+    xml += `    <did>\n`;
+    xml += `      <unitid>${escapeXml(options.recordId)}</unitid>\n`;
+    xml += `      <unittitle>${escapeXml(options.scopeTitle)}</unittitle>\n`;
+    xml += `    </did>\n`;
+    xml += renderDsc(roots, childrenOf, repos, "    ");
+  }
+
+  xml += `  </archdesc>\n`;
+  xml += `</ead>\n`;
+  return xml;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
+
+/**
+ * The `<control>` block, EAD3's replacement for EAD2002's
+ * `<eadheader>`. Both entry points emit the same block and differ only
+ * in what they can put in it: the publish pipeline names the fonds and
+ * itself, the export surface names the run and the scope.
+ */
+function renderControl(
+  recordId: string,
+  titleProper: string,
+  agencyName: string,
+  createDate: string,
+  agent: string,
+): string {
+  let xml = `  <control>\n`;
+  xml += `    <recordid>${escapeXml(recordId)}</recordid>\n`;
+  xml += `    <filedesc>\n`;
+  xml += `      <titlestmt>\n`;
+  xml += `        <titleproper>${escapeXml(titleProper)}</titleproper>\n`;
+  xml += `      </titlestmt>\n`;
+  xml += `    </filedesc>\n`;
+  xml += `    <maintenancestatus value="derived"/>\n`;
+  xml += `    <maintenanceagency>\n`;
+  xml += `      <agencyname>${escapeXml(agencyName)}</agencyname>\n`;
+  xml += `    </maintenanceagency>\n`;
+  xml += `    <maintenancehistory>\n`;
+  xml += `      <maintenanceevent>\n`;
+  xml += `        <eventtype value="created"/>\n`;
+  xml += `        <eventdatetime>${escapeXml(createDate)}</eventdatetime>\n`;
+  xml += `        <agenttype value="machine"/>\n`;
+  xml += `        <agent>${escapeXml(agent)}</agent>\n`;
+  xml += `      </maintenanceevent>\n`;
+  xml += `    </maintenancehistory>\n`;
+  xml += `  </control>\n`;
+  return xml;
+}
+
+/**
+ * The optional `<archdesc>` children, in EAD3's universal element
+ * order: bioghist → scopecontent → arrangement → accessrestrict →
+ * prefercite → acqinfo → phystech → notestmt. Profiles toggle inclusion
+ * only, never order — which is why the order lives in one function and
+ * the profile only answers yes or no about each block.
+ *
+ * Always emitted at four spaces: `<archdesc>` sits at two in both entry
+ * points, so its children sit at four in both.
+ */
+function renderArchdescChildren(row: EadInput, profile: EadProfile): string {
+  let xml = "";
+
+  // 1. <bioghist> (DACS / RAD context placement; ISAD(G) routes to <notestmt>
+  //    later in the order — see step 8).
+  if (profile.bioghistPlacement === "context" && row.adminBiogHistory) {
+    xml += `    <bioghist>\n`;
+    xml += `      <p>${escapeXml(row.adminBiogHistory)}</p>\n`;
+    xml += `    </bioghist>\n`;
+  }
+
+  // 2. <scopecontent>
+  if (row.scopeContent) {
+    xml += `    <scopecontent>\n`;
+    xml += `      <p>${escapeXml(row.scopeContent)}</p>\n`;
+    xml += `    </scopecontent>\n`;
+  }
+
+  // 3. <arrangement> — gated by profile.includeSystemOfArrangement so the
+  //    DACS profile (which uses the standard `arrangement` column elsewhere)
+  //    doesn't double-emit. RAD turns this on; ISAD(G) and DACS leave it off.
+  if (profile.includeSystemOfArrangement && row.systemOfArrangement) {
+    xml += `    <arrangement>\n`;
+    xml += `      <p>${escapeXml(row.systemOfArrangement)}</p>\n`;
+    xml += `    </arrangement>\n`;
+  }
+
+  // 4. <accessrestrict>
+  if (row.accessConditions) {
+    xml += `    <accessrestrict>\n`;
+    xml += `      <p>${escapeXml(row.accessConditions)}</p>\n`;
+    xml += `    </accessrestrict>\n`;
+  }
+
+  // 5. <prefercite> — DACS § 7.1.5; ISAD(G) leaves this off.
+  if (profile.includePreferredCitation && row.preferredCitation) {
+    xml += `    <prefercite>\n`;
+    xml += `      <p>${escapeXml(row.preferredCitation)}</p>\n`;
+    xml += `    </prefercite>\n`;
+  }
+
+  // 6. <acqinfo> — ISAD(G) 3.2.4, DACS § 5, RAD §1.7.
+  if (profile.includeAcquisitionInfo && row.acquisitionInfo) {
+    xml += `    <acqinfo>\n`;
+    xml += `      <p>${escapeXml(row.acquisitionInfo)}</p>\n`;
+    xml += `    </acqinfo>\n`;
+  }
+
+  // 7. <phystech>
+  if (row.physicalCharacteristics) {
+    xml += `    <phystech>\n`;
+    xml += `      <p>${escapeXml(row.physicalCharacteristics)}</p>\n`;
+    xml += `    </phystech>\n`;
+  }
+
+  // 8. <notestmt> — ISAD(G) 3.4.1 places admin/biog under "Notes". The
+  //    profile gates this branch so DACS and RAD (which use context
+  //    placement) don't double-emit through the <bioghist> branch above.
+  if (profile.bioghistPlacement === "notes" && row.adminBiogHistory) {
+    xml += `    <notestmt>\n`;
+    xml += `      <note>\n`;
+    xml += `        <p>${escapeXml(row.adminBiogHistory)}</p>\n`;
+    xml += `      </note>\n`;
+    xml += `    </notestmt>\n`;
+  }
+
+  return xml;
+}
+
+/**
+ * A `<dsc>` holding a nested `<c>` tree. Only the arbitrary-set entry
+ * point uses it — the publish path's flat `<c>` sequence is what its
+ * consumers already harvest, and changing that would be a change to a
+ * shipped artifact rather than a new one.
+ */
+function renderDsc(
+  top: ReadonlyArray<EadInput>,
+  childrenOf: ReadonlyMap<string, EadInput[]>,
+  repos: ReadonlyMap<string, EadRepository>,
+  indent: string,
+): string {
+  if (top.length === 0) return "";
+  let xml = `${indent}<dsc>\n`;
+  for (const row of top) {
+    xml += renderNestedC(row, childrenOf, repos, indent + "  ");
+  }
+  xml += `${indent}</dsc>\n`;
+  return xml;
+}
+
+/**
+ * One `<c>` and everything under it. Recursion depth is the set's own
+ * depth, which the scope resolver bounded by walking a real tree.
+ */
+function renderNestedC(
+  row: EadInput,
+  childrenOf: ReadonlyMap<string, EadInput[]>,
+  repos: ReadonlyMap<string, EadRepository>,
+  indent: string,
+): string {
+  const inner = indent + "  ";
+  let c = `${indent}<c level="${escapeXml(row.descriptionLevel)}">\n`;
+  c += renderDid(row, repos.get(row.repositoryId), inner);
+  if (row.scopeContent) {
+    c += `${inner}<scopecontent>\n`;
+    c += `${inner}  <p>${escapeXml(row.scopeContent)}</p>\n`;
+    c += `${inner}</scopecontent>\n`;
+  }
+  for (const child of childrenOf.get(row.referenceCode) ?? []) {
+    c += renderNestedC(child, childrenOf, repos, inner);
+  }
+  c += `${indent}</c>\n`;
+  return c;
+}
 
 /**
  * Emit `<did>` for one description row at any level (fonds or descendant).
@@ -325,4 +537,4 @@ function renderC(row: EadInput, repo: EadRepository | undefined): string {
 // hand without re-import churn.
 void el;
 
-/* @version v0.4.0 */
+/* @version v0.7.0 */
