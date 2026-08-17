@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { formatIsoDateTime } from "../lib/format-date";
+import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs";
 
 export async function loader({ context }: Route.LoaderArgs) {
@@ -73,7 +74,10 @@ export default function ImportRunsPage({ loaderData }: Route.ComponentProps) {
         </Link>
       </nav>
 
-      <h1 className="font-serif text-2xl font-semibold text-stone-700">{t("runs.heading")}</h1>
+      <div className="flex items-center gap-2">
+        <h1 className="font-serif text-2xl font-semibold text-stone-700">{t("runs.heading")}</h1>
+        <DocsHelpLink topic="importsRuns" />
+      </div>
       <p className="mt-2 max-w-2xl text-sm text-stone-500">{t("runs.intro")}</p>
 
       {runs.length === 0 ? (

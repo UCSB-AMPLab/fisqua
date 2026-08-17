@@ -528,6 +528,36 @@ async function assembleRecords(
   return byCode;
 }
 
+/**
+ * Per-invocation memo for `assembleRecords`, keyed on the config object.
+ * The assembly is a pure projection of the immutable staged artifact and
+ * the run-start config, so every batch in one Workflow engine invocation
+ * can share a single parse — without this, each 50-row batch re-parsed
+ * and re-validated the whole file (~15s CPU per batch on a 5,602-row
+ * import), which blew the Worker CPU ceiling mid-run on the first
+ * production-scale commit. A fresh invocation (after hibernation or a
+ * retry) gets a fresh config object from the load-config step replay and
+ * simply re-parses; a failed parse is evicted so a transient store error
+ * does not poison the rest of the invocation.
+ */
+const assembledByConfig = new WeakMap<
+  CommitConfig,
+  Promise<Map<string, AssembledRecord>>
+>();
+
+function assembleRecordsCached(
+  store: StagingStore,
+  config: CommitConfig,
+): Promise<Map<string, AssembledRecord>> {
+  let pending = assembledByConfig.get(config);
+  if (!pending) {
+    pending = assembleRecords(store, config);
+    assembledByConfig.set(config, pending);
+    pending.catch(() => assembledByConfig.delete(config));
+  }
+  return pending;
+}
+
 /** Read which of `codes` already exist for the tenant (retry-safety read). */
 async function existingCodeSet(
   db: DrizzleD1Database<any>,
@@ -571,7 +601,7 @@ export async function processCreateBatch(
   config: CommitConfig,
   batchCodes: readonly string[],
 ): Promise<{ created: number; pathCacheCapped: number }> {
-  const records = await assembleRecords(store, config);
+  const records = await assembleRecordsCached(store, config);
   const already = await existingCodeSet(db, config.tenantId, batchCodes);
   const toCreate = batchCodes.filter((c) => !already.has(c));
   if (toCreate.length === 0) return { created: 0, pathCacheCapped: 0 };
@@ -756,7 +786,7 @@ export async function processUpdateBatch(
   config: CommitConfig,
   batchCodes: readonly string[],
 ): Promise<{ updated: number; unchanged: number }> {
-  const records = await assembleRecords(store, config);
+  const records = await assembleRecordsCached(store, config);
   const current = (await db
     .select()
     .from(descriptions)
