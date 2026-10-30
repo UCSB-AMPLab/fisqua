@@ -1,15 +1,15 @@
 /**
  * Places Admin — record detail (two-column redesign)
  *
- * The authority record page for a single place (spec §5 redesign,
- * mockup 2026-07-11): a ~420px left column carries the record itself —
- * Identity, Geography (the shipped map preview ALWAYS on screen; the
- * shipped coordinate editor plus a geocoding search in edit mode), and
- * Linked open data (TGN/HGIS/WHG as external links) — while the right
- * column serves the linked descriptions as a WORKLIST: server-side
- * search over title/reference code (`?dq=`), role pills with real
- * GROUP BY counts (spec §11's per-record role filter), sort by
- * date/title/reference code, and honest offset pagination with a
+ * This route is the authority record page for a single place (spec §5
+ * redesign, mockup 2026-07-11): a ~420px left column carries the record
+ * itself — Identity, Geography (the shipped map preview ALWAYS on
+ * screen; the shipped coordinate editor plus a geocoding search in edit
+ * mode), and Linked open data (TGN/HGIS/WHG as external links) — while
+ * the right column serves the linked descriptions as a WORKLIST:
+ * server-side search over title/reference code (`?dq=`), role pills
+ * with real GROUP BY counts (spec §11's per-record role filter), sort
+ * by date/title/reference code, and honest offset pagination with a
  * user-selectable page size (25/50/100). The loader ships ONE filtered
  * page, never the whole link set. Narrow screens stack record-first.
  *
@@ -34,7 +34,7 @@
  * only handlists that hold places, and it reports the resulting count
  * rather than a bare "Added".
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect } from "react";
@@ -43,6 +43,7 @@ import { useTranslation } from "react-i18next";
 import { MapPin } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "~/lib/use-formatters";
 import { StatusBand } from "~/components/admin/status-band";
 import {
   PlaceMapPreview,
@@ -84,14 +85,14 @@ import type { Route } from "./+types/_auth.admin.places.$id";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
   const { places, descriptionPlaces, descriptions, repositories } =
     await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -128,7 +129,11 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         recordType: "place",
         ownerId: id,
         junctionId: cardJunctionId,
+        tenantId: tenant.id,
       });
+      // A link that is not this record's, or whose description is not
+      // this tenant's, has no transcript to show.
+      if (ocrFull === null) throw new Response("Not found", { status: 404 });
       return Response.json({ ocrFull });
     }
     const { loadLinkedDescriptionCard } = await import(
@@ -139,16 +144,19 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       ownerId: id,
       displayName: place.displayName,
       junctionId: cardJunctionId,
+      tenantId: tenant.id,
     });
     return Response.json({ card });
   }
 
-  // Unfiltered link total — drives the header count and the
-  // delete-blocked affordance.
+  // This tenant's link total — drives the header count and the
+  // delete-blocked affordance. The delete action still counts every
+  // tenant's links before it deletes, and refuses while any remain.
   const [{ count: descLinkCount }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(descriptionPlaces)
-    .where(eq(descriptionPlaces.placeId, id))
+    .innerJoin(descriptions, eq(descriptionPlaces.descriptionId, descriptions.id))
+    .where(and(eq(descriptionPlaces.placeId, id), eq(descriptions.tenantId, tenant.id)))
     .all();
 
   // ---- Linked-descriptions worklist (spec §5 redesign; round-3 filters) ----
@@ -171,7 +179,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       descriptions,
       eq(descriptionPlaces.descriptionId, descriptions.id),
     )
-    .where(eq(descriptionPlaces.placeId, id))
+    .where(and(eq(descriptionPlaces.placeId, id), eq(descriptions.tenantId, tenant.id)))
     .groupBy(descriptions.repositoryId)
     .all();
   const recordRepoIds = new Set(recordRepoRows.map((r) => r.repositoryId));
@@ -180,7 +188,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
   // Search predicate over the joined description (title + reference
   // code), shared by the counts, the filtered total, and the page.
-  const dqConditions: any[] = [eq(descriptionPlaces.placeId, id)];
+  // A shared record can be linked from several tenants' descriptions;
+  // every list, count and card here reads only the request tenant's.
+  const dqConditions: any[] = [
+    eq(descriptionPlaces.placeId, id),
+    eq(descriptions.tenantId, tenant.id),
+  ];
   if (wl.dq) {
     const pat = `%${wl.dq}%`;
     dqConditions.push(
@@ -292,7 +305,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
   // Fetch merge target label if merged
   let mergeTarget: { id: string; label: string } | null = null;
-  let mergeBand: { date: string; user: string } | null = null;
+  let mergeBand: { createdAt: number; user: string } | null = null;
   if (place.mergedInto) {
     const target = await db
       .select({ id: places.id, label: places.label })
@@ -302,7 +315,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       )
       .get();
     if (target) mergeTarget = target;
-    const { getOperationActor, bandDate } = await import(
+    const { getOperationActor } = await import(
       "~/lib/authority-workbench.server"
     );
     const actor = await getOperationActor(db, {
@@ -312,7 +325,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       targetId: place.mergedInto,
     });
     if (actor) {
-      mergeBand = { date: bandDate(actor.createdAt), user: actor.userName ?? "" };
+      mergeBand = { createdAt: actor.createdAt, user: actor.userName ?? "" };
     }
   }
 
@@ -320,17 +333,17 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // editable). The merged band takes precedence when the record was
   // later merged away.
   let splitIntoBand: {
-    date: string;
+    createdAt: number;
     user: string;
     targets: { id: string; label: string }[];
   } | null = null;
   let splitFromBand: {
-    date: string;
+    createdAt: number;
     user: string;
     parent: { id: string; label: string };
   } | null = null;
   if (!place.mergedInto) {
-    const { getOperationActor, getSplitTargets, bandDate } = await import(
+    const { getOperationActor, getSplitTargets } = await import(
       "~/lib/authority-workbench.server"
     );
     const { inArray } = await import("drizzle-orm");
@@ -354,7 +367,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       });
       if (targets.length > 0 && actor) {
         splitIntoBand = {
-          date: bandDate(actor.createdAt),
+          createdAt: actor.createdAt,
           user: actor.userName ?? "",
           targets,
         };
@@ -379,7 +392,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .get();
       if (parent) {
         splitFromBand = {
-          date: bandDate(fromActor.createdAt),
+          createdAt: fromActor.createdAt,
           user: fromActor.userName ?? "",
           parent,
         };
@@ -459,17 +472,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq, and, sql } = await import("drizzle-orm");
-  const { places, descriptionPlaces } = await import("~/db/schema");
+  const { eq, and, inArray, sql } = await import("drizzle-orm");
+  const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
   const { updatePlaceSchema } = await import("~/lib/validation/place");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -488,6 +501,34 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
+
+  // The description-link intents act on this page's place, which must be
+  // one this tenant can see, and on links whose description is the
+  // request tenant's. A link row named by id is reached only through
+  // both, so another tenant's links can be neither changed nor removed.
+  const notFound = () => new Response("Not found", { status: 404 });
+  const tenantDescriptions = db
+    .select({ id: descriptions.id })
+    .from(descriptions)
+    .where(eq(descriptions.tenantId, tenant.id));
+  const linkHere = (linkId: string) =>
+    and(
+      eq(descriptionPlaces.id, linkId),
+      eq(descriptionPlaces.placeId, id),
+      inArray(descriptionPlaces.descriptionId, tenantDescriptions),
+    );
+  if (
+    intent === "link_description" ||
+    intent === "edit_description_link" ||
+    intent === "unlink_description"
+  ) {
+    const visible = await db
+      .select({ id: places.id })
+      .from(places)
+      .where(and(eq(places.id, id), authorityScope(places, tenant.federationId, tenant.id)))
+      .get();
+    if (!visible) throw notFound();
+  }
 
   switch (intent) {
     case "autosave": {
@@ -726,6 +767,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         return { ok: false as const, error: "generic" };
       }
       const narrowedRole = role as (typeof PLACE_ROLES)[number];
+      const description = await db
+        .select({ id: descriptions.id })
+        .from(descriptions)
+        .where(and(eq(descriptions.id, descriptionId), eq(descriptions.tenantId, tenant.id)))
+        .get();
+      if (!description) throw notFound();
       try {
         await db.insert(descriptionPlaces).values({
           id: crypto.randomUUID(),
@@ -755,10 +802,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       }
       const narrowedRole = role as (typeof placeRoles)[number];
       const roleNote = (formData.get("roleNote") as string)?.trim() || null;
+      const link = await db
+        .select({ id: descriptionPlaces.id })
+        .from(descriptionPlaces)
+        .where(linkHere(linkId))
+        .get();
+      if (!link) throw notFound();
       await db
         .update(descriptionPlaces)
         .set({ role: narrowedRole, roleNote })
-        .where(eq(descriptionPlaces.id, linkId));
+        .where(linkHere(linkId));
       return { ok: true as const };
     }
 
@@ -767,9 +820,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!linkId) {
         return { ok: false as const, error: "generic" };
       }
-      await db
-        .delete(descriptionPlaces)
-        .where(eq(descriptionPlaces.id, linkId));
+      const link = await db
+        .select({ id: descriptionPlaces.id })
+        .from(descriptionPlaces)
+        .where(linkHere(linkId))
+        .get();
+      if (!link) throw notFound();
+      await db.delete(descriptionPlaces).where(linkHere(linkId));
       return { ok: true as const };
     }
 
@@ -785,6 +842,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 export default function PlaceDetailPage({
   loaderData,
 }: Route.ComponentProps) {
+  // The loader sends the band's raw timestamp so its day is formatted
+  // in the same zone as every other date on the page.
+  const { formatIsoDateTime } = useFormatters();
+  const bandDay = (createdAt: number) => formatIsoDateTime(createdAt).slice(0, 10);
   const {
     place,
     holdingHandlists,
@@ -909,7 +970,7 @@ export default function PlaceDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="merged"
-            date={mergeBand?.date ?? ""}
+            date={mergeBand ? bandDay(mergeBand.createdAt) : ""}
             user={mergeBand?.user || ta("bandUnknownUser")}
             survivor={{
               id: mergeTarget.id,
@@ -927,7 +988,7 @@ export default function PlaceDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="split"
-            date={splitIntoBand.date}
+            date={bandDay(splitIntoBand.createdAt)}
             user={splitIntoBand.user || ta("bandUnknownUser")}
             records={splitIntoBand.targets.map((r) => ({
               id: r.id,
@@ -943,7 +1004,7 @@ export default function PlaceDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="splitFrom"
-            date={splitFromBand.date}
+            date={bandDay(splitFromBand.createdAt)}
             user={splitFromBand.user || ta("bandUnknownUser")}
             parent={{
               id: splitFromBand.parent.id,
@@ -1399,7 +1460,7 @@ function EditMode({
         {t("sectionGeography")}
       </h3>
       <div className="space-y-4">
-        {/* Geocoding search (Juan's ruling): pick a modern place name to
+        {/* Geocoding search: pick a modern place name to
             fly the map and set the pin — still draggable, still synced
             with the inputs below, never auto-saved. */}
         <GeocodeSearch
@@ -1585,3 +1646,5 @@ function EditMode({
     </Form>
   );
 }
+
+/* @version v0.8.0 */

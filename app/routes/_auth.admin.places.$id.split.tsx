@@ -1,17 +1,17 @@
 /**
  * Places Admin — Split workbench (full-page)
  *
- * The full-viewport split surface for place authorities (spec §4,
- * handoff surface 2). Every splittable field is assigned Original /
- * Both / New; external identifiers (TGN, HGIS, WHG) are exactly-one-
- * side; coordinates are a deliberate choice rather than the old
- * verbatim copy (spec §2 defect); both halves get distinct names; and
- * linked descriptions are divided by rich context card, grouped by
- * description. The original is updated in place, a new record is
- * inserted, and the required reason lands in the ledger row's
+ * This route is the full-viewport split surface for place authorities
+ * (spec §4, handoff surface 2). Every splittable field is assigned
+ * Original / Both / New; external identifiers (TGN, HGIS, WHG) are
+ * exactly-one- side; coordinates are a deliberate choice rather than
+ * the old verbatim copy (spec §2 defect); both halves get distinct
+ * names; and linked descriptions are divided by rich context card,
+ * grouped by description. The original is updated in place, a new
+ * record is inserted, and the required reason lands in the ledger row's
  * `detail.reason`.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -28,7 +28,7 @@ type Choice = "original" | "both" | "new";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { places } = await import("~/db/schema");
@@ -37,7 +37,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -55,6 +55,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     recordType: "place",
     ownerId: id,
     displayName: place.displayName,
+    tenantId: tenant.id,
   });
 
   return { place, cards };
@@ -64,17 +65,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
-  const { places, descriptionPlaces } = await import("~/db/schema");
+  const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
   const { generateUniqueCode } = await import("~/lib/codes.server");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -180,6 +181,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         and(
           inArray(descriptionPlaces.id, linkIds),
           eq(descriptionPlaces.placeId, id),
+          // Only links whose description is the request tenant's move.
+          inArray(
+            descriptionPlaces.descriptionId,
+            db
+              .select({ id: descriptions.id })
+              .from(descriptions)
+              .where(eq(descriptions.tenantId, tenant.id)),
+          ),
         ),
       )
       .all();

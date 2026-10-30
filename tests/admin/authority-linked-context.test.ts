@@ -1,7 +1,7 @@
 /**
  * Tests — linked-description context cards (merge/split workbenches)
  *
- * Two layers:
+ * This suite tests the linked-description context cards in two layers:
  *
  *   - `extractScopeSnippet` — the pure, offset-faithful snippet helper.
  *     Real archival data spells "Agustin Sanchez" in scopeContent while
@@ -15,19 +15,34 @@
  *     description even with several junction roles (multi-role
  *     grouping), the batched place + repository lookups, the
  *     nameAsRecorded anchor selection, and the honest cap totals.
+ *     Transcripts are OCR page rows: the name is looked up in the page
+ *     index, so an anchor on a page beyond the assembled-text cap is
+ *     still found; a name the index misses (inside a longer word) falls
+ *     back to the capped text, and so does an anchor page whose text the
+ *     card's substring match does not find (a long s, which the index
+ *     folds and the card does not); a shared authority record linked
+ *     from two tenants shows each tenant only its own descriptions, with
+ *     their OCR, and the other tenant's link id resolves to no card and
+ *     no transcript; and the caption length is the whole transcript's.
  *
  * Harness mirrors tests/admin/authority-duplicates.test.ts: a Workers
  * pool with migrations applied and the default tenant/federation seeded
  * by cleanDatabase().
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
-import { applyMigrations, cleanDatabase } from "../helpers/db";
+import {
+  applyMigrations,
+  cleanDatabase,
+  DEFAULT_TEST_TENANT_ID,
+  SECOND_TEST_TENANT_ID,
+} from "../helpers/db";
+import { seedPage } from "../helpers/ocr-fixtures";
 import { createTestEntity } from "../helpers/entities";
 import { createTestPlace } from "../helpers/places";
 import { createTestRepository } from "../helpers/repositories";
@@ -38,7 +53,9 @@ import {
   loadLinkedDescriptionCards,
   loadLinkedDescriptionCard,
   loadJunctionOcrText,
+  OCR_FULL_CAP,
 } from "../../app/lib/authority-linked-context.server";
+import { transcriptSummary } from "../../app/lib/ocr/search.server";
 
 // ---------------------------------------------------------------------------
 // Pure helper — extractScopeSnippet
@@ -282,6 +299,7 @@ describe("loadLinkedDescriptionCards", () => {
       recordType: "entity",
       ownerId: entity.id,
       displayName: entity.displayName,
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
 
     expect(result.totalCards).toBe(1);
@@ -336,12 +354,236 @@ describe("loadLinkedDescriptionCards", () => {
       recordType: "place",
       ownerId: place.id,
       displayName: place.displayName,
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
 
     expect(result.totalCards).toBe(1);
     const card = result.cards[0];
     expect(card.nameAsRecorded).toBeNull();
     expect(card.snippet?.match).toBe("Cartagena");
+  });
+
+  it("finds an OCR anchor on a page beyond the assembled-text cap", async () => {
+    await createTestRepository({ id: "repo-far", code: "REPO-FAR", name: "Repo Far" });
+    const entity = await createTestEntity({
+      id: "ent-far",
+      entityCode: "ne-far001",
+      displayName: "Mateo Quispe",
+    });
+    await createTestDescription({
+      id: "desc-far",
+      repositoryId: "repo-far",
+      title: "Gaceta",
+      referenceCode: "co-far-001",
+      scopeContent: "Volumen de la gaceta sin el nombre buscado.",
+    });
+    await db().insert(schema.descriptionEntities).values({
+      id: "de-far",
+      descriptionId: "desc-far",
+      entityId: entity.id,
+      role: "mentioned",
+      nameAsRecorded: "Mateo Quispe",
+      sequence: 0,
+      createdAt: Date.now(),
+    });
+    for (let seq = 1; seq <= 3; seq++) {
+      await seedPage({ descriptionId: "desc-far", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: seq, text: "x ".repeat(40_000) });
+    }
+    expect(3 * 80_000).toBeGreaterThan(OCR_FULL_CAP);
+    await seedPage({
+      descriptionId: "desc-far",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      pageSeq: 4,
+      text: "f.200r compareció Mateo Quispe, indio tributario, ante el corregidor.",
+    });
+
+    const result = await loadLinkedDescriptionCards(db(), {
+      recordType: "entity",
+      ownerId: entity.id,
+      displayName: entity.displayName,
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+    const snippet = result.cards[0].snippet;
+    expect(snippet?.source).toBe("ocr");
+    expect(snippet?.match).toBe("Mateo Quispe");
+    const summary = await transcriptSummary(db(), DEFAULT_TEST_TENANT_ID, "desc-far");
+    expect(summary.totalChars).toBeGreaterThan(OCR_FULL_CAP);
+    expect(snippet?.ocrLength).toBe(summary.totalChars);
+  });
+
+  it("falls back to the capped text when the index does not find the anchor", async () => {
+    await createTestRepository({ id: "repo-sub", code: "REPO-SUB", name: "Repo Sub" });
+    const place = await createTestPlace({
+      id: "place-sub",
+      placeCode: "nl-sub001",
+      displayName: "Alba",
+    });
+    await createTestDescription({
+      id: "desc-sub",
+      repositoryId: "repo-sub",
+      title: "Pleito",
+      referenceCode: "co-sub-001",
+      scopeContent: "",
+    });
+    await db().insert(schema.descriptionPlaces).values({
+      id: "dp-sub",
+      descriptionId: "desc-sub",
+      placeId: place.id,
+      role: "mentioned",
+      createdAt: Date.now(),
+    });
+    const text = "f.3v vecino de la villa, Juan de Albarracin otorgó poder.";
+    await seedPage({ descriptionId: "desc-sub", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: 1, text });
+
+    const result = await loadLinkedDescriptionCards(db(), {
+      recordType: "place",
+      ownerId: place.id,
+      displayName: place.displayName,
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+    const snippet = result.cards[0].snippet;
+    expect(snippet?.source).toBe("ocr");
+    expect(snippet?.match).toBe("Alba");
+    expect(snippet?.ocrLength).toBe(text.length);
+  });
+
+  it("falls back to the capped text when the anchor page lacks the substring match", async () => {
+    await createTestRepository({ id: "repo-longs", code: "REPO-LONGS", name: "Repo Long S" });
+    const entity = await createTestEntity({
+      id: "ent-longs",
+      entityCode: "ne-longs01",
+      displayName: "Mateo Quispe",
+    });
+    await createTestDescription({
+      id: "desc-longs",
+      repositoryId: "repo-longs",
+      title: "Expediente",
+      referenceCode: "co-longs-001",
+      scopeContent: "",
+    });
+    await db().insert(schema.descriptionEntities).values({
+      id: "de-longs",
+      descriptionId: "desc-longs",
+      entityId: entity.id,
+      role: "mentioned",
+      nameAsRecorded: "Mateo Quispe",
+      sequence: 0,
+      createdAt: Date.now(),
+    });
+    // Page 1 is the index's anchor page: unicode61 folds the long s, so
+    // the phrase matches "Quiſpe", but the card's substring match does
+    // not. Page 2 holds the name inside a longer word, which the
+    // substring match finds and the index does not.
+    const page1 = "f.1r compareció Mateo Quiſpe ante el corregidor.";
+    const page2 = "f.2v firma de Mateo Quispes, escribano.";
+    await seedPage({ descriptionId: "desc-longs", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: 1, text: page1 });
+    await seedPage({ descriptionId: "desc-longs", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: 2, text: page2 });
+
+    const result = await loadLinkedDescriptionCards(db(), {
+      recordType: "entity",
+      ownerId: entity.id,
+      displayName: entity.displayName,
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+    const snippet = result.cards[0].snippet;
+    expect(snippet?.source).toBe("ocr");
+    expect(snippet?.match).toBe("Mateo Quispe");
+    const summary = await transcriptSummary(db(), DEFAULT_TEST_TENANT_ID, "desc-longs");
+    expect(snippet?.ocrLength).toBe(summary.totalChars);
+  });
+
+  it("shows each tenant only its own linked descriptions, with its own OCR", async () => {
+    await createTestRepository({ id: "repo-t1", code: "REPO-T1", name: "Repo T1" });
+    await createTestRepository({
+      id: "repo-t2",
+      code: "REPO-T2",
+      name: "Repo T2",
+      tenantId: SECOND_TEST_TENANT_ID,
+    });
+    const entity = await createTestEntity({
+      id: "ent-fed",
+      entityCode: "ne-fed001",
+      displayName: "Rosa Mamani",
+    });
+    await createTestDescription({
+      id: "desc-t1",
+      repositoryId: "repo-t1",
+      title: "Uno",
+      referenceCode: "co-t1-001",
+      scopeContent: "Sin el nombre.",
+    });
+    await createTestDescription({
+      id: "desc-t2",
+      tenantId: SECOND_TEST_TENANT_ID,
+      repositoryId: "repo-t2",
+      title: "Dos",
+      referenceCode: "co-t2-001",
+      scopeContent: "Tampoco aquí.",
+    });
+    for (const [i, descriptionId] of ["desc-t1", "desc-t2"].entries()) {
+      await db().insert(schema.descriptionEntities).values({
+        id: `de-fed-${i}`,
+        descriptionId,
+        entityId: entity.id,
+        role: "mentioned",
+        nameAsRecorded: "Rosa Mamani",
+        sequence: i,
+        createdAt: Date.now(),
+      });
+    }
+    const t1 = "declaró Rosa Mamani, viuda, vecina del pueblo.";
+    const t2 = "f.9r y otro tanto dijo Rosa Mamani ante el alcalde ordinario de la ciudad.";
+    await seedPage({ descriptionId: "desc-t1", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: 1, text: t1 });
+    await seedPage({ descriptionId: "desc-t2", tenantId: SECOND_TEST_TENANT_ID, pageSeq: 1, text: t2 });
+
+    for (const [tenantId, id, text] of [
+      [DEFAULT_TEST_TENANT_ID, "desc-t1", t1],
+      [SECOND_TEST_TENANT_ID, "desc-t2", t2],
+    ] as const) {
+      const result = await loadLinkedDescriptionCards(db(), {
+        recordType: "entity",
+        ownerId: entity.id,
+        displayName: entity.displayName,
+        tenantId,
+      });
+      // The other tenant's description, its metadata and its OCR never
+      // reach this tenant's cards or totals.
+      expect(result.cards.map((c) => c.descriptionId)).toEqual([id]);
+      expect(result.totalCards).toBe(1);
+      expect(result.totalLinks).toBe(1);
+      const snippet = result.cards[0].snippet;
+      expect(snippet?.source).toBe("ocr");
+      expect(snippet?.match).toBe("Rosa Mamani");
+      expect(snippet?.ocrLength).toBe(text.length);
+    }
+
+    // A card or a full transcript asked for by the other tenant's link
+    // id resolves to null.
+    expect(
+      await loadLinkedDescriptionCard(db(), {
+        recordType: "entity",
+        ownerId: entity.id,
+        displayName: entity.displayName,
+        junctionId: "de-fed-1",
+        tenantId: DEFAULT_TEST_TENANT_ID,
+      }),
+    ).toBeNull();
+    expect(
+      await loadJunctionOcrText(db(), {
+        recordType: "entity",
+        ownerId: entity.id,
+        junctionId: "de-fed-1",
+        tenantId: DEFAULT_TEST_TENANT_ID,
+      }),
+    ).toBeNull();
+    expect(
+      await loadJunctionOcrText(db(), {
+        recordType: "entity",
+        ownerId: entity.id,
+        junctionId: "de-fed-1",
+        tenantId: SECOND_TEST_TENANT_ID,
+      }),
+    ).toBe(t2);
   });
 
   it("caps the visible cards and reports honest totals", async () => {
@@ -373,6 +615,7 @@ describe("loadLinkedDescriptionCards", () => {
       ownerId: entity.id,
       displayName: entity.displayName,
       cap: 2,
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
 
     expect(result.totalCards).toBe(3);
@@ -416,13 +659,12 @@ describe("loadLinkedDescriptionCard (worklist unfold)", () => {
       // Empty scope note: the name lives only in the transcript.
       scopeContent: "",
     });
-    await db()
-      .update(schema.descriptions)
-      .set({
-        ocrText:
-          "f.1r En la ciudad, el testigo Huanuco Person declaró ante el escribano lo que le constaba del pleito.",
-      })
-      .where(eq(schema.descriptions.id, "desc-u"));
+    await seedPage({
+      descriptionId: "desc-u",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      pageSeq: 1,
+      text: "f.1r En la ciudad, el testigo Huanuco Person declaró ante el escribano lo que le constaba del pleito.",
+    });
     const junctionId = "de-u1";
     await db().insert(schema.descriptionEntities).values({
       id: junctionId,
@@ -447,6 +689,7 @@ describe("loadLinkedDescriptionCard (worklist unfold)", () => {
       ownerId: person.id,
       displayName: person.displayName,
       junctionId,
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
     expect(card).not.toBeNull();
     expect(card!.snippet?.source).toBe("ocr");
@@ -499,6 +742,7 @@ describe("loadLinkedDescriptionCard (worklist unfold)", () => {
       ownerId: cur.id,
       displayName: cur.displayName,
       junctionId: jid,
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
     const flagged = card!.places.filter((p) => p.isCurrent);
     expect(flagged).toHaveLength(1);
@@ -524,6 +768,7 @@ describe("loadLinkedDescriptionCard (worklist unfold)", () => {
       ownerId: mine.id,
       displayName: mine.displayName,
       junctionId: "dp-foreign",
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
     expect(card).toBeNull();
   });
@@ -543,10 +788,7 @@ describe("loadJunctionOcrText (Show all)", () => {
     const other = await createTestEntity({ id: "ent-o2", entityCode: "ne-o2", displayName: "Stranger" });
     await createTestDescription({ id: "desc-o", repositoryId: "repo-o", title: "T", referenceCode: "co-o-1" });
     const transcript = "A".repeat(4000);
-    await db()
-      .update(schema.descriptions)
-      .set({ ocrText: transcript })
-      .where(eq(schema.descriptions.id, "desc-o"));
+    await seedPage({ descriptionId: "desc-o", tenantId: DEFAULT_TEST_TENANT_ID, pageSeq: 1, text: transcript });
     await db().insert(schema.descriptionEntities).values({
       id: "de-o1",
       descriptionId: "desc-o",
@@ -560,6 +802,7 @@ describe("loadJunctionOcrText (Show all)", () => {
       recordType: "entity",
       ownerId: mine.id,
       junctionId: "de-o1",
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
     expect(owned).toBe(transcript);
 
@@ -568,7 +811,10 @@ describe("loadJunctionOcrText (Show all)", () => {
       recordType: "entity",
       ownerId: other.id,
       junctionId: "de-o1",
+      tenantId: DEFAULT_TEST_TENANT_ID,
     });
     expect(foreign).toBeNull();
   });
 });
+
+// Version: v0.8.0

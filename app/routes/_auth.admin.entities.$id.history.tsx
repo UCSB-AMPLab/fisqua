@@ -1,23 +1,24 @@
 /**
  * Entities Admin — Operation history (read-only)
  *
- * The per-record ledger history page (spec §4): every
- * `authority_operations` row touching this entity as source or
- * target, newest first, with direction-aware human titles ("Merged
- * into X" vs "Merged from X"), the acting user, the required reason
- * as a quoted line, and compact link-count summaries. The status
- * band's "Open ledger entry" link lands here. Strictly read-only —
- * no action is exported.
+ * This route is the per-record ledger history page (spec §4): every
+ * `authority_operations` row touching this entity as source or target,
+ * newest first, with direction-aware human titles ("Merged into X" vs
+ * "Merged from X"), the acting user, the required reason as a quoted
+ * line, and compact link-count summaries. The status band's "Open
+ * ledger entry" link lands here. Strictly read-only — no action is
+ * exported.
  *
  * Gated on the `authorities` capability; queries are
  * federation-scoped like every authority read.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "../lib/use-formatters";
 import {
   OperationHistory,
   type HistoryEntry,
@@ -26,7 +27,7 @@ import type { Route } from "./+types/_auth.admin.entities.$id.history";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray } = await import("drizzle-orm");
   const { entities } = await import("~/db/schema");
@@ -35,7 +36,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -90,6 +91,7 @@ export default function EntityHistoryPage({
   loaderData,
 }: Route.ComponentProps) {
   const { t } = useTranslation("authorities");
+  const { formatIsoDateTime } = useFormatters();
   const { entity, history, historyTotal, counterpartNames } = loaderData;
 
   const entries: HistoryEntry[] = history.map((h) => {
@@ -144,7 +146,7 @@ export default function EntityHistoryPage({
       operation: h.operation,
       title,
       counterpartHref,
-      date: new Date(h.createdAt).toISOString().slice(0, 10),
+      date: formatIsoDateTime(h.createdAt).slice(0, 10),
       user: h.userName || t("bandUnknownUser"),
       reason: h.reason,
       detailParts,
@@ -163,3 +165,5 @@ export default function EntityHistoryPage({
     />
   );
 }
+
+/* @version v0.8.0 */

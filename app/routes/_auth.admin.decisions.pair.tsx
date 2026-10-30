@@ -24,8 +24,8 @@
  * created on first DURABLE contact (a comment or a ruling), never by a
  * read.
  *
- * Permissions are the surface's: the admin guard and the `authorities`
- * capability here, the record-visibility scope on the reads, and the
+ * Permissions are the surface's: the authorities area guard and the
+ * `authorities` capability here, the record-visibility scope on the reads, and the
  * pair mutation gate inside `rulePairKeepBoth` / `rulePairMerge` /
  * `getOrCreatePairDecision`. This route owns no ruling logic of its own.
  *
@@ -37,7 +37,7 @@
  * pair's decision row — there is nothing to create when the thread is
  * already there.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useEffect, useState } from "react";
@@ -46,6 +46,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { ChevronLeft, Merge } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { requestTimeZone } from "~/lib/format";
 import {
   DecisionThread,
   type ThreadComment,
@@ -97,7 +98,7 @@ function queuePath(kind: RecordKind): string {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, isNull, or, sql } = await import("drizzle-orm");
   const {
@@ -105,6 +106,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     places,
     descriptionEntities,
     descriptionPlaces,
+    descriptions,
     pendingDecisions,
   } = await import("~/db/schema");
   const { authorityScope } = await import("~/lib/authority-ownership.server");
@@ -113,7 +115,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -242,7 +244,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ? ((await listDecisionComments(db, [decision.id]))[decision.id] ?? [])
     : [];
 
-  // The load each record carries — the consequence of merging, and the
+  // The load each record carries in this tenant — the consequence of
+  // merging (a merge ruled here moves only this tenant's links), and the
   // input to the direction note and the dialog's preselection.
   const counts = new Map<string, number>();
   if (kind === "places") {
@@ -252,7 +255,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`,
       })
       .from(descriptionPlaces)
-      .where(inArray(descriptionPlaces.placeId, [idA, idB]))
+      .innerJoin(descriptions, eq(descriptionPlaces.descriptionId, descriptions.id))
+      .where(
+        and(
+          inArray(descriptionPlaces.placeId, [idA, idB]),
+          eq(descriptions.tenantId, tenant.id),
+        ),
+      )
       .groupBy(descriptionPlaces.placeId)
       .all();
     for (const r of rows) counts.set(r.id, r.count);
@@ -263,7 +272,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`,
       })
       .from(descriptionEntities)
-      .where(inArray(descriptionEntities.entityId, [idA, idB]))
+      .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
+      .where(
+        and(
+          inArray(descriptionEntities.entityId, [idA, idB]),
+          eq(descriptions.tenantId, tenant.id),
+        ),
+      )
       .groupBy(descriptionEntities.entityId)
       .all();
     for (const r of rows) counts.set(r.id, r.count);
@@ -289,7 +304,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     left: view(a),
     right: view(b),
     comments: comments as ThreadComment[],
-    viewer: { userId: user.id, isAdmin: user.isAdmin },
+    viewer: { userId: user.id, isAdmin: canAdministerArea(user, "authorities") },
   };
 }
 
@@ -298,7 +313,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, inArray } = await import("drizzle-orm");
   const { entities, places } = await import("~/db/schema");
@@ -308,7 +323,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { rulePairMerge } = await import("~/lib/pair-merge.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -429,6 +444,8 @@ export async function action({ request, context }: Route.ActionArgs) {
         survivor.id,
         loser.id,
         reason || null,
+        Date.now(),
+        requestTimeZone(request),
       );
     } else {
       return { ok: false as const, code: "generic" as const };
@@ -791,3 +808,5 @@ export default function DecisionPairPage({
     </div>
   );
 }
+
+/* @version v0.8.0 */

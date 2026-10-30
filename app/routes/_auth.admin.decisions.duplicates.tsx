@@ -1,14 +1,14 @@
 /**
  * Pending Decisions — Possible duplicates tab
  *
- * The two authority duplicates queues — entities and places — as one
- * tab of the Pending decisions surface, switched by `?type=` (entities
- * by default) and filtered by `?status=` (open by default). Candidates
- * are still computed deterministically on every request by
- * `computeDuplicateCandidates` over the federation's active records;
- * the scan library is untouched. What changed is the unit of work: the
- * old two-column worklist row is now a `DuplicatePairCard`, the card
- * language the rest of this surface already speaks.
+ * This route shows the two authority duplicates queues — entities and
+ * places — as one tab of the Pending decisions surface, switched by
+ * `?type=` (entities by default) and filtered by `?status=` (open by
+ * default). Candidates are still computed deterministically on every
+ * request by `computeDuplicateCandidates` over the federation's active
+ * records; the scan library is untouched. What changed is the unit of
+ * work: the old two-column worklist row is now a `DuplicatePairCard`,
+ * the card language the rest of this surface already speaks.
  *
  * A card is a question, not a form. The scan finds a pair but does not
  * recommend on identity, so the ask stays saffron and open; the
@@ -48,7 +48,7 @@
  * records, steward-gated otherwise, 404 when either belongs to another
  * tenant.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -57,6 +57,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { CheckCheck } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { requestTimeZone } from "~/lib/format";
 import { SaveFeedbackBanner } from "~/components/admin/save-feedback";
 import {
   DecisionThread,
@@ -185,7 +186,7 @@ function firstProvenanceLine(sources: string | null | undefined): string | null 
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, desc, eq, inArray, isNull, or, sql } = await import(
     "drizzle-orm"
@@ -195,6 +196,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     places,
     descriptionEntities,
     descriptionPlaces,
+    descriptions,
     pendingDecisions,
   } = await import("~/db/schema");
   const { computeDuplicateCandidates, getSeparatePairs } = await import(
@@ -205,7 +207,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -366,7 +368,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
   const visible = allPairs.slice(0, MAX_PAIRS);
 
-  // Link counts for the records on the visible cards only.
+  // Link counts for the records on the visible cards only, over this
+  // tenant's descriptions: a merge ruled here moves only those.
   const visibleIds = Array.from(
     new Set(visible.flatMap((p) => [p.a.id, p.b.id])),
   );
@@ -379,7 +382,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           count: sql<number>`count(*)`,
         })
         .from(descriptionPlaces)
-        .where(inArray(descriptionPlaces.placeId, visibleIds))
+        .innerJoin(descriptions, eq(descriptionPlaces.descriptionId, descriptions.id))
+        .where(
+          and(
+            inArray(descriptionPlaces.placeId, visibleIds),
+            eq(descriptions.tenantId, tenant.id),
+          ),
+        )
         .groupBy(descriptionPlaces.placeId)
         .all();
       for (const c of counts) linkCounts.set(c.placeId, c.count);
@@ -390,7 +399,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           count: sql<number>`count(*)`,
         })
         .from(descriptionEntities)
-        .where(inArray(descriptionEntities.entityId, visibleIds))
+        .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
+        .where(
+          and(
+            inArray(descriptionEntities.entityId, visibleIds),
+            eq(descriptions.tenantId, tenant.id),
+          ),
+        )
         .groupBy(descriptionEntities.entityId)
         .all();
       for (const c of counts) linkCounts.set(c.entityId, c.count);
@@ -467,7 +482,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, inArray, isNull } = await import("drizzle-orm");
   const { entities, places } = await import("~/db/schema");
@@ -475,7 +490,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { rulePairMerge } = await import("~/lib/pair-merge.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -534,7 +549,17 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   try {
     if (intent === "merge") {
-      await rulePairMerge(db, user, tenant, recordType, first, second, reason);
+      await rulePairMerge(
+        db,
+        user,
+        tenant,
+        recordType,
+        first,
+        second,
+        reason,
+        Date.now(),
+        requestTimeZone(request),
+      );
     } else {
       await rulePairKeepBoth(
         db,
@@ -970,3 +995,5 @@ function RuledPairList({
     </>
   );
 }
+
+/* @version v0.8.0 */

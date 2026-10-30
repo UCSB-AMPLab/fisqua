@@ -1,18 +1,18 @@
 /**
  * Entities Admin — record detail (two-column redesign)
  *
- * The authority record page for a single entity (spec §5 redesign,
- * mockup 2026-07-11): a ~420px left column carries the record itself —
- * Identity, Description, Control, and Linked open data
+ * This route is the authority record page for a single entity (spec §5
+ * redesign, mockup 2026-07-11): a ~420px left column carries the record
+ * itself — Identity, Description, Control, and Linked open data
  * (Wikidata/VIAF/DBE; no map) — while the right column serves the
  * linked descriptions as a WORKLIST: server-side search over
  * title/reference code (`?dq=`), role pills with real GROUP BY counts
  * (spec §11's per-record role filter), sort by date/title/reference
  * code, and honest offset pagination with a user-selectable page size
- * (25/50/100). The loader ships ONE filtered page, never the whole
- * link set. Narrow screens stack record-first. Edit swaps the left
- * column to the existing inline form in place (autosave drafts +
- * optimistic lock untouched) without remounting the right column.
+ * (25/50/100). The loader ships ONE filtered page, never the whole link
+ * set. Narrow screens stack record-first. Edit swaps the left column to
+ * the existing inline form in place (autosave drafts + optimistic lock
+ * untouched) without remounting the right column.
  *
  * Merge and split live on their own full-page workbench routes
  * (`entities.$id.merge`, `entities.$id.split`) — this action handles
@@ -35,7 +35,7 @@
  * only handlists that hold entities, and it reports the resulting count
  * rather than a bare "Added".
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect } from "react";
@@ -43,6 +43,7 @@ import { Form, useActionData, redirect } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "~/lib/use-formatters";
 import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { StatusBand } from "~/components/admin/status-band";
 import { NameVariantInput } from "~/components/forms/name-variant-input";
@@ -76,7 +77,7 @@ import type { Route } from "./+types/_auth.admin.entities.$id";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
   const { entities, descriptionEntities, descriptions, vocabularyTerms, repositories } = await import(
@@ -84,7 +85,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -121,7 +122,11 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         recordType: "entity",
         ownerId: id,
         junctionId: cardJunctionId,
+        tenantId: tenant.id,
       });
+      // A link that is not this record's, or whose description is not
+      // this tenant's, has no transcript to show.
+      if (ocrFull === null) throw new Response("Not found", { status: 404 });
       return Response.json({ ocrFull });
     }
     const { loadLinkedDescriptionCard } = await import(
@@ -132,6 +137,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       ownerId: id,
       displayName: entity.displayName,
       junctionId: cardJunctionId,
+      tenantId: tenant.id,
     });
     return Response.json({ card });
   }
@@ -159,11 +165,13 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     }
   }
 
-  // Count linked descriptions
+  // Count this tenant's linked descriptions. The delete action still
+  // counts every tenant's links before it deletes.
   const [{ count: descLinkCount }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(descriptionEntities)
-    .where(eq(descriptionEntities.entityId, id))
+    .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
+    .where(and(eq(descriptionEntities.entityId, id), eq(descriptions.tenantId, tenant.id)))
     .all();
 
   // ---- Linked-descriptions worklist (spec §5 redesign; round-3 filters) ----
@@ -186,7 +194,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       descriptions,
       eq(descriptionEntities.descriptionId, descriptions.id),
     )
-    .where(eq(descriptionEntities.entityId, id))
+    .where(and(eq(descriptionEntities.entityId, id), eq(descriptions.tenantId, tenant.id)))
     .groupBy(descriptions.repositoryId)
     .all();
   const recordRepoIds = new Set(recordRepoRows.map((r) => r.repositoryId));
@@ -195,7 +203,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
   // Search predicate over the joined description (title + reference
   // code), shared by the counts, the filtered total, and the page.
-  const dqConditions: any[] = [eq(descriptionEntities.entityId, id)];
+  // A shared record can be linked from several tenants' descriptions;
+  // every list, count and card here reads only the request tenant's.
+  const dqConditions: any[] = [
+    eq(descriptionEntities.entityId, id),
+    eq(descriptions.tenantId, tenant.id),
+  ];
   if (wl.dq) {
     const pat = `%${wl.dq}%`;
     dqConditions.push(
@@ -311,7 +324,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // band actor (who merged it, when). Superseded status is derived from
   // the ledger — no schema column.
   let mergeTarget: { id: string; displayName: string } | null = null;
-  let mergeBand: { date: string; user: string } | null = null;
+  let mergeBand: { createdAt: number; user: string } | null = null;
   if (entity.mergedInto) {
     const target = await db
       .select({ id: entities.id, displayName: entities.displayName })
@@ -323,7 +336,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     if (target) {
       mergeTarget = target;
     }
-    const { getOperationActor, bandDate } = await import(
+    const { getOperationActor } = await import(
       "~/lib/authority-workbench.server"
     );
     const actor = await getOperationActor(db, {
@@ -333,7 +346,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       targetId: entity.mergedInto,
     });
     if (actor) {
-      mergeBand = { date: bandDate(actor.createdAt), user: actor.userName ?? "" };
+      mergeBand = { createdAt: actor.createdAt, user: actor.userName ?? "" };
     }
   }
 
@@ -342,17 +355,17 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // record a split created. The merged band takes precedence when the
   // record was later merged away.
   let splitIntoBand: {
-    date: string;
+    createdAt: number;
     user: string;
     targets: { id: string; displayName: string }[];
   } | null = null;
   let splitFromBand: {
-    date: string;
+    createdAt: number;
     user: string;
     parent: { id: string; displayName: string };
   } | null = null;
   if (!entity.mergedInto) {
-    const { getOperationActor, getSplitTargets, bandDate } = await import(
+    const { getOperationActor, getSplitTargets } = await import(
       "~/lib/authority-workbench.server"
     );
     const { inArray } = await import("drizzle-orm");
@@ -376,7 +389,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       });
       if (targets.length > 0 && actor) {
         splitIntoBand = {
-          date: bandDate(actor.createdAt),
+          createdAt: actor.createdAt,
           user: actor.userName ?? "",
           targets,
         };
@@ -401,7 +414,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         .get();
       if (parent) {
         splitFromBand = {
-          date: bandDate(fromActor.createdAt),
+          createdAt: fromActor.createdAt,
           user: fromActor.userName ?? "",
           parent,
         };
@@ -476,9 +489,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { eq, and, sql } = await import("drizzle-orm");
+  const { eq, and, inArray, sql } = await import("drizzle-orm");
   const { entities, descriptionEntities, descriptions, vocabularyTerms } = await import(
     "~/db/schema"
   );
@@ -488,7 +501,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -508,6 +521,34 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
+
+  // The description-link intents act on this page's entity, which must be
+  // one this tenant can see, and on links whose description is the
+  // request tenant's. A link row named by id is reached only through
+  // both, so another tenant's links can be neither changed nor removed.
+  const notFound = () => new Response("Not found", { status: 404 });
+  const tenantDescriptions = db
+    .select({ id: descriptions.id })
+    .from(descriptions)
+    .where(eq(descriptions.tenantId, tenant.id));
+  const linkHere = (linkId: string) =>
+    and(
+      eq(descriptionEntities.id, linkId),
+      eq(descriptionEntities.entityId, id),
+      inArray(descriptionEntities.descriptionId, tenantDescriptions),
+    );
+  if (
+    intent === "link_description" ||
+    intent === "edit_description_link" ||
+    intent === "unlink_description"
+  ) {
+    const visible = await db
+      .select({ id: entities.id })
+      .from(entities)
+      .where(and(eq(entities.id, id), authorityScope(entities, tenant.federationId, tenant.id)))
+      .get();
+    if (!visible) throw notFound();
+  }
 
   switch (intent) {
     case "autosave": {
@@ -877,6 +918,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         return { ok: false as const, error: "generic" };
       }
       const narrowedRole = role as (typeof ENTITY_ROLES)[number];
+      const description = await db
+        .select({ id: descriptions.id })
+        .from(descriptions)
+        .where(and(eq(descriptions.id, descriptionId), eq(descriptions.tenantId, tenant.id)))
+        .get();
+      if (!description) throw notFound();
       try {
         await db.insert(descriptionEntities).values({
           id: crypto.randomUUID(),
@@ -912,10 +959,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const func = (formData.get("function") as string)?.trim() || null;
       const nameAsRecorded =
         (formData.get("nameAsRecorded") as string)?.trim() || null;
+      const link = await db
+        .select({ id: descriptionEntities.id })
+        .from(descriptionEntities)
+        .where(linkHere(linkId))
+        .get();
+      if (!link) throw notFound();
       await db
         .update(descriptionEntities)
         .set({ role: narrowedRole, roleNote, sequence, honorific, function: func, nameAsRecorded })
-        .where(eq(descriptionEntities.id, linkId));
+        .where(linkHere(linkId));
       return { ok: true as const };
     }
 
@@ -924,9 +977,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!linkId) {
         return { ok: false as const, error: "generic" };
       }
-      await db
-        .delete(descriptionEntities)
-        .where(eq(descriptionEntities.id, linkId));
+      const link = await db
+        .select({ id: descriptionEntities.id })
+        .from(descriptionEntities)
+        .where(linkHere(linkId))
+        .get();
+      if (!link) throw notFound();
+      await db.delete(descriptionEntities).where(linkHere(linkId));
       return { ok: true as const };
     }
 
@@ -942,6 +999,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 export default function EntityDetailPage({
   loaderData,
 }: Route.ComponentProps) {
+  // The loader sends the band's raw timestamp so its day is formatted
+  // in the same zone as every other date on the page.
+  const { formatIsoDateTime } = useFormatters();
+  const bandDay = (createdAt: number) => formatIsoDateTime(createdAt).slice(0, 10);
   const {
     entity,
     holdingHandlists,
@@ -1073,7 +1134,7 @@ export default function EntityDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="merged"
-            date={mergeBand?.date ?? ""}
+            date={mergeBand ? bandDay(mergeBand.createdAt) : ""}
             user={mergeBand?.user || ta("bandUnknownUser")}
             survivor={{
               id: mergeTarget.id,
@@ -1091,7 +1152,7 @@ export default function EntityDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="split"
-            date={splitIntoBand.date}
+            date={bandDay(splitIntoBand.createdAt)}
             user={splitIntoBand.user || ta("bandUnknownUser")}
             records={splitIntoBand.targets.map((r) => ({
               id: r.id,
@@ -1107,7 +1168,7 @@ export default function EntityDetailPage({
         <div className="mt-4 overflow-hidden rounded-md">
           <StatusBand
             variant="splitFrom"
-            date={splitFromBand.date}
+            date={bandDay(splitFromBand.createdAt)}
             user={splitFromBand.user || ta("bandUnknownUser")}
             parent={{
               id: splitFromBand.parent.id,
@@ -1671,3 +1732,5 @@ function EditMode({
     </Form>
   );
 }
+
+/* @version v0.8.0 */

@@ -1,11 +1,12 @@
 /**
  * Places Admin — combined list + map surface
  *
- * ONE surface for the place authority records (spec §5 "Combined places
- * surface", mockup 2026-07-11): a server-rendered, paginated list pane
- * on the left and the shipped MapLibre explorer on the right, driven by
- * one control row. Places are modelled after the Linked Places Format
- * with coordinates and external authority links (Getty TGN, WHG, HGIS).
+ * This route is ONE surface for the place authority records (spec §5
+ * "Combined places surface", mockup 2026-07-11): a server-rendered,
+ * paginated list pane on the left and the shipped MapLibre explorer on
+ * the right, driven by one control row. Places are modelled after the
+ * Linked Places Format with coordinates and external authority links
+ * (Getty TGN, WHG, HGIS).
  *
  * The `view=map` table|map toggle is retired: an incoming `?view=map`
  * normalises to the plain route with a redirect (old worklist links keep
@@ -54,7 +55,7 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -129,15 +130,15 @@ interface PagePoint extends MapPoint {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, or, gt, asc, isNull, sql } = await import(
     "drizzle-orm"
   );
-  const { places, descriptionPlaces } = await import("~/db/schema");
+  const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -336,8 +337,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     return conditions;
   }
 
-  // Link counts for the whole federation in one grouped query (no
-  // per-row N+1). Reused for both the list rows and the map points.
+  // Link counts for the federation's places, over this tenant's
+  // descriptions, in one grouped query (no per-row N+1). Reused for both
+  // the list rows and the map points.
   const countRows = await db
     .select({
       placeId: descriptionPlaces.placeId,
@@ -345,7 +347,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
     .from(descriptionPlaces)
     .innerJoin(places, eq(descriptionPlaces.placeId, places.id))
-    .where(authorityScope(places, tenant.federationId, tenant.id))
+    .innerJoin(descriptions, eq(descriptionPlaces.descriptionId, descriptions.id))
+    .where(
+      and(
+        authorityScope(places, tenant.federationId, tenant.id),
+        eq(descriptions.tenantId, tenant.id),
+      ),
+    )
     .groupBy(descriptionPlaces.placeId)
     .all();
   const countMap = new Map(countRows.map((r) => [r.placeId, r.count]));
