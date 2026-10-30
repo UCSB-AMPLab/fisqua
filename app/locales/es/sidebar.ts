@@ -7,11 +7,12 @@
  * Entidades, Lugares, Repositorios, Publicar, Promover,
  * Catalogación colaborativa).
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   search: "Buscar",
   home: "Inicio",
+  records: "Registros",
   handlists: "Listas de trabajo",
   my_projects: "Mis proyectos",
   descriptions: "Descripciones",
@@ -24,7 +25,7 @@ export default {
   manage_projects: "Administrar proyectos",
   all_projects: "Todos los proyectos",
   pipeline: "Pipeline",
-  manage_users: "Administrar usuarios",
+  manage_users: "Equipo",
   records_management: "Gestión documental",
   authorities: "Autoridades",
   imports: "Importaciones",
@@ -33,8 +34,13 @@ export default {
   possible_duplicates: "Posibles duplicados",
   // ES value pending — drafted separately with the decisions namespace.
   pending_decisions: "Decisiones pendientes",
+  digitization: "Digitalización",
+  capture_volumes: "Volúmenes",
+  capture_qc: "Revisión de capturas",
+  retakes: "Capturas por repetir",
+  scanner: "Escáner",
   my_settings: "Mi configuración",
-  system_users: "Usuarios del sistema",
+  users: "Usuarios",
   no_users: "No se encontraron usuarios.",
   col_name: "Nombre",
   col_email: "Correo",
@@ -53,4 +59,8 @@ export default {
   vocabularies: "Vocabularios",
   collapse: "Contraer menú",
   expand: "Expandir menú",
+  section_show: "Mostrar la sección «{{section}}»",
+  section_hide: "Ocultar la sección «{{section}}»",
 } as const;
+
+// @version v0.8.0

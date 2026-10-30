@@ -13,7 +13,7 @@
  * argument from `context.get(tenantContext).id`, and newly-invited
  * users inherit the tenant of the inviting workspace.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { eq, and, isNull } from "drizzle-orm";
@@ -23,6 +23,7 @@ import {
   projects,
   projectMembers,
   projectInvites,
+  DEFAULT_DIGEST_FREQUENCY,
 } from "../db/schema";
 import {
   sendNewUserInviteEmail,
@@ -145,6 +146,7 @@ export async function createInvite(
     id: newUserId,
     email: normalizedEmail,
     isAdmin: false,
+    digestFrequency: DEFAULT_DIGEST_FREQUENCY,
     createdAt: now,
     updatedAt: now,
   });

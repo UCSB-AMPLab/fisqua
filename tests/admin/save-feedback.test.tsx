@@ -16,14 +16,13 @@
  *      never may, because a failed save the archivist did not see is
  *      the original bug inverted.
  *
- *   3. Two rendered surfaces — `/configuracion` and the cataloguing
- *      users page — asserted for a success confirmation and for a
- *      persistent error. Rendering strategy mirrors
+ *   3. A rendered surface — `/configuracion` — asserted for a success
+ *      confirmation and for a persistent error. Rendering strategy mirrors
  *      `tests/imports/run-detail-step-label.test.tsx`:
  *      `renderToStaticMarkup` with an isolated `i18next` instance
  *      loaded with the real locale bundles, wrapped in
  *      `createRoutesStub` for the `<Form>` / `useNavigation` context
- *      the routes need. Both routes read `actionData` from
+ *      the route needs. The route reads `actionData` from
  *      `Route.ComponentProps` rather than `useActionData` precisely so
  *      the feedback states are reachable without a live submission.
  *
@@ -32,7 +31,7 @@
  *      just-arrived state — which is exactly the state under test. The
  *      dismissal timer that the effect arms is pinned at layer 2.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -52,7 +51,6 @@ import esCommon from "../../app/locales/es/common";
 import esSettings from "../../app/locales/es/settings";
 import esAdmin from "../../app/locales/es/admin";
 import ConfiguracionRoute from "../../app/routes/_auth.configuracion";
-import CataloguingUsersRoute from "../../app/routes/_auth.admin.cataloguing.users";
 
 const LABELS = { success: "SAVED_FALLBACK", error: "FAILED_FALLBACK" };
 
@@ -233,20 +231,6 @@ function renderConfiguracion(lang: "en" | "es", actionData: unknown) {
   });
 }
 
-/** Cataloguing users — `{ ok, message }` / `{ ok: false, error }`. */
-function renderCataloguingUsers(lang: "en" | "es", actionData: unknown) {
-  return render(lang, "/admin/cataloguing/users", CataloguingUsersRoute, {
-    loaderData: {
-      users: [],
-      currentUser: { id: "u1", isSuperAdmin: true, isCollabAdmin: true },
-      tenant: { crowdsourcingEnabled: true },
-    },
-    actionData,
-    params: {},
-    matches: [],
-  });
-}
-
 describe("account settings — save feedback", () => {
   it("renders no banner before the first submission", async () => {
     const html = await renderConfiguracion("en", undefined);
@@ -297,35 +281,4 @@ describe("account settings — save feedback", () => {
   });
 });
 
-describe("cataloguing users — save feedback", () => {
-  it("renders the action's own success message", async () => {
-    const html = await renderCataloguingUsers("en", {
-      ok: true,
-      message: "Invitation sent to ana@example.org",
-    });
-    expect(html).toContain("Invitation sent to ana@example.org");
-    expect(html).toContain('role="status"');
-  });
-
-  it("renders the action's own error message as a persistent alert", async () => {
-    const html = await renderCataloguingUsers("en", {
-      ok: false,
-      error: "That address already has an account",
-    });
-    expect(html).toContain("That address already has an account");
-    expect(html).toContain('role="alert"');
-    expect(html).toContain('aria-live="assertive"');
-  });
-
-  it("falls back to the shared Spanish failure line when the action gives no message", async () => {
-    const html = await renderCataloguingUsers("es", { ok: false });
-    expect(html).toContain("No se guardaron los cambios");
-  });
-
-  it("renders the idle submit label, not the busy one", async () => {
-    // The busy label only appears while a submission is in flight;
-    // a static render is by definition idle.
-    const html = await renderCataloguingUsers("en", undefined);
-    expect(html).not.toContain("Saving...");
-  });
-});
+// @version v0.8.0

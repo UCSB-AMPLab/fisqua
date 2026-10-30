@@ -1,29 +1,84 @@
 /**
  * User Admin — Detail Page
  *
- * This page is the administrative surface for one user account: email,
- * display name, the role flags, session state, and the audit log of
- * administrative changes. The audit panel is read-only.
+ * This page is the administrative surface for one person of the
+ * request tenant. A header names them, with their email, when they
+ * were last active and when they joined; the Profile section edits
+ * name and email; then one section per area of the workspace —
+ * Platform, Federation, Records management, Authorities, Cataloguing,
+ * Digitization, Imports and exports — lists that area's roles as
+ * checkboxes with a description each; and an Access history section
+ * lists what `audit_log` records about the person's access.
  *
- * Who may change WHICH role is decided in one place,
- * `assignableRoleFlags` in `app/lib/permissions.server.ts`, and read
- * twice: once by the loader, which hands the resulting list to the JSX
- * so a role the caller cannot assign renders as a disabled checkbox
- * with an explanatory tooltip; and once by the action, which reads
- * only those fields out of the form body. The two tenant-scoped roles
- * (`isAdmin`, `isArchiveUser`) are assignable by a tenant admin — which
- * a federation steward's effective member-tenant flags include — and
- * the rest stay super-admin-only. Before that split every role change
- * required a super admin, so a steward onboarding a partner workspace
- * could invite colleagues but could not give them any role, and the
- * people they invited arrived at an empty dashboard.
+ * Which sections a viewer sees is decided in `loadUserDetailAccess`
+ * (`app/lib/users-area.server.ts`), which reads nothing for a section
+ * the viewer may not see: Platform for super admins and user managers,
+ * Federation for stewards of the tenant's federation and super admins,
+ * the workspace areas for workspace admins and super admins, and
+ * Cataloguing also for user managers, who assign people to projects
+ * there. An area the workspace does not have (its capability off) has
+ * no section. Cataloguing carries the person's project memberships,
+ * with the assign, change and remove controls; Digitization lists the
+ * volumes they review with each one's state, and says that reviewers
+ * are assigned on the Capture QC screen.
+ *
+ * Every role checkbox belongs to one form, `user-roles`, through its
+ * `form` attribute, wherever its section puts it; every section holding
+ * one the viewer may change has its own Save roles button for that
+ * form. Who may change which role is decided in `permissions.server.ts`
+ * and read twice, by the loader for the page and by the action for the
+ * write:
+ *
+ *   - the ten role flags through `assignableRoleFlags`: a workspace
+ *     admin (a federation steward's effective flags included) or a
+ *     super admin changes the eight workspace roles, and only a super
+ *     admin changes super admin and user manager. A flag of an area the
+ *     workspace does not have (`writableRoleFlags`) is neither offered
+ *     nor written, so a flag left from before the capability was
+ *     switched off stays as it is;
+ *   - the federation role through `canGrantSteward` (a super admin at
+ *     home on the federation's lead workspace) and `canGrantStaff` (a
+ *     federation steward, or the same super admin). Turning a steward
+ *     into staff is a steward revoke. The two checkboxes clear each
+ *     other in the browser and post one `federationRole`, none, staff
+ *     or steward, as `federation_memberships` holds one role per person
+ *     and federation.
+ *
+ * A federation steward with no workspace flag reaches the page too
+ * (`canReachUsersArea`), for the Federation section alone: the loader
+ * shows them no profile form, and the action admits them to
+ * `updateRoles` only, where they have no role flag to give, so the
+ * profile, the workspace roles and the project memberships stay with
+ * those `canManageTenantUsers` admits.
+ *
+ * A checkbox the viewer may not change is disabled, with a tooltip that
+ * says who may. What a checkbox shows and the baseline the page posts
+ * beside it come from the same render (`reconcileShown`): when the
+ * loader revalidates with a role someone else changed, the viewer's
+ * unsaved choice for that role is dropped with the old baseline.
+ * Nobody changes their own roles, and nobody changes roles during an
+ * operator's impersonation session.
+ *
+ * The page posts, beside each role it lets the viewer change, the value
+ * it showed (`shown_<flag>`, `federationRoleShown`). The action writes
+ * only what changed, through `applyRoleChanges`
+ * (`app/lib/access-changes.server.ts`): one batch in which every change
+ * lands with its `audit_log` row only if everything the page showed
+ * still holds, and nothing lands otherwise (`error_roles_changed`).
+ * Removing the last workspace admin of the workspace is refused the
+ * same way (`error_last_workspace_admin`). The project membership
+ * intents record their changes in `audit_log` too
+ * (`setProjectMembership`); a role change or a removal posts the role
+ * the page showed (`shown_role`) and lands only while the membership
+ * still holds it.
  *
  * The action treats the form body as hostile. It does not ask what the
  * form said about `isSuperAdmin`; it asks what the caller is allowed to
  * set, and refuses outright if the body carries a field outside that
- * set. A disabled checkbox is not submitted by the browser, so such a
- * field never arrives from the rendered page — its presence means the
- * request was crafted.
+ * set, or a federation change the caller may not make. A disabled
+ * checkbox is not submitted by the browser, and the page posts no shown
+ * value for it, so such a field never arrives from the rendered page —
+ * its presence means the request was crafted.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Every read/update/delete of the `users` table is
@@ -35,43 +90,36 @@
  * as a "you are not allowed" out of the surface. The project intents
  * do the same for the ids THEY take from the body: `project_members`
  * carries no tenant column, so a membership is resolved through its
- * owning project, the way `requireProjectRole` does it. Without that,
- * widening the page's gate to tenant admins would have widened who
- * could write a membership row into another tenant's project.
+ * owning project, the way `requireProjectRole` does it.
  *
- * When the request tenant has `crowdsourcingEnabled === false`, the
- * JSX omits the `isCollabAdmin` and `isCataloguer` checkboxes
- * entirely from the role-flag fieldset. The matching
- * `applyUpdateRoles` helper skips writing those two fields under the
- * same condition, so a dormant DB value (set on a user before
- * crowdsourcing was disabled) is left intact rather than silently
- * cleared by an unchecked-as-false read of the form body. The four
- * other role flags (`isAdmin`, `isSuperAdmin`, `isArchiveUser`,
- * `isUserManager`) always render; whether they update depends on the
- * caller's assignable set, which is the other half of the same filter.
- *
- * `applyUpdateRoles` is exported so `tests/admin/users-capability.test.ts`
- * can exercise the dormant-flag-preserved behaviour on its own, without
- * the surrounding request. The role-scope suite drives the real
- * `action` instead, so the guards are exercised in the order a request
- * meets them.
+ * `applyUpdateRoles`, in `_auth.admin.users.$id.roles.server.ts`,
+ * reads the role part of the form and hands the changes to
+ * `applyRoleChanges`. It lives in a server module so the client bundle
+ * never reaches the server code it imports, and so the tests can drive
+ * the write on its own, without the surrounding request.
  *
  * Every form on the page — profile, role flags, project assignment,
  * per-row role change and removal — shares ONE fetcher, so there is one
  * page-level `SaveFeedbackBanner` rather than one per form: a second
  * banner fed by the same fetcher would announce every result twice.
- * The banner sits directly under the breadcrumb as the page's result
- * region. Each submit button keys its own pending state off the
- * `_action` value carried by the in-flight submission, so clicking
- * "Save profile" does not grey out "Save roles".
+ * Each submit button keys its own pending state off the `_action` value
+ * carried by the in-flight submission, so clicking "Save profile" does
+ * not grey out "Save roles".
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
-import { Form, Link, useFetcher, redirect } from "react-router";
+import { Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
-import { tenantContext, userContext } from "../context";
+import {
+  grantContext,
+  impersonationContext,
+  tenantContext,
+  userContext,
+  type Tenant,
+  type User,
+} from "../context";
 import { useFormatters } from "../lib/use-formatters";
 import {
   SaveButton,
@@ -83,6 +131,15 @@ import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 // Type-only: erased at build time, so the server module is not pulled
 // into the client bundle.
 import type { RoleFlag } from "../lib/permissions.server";
+import type {
+  AccessHistoryEntry,
+  RoleView,
+  UsersArea,
+} from "../lib/users-area.server";
+import type {
+  AccessActor,
+  FederationRoleChoice,
+} from "../lib/access-changes.server";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -92,18 +149,29 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, isNull } = await import("drizzle-orm");
   const { users, projectMembers, projects } = await import("../db/schema");
-  const { assignableRoleFlags, canManageTenantUsers } = await import(
-    "../lib/permissions.server"
-  );
+  const {
+    assignableRoleFlags,
+    canGrantStaff,
+    canGrantSteward,
+    canManageTenantUsers,
+    canReachUsersArea,
+  } = await import("../lib/permissions.server");
+  const { loadUserDetailAccess } = await import("../lib/users-area.server");
+  const { writableRoleFlags } = await import("./_auth.admin.users.$id.roles.server");
 
   const currentUser = context.get(userContext);
-  if (!canManageTenantUsers(currentUser)) {
-    throw new Response("Forbidden", { status: 403 });
-  }
   const tenant = context.get(tenantContext);
+  const operatorSession = context.get(impersonationContext) !== null;
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
+
+  // A federation steward with no workspace flag reaches the page for
+  // its Federation section only (`canReachUsersArea`).
+  if (!(await canReachUsersArea(db, currentUser, tenant))) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+  const manager = canManageTenantUsers(currentUser);
 
   const [targetUser] = await db
     .select()
@@ -116,130 +184,98 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("User not found", { status: 404 });
   }
 
-  // Fetch project memberships
-  const memberships = await db
-    .select({
-      id: projectMembers.id,
-      projectId: projectMembers.projectId,
-      projectName: projects.name,
-      role: projectMembers.role,
-      createdAt: projectMembers.createdAt,
-    })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .where(eq(projectMembers.userId, params.id))
-    .all();
-
-  // Available projects for assignment (tenant-scoped: only the request
-  // tenant's projects can be offered for assignment)
-  const availableProjects = await db
-    .select({ id: projects.id, name: projects.name })
-    .from(projects)
-    .where(and(eq(projects.tenantId, tenant.id), isNull(projects.archivedAt)))
-    .all();
-
-  // Filter out projects the user is already in
-  const memberProjectIds = new Set(memberships.map((m) => m.projectId));
-  const assignableProjects = availableProjects.filter(
-    (p) => !memberProjectIds.has(p.id)
+  const access = await loadUserDetailAccess(
+    db,
+    tenant,
+    currentUser,
+    targetUser,
+    Date.now(),
   );
 
-  // The exact set of role flags this caller may hand out. The JSX
-  // enables precisely these checkboxes and disables the rest, so the
-  // form can never offer what the action would refuse.
-  const editableRoles = [...assignableRoleFlags(currentUser)];
+  // Project memberships in the request tenant's projects only, read
+  // only when the Cataloguing section is shown. `project_members` has
+  // no tenant column, so the scope comes through `projects`: a
+  // steward's memberships in their home tenant's projects are not this
+  // tenant's to show, and the actions below would refuse to change
+  // them anyway.
+  let memberships: Array<{
+    id: string;
+    projectId: string;
+    projectName: string;
+    role: ProjectRole;
+    createdAt: number;
+  }> = [];
+  let assignableProjects: Array<{ id: string; name: string }> = [];
+  if (access.sections.includes("cataloguing")) {
+    memberships = await db
+      .select({
+        id: projectMembers.id,
+        projectId: projectMembers.projectId,
+        projectName: projects.name,
+        role: projectMembers.role,
+        createdAt: projectMembers.createdAt,
+      })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.userId, params.id),
+          eq(projects.tenantId, tenant.id),
+        ),
+      )
+      .all();
+
+    // The request tenant's live projects the person is not yet in.
+    const memberProjectIds = new Set(memberships.map((m) => m.projectId));
+    assignableProjects = (
+      await db
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .where(and(eq(projects.tenantId, tenant.id), isNull(projects.archivedAt)))
+        .all()
+    ).filter((p) => !memberProjectIds.has(p.id));
+  }
+
+  // The exact set of role flags this caller may hand out in this
+  // workspace. The JSX enables precisely these checkboxes and disables
+  // the rest, so the form can never offer what the action would refuse.
+  const editableRoles = writableRoleFlags(assignableRoleFlags(currentUser), tenant);
+
+  // The federation roles this caller may change, read only when the
+  // Federation section is shown.
+  const federationEditable = access.sections.includes("federation")
+    ? {
+        steward: await canGrantSteward(db, currentUser, tenant),
+        staff: await canGrantStaff(db, currentUser, tenant),
+      }
+    : { steward: false, staff: false };
 
   return {
-    targetUser,
+    // Profile fields only: each section's flags travel in `roles`, and
+    // only for the sections this viewer sees.
+    targetUser: {
+      id: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      lastActiveAt: targetUser.lastActiveAt,
+      createdAt: targetUser.createdAt,
+    },
+    ...access,
     memberships,
     assignableProjects,
     isSelf: currentUser.id === params.id,
+    operatorSession,
+    // The profile form, and the notice about who changes roles, belong
+    // to those who manage the workspace's users.
+    canManageUser: manager,
     editableRoles,
+    federationEditable,
     canEditRoles: editableRoles.length > 0,
     // True only for a caller who may set every flag the form can show.
     // Drives the "some roles are not yours to give" notice rather than
     // the blanket "roles are read-only" one.
     canEditAllRoles: currentUser.isSuperAdmin,
-    // Surface only the capability flag the JSX gates on. The JSX
-    // hides isCollabAdmin and isCataloguer when crowdsourcing is
-    // off; the other three capabilities are not consumed here.
-    tenant: {
-      crowdsourcingEnabled: tenant.crowdsourcingEnabled,
-    },
   };
-}
-
-// ---------------------------------------------------------------------------
-// Role-update helper
-// ---------------------------------------------------------------------------
-
-/**
- * Applies the role-flag update for one user. Extracted from `action`
- * so the test pool can exercise the capability-aware skip-write and
- * role-scope behaviours without paying for the full i18n / Host-header
- * / middleware wiring (the route module imports `~/locales` which is
- * not aliased in `vitest.config.ts`).
- *
- * Behaviour contract:
- *
- *   - `assignableFlags` is the ALLOWLIST of fields read out of the
- *     form. It comes from `assignableRoleFlags(currentUser)` and is
- *     the reason a hostile body cannot escalate: a flag outside the
- *     set is never read, so whatever the body claims about it is not
- *     merely rejected, it is never consulted. The stored value of such
- *     a flag is left exactly as it was.
- *   - Within that set, a flag is written from the form-data; an
- *     unchecked checkbox arrives as missing and reads as `false`,
- *     which clears the flag (existing v0.3 semantics).
- *   - When `crowdsourcingEnabled === false`, `isCollabAdmin` and
- *     `isCataloguer` are NOT included in the UPDATE — their DB
- *     values stay intact. This is the "no auto-clear of dormant
- *     flags" rule from CONTEXT.md C-05; it also defends against a
- *     tampered POST body that re-adds a hidden `isCataloguer=on`
- *     field (defence-in-depth — the parent layout's 404 already
- *     makes the persisted flag a no-op, but skipping the write
- *     avoids accidentally toggling state from the admin UI either
- *     way).
- *   - When `crowdsourcingEnabled === true`, both flags are written
- *     from the form-data if the caller may assign them.
- *
- * The UPDATE is scoped to `(tenantId, userId)` so a cross-tenant
- * id-guess on the URL cannot rewrite another tenant's user row. The
- * caller resolves the target inside the request tenant first and 404s
- * if it is absent, so this predicate is the second of two locks, not
- * the only one.
- */
-export async function applyUpdateRoles(args: {
-  db: import("drizzle-orm/d1").DrizzleD1Database<any>;
-  tenantId: string;
-  crowdsourcingEnabled: boolean;
-  targetUserId: string;
-  formData: FormData;
-  assignableFlags: readonly RoleFlag[];
-}): Promise<void> {
-  const { eq, and } = await import("drizzle-orm");
-  const { users } = await import("../db/schema");
-
-  // Capability filter on top of the privilege filter: the two
-  // crowdsourcing flags drop out of the write when the tenant has
-  // crowdsourcing off, whoever is asking.
-  const writableFlags = args.assignableFlags.filter(
-    (flag) =>
-      args.crowdsourcingEnabled ||
-      (flag !== "isCollabAdmin" && flag !== "isCataloguer"),
-  );
-
-  if (writableFlags.length === 0) return;
-
-  const updateSet: Record<string, unknown> = {};
-  for (const flag of writableFlags) {
-    updateSet[flag] = args.formData.get(flag) === "on";
-  }
-
-  await args.db
-    .update(users)
-    .set(updateSet)
-    .where(and(eq(users.tenantId, args.tenantId), eq(users.id, args.targetUserId)));
 }
 
 // ---------------------------------------------------------------------------
@@ -255,19 +291,37 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const {
     assignableRoleFlags,
     canManageTenantUsers,
+    canReachUsersArea,
     unassignableSubmittedRoleFlags,
   } = await import("../lib/permissions.server");
+  const { applyUpdateRoles } = await import("./_auth.admin.users.$id.roles.server");
   const currentUser = context.get(userContext);
   const i18n = getInstance(context);
-  if (!canManageTenantUsers(currentUser)) {
-    throw new Response(i18n.t("user_admin:error_forbidden"), { status: 403 });
-  }
   const tenant = context.get(tenantContext);
+  const impersonation = context.get(impersonationContext);
+  const grant = context.get(grantContext);
+  const actor: AccessActor = {
+    user: currentUser,
+    homeTenantId: grant?.homeTenantId ?? currentUser.tenantId,
+    impersonationSessionId: impersonation?.sessionId ?? null,
+  };
+  const newId = () => crypto.randomUUID();
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
+
+  // Whoever manages the workspace's users reaches every intent. A
+  // federation steward with no workspace flag reaches `updateRoles`
+  // alone, where `assignableRoleFlags` gives them no flag, so all they
+  // can change is the federation role.
+  if (
+    !canManageTenantUsers(currentUser) &&
+    !(intent === "updateRoles" && (await canReachUsersArea(db, currentUser, tenant)))
+  ) {
+    throw new Response(i18n.t("user_admin:error_forbidden"), { status: 403 });
+  }
 
   // Target scoping, once, for every intent on this page: they all act
   // on the user named in the URL. The request tenant comes from
@@ -318,36 +372,47 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   if (intent === "updateRoles") {
-    const assignableFlags = assignableRoleFlags(currentUser);
-    if (assignableFlags.length === 0) {
-      return { ok: false, error: i18n.t("user_admin:error_only_superadmin_roles") };
+    // Operators in an impersonation session grant and revoke nothing.
+    if (impersonation) {
+      return { ok: false, error: i18n.t("user_admin:error_operator_no_grants") };
     }
-    // Unchanged self-protection: nobody edits their own roles, however
-    // many they can hand out.
+    // Nobody edits their own roles, however many they can hand out.
     if (currentUser.id === params.id) {
       return { ok: false, error: i18n.t("user_admin:error_cannot_change_own_roles") };
+    }
+    const assignableFlags = assignableRoleFlags(currentUser);
+    if (assignableFlags.length === 0 && !formData.has("federationRole")) {
+      return { ok: false, error: i18n.t("user_admin:non_superadmin_notice") };
     }
 
     // The form is hostile until proven otherwise. A checkbox the page
     // rendered disabled is not submitted at all, so a super-admin-only
-    // field in the body of a tenant admin's post is a crafted request,
-    // not a stray unchecked box — refuse the whole submission.
+    // field in the body of a workspace admin's post is a crafted
+    // request, not a stray unchecked box — refuse the whole submission.
     const refused = unassignableSubmittedRoleFlags(currentUser, formData);
     if (refused.length > 0) {
       return { ok: false, error: i18n.t("user_admin:error_role_not_assignable") };
     }
 
-    await applyUpdateRoles({
+    const result = await applyUpdateRoles({
       db,
-      tenantId: tenant.id,
-      crowdsourcingEnabled: tenant.crowdsourcingEnabled,
+      d1: env.DB,
+      tenant,
       targetUserId: params.id,
       formData,
       assignableFlags,
+      currentUser,
+      actor,
+      now: Date.now(),
+      newId,
     });
-
+    if (!result.ok) {
+      return { ok: false, error: i18n.t(`user_admin:error_${result.error}`) };
+    }
     return { ok: true, message: i18n.t("user_admin:success_roles_updated") };
   }
+
+  const { setProjectMembership } = await import("../lib/access-changes.server");
 
   if (intent === "assignToProject") {
     const projectId = formData.get("projectId") as string;
@@ -372,28 +437,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       throw new Response("Project not found", { status: 404 });
     }
 
-    const existing = await db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, params.id)
-        )
-      )
-      .limit(1)
-      .all();
-    if (existing.length > 0) {
+    const added = await setProjectMembership({
+      d1: env.DB,
+      tenantId: tenant.id,
+      targetUserId: params.id,
+      change: { step: "added", projectId, role },
+      actor,
+      now: Date.now(),
+      newId,
+    });
+    if (!added) {
       return { ok: false, error: i18n.t("user_admin:error_already_member") };
     }
-
-    await db.insert(projectMembers).values({
-      id: crypto.randomUUID(),
-      projectId,
-      userId: params.id,
-      role,
-      createdAt: Math.floor(Date.now() / 1000),
-    });
 
     return { ok: true, message: i18n.t("user_admin:success_assigned") };
   }
@@ -404,11 +459,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
    * `project_members` carries no tenant column, so the owning
    * `projects` row is the only thing that can answer the tenant
    * question — the same reasoning `requireProjectRole` uses. Returns
-   * the id, or 404s.
+   * the membership, or 404s.
    */
-  async function resolveMembershipId(membershipId: string): Promise<string> {
+  async function resolveMembership(
+    membershipId: string,
+  ): Promise<{ id: string; projectId: string; role: ProjectRole }> {
     const [membership] = await db
-      .select({ id: projectMembers.id })
+      .select({
+        id: projectMembers.id,
+        projectId: projectMembers.projectId,
+        role: projectMembers.role,
+      })
       .from(projectMembers)
       .innerJoin(projects, eq(projectMembers.projectId, projects.id))
       .where(
@@ -423,32 +484,77 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!membership) {
       throw new Response("Membership not found", { status: 404 });
     }
-    return membership.id;
+    return membership;
   }
 
   if (intent === "changeRole") {
     const membershipId = formData.get("membershipId") as string;
     const role = formData.get("role") as ProjectRole;
+    // The role the page showed: the change lands only while the
+    // membership still holds it.
+    const shownRole = formData.get("shown_role") as ProjectRole;
 
     if (!membershipId || !(PROJECT_ROLES as readonly string[]).includes(role)) {
       return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
     }
 
-    await db
-      .update(projectMembers)
-      .set({ role })
-      .where(eq(projectMembers.id, await resolveMembershipId(membershipId)));
+    const membership = await resolveMembership(membershipId);
+    if (!(PROJECT_ROLES as readonly string[]).includes(shownRole)) {
+      return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+    }
+    if (shownRole !== role) {
+      const changed = await setProjectMembership({
+        d1: env.DB,
+        tenantId: tenant.id,
+        targetUserId: params.id,
+        change: {
+          step: "changed",
+          membershipId: membership.id,
+          projectId: membership.projectId,
+          shown: shownRole,
+          role,
+        },
+        actor,
+        now: Date.now(),
+        newId,
+      });
+      if (!changed) {
+        return { ok: false, error: i18n.t("user_admin:error_roles_changed") };
+      }
+    }
 
     return { ok: true, message: i18n.t("user_admin:success_role_updated") };
   }
 
   if (intent === "removeFromProject") {
     const membershipId = formData.get("membershipId") as string;
+    // The role the page showed for the membership: the removal lands
+    // only while the membership still holds it, so the audit row
+    // records the role that was removed.
+    const shownRole = formData.get("shown_role") as ProjectRole;
     if (!membershipId) return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
 
-    await db
-      .delete(projectMembers)
-      .where(eq(projectMembers.id, await resolveMembershipId(membershipId)));
+    const membership = await resolveMembership(membershipId);
+    if (!(PROJECT_ROLES as readonly string[]).includes(shownRole)) {
+      return { ok: false, error: i18n.t("user_admin:error_invalid_request") };
+    }
+    const removed = await setProjectMembership({
+      d1: env.DB,
+      tenantId: tenant.id,
+      targetUserId: params.id,
+      change: {
+        step: "removed",
+        membershipId: membership.id,
+        projectId: membership.projectId,
+        role: shownRole,
+      },
+      actor,
+      now: Date.now(),
+      newId,
+    });
+    if (!removed) {
+      return { ok: false, error: i18n.t("user_admin:error_roles_changed") };
+    }
 
     return { ok: true, message: i18n.t("user_admin:success_removed") };
   }
@@ -460,23 +566,52 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 // Components
 // ---------------------------------------------------------------------------
 
-// Project-role chips follow the design system colour map: lead and cataloguer
-// share verdigris (brand / approved / lead); reviewer is madder (the only
-// system colour reserved for review and send-back actions). The previous
-// assignment had lead, cataloguer, and reviewer scrambled across saffron,
-// indigo, and verdigris and read inconsistently against the boundary markers
-// in the IIIF viewer, where cataloguer = verdigris and reviewer = madder.
-const ROLE_BADGE_COLORS: Record<string, string> = {
-  lead: "bg-verdigris-tint text-verdigris-deep",
-  cataloguer: "bg-verdigris-tint text-verdigris-deep",
-  reviewer: "bg-madder-tint text-madder-deep",
-};
+/** The id of the one form every role checkbox belongs to. */
+const ROLES_FORM_ID = "user-roles";
+
+/**
+ * A role control's state: `shown`, the value the loader gave, which the
+ * form posts as the baseline the action checks; and `value`, what the
+ * control shows. Both come from the same render.
+ */
+export interface ShownState<T> {
+  shown: T;
+  value: T;
+}
+
+/**
+ * The state to render with `shown` from the loader. While the loader
+ * gives the same value, the viewer's unsaved choice stands. When it
+ * gives another (the page revalidated after someone changed the role),
+ * the choice is dropped and the control shows the new value, so a save
+ * never posts a fresh baseline beside a stale choice.
+ */
+export function reconcileShown<T>(state: ShownState<T>, shown: T): ShownState<T> {
+  return Object.is(state.shown, shown) ? state : { shown, value: shown };
+}
+
+/** `reconcileShown` as component state: the value shown, the baseline, and a setter. */
+function useShownValue<T>(shown: T): [T, T, (value: T) => void] {
+  const [state, setState] = useState<ShownState<T>>({ shown, value: shown });
+  const current = reconcileShown(state, shown);
+  // Adjusting state while rendering: React renders again at once with
+  // the reconciled state, before anything reaches the screen.
+  if (current !== state) setState(current);
+  return [current.value, current.shown, (value) => setState({ shown: current.shown, value })];
+}
 
 /**
  * One role toggle. `disabled` carries a `tooltip` with it: a checkbox
  * a caller cannot use should say why, and a disabled input is not
  * submitted at all, which is also the property the action relies on
  * to read a super-admin-only field in the body as tampering.
+ *
+ * With a `name`, the checkbox joins the roles form and, when enabled,
+ * posts beside itself the value the page showed (`shown_<name>`); what
+ * it shows and that baseline come from `useShownValue`, so they move
+ * together when the loader revalidates. With `onChange` the parent
+ * holds its state, and it joins no form: the federation pair posts one
+ * value of its own.
  */
 function RoleCheckbox({
   label,
@@ -485,53 +620,81 @@ function RoleCheckbox({
   checked,
   disabled,
   tooltip,
+  onChange,
 }: {
   label: string;
   description: string;
-  name: string;
+  name?: string;
   checked: boolean;
   disabled?: boolean;
   tooltip?: string;
+  onChange?: (checked: boolean) => void;
 }) {
+  const [value, shown, setValue] = useShownValue(checked);
   return (
     <label
       title={disabled ? tooltip : undefined}
-      className={`font-medium flex items-start gap-3 rounded-lg border border-stone-200 px-4 py-3 ${ disabled ? "opacity-60" : "hover:bg-stone-50 cursor-pointer" }`}
+      className={`flex items-start gap-3 rounded-lg border border-stone-200 px-4 py-3 ${disabled ? "opacity-60" : "cursor-pointer hover:bg-stone-50"}`}
     >
       <input
         type="checkbox"
         name={name}
-        defaultChecked={checked}
+        form={name ? ROLES_FORM_ID : undefined}
+        {...(onChange
+          ? { checked, onChange: (e) => onChange(e.target.checked) }
+          : { checked: value, onChange: (e) => setValue(e.target.checked) })}
         disabled={disabled}
         className="mt-0.5 h-4 w-4 rounded border-stone-200 text-indigo focus:ring-indigo"
       />
-      <div>
-        <div className="font-sans text-sm font-semibold text-stone-700">
+      {name && !disabled && (
+        <input
+          type="hidden"
+          name={`shown_${name}`}
+          form={ROLES_FORM_ID}
+          value={shown ? "1" : "0"}
+        />
+      )}
+      <span className="flex flex-col gap-0.5">
+        <span className="font-sans text-sm font-semibold text-indigo">
           {label}
-        </div>
-        <div className="font-sans text-xs text-stone-500">{description}</div>
-      </div>
+        </span>
+        <span className="font-sans text-xs text-stone-500">{description}</span>
+      </span>
+      {disabled && tooltip && <span className="sr-only">{tooltip}</span>}
     </label>
   );
 }
+
+const TH = "px-4 py-2.5 text-left font-sans text-xs font-semibold text-stone-600";
 
 export default function UserDetailPage({
   loaderData,
 }: Route.ComponentProps) {
   const {
     targetUser: u,
+    sections,
+    roles,
+    federation,
+    reviewedVolumes,
+    history,
     memberships,
     assignableProjects,
     isSelf,
+    operatorSession,
+    canManageUser,
     editableRoles,
+    federationEditable,
     canEditRoles,
     canEditAllRoles,
-    tenant,
   } = loaderData;
-  const { t } = useTranslation("user_admin");
+  const { t } = useTranslation(["user_admin", "capture"]);
   const { formatDate } = useFormatters();
   const fetcher = useFetcher();
   const [showAssignForm, setShowAssignForm] = useState(false);
+  // The federation role the checkboxes show: one of none, staff and
+  // steward, as `federation_memberships` holds one role per person.
+  const [federationRole, shownFederationRole, setFederationRole] =
+    useShownValue<FederationRoleChoice>(federation?.role ?? "none");
 
   const formData = fetcher.formData ?? undefined;
   const savingProfile = isPendingSubmission(
@@ -549,29 +712,89 @@ export default function UserDetailPage({
   // error never sits under a retry that is already running.
   const submitting = fetcher.state !== "idle";
 
-  // A role toggle is live only when the caller may assign that
-  // particular flag and is not looking at their own account. The
-  // tooltip explains which of the two rules is holding it shut.
-  const roleFieldState = (name: RoleFlag) => {
-    if (isSelf) {
-      return { disabled: true, tooltip: t("self_role_badge_tooltip") };
-    }
-    if (!editableRoles.includes(name)) {
-      return { disabled: true, tooltip: t("platform_role_tooltip") };
+  // A role toggle is live only when the caller may assign that flag,
+  // is not looking at their own account and is not in an operator
+  // session. The tooltip explains which rule holds it shut.
+  const lockedFor = (): string | null =>
+    isSelf
+      ? t("self_role_badge_tooltip")
+      : operatorSession
+        ? t("error_operator_no_grants")
+        : null;
+  const roleFieldState = (role: RoleView) => {
+    const locked = lockedFor();
+    if (locked) return { disabled: true, tooltip: locked };
+    if (role.field === null || !editableRoles.includes(role.field)) {
+      // Platform roles are a super admin's to grant; every other role,
+      // a workspace admin's.
+      const platform = role.field === "isSuperAdmin" || role.field === "isUserManager";
+      return {
+        disabled: true,
+        tooltip: t(platform ? "platform_role_tooltip" : "workspace_role_tooltip"),
+      };
     }
     return { disabled: false, tooltip: undefined };
   };
+  // The federation pair. Steward needs `canGrantSteward`; staff needs
+  // `canGrantStaff`, and, while the person is a steward, also
+  // `canGrantSteward`, since checking staff then revokes the steward.
+  const federationFieldState = (key: RoleView["key"]) => {
+    const locked = lockedFor();
+    if (locked) return { disabled: true, tooltip: locked };
+    if (key === "steward" || federationRole === "steward") {
+      if (!federationEditable.steward) {
+        return { disabled: true, tooltip: t("steward_grant_tooltip") };
+      }
+    }
+    if (key === "staff" && !federationEditable.staff) {
+      return { disabled: true, tooltip: t("staff_grant_tooltip") };
+    }
+    return { disabled: false, tooltip: undefined };
+  };
+  const fieldState = (area: UsersArea, role: RoleView) =>
+    area === "federation" ? federationFieldState(role.key) : roleFieldState(role);
+  const sectionEditable = (area: UsersArea, list: RoleView[]) =>
+    list.some((r) => !fieldState(area, r).disabled);
+  const federationLive = sectionEditable("federation", roles.federation ?? []);
+
+  const sectionScope = (area: UsersArea) =>
+    area === "platform"
+      ? t("scope_platform")
+      : area === "federation"
+        ? federation?.name ?? ""
+        : t("scope_workspace");
+
+  const name = u.name || u.email;
+
+  // One access-history entry as a sentence. Every role named in an
+  // entry has its label under `role_<key>`.
+  const historyLine = (entry: AccessHistoryEntry) =>
+    t(`history_${entry.kind}`, {
+      role: "role" in entry ? t(`role_${entry.role}`) : undefined,
+      actor: "actor" in entry ? entry.actor : undefined,
+      project: "project" in entry ? entry.project : undefined,
+    });
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8 space-y-8">
-      {/* Breadcrumb */}
-      <nav className="font-sans text-sm text-stone-500">
-        <Link to="/admin/users" className="hover:text-stone-700">
-          {t("breadcrumb_system_users")}
+    <div className="mx-auto max-w-4xl space-y-8 px-8 py-8">
+      <div className="space-y-1.5">
+        <Link
+          to="/admin/users"
+          className="font-sans text-sm text-stone-600 hover:underline"
+        >
+          {t("sidebar:users")}
         </Link>
-        <span className="mx-2">&rsaquo;</span>
-        <span className="text-stone-700">{u.name || u.email}</span>
-      </nav>
+        <h1 className="font-serif text-3xl font-medium text-indigo">{name}</h1>
+        <p className="font-sans text-sm text-stone-600">
+          {u.email}
+          {" · "}
+          {u.lastActiveAt
+            ? t("last_active_on", { date: formatDate(u.lastActiveAt) })
+            : t("never_active")}
+          {" · "}
+          {t("joined_on", { date: formatDate(u.createdAt) })}
+        </p>
+      </div>
 
       {/* Save feedback — transient on success, persistent on failure.
           One region for the whole page: every form shares one fetcher. */}
@@ -584,55 +807,61 @@ export default function UserDetailPage({
         }}
       />
 
-      {/* Profile */}
-      <fetcher.Form method="post" className="space-y-4">
-        <input type="hidden" name="_action" value="updateProfile" />
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <label
-              htmlFor="user-name"
-              className="mb-1 block font-sans text-xs font-medium text-indigo"
-            >
-              {t("name_label")}
-            </label>
-            <input
-              id="user-name"
-              type="text"
-              name="name"
-              defaultValue={u.name || ""}
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+      {/* Profile, for those who manage the workspace's users */}
+      {canManageUser && (
+        <section
+          aria-labelledby="section-profile"
+          className="space-y-4 rounded-lg border border-stone-200 p-6"
+        >
+          <h2
+            id="section-profile"
+            className="font-serif text-xl font-medium text-indigo"
+          >
+            {t("section_profile")}
+          </h2>
+          <fetcher.Form method="post" className="space-y-4">
+            <input type="hidden" name="_action" value="updateProfile" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="user-name"
+                  className="font-sans text-sm font-medium text-indigo"
+                >
+                  {t("name_label")}
+                </label>
+                <input
+                  id="user-name"
+                  type="text"
+                  name="name"
+                  defaultValue={u.name || ""}
+                  className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="user-email"
+                  className="font-sans text-sm font-medium text-indigo"
+                >
+                  {t("email_label")}
+                </label>
+                <input
+                  id="user-email"
+                  type="email"
+                  name="email"
+                  required
+                  defaultValue={u.email}
+                  className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                />
+              </div>
+            </div>
+            <SaveButton
+              pending={savingProfile}
+              label={t("save_profile")}
+              pendingLabel={t("common:save.saving")}
             />
-          </div>
-          <div className="flex-1">
-            <label
-              htmlFor="user-email"
-              className="mb-1 block font-sans text-xs font-medium text-indigo"
-            >
-              {t("email_label")}
-            </label>
-            <input
-              id="user-email"
-              type="email"
-              name="email"
-              required
-              defaultValue={u.email}
-              className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <p className="font-sans text-xs text-stone-400">
-            {t("last_login_label")}: {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("never")}
-            {" · "}
-            {t("created_label")}: {formatDate(u.createdAt)}
-          </p>
-          <SaveButton
-            pending={savingProfile}
-            label={t("save_profile")}
-            pendingLabel={t("common:save.saving")}
-          />
-        </div>
-      </fetcher.Form>
+          </fetcher.Form>
+        </section>
+      )}
 
       {/* Role edit warnings */}
       {isSelf && (
@@ -640,258 +869,314 @@ export default function UserDetailPage({
           {t("self_warning")}
         </div>
       )}
-      {!canEditRoles && !isSelf && (
-        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
+      {operatorSession && !isSelf && (
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-600">
+          {t("error_operator_no_grants")}
+        </div>
+      )}
+      {!canEditRoles && canManageUser && !isSelf && !operatorSession && (
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-600">
           {t("non_superadmin_notice")}
         </div>
       )}
-      {canEditRoles && !canEditAllRoles && !isSelf && (
-        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-500">
+      {canEditRoles && !canEditAllRoles && !isSelf && !operatorSession && (
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 font-sans text-sm text-stone-600">
           {t("tenant_admin_roles_notice")}
         </div>
       )}
 
-      {/* Roles */}
-      <fetcher.Form method="post">
+      {/* The one form every role checkbox belongs to, wherever its
+          section puts it. The federation pair posts one value here, with
+          the value the page showed, when the caller may change it. */}
+      <fetcher.Form method="post" id={ROLES_FORM_ID} className="hidden">
         <input type="hidden" name="_action" value="updateRoles" />
-
-        <div className="space-y-6">
-          {/* System */}
-          <div>
-            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
-              {t("section_system")}
-            </h2>
-            <div className="space-y-2">
-              <RoleCheckbox
-                label={t("role_super_admin")}
-                description={t("super_admin_description")}
-                name="isSuperAdmin"
-                checked={!!u.isSuperAdmin}
-                {...roleFieldState("isSuperAdmin")}
-              />
-              <RoleCheckbox
-                label={t("role_user_manager")}
-                description={t("user_manager_description")}
-                name="isUserManager"
-                checked={!!u.isUserManager}
-                {...roleFieldState("isUserManager")}
-              />
-            </div>
-          </div>
-
-          {/* Cataloguing — hidden entirely when crowdsourcing
-              capability is off. Dormant DB values for
-              `isCollabAdmin` / `isCataloguer` are not auto-cleared
-              and the matching action helper skips writing them; the
-              surface they gate (cataloguing routes) 404s at the
-              parent layout's capability check. */}
-          {tenant.crowdsourcingEnabled && (
-            <div>
-              <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
-                {t("section_cataloguing")}
-              </h2>
-              <div className="space-y-2">
-                <RoleCheckbox
-                  label={t("role_cataloguing_admin")}
-                  description={t("cataloguing_admin_description")}
-                  name="isCollabAdmin"
-                  checked={!!u.isCollabAdmin}
-                  {...roleFieldState("isCollabAdmin")}
-                />
-                <RoleCheckbox
-                  label={t("role_cataloguer")}
-                  description={t("cataloguer_description")}
-                  name="isCataloguer"
-                  checked={!!u.isCataloguer}
-                  {...roleFieldState("isCataloguer")}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Records management */}
-          <div>
-            <h2 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
-              {t("section_records_management")}
-            </h2>
-            <div className="space-y-2">
-              <RoleCheckbox
-                label={t("role_records_admin")}
-                description={t("records_admin_description")}
-                name="isAdmin"
-                checked={!!u.isAdmin}
-                {...roleFieldState("isAdmin")}
-              />
-              <RoleCheckbox
-                label={t("role_archive_user")}
-                description={t("archive_user_description")}
-                name="isArchiveUser"
-                checked={!!u.isArchiveUser}
-                {...roleFieldState("isArchiveUser")}
-              />
-            </div>
-          </div>
-
-          {canEditRoles && !isSelf && (
-            <SaveButton
-              pending={savingRoles}
-              label={t("save_roles")}
-              pendingLabel={t("common:save.saving")}
+        {federationLive && (
+          <>
+            <input type="hidden" name="federationRole" value={federationRole} />
+            <input
+              type="hidden"
+              name="federationRoleShown"
+              value={shownFederationRole}
             />
-          )}
-        </div>
+          </>
+        )}
       </fetcher.Form>
 
-      {/* Project memberships */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500">
-            {t("section_project_memberships")}
-          </h2>
-          {assignableProjects.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowAssignForm(!showAssignForm)}
-              className="font-sans text-xs font-semibold text-indigo hover:text-indigo-deep"
-            >
-              {showAssignForm ? t("cancel") : t("assign_to_project")}
-            </button>
-          )}
-        </div>
-
-        {showAssignForm && (
-          <fetcher.Form
-            method="post"
-            className="mb-4 flex items-end gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3"
-            onSubmit={() => setTimeout(() => setShowAssignForm(false), 100)}
+      {sections.map((area) => {
+        const list = roles[area] ?? [];
+        return (
+          <section
+            key={area}
+            aria-labelledby={`section-${area}`}
+            className="space-y-4 rounded-lg border border-stone-200 p-6"
           >
-            <input type="hidden" name="_action" value="assignToProject" />
-            <div className="flex-1">
-              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
-                {t("project_label")}
-              </label>
-              <select
-                name="projectId"
-                required
-                className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2
+                id={`section-${area}`}
+                className="font-serif text-xl font-medium text-indigo"
               >
-                <option value="">{t("select_project")}</option>
-                {assignableProjects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                {t(`area_${area}`)}
+              </h2>
+              <span className="font-sans text-xs text-stone-600">
+                {sectionScope(area)}
+              </span>
             </div>
-            <div>
-              <label className="mb-1 block font-sans text-xs font-medium text-indigo">
-                {t("role_label")}
-              </label>
-              <select
-                name="role"
-                required
-                className="rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
-              >
-                <option value="">{t("select_role")}</option>
-                <option value="lead">{t("role_lead")}</option>
-                <option value="cataloguer">{t("role_cataloguer")}</option>
-                <option value="reviewer">{t("role_reviewer")}</option>
-              </select>
-            </div>
-            <SaveButton
-              pending={assigning}
-              label={t("assign")}
-              pendingLabel={t("common:save.saving")}
-            />
-          </fetcher.Form>
-        )}
 
-        {memberships.length === 0 ? (
-          <p className="rounded-lg border border-stone-200 px-4 py-6 text-center font-sans text-sm text-stone-400">
-            {t("no_memberships")}
-          </p>
+            <div className="space-y-2">
+              {list.map((role) =>
+                area === "federation" ? (
+                  <RoleCheckbox
+                    key={role.key}
+                    label={t(`role_${role.key}`)}
+                    description={t(`${role.key}_description`)}
+                    checked={federationRole === role.key}
+                    onChange={(on) =>
+                      setFederationRole(
+                        on ? (role.key as FederationRoleChoice) : "none",
+                      )
+                    }
+                    {...federationFieldState(role.key)}
+                  />
+                ) : (
+                  <RoleCheckbox
+                    key={role.key}
+                    label={t(`role_${role.key}`)}
+                    description={t(`${role.key}_description`)}
+                    name={role.field ?? undefined}
+                    checked={role.checked}
+                    {...roleFieldState(role)}
+                  />
+                ),
+              )}
+            </div>
+
+            {sectionEditable(area, list) && (
+              <SaveButton
+                form={ROLES_FORM_ID}
+                pending={savingRoles}
+                label={t("save_roles")}
+                pendingLabel={t("common:save.saving")}
+              />
+            )}
+
+            {area === "cataloguing" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-sans text-sm font-semibold text-indigo">
+                    {t("projects_heading")}
+                  </h3>
+                  {assignableProjects.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAssignForm(!showAssignForm)}
+                      className="font-sans text-sm font-semibold text-indigo hover:underline"
+                    >
+                      {showAssignForm ? t("cancel") : t("assign_to_project")}
+                    </button>
+                  )}
+                </div>
+                {showAssignForm && (
+                  <fetcher.Form
+                    method="post"
+                    className="flex flex-wrap items-end gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3"
+                    onSubmit={() => setTimeout(() => setShowAssignForm(false), 100)}
+                  >
+                    <input type="hidden" name="_action" value="assignToProject" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <label
+                        htmlFor="assign-project"
+                        className="font-sans text-sm font-medium text-indigo"
+                      >
+                        {t("project_label")}
+                      </label>
+                      <select
+                        id="assign-project"
+                        name="projectId"
+                        required
+                        className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                      >
+                        <option value="">{t("select_project")}</option>
+                        {assignableProjects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor="assign-role"
+                        className="font-sans text-sm font-medium text-indigo"
+                      >
+                        {t("role_label")}
+                      </label>
+                      <select
+                        id="assign-role"
+                        name="role"
+                        required
+                        className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                      >
+                        <option value="">{t("select_role")}</option>
+                        <option value="lead">{t("role_lead")}</option>
+                        <option value="cataloguer">{t("role_cataloguer")}</option>
+                        <option value="reviewer">{t("role_reviewer")}</option>
+                      </select>
+                    </div>
+                    <SaveButton
+                      pending={assigning}
+                      label={t("assign")}
+                      pendingLabel={t("common:save.saving")}
+                    />
+                  </fetcher.Form>
+                )}
+
+                {memberships.length === 0 ? (
+                  <p className="font-sans text-sm text-stone-500">
+                    {t("no_memberships")}
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border border-stone-200">
+                    <table className="w-full min-w-[480px] border-collapse">
+                      <thead className="bg-stone-50">
+                        <tr className="border-b border-stone-200">
+                          <th scope="col" className={TH}>
+                            {t("project_label")}
+                          </th>
+                          <th scope="col" className={TH}>
+                            {t("col_project_role")}
+                          </th>
+                          <th scope="col" className={`${TH} text-right`}>
+                            <span className="sr-only">{t("col_actions")}</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {memberships.map((m) => (
+                          <tr key={m.id}>
+                            <td className="px-4 py-2.5 font-sans text-sm font-semibold text-indigo">
+                              {m.projectName}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <fetcher.Form method="post" className="inline">
+                                <input type="hidden" name="_action" value="changeRole" />
+                                <input type="hidden" name="membershipId" value={m.id} />
+                                <input type="hidden" name="shown_role" value={m.role} />
+                                {/* Keyed on the role, so a revalidation that
+                                    brings another role shows it beside the
+                                    baseline it posts. */}
+                                <select
+                                  key={m.role}
+                                  name="role"
+                                  aria-label={t("project_role_for", { project: m.projectName })}
+                                  defaultValue={m.role}
+                                  onChange={(e) => e.target.form?.requestSubmit()}
+                                  className="rounded-md border border-stone-200 bg-white px-2 py-1 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                                >
+                                  <option value="lead">{t("role_lead")}</option>
+                                  <option value="cataloguer">{t("role_cataloguer")}</option>
+                                  <option value="reviewer">{t("role_reviewer")}</option>
+                                </select>
+                              </fetcher.Form>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <fetcher.Form method="post" className="inline">
+                                <input type="hidden" name="_action" value="removeFromProject" />
+                                <input type="hidden" name="membershipId" value={m.id} />
+                                <input type="hidden" name="shown_role" value={m.role} />
+                                <button
+                                  type="submit"
+                                  className="font-sans text-sm text-indigo hover:underline"
+                                  onClick={(e) => {
+                                    if (!confirm(t("remove_confirm", { project: m.projectName }))) {
+                                      e.preventDefault();
+                                    }
+                                  }}
+                                >
+                                  {t("remove")}
+                                </button>
+                              </fetcher.Form>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {area === "digitization" && reviewedVolumes && (
+              <div className="space-y-3">
+                {reviewedVolumes.length === 0 ? (
+                  <p className="font-sans text-sm text-stone-500">
+                    {t("no_reviewed_volumes")}
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border border-stone-200">
+                    <table className="w-full min-w-[480px] border-collapse">
+                      <thead className="bg-stone-50">
+                        <tr className="border-b border-stone-200">
+                          <th scope="col" className={TH}>
+                            {t("col_volume_reviewed")}
+                          </th>
+                          <th scope="col" className={TH}>
+                            {t("col_status")}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {reviewedVolumes.map((v) => (
+                          <tr key={v.volumeId}>
+                            <td className="px-4 py-2.5 font-mono text-[13px] text-indigo">
+                              {v.referenceCode}
+                            </td>
+                            <td className="px-4 py-2.5 font-sans text-sm text-stone-600">
+                              {v.state ? t(`capture:state.${v.state}`) : "\u2014"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="font-sans text-sm text-stone-600">
+                  {t("reviewers_assigned_note")}
+                </p>
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {/* Access history */}
+      <section
+        aria-labelledby="section-history"
+        className="space-y-3 rounded-lg border border-stone-200 p-6"
+      >
+        <h2
+          id="section-history"
+          className="font-serif text-xl font-medium text-indigo"
+        >
+          {t("section_access_history")}
+        </h2>
+        {history.length === 0 ? (
+          <p className="font-sans text-sm text-stone-500">{t("history_empty")}</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-stone-200">
-            <table className="min-w-full divide-y divide-stone-200">
-              <thead className="bg-stone-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
-                    {t("project_label")}
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
-                    {t("role_label")}
-                  </th>
-                  <th className="px-4 py-2.5 text-right font-sans text-xs font-medium uppercase text-stone-500">
-                    &nbsp;
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {memberships.map((m) => (
-                  <tr key={m.id}>
-                    <td className="px-4 py-3 font-sans text-sm font-semibold text-stone-700">
-                      {m.projectName}
-                    </td>
-                    <td className="px-4 py-3">
-                      <fetcher.Form method="post" className="inline">
-                        <input
-                          type="hidden"
-                          name="_action"
-                          value="changeRole"
-                        />
-                        <input
-                          type="hidden"
-                          name="membershipId"
-                          value={m.id}
-                        />
-                        <select
-                          name="role"
-                          defaultValue={m.role}
-                          onChange={(e) => e.target.form?.requestSubmit()}
-                          className="rounded-lg border border-stone-200 px-2 py-1 font-sans text-sm focus:border-indigo focus:ring-1 focus:ring-indigo focus:outline-none"
-                        >
-                          <option value="lead">{t("role_lead")}</option>
-                          <option value="cataloguer">{t("role_cataloguer")}</option>
-                          <option value="reviewer">{t("role_reviewer")}</option>
-                        </select>
-                      </fetcher.Form>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <fetcher.Form method="post" className="inline">
-                        <input
-                          type="hidden"
-                          name="_action"
-                          value="removeFromProject"
-                        />
-                        <input
-                          type="hidden"
-                          name="membershipId"
-                          value={m.id}
-                        />
-                        <button
-                          type="submit"
-                          className="font-sans text-xs text-stone-400 hover:text-indigo"
-                          onClick={(e) => {
-                            if (
-                              !confirm(
-                                t("remove_confirm", { project: m.projectName })
-                              )
-                            ) {
-                              e.preventDefault();
-                            }
-                          }}
-                        >
-                          {t("remove")}
-                        </button>
-                      </fetcher.Form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="space-y-2">
+            {history.map((entry, i) => (
+              <li
+                key={`${entry.kind}-${i}`}
+                className="flex flex-wrap justify-between gap-2 font-sans text-sm text-stone-700"
+              >
+                <span>{historyLine(entry)}</span>
+                <span className="text-stone-600">{formatDate(entry.at)}</span>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }
+
+// @version v0.8.0

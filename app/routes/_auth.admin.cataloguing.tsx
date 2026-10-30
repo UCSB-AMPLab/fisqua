@@ -2,10 +2,10 @@
  * Cataloguing Admin Layout
  *
  * This layout is the parent route for the cataloguing admin subsection in the sidebar.
- * Holds the guard that gates access to cataloguing admins and
- * superadmins, plus the secondary navigation bar that links between
- * Projects, Team, Users, and Promote. Renders the active child route
- * through `<Outlet />`.
+ * Holds the guard, `requireCollabAdmin`, that admits cataloguing
+ * admins, tenant admins and superadmins to Projects, Team and Promote
+ * (Promote adds its own super-admin check). Renders the active child
+ * route through `<Outlet />`.
  *
  * Layout-level capability gate. The first data-access action in the
  * loader is `requireCapability(tenant, "crowdsourcing")`, which
@@ -16,7 +16,7 @@
  * prior tenant configuration) cannot reach the cataloguing surface
  * either.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { Outlet } from "react-router";
@@ -42,3 +42,5 @@ export default function AdminCataloguingLayout() {
     </div>
   );
 }
+
+// @version v0.8.0

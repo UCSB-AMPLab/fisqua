@@ -1,39 +1,64 @@
 /**
  * User Admin — List
  *
- * This page is the directory of every user in the request tenant, with
- * role pills and project counts. Each row deep-links to the user detail
- * page for edits.
+ * This page is the directory of the people in the request tenant,
+ * described by area of the workspace. A line under the heading names
+ * the workspace and counts its people and the people from its
+ * federation; a search (name or email) and an area filter narrow both
+ * tables; a legend explains the two badge styles, one for a person who
+ * administers an area and one for a person who works in it; each badge
+ * also carries the legend's words for its kind, read by screen readers
+ * and shown as a tooltip, so the kind does not rest on colour. Each row of
+ * the first table links to the user detail page. The badges, the
+ * counts and the second table, "From [federation]", come from
+ * `loadUsersList` (`app/lib/users-area.server.ts`), which holds the
+ * mapping from flags, memberships and reviewer assignments to badges.
  *
- * Reaching it takes `canManageTenantUsers`: a super admin, a user
- * manager, or a tenant admin. The tenant admin is the addition — on a
- * records-management tenant they are the only person in a position to
- * put a newly invited colleague to work, and gating the directory on
- * the platform roles left a federation steward able to send invitations
- * and unable to do anything with them afterwards.
+ * The second table lists members of other workspaces who hold a
+ * membership in this workspace's federation, with their home workspace
+ * and their access here. It is read-only and has no links: their
+ * profiles belong to their own workspace, and the detail page reads
+ * only this tenant's users.
  *
- * Tenant attribution comes from request context, populated by
- * `authMiddleware`. Loader filters `users` by `tenant.id`; the
- * action plumbs `tenant.id` into `handleUsersAction` so the invite
- * path attributes the new user row to the calling tenant.
+ * Search and filter travel in the URL (`?q=` and `?area=`), so a
+ * filtered view can be linked to; `/admin/cataloguing/users` redirects
+ * here with `?area=cataloguing`. The search form is a plain GET form.
+ *
+ * Reaching it takes `canReachUsersArea`: a super admin, a user manager
+ * or a workspace admin (`canManageTenantUsers`), or a steward of the
+ * workspace's federation, who grants and revokes staff on the detail
+ * page. Only the first three invite people; a steward without a
+ * workspace flag is not offered the invitation. Area admins do not
+ * reach the page: the users area stays with the workspace admin.
+ *
+ * Last active is `users.last_active_at`, which the auth middleware
+ * stamps at most every five minutes while someone uses the app.
  *
  * The invite modal carries an opening-role picker, shown only to a
- * caller who may assign the tenant-scoped roles. It offers those two
- * roles and "no role"; the platform roles are not on offer here and
- * the action refuses them regardless of what the body says.
+ * caller who may assign the tenant-scoped roles. It offers "no role",
+ * Workspace admin, Records admin, the admins of the areas the workspace
+ * has (Authorities, Digitization, Imports and exports) and Reader; the
+ * platform roles are not on offer here and the action refuses them
+ * regardless of what the body says. Each option is labelled with the
+ * role's name on the user detail page.
  *
  * Invite feedback runs through the shared `SaveFeedbackBanner` /
  * `SaveButton` pair. The banner sits on the page rather than inside
  * the invite modal because the modal closes on submit — a result
  * rendered inside it would be unmounted before it could be read.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
-import { Link, useFetcher } from "react-router";
+import { Form, Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
-import { tenantContext, userContext } from "../context";
+import {
+  grantContext,
+  impersonationContext,
+  tenantContext,
+  userContext,
+} from "../context";
 import { useFormatters } from "../lib/use-formatters";
 import {
   SaveButton,
@@ -41,78 +66,44 @@ import {
   isPendingSubmission,
 } from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.users";
+// Type-only: erased at build time, so the server module is not pulled
+// into the client bundle.
+import type { AreaBadge, UsersArea } from "../lib/users-area.server";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
-  const { asc, eq } = await import("drizzle-orm");
-  const { users, projectMembers, projects } = await import("../db/schema");
-
-  const { canAssignTenantRoles, canManageTenantUsers } = await import(
-    "../lib/permissions.server"
+  const { canAssignTenantRoles, canManageTenantUsers, canReachUsersArea } =
+    await import("../lib/permissions.server");
+  const { loadUsersList, parseAreaFilter } = await import(
+    "../lib/users-area.server"
   );
 
   const user = context.get(userContext);
-  if (!canManageTenantUsers(user)) {
+  const tenant = context.get(tenantContext);
+  const db = drizzle(context.cloudflare.env.DB);
+  if (!(await canReachUsersArea(db, user, tenant))) {
     throw new Response("Forbidden", { status: 403 });
   }
-  const tenant = context.get(tenantContext);
 
-  const env = context.cloudflare.env;
-  const db = drizzle(env.DB);
-
-  const allUsers = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      isAdmin: users.isAdmin,
-      isSuperAdmin: users.isSuperAdmin,
-      isCollabAdmin: users.isCollabAdmin,
-      isArchiveUser: users.isArchiveUser,
-      isUserManager: users.isUserManager,
-      isCataloguer: users.isCataloguer,
-      lastActiveAt: users.lastActiveAt,
-      createdAt: users.createdAt,
-    })
-    .from(users)
-    .where(eq(users.tenantId, tenant.id))
-    .orderBy(asc(users.name))
-    .all();
-
-  // Count project memberships per user
-  const allMemberships = await db
-    .select({
-      userId: projectMembers.userId,
-      projectName: projects.name,
-      role: projectMembers.role,
-    })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .where(eq(projects.tenantId, tenant.id))
-    .all();
-
-  const membershipsByUser = new Map<string, { projectName: string; role: string }[]>();
-  for (const m of allMemberships) {
-    const list = membershipsByUser.get(m.userId) || [];
-    list.push({ projectName: m.projectName, role: m.role });
-    membershipsByUser.set(m.userId, list);
-  }
-
-  const usersWithProjects = allUsers.map((u) => ({
-    ...u,
-    projects: membershipsByUser.get(u.id) || [],
-  }));
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q") ?? "";
+  const area = parseAreaFilter(url.searchParams.get("area"));
+  const list = await loadUsersList(db, tenant, { query, area });
 
   return {
-    users: usersWithProjects,
+    ...list,
+    query,
+    area,
     // Drives the invite modal's role picker. A caller who cannot hand
     // out the tenant-scoped roles is not offered the field at all,
     // rather than shown a control whose every value the action refuses.
     canAssignTenantRoles: canAssignTenantRoles(user),
+    // The invitation stays with those who manage the workspace's users.
+    canInvite: canManageTenantUsers(user),
   };
 }
 
@@ -138,11 +129,14 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   if (intent === "inviteUser") {
     const { handleUsersAction } = await import(
-      "./_auth.admin.cataloguing.users.action.server"
+      "./_auth.admin.users.action.server"
     );
     const i18n = await import("i18next");
     const origin = new URL(request.url).origin;
-    return handleUsersAction(user, tenant.id, db, formData, env, i18n, origin);
+    return handleUsersAction(user, tenant, db, formData, env, i18n, origin, {
+      homeTenantId: context.get(grantContext)?.homeTenantId ?? user.tenantId,
+      impersonationSessionId: context.get(impersonationContext)?.sessionId ?? null,
+    });
   }
 
   // No `error` text: the branch is not reachable from the UI, so the
@@ -152,52 +146,70 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Components
 // ---------------------------------------------------------------------------
 
-type RoleKey =
-  | "super_admin"
-  | "user_manager"
-  | "cataloguing_admin"
-  | "cataloguer"
-  | "records_admin"
-  | "archive_user";
+/** The two badge styles: the admin pair and the draft pair of the status palette. */
+const BADGE_STYLES: Record<AreaBadge["kind"], string> = {
+  administers: "bg-indigo-tint text-indigo",
+  works: "bg-stone-100 text-stone-600",
+};
 
-function roleSummary(u: {
-  isAdmin: number | boolean;
-  isSuperAdmin: number | boolean;
-  isCollabAdmin: number | boolean;
-  isArchiveUser: number | boolean;
-  isUserManager: number | boolean;
-  isCataloguer: number | boolean;
-}): RoleKey[] {
-  const roles: RoleKey[] = [];
-  if (u.isSuperAdmin) roles.push("super_admin");
-  if (u.isUserManager) roles.push("user_manager");
-  if (u.isCollabAdmin) roles.push("cataloguing_admin");
-  if (u.isCataloguer) roles.push("cataloguer");
-  if (u.isAdmin) roles.push("records_admin");
-  if (u.isArchiveUser) roles.push("archive_user");
-  return roles;
+const BADGE_BASE =
+  "inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-[11px] font-semibold uppercase tracking-[0.02em]";
+
+/**
+ * The label of a badge: the area's name, except the Records management
+ * badge of someone who only works there, whose one working role is the
+ * Reader and which says so.
+ */
+function badgeLabel(badge: AreaBadge, t: (key: string) => string): string {
+  if (badge.area === "records" && badge.kind === "works") return t("user_admin:badge_reader");
+  return t(`user_admin:area_${badge.area}`);
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+/**
+ * One area badge. Its colour pair says whether the person administers
+ * the area or works in it; the same words as the legend follow the
+ * label for screen readers and show as a tooltip, so the kind is never
+ * carried by colour alone.
+ */
+function Badge({
+  badge,
+  label,
+  kindLabel,
+}: {
+  badge: AreaBadge;
+  label: string;
+  kindLabel: string;
+}) {
+  return (
+    <span className={`${BADGE_BASE} ${BADGE_STYLES[badge.kind]}`} title={kindLabel}>
+      {label}
+      <span className="sr-only">, {kindLabel}</span>
+    </span>
+  );
+}
 
-const ROLE_PILL_COLORS: Record<RoleKey, string> = {
-  super_admin: "bg-indigo text-parchment",
-  user_manager: "bg-saffron-tint text-saffron-deep",
-  cataloguing_admin: "bg-indigo-tint text-indigo",
-  cataloguer: "bg-verdigris-tint text-verdigris",
-  records_admin: "bg-sage-tint text-sage-deep",
-  archive_user: "bg-verdigris-tint text-verdigris",
-};
+const TH =
+  "px-4 py-2.5 text-left font-sans text-xs font-semibold text-stone-600";
 
 export default function SystemUsersPage({
   loaderData,
 }: Route.ComponentProps) {
-  const { users: allUsers, canAssignTenantRoles } = loaderData;
+  const {
+    workspaceName,
+    federationName,
+    peopleCount,
+    federationPeopleCount,
+    areas,
+    people,
+    federationPeople,
+    query,
+    area,
+    canAssignTenantRoles,
+    canInvite,
+  } = loaderData;
   const { t } = useTranslation(["user_admin", "sidebar", "admin"]);
   const { formatDate } = useFormatters();
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -209,19 +221,39 @@ export default function SystemUsersPage({
     "inviteUser",
   );
 
+  const summary = [
+    t("user_admin:people_count", { count: peopleCount }),
+    federationPeopleCount > 0 && federationName
+      ? t("user_admin:federation_people_count", {
+          number: federationPeopleCount,
+          federation: federationName,
+        })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const filtered = query.trim() !== "" || area !== null;
+
   return (
-    <div className="mx-auto max-w-7xl px-8 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-4xl font-semibold text-stone-700">
-          {t("sidebar:system_users")}
-        </h1>
-        <button
-          type="button"
-          onClick={() => setShowInviteModal(true)}
-          className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
-        >
-          {t("sidebar:invite_user")}
-        </button>
+    <div className="mx-auto max-w-7xl space-y-6 px-8 py-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="font-serif text-3xl font-medium text-indigo">
+            {t("sidebar:users")}
+          </h1>
+          <p className="font-sans text-sm text-stone-600">
+            {workspaceName} · {summary}
+          </p>
+        </div>
+        {canInvite && (
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            className="rounded-md bg-indigo px-4 py-2 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep"
+          >
+            {t("sidebar:invite_user")}
+          </button>
+        )}
       </div>
 
       {/* Save feedback — transient on success, persistent on failure. */}
@@ -290,12 +322,12 @@ export default function SystemUsersPage({
                   className="w-full rounded-lg border border-stone-200 px-3 py-2 font-sans text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
                 />
               </div>
-              {/* Opening role. Only the tenant-scoped roles are on
-                  offer, and only to a caller who may assign them —
-                  the same split `assignableRoleFlags` enforces
-                  server-side. Without this the invited user landed on
-                  an empty dashboard, because every records-management
-                  surface requires Records admin. */}
+              {/* Opening role. Only the workspace roles are on offer,
+                  an area's admin only where the workspace has the area,
+                  and only to a caller who may assign them — the same
+                  split `assignableRoleFlags` enforces server-side.
+                  Without a role the invited user lands on an empty
+                  dashboard. */}
               {canAssignTenantRoles && (
                 <div>
                   <label
@@ -313,9 +345,27 @@ export default function SystemUsersPage({
                     <option value="none">
                       {t("user_admin:invite_role_none")}
                     </option>
+                    <option value="workspace_admin">
+                      {t("user_admin:role_workspace_admin")}
+                    </option>
                     <option value="records_admin">
                       {t("user_admin:role_records_admin")}
                     </option>
+                    {areas.includes("authorities") && (
+                      <option value="authorities_admin">
+                        {t("user_admin:role_authorities_admin")}
+                      </option>
+                    )}
+                    {areas.includes("digitization") && (
+                      <option value="digitization_admin">
+                        {t("user_admin:role_digitization_admin")}
+                      </option>
+                    )}
+                    {areas.includes("imports") && (
+                      <option value="imports_admin">
+                        {t("user_admin:role_imports_admin")}
+                      </option>
+                    )}
                     <option value="archive_user">
                       {t("user_admin:role_archive_user")}
                     </option>
@@ -344,96 +394,205 @@ export default function SystemUsersPage({
         </div>
       )}
 
-      {allUsers.length === 0 ? (
-        <p className="font-sans text-sm text-stone-400">{t("sidebar:no_users")}</p>
+      <Form
+        method="get"
+        role="search"
+        className="flex flex-wrap items-end gap-3"
+      >
+        <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1.5">
+          <label
+            htmlFor="users-q"
+            className="font-sans text-sm font-medium text-indigo"
+          >
+            {t("user_admin:search_label")}
+          </label>
+          <input
+            id="users-q"
+            type="search"
+            name="q"
+            defaultValue={query}
+            placeholder={t("user_admin:search_placeholder")}
+            className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+          />
+        </div>
+        <div className="flex min-w-0 flex-[0_1_240px] flex-col gap-1.5">
+          <label
+            htmlFor="users-area"
+            className="font-sans text-sm font-medium text-indigo"
+          >
+            {t("user_admin:area_label")}
+          </label>
+          <select
+            id="users-area"
+            name="area"
+            defaultValue={area ?? ""}
+            className="rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+          >
+            <option value="">{t("user_admin:area_all")}</option>
+            {areas.map((a: UsersArea) => (
+              <option key={a} value={a}>
+                {t(`user_admin:area_${a}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          className="rounded-md border border-stone-200 bg-white px-4 py-2 font-sans text-sm font-semibold text-indigo hover:bg-stone-50"
+        >
+          {t("common:label.search")}
+        </button>
+      </Form>
+
+      <div className="flex flex-wrap items-center gap-4 font-sans text-xs text-stone-600">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`${BADGE_BASE} ${BADGE_STYLES.administers}`}>
+            {t("user_admin:legend_area")}
+          </span>
+          {t("user_admin:legend_administers")}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`${BADGE_BASE} ${BADGE_STYLES.works}`}>
+            {t("user_admin:legend_area")}
+          </span>
+          {t("user_admin:legend_works")}
+        </span>
+      </div>
+
+      {people.length === 0 ? (
+        <p className="font-sans text-sm text-stone-500">
+          {filtered ? t("user_admin:no_matches") : t("sidebar:no_users")}
+        </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-stone-200">
-          <table className="min-w-full divide-y divide-stone-200">
+        <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+          <table className="w-full min-w-[760px] border-collapse">
             <thead className="bg-stone-50">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
+              <tr className="border-b border-stone-200">
+                <th scope="col" className={TH}>
                   {t("sidebar:col_name")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
+                <th scope="col" className={TH}>
                   {t("sidebar:col_email")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
-                  {t("sidebar:col_roles")}
+                <th scope="col" className={TH}>
+                  {t("user_admin:col_access")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
-                  {t("user_admin:col_projects")}
-                </th>
-                <th className="px-4 py-2.5 text-left font-sans text-xs font-medium uppercase text-stone-500">
-                  {t("sidebar:col_last_login")}
+                <th scope="col" className={`${TH} whitespace-nowrap`}>
+                  {t("user_admin:col_last_active")}
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {allUsers.map((u) => {
-                const roles = roleSummary(u);
-                return (
-                  <tr key={u.id} className="hover:bg-stone-50">
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/admin/users/${u.id}`}
-                        className="font-sans text-sm font-semibold text-stone-700 hover:text-indigo"
-                      >
-                        {u.name || u.email.split("@")[0]}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 font-sans text-sm text-stone-500">
-                      {u.email}
-                    </td>
-                    <td className="px-4 py-3">
-                      {roles.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {roles.map((r) => (
-                            <span
-                              key={r}
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 font-sans text-xs font-semibold ${ROLE_PILL_COLORS[r] || "bg-stone-200 text-stone-500"}`}
-                            >
-                              {t(`user_admin:role_${r}`)}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="font-sans text-xs text-stone-400">
-                          {t("user_admin:no_roles")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {u.projects.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {u.projects.map((p, i) => (
-                            <span
-                              key={i}
-                              className="font-sans text-xs text-stone-700"
-                            >
-                              {p.projectName}
-                              <span className="ml-0.5 text-stone-400">
-                                ({p.role})
-                              </span>
-                              {i < u.projects.length - 1 && ", "}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="font-sans text-xs text-stone-400">
-                          &mdash;
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-sans text-xs text-stone-400">
-                      {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("never")}
-                    </td>
-                  </tr>
-                );
-              })}
+              {people.map((u) => (
+                <tr key={u.id}>
+                  <td className="px-4 py-3">
+                    <Link
+                      to={`/admin/users/${u.id}`}
+                      className="font-sans text-sm font-semibold text-indigo hover:underline"
+                    >
+                      {u.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 font-sans text-sm text-stone-600">
+                    {u.email}
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.badges.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {u.badges.map((b) => (
+                          <Badge
+                            key={b.area}
+                            badge={b}
+                            label={badgeLabel(b, t)}
+                            kindLabel={t(`user_admin:legend_${b.kind}`)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="font-sans text-sm text-stone-500">
+                        {t("user_admin:no_access_yet")}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-sans text-sm text-stone-600">
+                    {u.lastActiveAt ? formatDate(u.lastActiveAt) : t("user_admin:never")}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {federationPeople.length > 0 && federationName && (
+        <section aria-labelledby="federation-people-heading" className="space-y-3">
+          <div className="space-y-1">
+            <h2
+              id="federation-people-heading"
+              className="font-serif text-xl font-medium text-indigo"
+            >
+              {t("user_admin:federation_heading", { federation: federationName })}
+            </h2>
+            <p className="font-sans text-sm text-stone-600">
+              {t("user_admin:federation_intro")}
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+            <table className="w-full min-w-[760px] border-collapse">
+              <thead className="bg-stone-50">
+                <tr className="border-b border-stone-200">
+                  <th scope="col" className={TH}>
+                    {t("sidebar:col_name")}
+                  </th>
+                  <th scope="col" className={TH}>
+                    {t("user_admin:col_home_workspace")}
+                  </th>
+                  <th scope="col" className={TH}>
+                    {t("user_admin:col_access_here")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {federationPeople.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-3 font-sans text-sm font-semibold text-indigo">
+                      {p.name}
+                    </td>
+                    <td className="px-4 py-3 font-sans text-sm text-stone-600">
+                      {p.homeWorkspace}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {p.badges.map((b) => (
+                          <Badge
+                            key={b.area}
+                            badge={b}
+                            label={
+                              b.area === "federation"
+                                ? t(`user_admin:federation_role_${p.federationRole}`)
+                                : badgeLabel(b, t)
+                            }
+                            kindLabel={t(`user_admin:legend_${b.kind}`)}
+                          />
+                        ))}
+                        {p.reviewedVolumeCount > 0 && (
+                          <span className="font-sans text-sm text-stone-600">
+                            {t("user_admin:reviews_volumes", {
+                              count: p.reviewedVolumeCount,
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
+
+// @version v0.8.0

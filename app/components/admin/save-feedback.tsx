@@ -26,7 +26,8 @@
  *
  *   - `SaveButton` is the pending affordance — disabled, label swapped
  *     to a busy phrase, spinner — driven by React Router's navigation
- *     or fetcher state via `isPendingSubmission`.
+ *     or fetcher state via `isPendingSubmission`. Its optional `form`
+ *     names the form it submits when the button sits outside it.
  *
  * Accessibility. A confirmation a screen reader never speaks reproduces
  * the original complaint for a subset of users, so both regions are
@@ -46,7 +47,7 @@
  * read as informational rather than as a failure; those surfaces move
  * onto madder as they adopt this component.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useEffect, useState } from "react";
@@ -248,6 +249,8 @@ interface SaveButtonProps {
   /** Optional submit-button name/value pair for forms that discriminate on it. */
   name?: string;
   value?: string;
+  /** The id of the form the button submits, when it sits outside that form. */
+  form?: string;
 }
 
 /**
@@ -262,10 +265,12 @@ export function SaveButton({
   className = "",
   name,
   value,
+  form,
 }: SaveButtonProps) {
   return (
     <button
       type="submit"
+      form={form}
       name={name}
       value={value}
       disabled={pending}
@@ -277,3 +282,5 @@ export function SaveButton({
     </button>
   );
 }
+
+// @version v0.8.0

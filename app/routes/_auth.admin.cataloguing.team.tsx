@@ -3,14 +3,18 @@
  *
  * This page is the per-project membership administration surface: which users belong to which
  * project and in which role (lead, reviewer, cataloguer). Cataloguing
- * admins and superadmins can add, remove, and reassign members from
- * here; the page pairs a project selector with the member table.
+ * admins, tenant admins and superadmins (`requireCollabAdmin`) can add,
+ * remove, and reassign members from here; the page pairs a project
+ * selector with the member table. Membership is a project role, not a
+ * user flag: nothing here changes a role flag on `users`.
  *
  * Tenant attribution comes from request context, populated by
- * `authMiddleware`. Reads of `users` are filtered by `tenant.id`;
- * project tables (`projects`, `project_members`, `volumes`,
- * `entries`) inherit tenant scope through the user FK chain
- * (memberships only join users that already belong to the tenant).
+ * `authMiddleware`. Reads of `users` are filtered by `tenant.id`.
+ * `project_members` carries no tenant column, so the membership list
+ * and the remove action both reach the tenant through the owning
+ * `projects` row and ignore memberships in other tenants' projects.
+ * The action checks the crowdsourcing capability itself: the layout's
+ * check runs in its loader, which does not guard a POST to this route.
  *
  * This page was fully silent on save: the action has always returned
  * `{ ok, message }` / `{ ok: false, error }`, but nothing rendered it,
@@ -23,13 +27,14 @@
  * one result region and one announcement, which is what the user
  * wants — these are sequential, one-at-a-time actions.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
 import { useFetcher, type FetcherWithComponents } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import {
   SaveButton,
@@ -95,7 +100,9 @@ export async function loader({ context }: Route.LoaderArgs) {
       memberIdSet.has(u.id)
   );
 
-  // 2. Query all project memberships
+  // 2. Query the project memberships in the request tenant's projects.
+  // A steward's row can carry memberships in their home tenant's
+  // projects; those are not this tenant's to show or remove.
   const allMemberships = await db
     .select({
       id: projectMembers.id,
@@ -106,6 +113,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projects.tenantId, tenant.id))
     .all();
 
   // 3. Query volume workload per user (tenant-scoped: workload counts
@@ -213,6 +221,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   requireCollabAdmin(user);
   const tenant = context.get(tenantContext);
+  // The layout's crowdsourcing gate runs in its loader only, and a
+  // loader does not guard an action: check the capability here too,
+  // before anything reads or writes.
+  requireCapability(tenant, "crowdsourcing");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -289,11 +301,20 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (intent === "removeFromProject") {
     const membershipId = formData.get("membershipId") as string;
 
-    // Verify membership exists
+    // The membership must belong to one of the request tenant's
+    // projects. `project_members` has no tenant column, so the scope
+    // comes through `projects`; an id from another tenant reads as
+    // not found.
     const [membership] = await db
       .select({ id: projectMembers.id })
       .from(projectMembers)
-      .where(eq(projectMembers.id, membershipId))
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.id, membershipId),
+          eq(projects.tenantId, tenant.id),
+        ),
+      )
       .limit(1)
       .all();
     if (!membership) {
@@ -572,3 +593,5 @@ export default function AdminCataloguingTeam({
     </div>
   );
 }
+
+// @version v0.8.0
