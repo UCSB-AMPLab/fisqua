@@ -12,15 +12,30 @@
  * The loader reads `tenantContext` (populated by `authMiddleware`
  * after resolving the request `Host` header) and surfaces the
  * capability flags to the `<Sidebar>` so capability-off nav surfaces
- * are hidden.
+ * are hidden. On a tenant with the digitization capability it also
+ * reads whether the user manages capture work or reviews one of the
+ * tenant's volumes, which decides the Digitization section's items.
  *
- * @version v0.7.0
+ * Two middlewares run before any loader or action under this layout:
+ * `authMiddleware`, which resolves the user and tenant, then
+ * `confineMemberAccess`, which keeps a Reader with no other role on
+ * `/records` and a member with no role, project membership or grant on
+ * `/no-access` (both may also open their settings). The loader passes
+ * the same kind of member (`access`) to the sidebar, which shows each
+ * kind only what it can open.
+ *
+ * @version v0.8.0
  */
 
 import { useState, useEffect } from "react";
 import { Form, Outlet, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
-import { impersonationContext, tenantContext, userContext } from "../context";
+import {
+  grantContext,
+  impersonationContext,
+  tenantContext,
+  userContext,
+} from "../context";
 import { Sidebar } from "../components/layout/sidebar";
 import { Footer } from "../components/layout/footer";
 import { ImpersonationBanner } from "../components/layout/impersonation-banner";
@@ -31,6 +46,12 @@ export const middleware = [
   async (args: any, next: any) => {
     const { authMiddleware } = await import("../middleware/auth.server");
     return authMiddleware(args, next);
+  },
+  // Keeps a Reader with no other role inside /records and a member with
+  // no role, project membership or grant on /no-access.
+  async (args: any, next: any) => {
+    const { confineMemberAccess } = await import("../lib/reader.server");
+    return confineMemberAccess(args, next);
   },
 ];
 
@@ -70,6 +91,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     .limit(1);
   const hasAnyProjectMembership = membershipRows.length > 0;
 
+  // What kind of member this is, for the sidebar: a Reader with no
+  // other role sees only the records pages, a member with no access
+  // sees none. The same rule `confineMemberAccess` enforces.
+  const { memberAccess } = await import("../lib/reader.server");
+  const access = await memberAccess(db, tenant, user, {
+    hasGrant: context.get(grantContext) !== null,
+    isImpersonating: impersonating !== null,
+  });
+
   // Surface only the capability flags the sidebar needs;
   // structurally matches `SidebarTenant` so the prop typecheck is a
   // simple shape match rather than a wider Tenant cast. Keeping the
@@ -83,12 +113,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     multiRepositoryEnabled: tenant.multiRepositoryEnabled,
     authoritiesEnabled: tenant.authoritiesEnabled,
     importsEnabled: tenant.importsEnabled,
+    digitizationEnabled: tenant.digitizationEnabled,
   };
+
+  // Who the user is to capture work, for the Digitization section: read
+  // only where the capability is on, since the section is gone elsewhere.
+  let capture = { manager: false, reviewer: false };
+  if (tenant.digitizationEnabled) {
+    const { captureAccess } = await import("../lib/capture/screens.server");
+    capture = await captureAccess(db, tenant, user);
+  }
 
   // Pending-decisions badge for its sidebar entry: the whole open
   // queue, not one tab — candidate duplicate pairs plus open authority
-  // proposals plus proposed vocabulary terms. Computed only for admins
-  // on authorities-on tenants AND only while the current request is
+  // proposals plus proposed vocabulary terms. Computed only for those
+  // who pass the authorities area on authorities-on tenants AND only while the current request is
   // inside the authorities section: the duplicates part is two
   // GROUP BY scans over lower(display_name) (which no index serves)
   // plus a join over the separate ledger rows, and running that on
@@ -100,6 +139,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // lowercase-name collision pairs minus dismissed pairs), not the
   // worklist's accent-normalised number; see `getDuplicateBadgeCounts`.
   let duplicateCount = 0;
+  const { canAdministerArea } = await import("../lib/user-access.server");
   const pathname = new URL(request.url).pathname;
   const inAuthoritiesSection =
     pathname.startsWith("/admin/entities") ||
@@ -108,7 +148,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (
     inAuthoritiesSection &&
     tenant.authoritiesEnabled &&
-    (user.isAdmin || user.isSuperAdmin)
+    canAdministerArea(user, "authorities")
   ) {
     const { getDuplicateBadgeCounts } = await import(
       "../lib/authority-duplicates.server"
@@ -116,15 +156,21 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const { loadPendingDecisionCounts } = await import(
       "../lib/pending-decisions.server"
     );
+    // Duplicates are counted over what this tenant can see: the shared
+    // space and its own records, never another tenant's private ones.
+    // Vocabulary proposals join the count only for someone who can open
+    // the vocabulary tab (the records area, on a tenant with the hub).
     const [counts, pending] = await Promise.all([
-      getDuplicateBadgeCounts(db, tenant.federationId),
+      getDuplicateBadgeCounts(db, tenant.federationId, tenant.id),
       loadPendingDecisionCounts(db, tenant),
     ]);
+    const vocabularyTab =
+      canAdministerArea(user, "records") && tenant.vocabularyHubEnabled;
     duplicateCount =
       counts.entities +
       counts.places +
       pending.authorityProposals +
-      pending.vocabularyProposals;
+      (vocabularyTab ? pending.vocabularyProposals : 0);
   }
 
   // Surface a narrow `impersonating` payload for the banner. Empty
@@ -191,9 +237,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     tenantName: tenant.name,
     workspaces,
     hasAnyProjectMembership,
+    access,
     tenant: tenantCaps,
     impersonating: impersonatingForBanner,
     duplicateCount,
+    capture,
   };
 }
 
@@ -202,9 +250,11 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
   const { t } = useTranslation("common");
   const { t: tDashboard } = useTranslation("dashboard");
 
-  // Detect the focused work surfaces — volume viewer and description
-  // editor. Their URL paths are /projects/:projectId/volumes/:volumeId
-  // and /projects/:projectId/describe/:entryId; matching by file name
+  // Detect the focused work surfaces — volume viewer, description
+  // editor and capture QC viewer. Their URL paths are
+  // /projects/:projectId/volumes/:volumeId,
+  // /projects/:projectId/describe/:entryId and
+  // /admin/capture/qc/:volumeId; matching by file name
   // substrings ("/viewer/", "/describe/") miss the volume URL because
   // the route file name contains "viewer" but the URL does not.
   const isViewer = /^\/projects\/[^/]+\/volumes\/[^/]+\/?$/.test(
@@ -213,10 +263,11 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
   const isDescriptionEditor = /^\/projects\/[^/]+\/describe\/[^/]+\/?$/.test(
     location.pathname,
   );
-  // Both render their own full-height layouts, so the chrome's content
+  const isCaptureViewer = /^\/admin\/capture\/qc\/[^/]+\/?$/.test(location.pathname);
+  // All three render their own full-height layouts, so the chrome's content
   // slot drops its padding and overflow behaviour for them and defaults
   // the sidebar to its narrow rail to maximise working space.
-  const isFocusedSurface = isViewer || isDescriptionEditor;
+  const isFocusedSurface = isViewer || isDescriptionEditor || isCaptureViewer;
 
   // Sidebar collapse state — initialise false, read localStorage on mount
   const [collapsed, setCollapsed] = useState(false);
@@ -315,7 +366,13 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
                   isArchiveUser: loaderData.user.isArchiveUser,
                   isUserManager: loaderData.user.isUserManager,
                   isCataloguer: loaderData.user.isCataloguer,
+                  isRecordsAdmin: loaderData.user.isRecordsAdmin,
+                  isAuthoritiesAdmin: loaderData.user.isAuthoritiesAdmin,
+                  isImportsAdmin: loaderData.user.isImportsAdmin,
                   hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
+                  access: loaderData.access,
+                  isCaptureManager: loaderData.capture.manager,
+                  isCaptureReviewer: loaderData.capture.reviewer,
                 }}
                 tenant={loaderData.tenant}
                 collapsed={effectiveCollapsed}
@@ -333,7 +390,13 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
               isArchiveUser: loaderData.user.isArchiveUser,
               isUserManager: loaderData.user.isUserManager,
               isCataloguer: loaderData.user.isCataloguer,
+              isRecordsAdmin: loaderData.user.isRecordsAdmin,
+              isAuthoritiesAdmin: loaderData.user.isAuthoritiesAdmin,
+              isImportsAdmin: loaderData.user.isImportsAdmin,
               hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
+              access: loaderData.access,
+              isCaptureManager: loaderData.capture.manager,
+              isCaptureReviewer: loaderData.capture.reviewer,
             }}
             tenant={loaderData.tenant}
             collapsed={effectiveCollapsed}
@@ -363,3 +426,5 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
     </div>
   );
 }
+
+// @version v0.8.0
