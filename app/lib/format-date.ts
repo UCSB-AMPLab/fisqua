@@ -1,22 +1,18 @@
 /**
  * ISO-like Date Formatting
  *
- * This helper formats a unix-ms timestamp as `YYYY-MM-DD HH:MM:SS` in
- * UTC. The publish dashboard and other surfaces where archival
- * precision matters more than locale formatting consume it as a
- * single source of truth — do not re-implement elsewhere.
+ * This module is the import path for `formatIsoDateTime`, the
+ * `YYYY-MM-DD HH:MM:SS` formatter the publish dashboard, the import
+ * histories and other surfaces use where archival precision matters
+ * more than locale formatting. The formatter lives in
+ * `app/lib/format.ts` beside the other date formatters, because it
+ * shares their time-zone handling: it renders in the zone it is given,
+ * the reader's own, and falls back to the same default zone they do.
+ * Components take it pre-bound to the reader's zone from
+ * `useFormatters()`; loaders pass `requestTimeZone(request)`.
  *
- * @version v0.3.0
+ * @version v0.8.0
  */
-export function formatIsoDateTime(
-  ts: number | null | undefined
-): string {
-  if (ts === null || ts === undefined) return "—";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return (
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
-    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
-  );
-}
+export { formatIsoDateTime } from "./format";
+
+/* @version v0.8.0 */

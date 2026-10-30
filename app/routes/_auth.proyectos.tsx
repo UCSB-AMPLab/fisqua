@@ -17,7 +17,7 @@
  * `tenant_id` before anything reaches the page. `_auth.dashboard.tsx`
  * is the reference for the shape.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Link } from "react-router";
@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { BookOpen, ClipboardList, Settings, ArrowRight } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "../lib/use-formatters";
 import { DashboardSection } from "../components/dashboard/dashboard-section";
 import { VolumeStatusCard } from "../components/dashboard/volume-status-card";
 import { DescriptionStatusBadge } from "../components/workflow/status-badge";
@@ -562,6 +563,7 @@ type ActivityItem = {
 
 function ActivityFeed({ items }: { items: ActivityItem[] }) {
   const { t } = useTranslation("dashboard");
+  const { formatIsoDateTime } = useFormatters();
 
   return (
     <div className="divide-y divide-stone-100">
@@ -582,7 +584,7 @@ function ActivityFeed({ items }: { items: ActivityItem[] }) {
               )}
             </div>
             <time className="shrink-0 text-xs text-stone-400">
-              {formatTimestamp(item.createdAt)}
+              {formatIsoDateTime(item.createdAt).slice(0, 16)}
             </time>
           </div>
         </div>
@@ -670,15 +672,4 @@ function ProjectManagementCard({
   );
 }
 
-/**
- * Format a Unix epoch timestamp as YYYY-MM-DD HH:MM.
- */
-function formatTimestamp(epoch: number): string {
-  const d = new Date(epoch);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
-}
+/* @version v0.8.0 */

@@ -6,11 +6,12 @@
  * the lead-only assignment affordance. Draggable between columns to move
  * the entry through the workflow.
  *
- * @version v0.3.0
+ * @version v0.8.0
  */
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Plus } from "lucide-react";
+import { useFormatters } from "~/lib/use-formatters";
 import type { PipelineItem } from "~/lib/pipeline/pipeline.server";
 
 interface PipelineCardProps {
@@ -27,10 +28,11 @@ export function PipelineCard({
   onAssignClick,
 }: PipelineCardProps) {
   const { t } = useTranslation("pipeline");
+  // `item.updatedAt` is in seconds; the root loader's `now` is in
+  // milliseconds, the same instant the server render used.
+  const { now = Date.now() } = useFormatters();
 
-  const daysSinceUpdate = Math.floor(
-    (Date.now() / 1000 - item.updatedAt) / 86400
-  );
+  const daysSinceUpdate = Math.floor((now / 1000 - item.updatedAt) / 86400);
   const timeLabel =
     daysSinceUpdate < 1
       ? t("time_today")
@@ -81,3 +83,5 @@ export function PipelineCard({
     </div>
   );
 }
+
+/* @version v0.8.0 */

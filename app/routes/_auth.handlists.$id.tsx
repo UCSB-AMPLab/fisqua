@@ -1,11 +1,11 @@
 /**
  * A handlist's own page
  *
- * Where a handlist is read, ordered, curated and exported. The header
- * names it in serif because a person wrote that name, and the meta
- * line beside it is mono because everything in it is a number or a
- * stamp: how many it holds, how many would actually leave, how many
- * are waiting on a decision, and when it last moved.
+ * This page is where a handlist is read, ordered, curated and exported.
+ * The header names it in serif because a person wrote that name, and
+ * the meta line beside it is mono because everything in it is a number
+ * or a stamp: how many it holds, how many would actually leave, how
+ * many are waiting on a decision, and when it last moved.
  *
  * THE COUNT MAY NOT LIE, so this page prints two of them. `total` is
  * what the handlist holds after merge collapses, tombstones included;
@@ -49,7 +49,7 @@
  * its reason — the same treatment the index gives the row they clicked
  * to get here. An absent or foreign handlist stays a 404.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -108,11 +108,6 @@ type ErrorCode =
 type ActionResult =
   | { ok: true }
   | { ok: false; error: ErrorCode; name?: string };
-
-/** Mono stamps stay ISO in both locales — they are machine facts. */
-function isoDay(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -370,7 +365,11 @@ type LoadedDetail = Extract<
 function HandlistDetail({ data }: { data: LoadedDetail }) {
   const { t } = useTranslation("handlists");
   const { handlist, members, allMemberIds, candidates, page, pageSize } = data;
-  const { formatNumber } = useFormatters();
+  const { formatNumber, formatIsoDateTime } = useFormatters();
+  // Mono stamps stay ISO in both locales, on the reader's calendar, so
+  // "saved" and "updated" are the same day when the reader's clock
+  // says they are.
+  const isoDay = (timestamp: number) => formatIsoDateTime(timestamp).slice(0, 10);
   const [searchParams] = useSearchParams();
   const fetcher = useFetcher<ActionResult>();
   const [dialog, setDialog] = useState<"rename" | "share" | "delete" | null>(
@@ -984,3 +983,5 @@ function ChoiceButton({
     </button>
   );
 }
+
+/* @version v0.8.0 */

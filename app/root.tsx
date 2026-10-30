@@ -10,9 +10,34 @@
  * request. See `app/entry.server.tsx` for the corresponding fallback
  * on the render side.
  *
- * @version v0.7.0
+ * Its loader returns `timeZone`, the zone every date on the page is
+ * formatted in: the request's `tz` cookie when it names a valid zone,
+ * otherwise the default in `app/lib/format.ts`. The value travels to
+ * the browser with the rest of the loader data, and `useFormatters()`
+ * reads it there, so the client hydrates with the zone the server
+ * rendered in rather than its own. Loaders send timestamps, not
+ * formatted dates, so this one value decides every date on the page.
+ * It also returns `now`, the request time in unix ms, which
+ * `useFormatters().relativeTime` measures from. The server render and
+ * the hydrating browser both read it from the loader data, so
+ * "hace 59 min" cannot be rendered on one side and "hace 1 hora" on
+ * the other.
+ *
+ * After hydration `App` records the browser's IANA zone in the `tz`
+ * cookie (readable by script because script writes it; it carries
+ * only the zone name) and, when that zone is not the one the page was
+ * rendered in, revalidates, so a first visit is re-rendered in the
+ * reader's zone once the cookie exists. `shouldRevalidate` re-runs the
+ * root loader on every navigation, alongside the child loaders, so the
+ * zone always comes from the same request as the rest of the page's
+ * data, including after another tab has rewritten the cookie. The
+ * loader only reads a cookie, so re-running it costs nothing that
+ * matters.
+ *
+ * @version v0.8.0
  */
 
+import { useEffect } from "react";
 import {
   isRouteErrorResponse,
   Links,
@@ -20,14 +45,40 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useRevalidator,
 } from "react-router";
 import { useTranslation } from "react-i18next";
 
 import type { Route } from "./+types/root";
 import { i18nextMiddleware } from "./middleware/i18next";
+import { requestTimeZone } from "./lib/format";
 import "./app.css";
 
 export const middleware = [i18nextMiddleware];
+
+export function loader({ request }: Route.LoaderArgs) {
+  return { timeZone: requestTimeZone(request), now: Date.now() };
+}
+
+export function shouldRevalidate() {
+  return true;
+}
+
+const TIME_ZONE_COOKIE = "tz";
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+
+/** Write the browser's zone to the `tz` cookie when it is not there. */
+function recordTimeZone(zone: string) {
+  const value = encodeURIComponent(zone);
+  const current = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${TIME_ZONE_COOKIE}=`));
+  if (current === `${TIME_ZONE_COOKIE}=${value}`) return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie =
+    `${TIME_ZONE_COOKIE}=${value}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax${secure}`;
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -71,7 +122,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+export default function App({ loaderData }: Route.ComponentProps) {
+  const { revalidate } = useRevalidator();
+  const renderedZone = loaderData.timeZone;
+
+  useEffect(() => {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!zone) return;
+    recordTimeZone(zone);
+    if (zone !== renderedZone) void revalidate();
+  }, [renderedZone, revalidate]);
+
   return <Outlet />;
 }
 
@@ -176,3 +237,5 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     </main>
   );
 }
+
+/* @version v0.8.0 */

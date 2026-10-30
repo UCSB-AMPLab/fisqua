@@ -6,10 +6,11 @@
  * the reason, and the lead-only affordance to accept or reject the
  * request.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { useTranslation } from "react-i18next";
 import { formatIsoDateTime } from "../../lib/format-date";
+import { useFormatters } from "../../lib/use-formatters";
 
 export type ResegmentationCardFlag = {
   id: string;
@@ -29,13 +30,18 @@ export type ResegmentationCardProps = {
  * that sits below the badge. Exported so tests can assert the exact
  * string shape and separator without rendering. Uses the project-wide
  * `formatIsoDateTime` so the format matches every other date in the
- * app (the single source of truth for archival-precision dates).
+ * app (the single source of truth for archival-precision dates), in
+ * the reader's `timeZone`; without one it uses that formatter's
+ * default zone.
  */
-export function formatReporterLine(flag: ResegmentationCardFlag): string {
+export function formatReporterLine(
+  flag: ResegmentationCardFlag,
+  timeZone?: string,
+): string {
   const ts =
  typeof flag.reportedAt === "number"
- ? formatIsoDateTime(flag.reportedAt)
- : formatIsoDateTime(Date.parse(flag.reportedAt));
+ ? formatIsoDateTime(flag.reportedAt, timeZone)
+ : formatIsoDateTime(Date.parse(flag.reportedAt), timeZone);
   return `${flag.reporterName} · ${ts}`;
 }
 
@@ -44,6 +50,7 @@ export function ResegmentationCard({
   onOpenDialog,
 }: ResegmentationCardProps) {
   const { t } = useTranslation(["viewer"]);
+  const { timeZone } = useFormatters();
 
   return (
  <div className="mb-3 flex flex-col gap-2 rounded-lg border border-violet-100 bg-violet-50 p-4 font-sans">
@@ -55,7 +62,7 @@ export function ResegmentationCard({
  </div>
 
  {/* Reporter + timestamp */}
- <p className="text-xs text-stone-400">{formatReporterLine(flag)}</p>
+ <p className="text-xs text-stone-400">{formatReporterLine(flag, timeZone)}</p>
 
  {/* Description */}
  <p className="text-sm leading-relaxed text-stone-700">
@@ -74,3 +81,4 @@ export function ResegmentationCard({
   );
 }
 
+/* @version v0.8.0 */

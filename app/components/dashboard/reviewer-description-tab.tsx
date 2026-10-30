@@ -15,12 +15,13 @@
  * positions. All loaders run on the parent route; this file is pure
  * render.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { DescriptionStatusBadge } from "../workflow/status-badge";
+import { useFormatters } from "~/lib/use-formatters";
 import { daysSince } from "./volume-status-card";
 
 export type ReviewerEntryCardData = {
@@ -130,6 +131,7 @@ function ResegFlagCard({ flag }: { flag: ResegFlagData }) {
 
 export function ReviewerDescriptionTab({ data }: ReviewerDescriptionTabProps) {
   const { t } = useTranslation("dashboard");
+  const { now } = useFormatters();
 
   const totalItems =
     data.resegFlags.length +
@@ -186,7 +188,7 @@ export function ReviewerDescriptionTab({ data }: ReviewerDescriptionTabProps) {
             {data.awaitingReview.map((entry) => (
               <div key={entry.id} className="relative">
                 <div className="absolute right-2 top-2 z-10">
-                  <WaitingBadge days={daysSince(entry.updatedAt)} />
+                  <WaitingBadge days={daysSince(entry.updatedAt, now)} />
                 </div>
                 <ReviewerEntryCard entry={entry} />
               </div>
@@ -227,3 +229,5 @@ export function ReviewerDescriptionTab({ data }: ReviewerDescriptionTabProps) {
     </div>
   );
 }
+
+/* @version v0.8.0 */

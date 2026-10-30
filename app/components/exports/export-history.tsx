@@ -1,10 +1,11 @@
 /**
  * ExportHistory — what left, in what shape, and when
  *
- * These records are yours, and getting them out never requires us.
- * Every run is recorded here, which is the promise the whole surface
- * exists to make, so the empty state states it rather than saving it
- * for a populated table.
+ * This component lists a workspace's export runs: what left, in what
+ * shape, and when. These records are yours, and getting them out never
+ * requires us. Every run is recorded here, which is the promise the
+ * whole surface exists to make, so the empty state states it rather
+ * than saving it for a populated table.
  *
  * A ROW STAYS IDENTIFIABLE WHATEVER HAPPENED TO IT. The scope line is
  * printed for a failed run exactly as for a completed one — a run you
@@ -21,7 +22,7 @@
  * promise is that the workspace can always say what left — not that it
  * can always fetch it again.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,11 +37,7 @@ import {
   useScopeText,
 } from "./export-labels";
 import { etaMinutes, useRunPoll } from "./use-run-poll";
-
-/** Mono stamps stay ISO in both languages. */
-function isoDay(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
+import { useFormatters } from "~/lib/use-formatters";
 
 export function ExportHistory({
   runs,
@@ -96,6 +93,9 @@ function ExportHistoryRow({
   const { t } = useTranslation("exports");
   const labels = useExportLabels();
   const scope = useScopeText();
+  const { formatIsoDateTime, now } = useFormatters();
+  // Mono stamps stay ISO in both languages, on the reader's calendar.
+  const isoDay = (timestamp: number) => formatIsoDateTime(timestamp).slice(0, 10);
   const run = useRunPoll(initial);
 
   const recordClass: ExportRecordClass = run.recordClass ?? "records";
@@ -128,7 +128,12 @@ function ExportHistoryRow({
         : countsLine;
 
   const running = run.status === "running";
-  const eta = running ? etaMinutes(run, Date.now()) : null;
+  // The loader's row is measured from the request time, as the server
+  // render measured it; a polled row arrives after hydration, where the
+  // clock is the fresher reference.
+  const eta = running
+    ? etaMinutes(run, run === initial ? (now ?? Date.now()) : Date.now())
+    : null;
   const stageLabel =
     run.stage === "descriptions"
       ? t("stageDescriptions").replace(/\.$/, "")
@@ -259,4 +264,4 @@ function StatusPill({ status }: { status: ExportRunView["status"] }) {
   );
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

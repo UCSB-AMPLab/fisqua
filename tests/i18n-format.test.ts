@@ -29,15 +29,36 @@
  * 1500s, so date helpers can't assume the Unix epoch is the earliest
  * reasonable input).
  *
- * @version v0.7.0
+ * The date formatters also take the reader's time zone. One instant
+ * just after UTC midnight is formatted in Los Angeles, Bogotá and
+ * Tokyo and must land on each zone's own calendar day, with
+ * `America/Los_Angeles` when no zone is passed. `requestTimeZone`
+ * reads the `tz` cookie a request carries and must accept only a zone
+ * `Intl` accepts, falling back to `America/Los_Angeles` otherwise.
+ * Every date expectation names its zone or relies on that default, so
+ * the suite passes whatever zone the process running it is in.
+ *
+ * @version v0.8.0
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   relativeTime,
   formatDate,
+  formatDateTime,
   formatNumber,
+  requestTimeZone,
   toLanguage,
 } from "../app/lib/format";
+
+// 2026-10-26T04:46:08.454Z: still 25 October in Los Angeles (21:46)
+// and Bogotá (23:46), already 26 October in Tokyo (13:46).
+const NEAR_MIDNIGHT = 1792989968454;
+
+function withCookie(cookie: string | null): Request {
+  return new Request("https://fisqua.test/", {
+    headers: cookie === null ? {} : { Cookie: cookie },
+  });
+}
 
 describe("locale-aware formatting", () => {
   afterEach(() => {
@@ -77,24 +98,136 @@ describe("locale-aware formatting", () => {
       expect(relativeTime(now - 500, "es")).toMatch(/ahora/);
       expect(relativeTime(now - 500, "en")).toMatch(/now/);
     });
+
+    it("measures from an explicit reference time, whatever the clock says", () => {
+      const reference = 1792989968454;
+      const stamp = reference - 59 * 60000;
+      vi.useFakeTimers();
+      vi.setSystemTime(reference);
+      const atReference = relativeTime(stamp, "en", reference);
+      // Two minutes later the clock reads "1 hour ago"; the reference
+      // time still gives "59 minutes ago".
+      vi.setSystemTime(reference + 2 * 60000);
+      expect(relativeTime(stamp, "en", reference)).toBe(atReference);
+      expect(atReference).toBe("59 minutes ago");
+      expect(relativeTime(stamp, "es", reference)).toBe("hace 59 minutos");
+      expect(relativeTime(stamp, "en")).toBe("1 hour ago");
+    });
+
+    it("reads the clock when no reference time is passed", () => {
+      vi.useFakeTimers();
+      const stamp = Date.now() - 5 * 60000;
+      expect(relativeTime(stamp, "en")).toBe(relativeTime(stamp, "en", Date.now()));
+    });
   });
 
   describe("formatDate", () => {
     it("renders the same pre-1600 timestamp in each language's long form", () => {
       // July 3, 1593 — well before the Unix epoch, and inside the
       // period the catalogued corpus actually covers.
-      const timestamp = new Date(1593, 6, 3).getTime();
+      const timestamp = Date.UTC(1593, 6, 3, 20);
       expect(formatDate(timestamp, "es")).toMatch(/3 de julio de 1593/);
       expect(formatDate(timestamp, "en")).toMatch(/July 3, 1593/);
     });
 
     it("produces different output per language for the same timestamp", () => {
-      const timestamp = new Date(2026, 7, 12).getTime();
+      const timestamp = Date.UTC(2026, 7, 12, 20);
       expect(formatDate(timestamp, "es")).not.toBe(
         formatDate(timestamp, "en"),
       );
       expect(formatDate(timestamp, "es")).toMatch(/12 de agosto de 2026/);
       expect(formatDate(timestamp, "en")).toMatch(/August 12, 2026/);
+    });
+
+    it("puts a timestamp near UTC midnight on the given zone's calendar", () => {
+      expect(formatDate(NEAR_MIDNIGHT, "en", "America/Los_Angeles")).toBe(
+        "October 25, 2026",
+      );
+      expect(formatDate(NEAR_MIDNIGHT, "en", "America/Bogota")).toBe(
+        "October 25, 2026",
+      );
+      expect(formatDate(NEAR_MIDNIGHT, "en", "Asia/Tokyo")).toBe(
+        "October 26, 2026",
+      );
+      expect(formatDate(NEAR_MIDNIGHT, "es", "America/Bogota")).toMatch(
+        /25 de octubre de 2026/,
+      );
+      expect(formatDate(NEAR_MIDNIGHT, "es", "Asia/Tokyo")).toMatch(
+        /26 de octubre de 2026/,
+      );
+    });
+
+    it("uses America/Los_Angeles when no zone is passed", () => {
+      expect(formatDate(NEAR_MIDNIGHT, "es")).toMatch(/25 de octubre de 2026/);
+      expect(formatDate(NEAR_MIDNIGHT, "en")).toBe("October 25, 2026");
+    });
+  });
+
+  describe("formatDateTime", () => {
+    it("shows the given zone's day and time of day", () => {
+      expect(
+        formatDateTime(NEAR_MIDNIGHT, "en", "America/Los_Angeles"),
+      ).toMatch(/Oct 25, 2026, 9:46\sPM/);
+      expect(formatDateTime(NEAR_MIDNIGHT, "en", "America/Bogota")).toMatch(
+        /Oct 25, 2026, 11:46\sPM/,
+      );
+      expect(formatDateTime(NEAR_MIDNIGHT, "en", "Asia/Tokyo")).toMatch(
+        /Oct 26, 2026, 1:46\sPM/,
+      );
+      expect(formatDateTime(NEAR_MIDNIGHT, "es", "Asia/Tokyo")).toMatch(
+        /^26\/10\/2026, 1:46/,
+      );
+    });
+
+    it("uses America/Los_Angeles when no zone is passed", () => {
+      expect(formatDateTime(NEAR_MIDNIGHT, "es")).toMatch(/^25\/10\/2026, 9:46/);
+      expect(formatDateTime(NEAR_MIDNIGHT, "en")).toMatch(
+        /Oct 25, 2026, 9:46\sPM/,
+      );
+    });
+  });
+
+  describe("requestTimeZone", () => {
+    it("reads a valid zone from the tz cookie, encoded or not", () => {
+      expect(requestTimeZone(withCookie("tz=America%2FBogota"))).toBe(
+        "America/Bogota",
+      );
+      expect(requestTimeZone(withCookie("tz=Asia/Tokyo"))).toBe("Asia/Tokyo");
+      expect(requestTimeZone(withCookie("tz=UTC"))).toBe("UTC");
+    });
+
+    it("finds tz among other cookies", () => {
+      expect(
+        requestTimeZone(
+          withCookie("__session=abc; tz=Asia%2FTokyo; lng=es"),
+        ),
+      ).toBe("Asia/Tokyo");
+    });
+
+    it("falls back to America/Los_Angeles without a cookie", () => {
+      expect(requestTimeZone(withCookie(null))).toBe("America/Los_Angeles");
+      expect(requestTimeZone(withCookie("__session=abc"))).toBe(
+        "America/Los_Angeles",
+      );
+    });
+
+    it("falls back to America/Los_Angeles for a zone Intl rejects", () => {
+      expect(requestTimeZone(withCookie("tz=Not%2FA_Zone"))).toBe(
+        "America/Los_Angeles",
+      );
+      expect(requestTimeZone(withCookie("tz="))).toBe("America/Los_Angeles");
+      expect(requestTimeZone(withCookie("tz=%E0%A4%A"))).toBe(
+        "America/Los_Angeles",
+      );
+      expect(
+        requestTimeZone(withCookie(`tz=${"A".repeat(200)}`)),
+      ).toBe("America/Los_Angeles");
+    });
+
+    it("does not read a cookie whose name only ends in tz", () => {
+      expect(requestTimeZone(withCookie("xtz=Asia%2FTokyo"))).toBe(
+        "America/Los_Angeles",
+      );
     });
   });
 
@@ -127,3 +260,5 @@ describe("locale-aware formatting", () => {
     });
   });
 });
+
+/* @version v0.8.0 */

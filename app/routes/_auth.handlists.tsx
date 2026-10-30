@@ -1,11 +1,11 @@
 /**
  * Handlists — the index
  *
- * Every working set this person can reach, in one table: the ones
- * they own, the ones colleagues shared with them, and — under All —
- * the ones the workspace has been shown. Three tabs rather than three
- * pages, because they are three readings of one list and a tab keeps
- * the count comparable.
+ * This page is the handlists index. Every working set this person can
+ * reach, in one table: the ones they own, the ones colleagues shared
+ * with them, and — under All — the ones the workspace has been shown.
+ * Three tabs rather than three pages, because they are three readings
+ * of one list and a tab keeps the count comparable.
  *
  * A ROW SAYS FOUR THINGS. What the handlist is called, in serif,
  * because it is a name a person wrote. What it holds — a mono count
@@ -36,13 +36,14 @@
  * `handlists.server` — owner, sharee or workspace-visible, always
  * inside the tenant, in the same statement as the read.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { useEffect, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Download, List, Lock, Plus, Users } from "lucide-react";
 import { tenantContext, userContext } from "../context";
+import { useFormatters } from "~/lib/use-formatters";
 import { CreateHandlistDialog } from "~/components/handlists/create-handlist-dialog";
 import { HOLDS_KEYS } from "~/components/handlists/handlist-labels";
 import type {
@@ -91,11 +92,6 @@ type CreateResult =
 
 function readTab(value: string | null): Tab {
   return value === "shared" || value === "all" ? value : "mine";
-}
-
-/** Mono stamps stay ISO in both locales — they are machine facts. */
-function isoDay(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +286,9 @@ function HandlistRow({
   userId: string;
 }) {
   const { t } = useTranslation("handlists");
+  const { formatIsoDateTime } = useFormatters();
+  // Mono stamps stay ISO in both locales, on the reader's calendar.
+  const isoDay = (timestamp: number) => formatIsoDateTime(timestamp).slice(0, 10);
   const mine = row.ownerId === userId;
 
   return (
@@ -374,3 +373,5 @@ function HandlistRow({
     </tr>
   );
 }
+
+/* @version v0.8.0 */

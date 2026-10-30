@@ -19,13 +19,12 @@
  * key is missing so a future step ID without a translation still
  * renders something readable.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { formatIsoDateTime } from "../../lib/format-date";
 import { useFormatters } from "../../lib/use-formatters";
 
 /**
@@ -79,7 +78,7 @@ interface ExportProgressProps {
 
 export function ExportProgress({ exportId }: ExportProgressProps) {
   const { t } = useTranslation("publish");
-  const { formatNumber } = useFormatters();
+  const { formatNumber, formatIsoDateTime } = useFormatters();
   const [data, setData] = useState<ExportProgressData | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 1-second ticker so elapsed times advance smoothly between 4s polls.
@@ -354,3 +353,5 @@ export function ExportProgress({ exportId }: ExportProgressProps) {
     </section>
   );
 }
+
+/* @version v0.8.0 */
