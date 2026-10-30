@@ -32,16 +32,31 @@
  * only that helper knows the difference. The id lists are chunked at
  * `ID_CHUNK` for D1's bound-parameter cap.
  *
- * @version v0.7.0
+ * OCR TEXT COMES FROM THE PAGE ROWS. `readExportOcrText` reads each
+ * description's `ocr_pages` rows in page order and joins their text with
+ * a blank line between pages, the separator the transcript view uses
+ * (`PAGE_JOIN`), so the `ocrText` column the ISAD(G) form still lists
+ * carries a description's whole transcript. A description whose text
+ * was migrated from the old `descriptions.ocr_text` column has one row,
+ * at page 1, and exports exactly what the column held. A description
+ * whose volume was published has the run's pages instead, which replaced
+ * the migrated row, and exports them joined. A description with no
+ * pages exports nothing. `joinPageTexts` does the joining for this
+ * reader and for the publish export's fonds step. The JSON emitter and
+ * the canonical CSV call the reader, each only when the form lists
+ * `ocrText`.
+ *
+ * @version v0.8.0
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   descriptionEntities,
   descriptionPlaces,
   descriptions,
   entities,
+  ocrPages,
   places,
   repositories,
 } from "../../db/schema";
@@ -49,6 +64,7 @@ import { authorityScope } from "../authority-ownership.server";
 import { LegacyIdsSchema } from "../validation/legacy-ids";
 import type { Tenant } from "../../context";
 import { ID_CHUNK } from "./scopes.server";
+import { PAGE_JOIN } from "../ocr/search.server";
 
 export type DescriptionRow = typeof descriptions.$inferSelect;
 export type EntityRow = typeof entities.$inferSelect;
@@ -116,6 +132,57 @@ export function parseLegacyIds(
     if (parsed.success) out.push(parsed.data);
   }
   return out.length > 0 ? out : null;
+}
+
+/**
+ * Each description's page texts joined in the order given, a blank line
+ * between pages. `rows` must come ordered by description and then by
+ * page, as an `ORDER BY description_id, page_seq` read returns them; a
+ * description with one page gets that page's text unchanged.
+ */
+export function joinPageTexts(
+  rows: ReadonlyArray<{ id: string; text: string }>,
+): Map<string, string> {
+  const parts = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = parts.get(row.id);
+    if (list) list.push(row.text);
+    else parts.set(row.id, [row.text]);
+  }
+  const out = new Map<string, string>();
+  for (const [id, list] of parts) out.set(id, list.join(PAGE_JOIN));
+  return out;
+}
+
+/**
+ * The OCR text of each description in `ids` that has page rows, keyed
+ * by description id: its pages joined in page order. The tenant is
+ * named on both tables, so a page row filed under another tenant is
+ * never read.
+ */
+export async function readExportOcrText(
+  db: DrizzleD1Database<any>,
+  tenant: Tenant,
+  ids: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const part of chunk(ids)) {
+    const rows = await db
+      .select({ id: ocrPages.descriptionId, text: ocrPages.text })
+      .from(ocrPages)
+      .innerJoin(descriptions, eq(descriptions.id, ocrPages.descriptionId))
+      .where(
+        and(
+          eq(ocrPages.tenantId, tenant.id),
+          eq(descriptions.tenantId, tenant.id),
+          inArray(descriptions.id, part),
+        ),
+      )
+      .orderBy(asc(ocrPages.descriptionId), asc(ocrPages.pageSeq))
+      .all();
+    for (const [id, text] of joinPageTexts(rows)) out.set(id, text);
+  }
+  return out;
 }
 
 /**
@@ -408,4 +475,4 @@ function sortLinks(rows: ScopedLink[]): ScopedLink[] {
   });
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

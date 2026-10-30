@@ -65,7 +65,13 @@
  * a comma, a quote, a newline or edge whitespace, and an embedded quote
  * doubles.
  *
- * @version v0.7.0
+ * The `ocrText` column, which the ISAD(G) form lists, is filled from
+ * each description's OCR pages joined in page order through
+ * `readExportOcrText` (the migrated page-1 text as it stands, or a
+ * published run's pages), one read per chunk and only when the form
+ * lists the column.
+ *
+ * @version v0.8.0
  */
 
 import { and, eq, inArray } from "drizzle-orm";
@@ -83,6 +89,7 @@ import type { Standard } from "../standards/types";
 import type { Tenant } from "../../context";
 import { ID_CHUNK } from "./scopes.server";
 import type { ResolvedExportScope } from "./scopes.server";
+import { readExportOcrText } from "./rows.server";
 
 /** The discriminator column, present only in the multi-table layout. */
 export const ROW_TYPE_COLUMN = "rowType";
@@ -283,6 +290,7 @@ export async function emitCanonicalCsv(
   const columns = canonicalCsvHeaders(standard, layout);
   const discriminated = columns[0] === ROW_TYPE_COLUMN;
   const descriptionColumns = generateCanonicalHeaders(standard);
+  const withOcr = descriptionColumns.includes("ocrText");
 
   const lines: string[] = [BOM + columns.join(",") + "\r\n"];
 
@@ -297,6 +305,9 @@ export async function emitCanonicalCsv(
     let done = 0;
     for (const part of chunk(scope.memberIds)) {
       const rows = await readDescriptions(db, tenant, part);
+      const ocr = withOcr
+        ? await readExportOcrText(db, tenant, part)
+        : new Map<string, string>();
       const parentCodes = await readReferenceCodes(
         db,
         tenant,
@@ -305,7 +316,8 @@ export async function emitCanonicalCsv(
       for (const id of part) {
         const row = rows.find((r) => r.id === id);
         if (!row) continue;
-        write("description", descriptionRow(row, descriptionColumns, parentCodes));
+        const withText = withOcr ? { ...row, ocrText: ocr.get(row.id) ?? null } : row;
+        write("description", descriptionRow(withText, descriptionColumns, parentCodes));
       }
       done += part.length;
       await ctx.checkpoint("descriptions", Math.min(done, total), total);
@@ -752,4 +764,4 @@ function sortLinks(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   });
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

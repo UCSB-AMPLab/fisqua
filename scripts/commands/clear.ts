@@ -26,11 +26,10 @@
  * list catches up so search is not silently broken after a
  * clear-and-reimport.
  *
- * `snapshotCounts` writes the multi-line UNION ALL SQL to a temp file
- * under .import/ and applies it via `wrangler d1 execute --file=`, not
- * `--command "..."`. Embedded newlines + single quotes in a wrangler
- * argv are fragile under macOS zsh; the temp-file path avoids the
- * hazard entirely. The temp file is deleted in finally{}.
+ * `snapshotCounts` and the guard's reads pass their SQL to `wrangler d1
+ * execute --command` as one element of an argument array, so no shell
+ * sees the newlines and quotes. They do not use `--file`: against a
+ * remote database that runs as an import and returns no rows.
  *
  * Target enum drives the wrangler invocation:
  *   target=local      -> fisqua-db --local
@@ -38,16 +37,52 @@
  *   target=production -> fisqua-db --remote
  * database_name is always passed explicitly.
  *
- * @version v0.4.1
+ * The clear refuses while it would lose state the reimport cannot
+ * restore. Deleting a tenant's descriptions cascades into their
+ * `ocr_pages` rows. Pages a pipeline run wrote exist only for published
+ * volumes, which cannot be regenerated. Pipeline volumes and recipe
+ * declarations are production state that no import holds. So
+ * `refuseUnsafeTenantClear` refuses, before any DELETE runs, while the
+ * tenant has pipeline pages, page rows without a run id in any shape
+ * other than the migrated page 1, pipeline volumes or recipe
+ * declarations, and its message names each count. The page-1 rows
+ * migration 0086 backfilled from the old `ocr_text` column (page 1, no
+ * run id, no source or ALTO key) do not block the clear: the importer
+ * writes the same rows again from the dump's `ocr_text`. The guard
+ * returns their count for the operator.
+ *
+ * The clear SQL deletes those migrated rows itself, in four statements
+ * split by rowid as 0086 inserted them, before it deletes the
+ * descriptions. Each deleted row removes its entry from the full-text
+ * index through the delete trigger, and a quarter of the rows per
+ * statement keeps that work inside D1's per-statement budget. The
+ * descriptions DELETE then cascades over an empty page set.
+ *
+ * The guard also refuses when the database has no `ocr_pages` table,
+ * since it then cannot show which pages it would delete, and when a
+ * count cannot be read. It does not look for the `descriptions.ocr_text`
+ * column: neither importer writes to it, so a database without it can
+ * take the reimport. It reads the database in two statements:
+ * `clearGuardProbeSql` finds which of these tables exist, and
+ * `clearGuardCountsSql` counts the tenant's rows in the tables that do;
+ * a pipeline table that does not exist holds no rows. `wranglerRows` is
+ * the production reader it is given.
+ *
+ * @version v0.8.0
  */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { NEOGRANADINA_TENANT_ID } from "../../app/lib/tenant";
+import { escapeSql } from "../lib/sql";
 import type { CountSnapshot, ClearAssertion } from "../lib/types";
 
 const DEFAULT_OUTPUT_DIR = ".import";
+
+/** The shape of a page-1 row migrated from the old column (module header). */
+const MIGRATED_PAGE =
+  "run_id IS NULL AND page_seq = 1 AND source_key IS NULL AND alto_key IS NULL";
 
 /**
  * Generate the tenant-scoped clear SQL. Writes a single .sql file under
@@ -62,6 +97,9 @@ const DEFAULT_OUTPUT_DIR = ".import";
  * orchestrator) pass nothing and inherit the Neogranadina default.
  *
  * Order matters:
+ *   0. ocr_pages        -- the tenant's migrated page-1 rows, in four
+ *                         rowid chunks (module header); the guard has
+ *                         already refused any other page row
  *   1. descriptions    -- cascade kills description_entities +
  *                         description_places via ON DELETE CASCADE on
  *                         their description_id FK
@@ -84,10 +122,13 @@ export async function generateTenantScopedClearSql(
 
   const sql = `PRAGMA defer_foreign_keys = true;
 
--- Tenant-scoped clear. Order matters -- descriptions first (cascade
--- kills description_entities + description_places); entity_functions
--- next via JOIN-DELETE (no tenant_id column); then entities, places,
--- repositories. Other tenants' rows are untouched.
+-- Tenant-scoped clear. Order matters -- the migrated page-1 OCR rows
+-- first, in four rowid chunks so each statement's index deletes stay
+-- small; then descriptions (cascade kills description_entities +
+-- description_places); entity_functions next via JOIN-DELETE (no
+-- tenant_id column); then entities, places, repositories. Other
+-- tenants' rows are untouched.
+${[0, 1, 2, 3].map((r) => `DELETE FROM ocr_pages WHERE tenant_id = '${tenantId}' AND ${MIGRATED_PAGE} AND rowid % 4 = ${r};`).join("\n")}
 DELETE FROM descriptions WHERE tenant_id = '${tenantId}';
 DELETE FROM entity_functions WHERE entity_id IN (
   SELECT id FROM entities WHERE tenant_id = '${tenantId}'
@@ -139,73 +180,155 @@ INSERT INTO descriptions_fts(descriptions_fts) VALUES('rebuild');
 export type ClearTarget = "local" | "staging" | "production";
 
 /**
- * Build the wrangler argv tail for `d1 execute ... --file= --json` against
- * the given target. database_name + --env + --remote are each
+ * Build the wrangler arguments that name the target database for
+ * `d1 execute`. database_name + --env + --remote are each
  * constructed from the target enum -- never partial. Staging needs
  * both --env=staging AND --remote (the staging deploy's D1 lives on
  * the staging worker env, not on the default env's --remote).
  */
-function buildWranglerFileArgs(target: ClearTarget, sqlFilePath: string): string {
-  const dbName = target === "staging" ? "fisqua-staging-db" : "fisqua-db";
-  const envFlag = target === "staging" ? " --env=staging" : "";
-  const remoteFlag = target === "local" ? "--local" : "--remote";
-  return `d1 execute ${dbName}${envFlag} ${remoteFlag} --file="${sqlFilePath}" --json`;
+function wranglerTargetArgs(target: ClearTarget): string[] {
+  if (target === "staging") return ["fisqua-staging-db", "--env=staging", "--remote"];
+  if (target === "production") return ["fisqua-db", "--remote"];
+  return ["fisqua-db", "--local"];
 }
 
 /**
- * Run a single SQL string against the target D1 via wrangler --file=,
- * parse the --json output, and return the rows from the first statement.
+ * Run a single SQL string against the target D1 and return the rows
+ * from the first statement.
  *
- * Multi-line UNION ALL SQL via embedded shell-quoted --command is
- * fragile on macOS (zsh quoting hazards, embedded backslashes,
- * newlines in the wrangler argv). Writing SQL to a temp file under
- * `outputDir` (default `.import/`) and using --file= instead avoids
- * the hazard. The wrangler --json output shape is identical between
- * --command and --file invocations.
- *
- * Temp file is deleted in finally{} regardless of success or failure;
- * the unlink is idempotent so a missing file at cleanup is not an error.
+ * Reads go through `--command`, with the SQL passed as one element of
+ * an argument array, so no shell sees it and multi-line UNION ALL SQL
+ * needs no quoting. `--file` is not used for reads: against a remote
+ * database it runs as an import and returns only what it executed
+ * ("Total queries executed", "Rows read"), never the rows.
  */
-async function wranglerJsonViaFile(
-  target: ClearTarget,
-  sql: string,
-  label: string,
-  outputDir: string = DEFAULT_OUTPUT_DIR,
-): Promise<unknown[]> {
-  await fs.mkdir(outputDir, { recursive: true });
-  const tmpPath = path.join(
-    outputDir,
-    `snapshot-${label}-${Date.now()}.sql`,
+async function wranglerJson(target: ClearTarget, sql: string, label: string): Promise<unknown[]> {
+  const out = execFileSync(
+    "npx",
+    ["wrangler", "d1", "execute", ...wranglerTargetArgs(target), "--command", sql, "--json"],
+    { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 },
   );
-  await fs.writeFile(tmpPath, sql, "utf8");
-  try {
-    const out = execSync(
-      `npx wrangler ${buildWranglerFileArgs(target, tmpPath)}`,
-      { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 },
-    );
-    // Wrangler `d1 execute --remote --file --json` prefixes its JSON
-    // output with status lines (`├ Checking if file needs uploading`,
-    // `│ Uploading complete`) — these are not part of the documented
-    // --json contract but ship hardcoded in the file-upload path.
-    // `--local` invocations don't show them. Discard everything before
-    // the first JSON token so both targets parse the same way.
-    const jsonStart = out.search(/[[{]/);
-    if (jsonStart < 0) {
-      throw new Error(
-        `wrangler --json produced no JSON output for ${label}: ${out}`,
-      );
-    }
-    const parsed = JSON.parse(out.slice(jsonStart)) as Array<{
-      results?: unknown[];
-    }>;
-    return parsed[0]?.results ?? [];
-  } finally {
-    try {
-      await fs.unlink(tmpPath);
-    } catch {
-      // idempotent: file already removed or never written
-    }
+  // Remote `--json` output can be preceded by status lines; `--local`
+  // output is not. Discard everything before the first JSON token so
+  // both targets parse the same way.
+  const jsonStart = out.search(/[[{]/);
+  if (jsonStart < 0) {
+    throw new Error(`wrangler --json produced no JSON output for ${label}: ${out}`);
   }
+  const parsed = JSON.parse(out.slice(jsonStart)) as Array<{ results?: unknown[] }>;
+  return parsed[0]?.results ?? [];
+}
+
+/**
+ * The SQL that finds which of the tables the guard counts exist. One
+ * row, each value 0 or 1.
+ */
+export function clearGuardProbeSql(): string {
+  const table = (name: string) =>
+    `(SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '${name}') AS ${name}`;
+  return `SELECT ${table("ocr_pages")}, ${table("pipeline_volumes")}, ${table("pipeline_recipe_declarations")};`;
+}
+
+/**
+ * The SQL that counts the tenant's page rows and pipeline rows: pages a
+ * pipeline run wrote (`run_id IS NOT NULL`), page-1 rows migrated from
+ * the old column, other page rows without a run id, and, when the
+ * pipeline tables exist, pipeline volumes and recipe declarations. One
+ * row.
+ */
+export function clearGuardCountsSql(
+  tenantId: string,
+  opts: { pipelineTables: boolean },
+): string {
+  const t = escapeSql(tenantId);
+  const counts = [
+    `(SELECT count(*) FROM ocr_pages WHERE tenant_id = ${t} AND run_id IS NOT NULL) AS pipeline_pages`,
+    `(SELECT count(*) FROM ocr_pages WHERE tenant_id = ${t} AND ${MIGRATED_PAGE}) AS migrated_pages`,
+    `(SELECT count(*) FROM ocr_pages WHERE tenant_id = ${t} AND run_id IS NULL AND NOT (${MIGRATED_PAGE})) AS other_pages`,
+    opts.pipelineTables
+      ? `(SELECT count(*) FROM pipeline_volumes WHERE tenant_id = ${t}) AS pipeline_volumes`
+      : `0 AS pipeline_volumes`,
+    opts.pipelineTables
+      ? `(SELECT count(*) FROM pipeline_recipe_declarations WHERE tenant_id = ${t}) AS recipe_declarations`
+      : `0 AS recipe_declarations`,
+  ];
+  return `SELECT ${counts.join(",\n  ")};`;
+}
+
+/** Reads the named numeric fields of the first row, or null if any is missing. */
+function readCounts<K extends string>(rows: unknown[], keys: K[]): Record<K, number> | null {
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const out = {} as Record<K, number>;
+  for (const key of keys) {
+    const n = Number(row[key]);
+    if (row[key] === null || row[key] === undefined || !Number.isFinite(n)) return null;
+    out[key] = n;
+  }
+  return out;
+}
+
+/**
+ * Refuse the tenant-scoped clear while it would lose OCR pages or
+ * pipeline state the reimport cannot restore. `countRows` runs one SQL
+ * statement and returns its rows; anything it returns that is not a
+ * readable count refuses as well. When the clear may go ahead, returns
+ * the number of migrated page-1 rows it will delete and the reimport
+ * writes again.
+ */
+export async function refuseUnsafeTenantClear(
+  tenantId: string,
+  countRows: (sql: string) => Promise<unknown[]>,
+): Promise<{ migratedPages: number }> {
+  const refused = (why: string) => new Error(`Tenant ${tenantId}: ${why} Clear refused.`);
+
+  const probe = readCounts(await countRows(clearGuardProbeSql()), [
+    "ocr_pages", "pipeline_volumes", "pipeline_recipe_declarations",
+  ]);
+  if (!probe) throw refused("could not read which OCR and pipeline tables the database has.");
+  if (!probe.ocr_pages) {
+    throw refused("the database has no ocr_pages table, so the clear cannot show which OCR pages it would delete.");
+  }
+
+  const pipelineTables = probe.pipeline_volumes > 0 && probe.pipeline_recipe_declarations > 0;
+  if ((probe.pipeline_volumes > 0) !== (probe.pipeline_recipe_declarations > 0)) {
+    throw refused("the database has only one of pipeline_volumes and pipeline_recipe_declarations.");
+  }
+  const counts = readCounts(
+    await countRows(clearGuardCountsSql(tenantId, { pipelineTables })),
+    ["pipeline_pages", "migrated_pages", "other_pages", "pipeline_volumes", "recipe_declarations"],
+  );
+  if (!counts) throw refused("could not count its OCR pages and pipeline rows.");
+
+  const found: string[] = [];
+  if (counts.pipeline_pages > 0) {
+    found.push(`${counts.pipeline_pages} OCR pages written by the media pipeline, which cannot be rebuilt`);
+  }
+  if (counts.other_pages > 0) {
+    found.push(`${counts.other_pages} OCR pages without a run id that are not migrated page-1 rows, which the importer does not recreate`);
+  }
+  if (counts.pipeline_volumes > 0) {
+    found.push(`${counts.pipeline_volumes} pipeline volumes`);
+  }
+  if (counts.recipe_declarations > 0) {
+    found.push(`${counts.recipe_declarations} recipe declarations`);
+  }
+  if (found.length > 0) {
+    throw refused(`the clear would delete ${found.join("; ")}.`);
+  }
+  return { migratedPages: counts.migrated_pages };
+}
+
+/**
+ * The production row reader for `refuseUnsafeTenantClear`: runs
+ * the SQL against the target D1 through wrangler and returns the rows.
+ * `outputDir` is kept for callers that pass it; reads write no files.
+ */
+export function wranglerRows(
+  target: ClearTarget,
+  outputDir: string = DEFAULT_OUTPUT_DIR,
+): (sql: string) => Promise<unknown[]> {
+  return (sql) => wranglerJson(target, sql, "ocr-pages");
 }
 
 /**
@@ -216,9 +339,8 @@ async function wranglerJsonViaFile(
  * 8 separate calls would multiply round-trip latency for no
  * information gain.
  *
- * Temp snapshot SQL files are written under `outputDir` (default
- * `.import/`, the production CLI's unchanged root; tests pass a
- * per-suite temp dir).
+ * `outputDir` is kept for callers that pass it; the reads no longer
+ * write temporary files.
  */
 export async function snapshotCounts(
   target: ClearTarget,
@@ -236,24 +358,14 @@ SELECT 'entities', tenant_id, COUNT(*) FROM entities GROUP BY tenant_id
 UNION ALL
 SELECT 'places', tenant_id, COUNT(*) FROM places GROUP BY tenant_id;
 `;
-  const domainRows = (await wranglerJsonViaFile(
-    target,
-    domainSql,
-    "domain",
-    outputDir,
-  )) as Array<{ tbl: string; tenant_id: string; cnt: number }>;
+  const domainRows = (await wranglerJson(target, domainSql, "domain")) as Array<{ tbl: string; tenant_id: string; cnt: number }>;
 
   const ancillarySql = `SELECT 'audit_log' AS tbl, COUNT(*) AS cnt FROM audit_log
 UNION ALL SELECT 'drafts', COUNT(*) FROM drafts
 UNION ALL SELECT 'changelog', COUNT(*) FROM changelog
 UNION ALL SELECT 'comments', COUNT(*) FROM comments;
 `;
-  const ancillaryRows = (await wranglerJsonViaFile(
-    target,
-    ancillarySql,
-    "ancillary",
-    outputDir,
-  )) as Array<{ tbl: string; cnt: number }>;
+  const ancillaryRows = (await wranglerJson(target, ancillarySql, "ancillary")) as Array<{ tbl: string; cnt: number }>;
 
   const domainByTenant = new Map<
     string,
@@ -361,4 +473,4 @@ export function assertPostClearInvariants(
   return results;
 }
 
-// Version: v0.4.1
+// Version: v0.8.0

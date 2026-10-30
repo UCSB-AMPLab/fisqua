@@ -24,11 +24,16 @@
  * requirement). Locked OFF here; flip if the convention reasserts
  * itself.
  *
+ * OCR text is not a field of this profile. A transcript is held as OCR
+ * page rows, read-only in Fisqua, and never round-trips through the
+ * description form. The import target for it is kept separately in
+ * `app/lib/import/target-fields.ts`.
+ *
  * [CITED: https://www.accesstomemory.org/en/docs/2.6/user-manual/data-templates/isad-template/]
  *   AtoM's ISAD(G) data template; mirrors the official ICA-CDS spec
  *   for the 26-element field set and area structure.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import type { DescriptionLevel, StandardConfig } from "./types";
@@ -241,12 +246,6 @@ export const ISADG_CONFIG: StandardConfig = {
           hints: { rows: 4 },
           guidance: "3.3.4",
         },
-        {
-          column: "ocrText",
-          primitive: "textarea",
-          requiredAt: [],
-          hints: { rows: 4 },
-        },
       ],
     },
     {
@@ -368,4 +367,4 @@ export const ISADG_CONFIG: StandardConfig = {
   requiredFieldsForLevel: (level) => ISADG_REQUIRED_BY_LEVEL[level] ?? [],
 };
 
-/* @version v0.4.0 */
+/* @version v0.8.0 */

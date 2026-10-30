@@ -23,6 +23,17 @@
  * read is what guarantees the carried set is the set the person was
  * looking at, tenant scope, exclusions, facets, date bounds and all.
  *
+ * ONE RECORD TYPE, TWO INDEXES. A record can be found by its
+ * description or by its OCR pages, and the search page shows the two
+ * as separate tabs that both select records. The record type alone
+ * therefore no longer names the index an `all` carry has to re-run, so
+ * the carried query may name its category: `transcripts` re-runs the
+ * page-index enumeration, which answers with the records behind the
+ * page hits. Without a category a records carry reads the record index
+ * as before. The transcripts category on any other record type is
+ * refused with a 400. Every scope built here opens the page index, so
+ * the gate is the category, not the scope.
+ *
  * The stored `total` is the faceted result total — the number the
  * selection bar was showing — which for a well-formed carry equals the
  * member count. They are stored separately because they answer
@@ -41,7 +52,7 @@
  * existed does. There is no shared or federated visibility here and no
  * admin override — an unconsumed selection is nobody else's business.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -76,6 +87,24 @@ const CATEGORY_FOR: Record<CarriedRecordType, SearchCategory> = {
 };
 
 /**
+ * The category a carry or an "add all" re-runs, from the record type
+ * and the tab the selection was made on. Records asked from the
+ * transcripts tab re-run the page index; every other pair reads the
+ * record type's own category, so a stray `transcripts` on an authority
+ * type cannot move it off its index. The caller has already decided
+ * whether the page index is in reach for the posted query.
+ */
+export function carryCategory(
+  recordType: CarriedRecordType,
+  askedCategory: string | null,
+): SearchCategory {
+  if (recordType === "records" && askedCategory === "transcripts") {
+    return "transcripts";
+  }
+  return CATEGORY_FOR[recordType];
+}
+
+/**
  * Enough of the search to ask it again: exactly what the results page
  * handed `runGlobalSearch`, minus the page number. Sort is optional
  * because it does not change the membership — only the order the
@@ -87,6 +116,12 @@ export interface CarriedScopeQuery {
   /** The active category's facets, date bounds included. */
   facets: GlobalSearchFacets;
   sort?: SortSpec | null;
+  /**
+   * The index a `records` carry re-runs: `transcripts` when the
+   * selection was made on the transcripts tab, otherwise absent and
+   * the record type's own category is read.
+   */
+  category?: "descriptions" | "transcripts";
 }
 
 /** One pill, as it read on screen. Display-only. */
@@ -222,16 +257,24 @@ async function materialiseMatching(
   tenant: Tenant,
   input: StashCarriedScopeInput,
 ): Promise<{ memberIds: string[]; total: number }> {
+  const category = input.query.category ?? CATEGORY_FOR[input.recordType];
+  if (category === "transcripts" && input.recordType !== "records") {
+    throw new Response(
+      `A carried ${input.recordType} scope cannot be read from the transcripts index.`,
+      { status: 400 },
+    );
+  }
   const { total, ids } = await selectMatchingIds(
     db,
     {
       tenantId: tenant.id,
       federationId: tenant.federationId,
       includeAuthorities: hasCapability(tenant, "authorities"),
+      includeTranscripts: true,
     },
     input.query.input,
     {
-      category: CATEGORY_FOR[input.recordType],
+      category,
       facets: input.query.facets,
       sort: input.query.sort ?? null,
       // One past the cap: enough to see that the set is too large even

@@ -46,9 +46,15 @@
  * for post-mortem, and exits 1. applyInserts() never runs on a
  * violating round. This is the runtime mirror of
  * tests/import/clear-isolation.test.ts; both must pass for the round
- * to proceed.
+ * to proceed. Before the clear runs, the orchestrator refuses it while
+ * the tenant has OCR pages a pipeline run wrote, page rows in any other
+ * shape the importer does not write, pipeline volumes or recipe
+ * declarations, none of which the reimport restores, or while the
+ * database could not take the reimport. The page-1 rows migrated from
+ * the old `ocr_text` column are deleted by the clear and written again
+ * from the dump by the `ocr_pages-` files.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { execSync } from "node:child_process";
@@ -59,6 +65,8 @@ import { NEOGRANADINA_TENANT_ID } from "../app/lib/tenant";
 import {
   snapshotCounts,
   assertPostClearInvariants,
+  refuseUnsafeTenantClear,
+  wranglerRows,
   type ClearTarget,
 } from "./commands/clear";
 import type { CountSnapshot, RunManifest } from "./lib/types";
@@ -331,6 +339,7 @@ function tearDownContainer(rmContainer: boolean): void {
  *   entities-
  *   entity_functions- (FK -> entities)
  *   descriptions-    (FK -> repositories)
+ *   ocr_pages-       (FK -> descriptions; page-1 OCR rows)
  *   description_entities- (junction; FK -> descriptions + entities)
  *   description_places-   (junction; FK -> descriptions + places)
  *   fts-rebuild-     (3-FTS rebuild)
@@ -349,6 +358,7 @@ async function collectGeneratedSqlFiles(): Promise<string[]> {
     "entities-",
     "entity_functions-",
     "descriptions-",
+    "ocr_pages-",
     "description_entities-",
     "description_places-",
     "fts-rebuild-",
@@ -568,6 +578,16 @@ async function main(): Promise<void> {
 
   // Step 8a: split sqlFiles into clear-only + inserts; apply clears first.
   const { clearFiles, insertFiles } = partitionClearAndInserts(sqlFiles);
+  // The clear deletes the tenant's OCR pages; refuse it while it would
+  // lose pages or pipeline state the reimport cannot restore. A refusal
+  // propagates to main()'s catch like an invariant violation.
+  const { migratedPages } = await refuseUnsafeTenantClear(
+    NEOGRANADINA_TENANT_ID,
+    wranglerRows(opts.target),
+  );
+  console.log(
+    `The clear deletes ${migratedPages} migrated page-1 OCR rows; the ocr_pages- files write them again from the dump.`,
+  );
   console.log("Applying clear SQL via wrangler...");
   const clearTimings = await applyClearOnly(opts.target, clearFiles);
 
@@ -710,4 +730,4 @@ if (isMain) {
   });
 }
 
-// Version: v0.4.0
+// Version: v0.8.0

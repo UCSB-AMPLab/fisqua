@@ -25,7 +25,7 @@
  * `preferís`, `sabés`, `tenés`, `sos`; siempre `quieres`, `prefieres`,
  * `sabes`, `tienes`, `eres`.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 export default {
   // Página
@@ -260,7 +260,6 @@ export default {
     systemOfArrangement: "Sistema de organización",
     physicalCharacteristics: "Características físicas",
     arrangement: "Organización",
-    ocrText: "Texto OCR",
 
     // Condiciones
     accessConditions: "Condiciones que rigen el acceso",
@@ -453,6 +452,14 @@ export default {
   root_column_title: "Contenido",
   loading: "Cargando...",
 
+  // Transcripción OCR, de solo lectura en la página de detalle
+  transcript: {
+    label: "Transcripción",
+    pages_one: "{{count}} página",
+    pages_other: "{{count}} páginas",
+    view: "Ver transcripción",
+  },
+
   // Marcador de posición sin manifiesto
   no_manifest: "No hay material digitalizado",
   add_manifest: "Agregar URL de manifiesto IIIF",
@@ -467,4 +474,4 @@ export default {
   next_page: "Página siguiente",
 } as const;
 
-/* @version v0.4.3 */
+/* @version v0.8.0 */

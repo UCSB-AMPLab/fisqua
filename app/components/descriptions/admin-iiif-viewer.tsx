@@ -8,7 +8,14 @@
  * scroll — because the admin editor only needs to browse the images that
  * back a single ISAD(G) record.
  *
- * @version v0.3.0
+ * The viewer can open at a given page. `initialCanvas` is a 1-based
+ * canvas number, taken by the description page from its `?page=` value
+ * (`parsePageParam`), which is how a transcript hit links to the image
+ * it was read from. Once the manifest has loaded, the viewer shows that
+ * canvas, or the last one when the number runs past the end
+ * (`initialCanvasIndex`).
+ *
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -98,11 +105,38 @@ function extractImageUrlV2(canvas: Record<string, unknown>): string | null {
   return id ?? null;
 }
 
-interface AdminIiifViewerProps {
-  manifestUrl: string;
+/**
+ * A `?page=` value as a 1-based canvas number, or undefined when it is
+ * missing or not a positive whole number.
+ */
+export function parsePageParam(raw: string | null): number | undefined {
+  if (raw === null || !/^\d+$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return n >= 1 && Number.isSafeInteger(n) ? n : undefined;
 }
 
-export function AdminIiifViewer({ manifestUrl }: AdminIiifViewerProps) {
+/**
+ * The 0-based canvas to show first: `initialCanvas` (1-based) clamped
+ * to the manifest, or the first canvas when no usable number is given.
+ */
+export function initialCanvasIndex(
+  initialCanvas: number | undefined,
+  canvasCount: number,
+): number {
+  if (canvasCount <= 0) return 0;
+  if (initialCanvas === undefined || !Number.isFinite(initialCanvas) || initialCanvas < 1) {
+    return 0;
+  }
+  return Math.min(Math.floor(initialCanvas), canvasCount) - 1;
+}
+
+interface AdminIiifViewerProps {
+  manifestUrl: string;
+  /** 1-based canvas to open at once the manifest loads. */
+  initialCanvas?: number;
+}
+
+export function AdminIiifViewer({ manifestUrl, initialCanvas }: AdminIiifViewerProps) {
   const { t } = useTranslation("descriptions_admin");
   const [canvases, setCanvases] = useState<CanvasInfo[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -127,7 +161,7 @@ export function AdminIiifViewer({ manifestUrl }: AdminIiifViewerProps) {
           setError("empty_manifest");
         } else {
           setCanvases(parsed);
-          setCurrentPage(0);
+          setCurrentPage(initialCanvasIndex(initialCanvas, parsed.length));
         }
         setLoading(false);
       })
@@ -140,7 +174,16 @@ export function AdminIiifViewer({ manifestUrl }: AdminIiifViewerProps) {
     return () => {
       cancelled = true;
     };
+    // The manifest is fetched once per URL; a later change of
+    // initialCanvas is handled by the effect below, without a refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifestUrl]);
+
+  // A new `?page=` on the same manifest moves the viewer to that page.
+  useEffect(() => {
+    if (canvases.length === 0) return;
+    setCurrentPage(initialCanvasIndex(initialCanvas, canvases.length));
+  }, [initialCanvas, canvases.length]);
 
   const handleZoomIn = useCallback(() => {
     setZoom((z) => Math.min(200, z + 25));

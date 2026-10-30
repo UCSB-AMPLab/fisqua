@@ -6,13 +6,17 @@
  * and after the field-registration consolidation (audit item 12): the
  * ~40 description columns flow from formData through the
  * standard-aware validator into the DB write, with a handful of
- * deliberate coercions (genre defaults to "[]", ocrText to "",
- * resourceType is enum-gated to null) that must survive any
- * refactor of the three parallel registration blocks.
+ * deliberate coercions (genre defaults to "[]", resourceType is
+ * enum-gated to null) that must survive any refactor of the three
+ * parallel registration blocks.
+ *
+ * OCR text is not a form field. A posted `ocrText` is ignored: it
+ * neither writes the description row nor touches the description's
+ * OCR page rows, which hold the transcript.
  *
  * Harness mirrors tests/admin/vocab-merge-split-action.test.ts.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -25,6 +29,7 @@ import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
 import { tenantContext, userContext, type User } from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
+import { seedPage } from "../helpers/ocr-fixtures";
 // Instantiate the route module graph at file load so the in-test
 // `await import()` resolves from a warm module cache. A cold route-graph
 // import inside a timed test body can exceed testTimeout when this file
@@ -63,7 +68,6 @@ function fullUpdateFields(repoId: string): Record<string, string> {
     medium: "papel",
     provenance: "Cabildo de Tunja",
     scopeContent: "Actas y acuerdos del cabildo.",
-    ocrText: "texto ocr",
     arrangement: "Cronológico",
     accessConditions: "Sin restricciones",
     reproductionConditions: "Cita obligatoria",
@@ -173,7 +177,6 @@ describe("descriptions admin update action", () => {
     expect(row!.medium).toBe("papel");
     expect(row!.provenance).toBe("Cabildo de Tunja");
     expect(row!.scopeContent).toBe("Actas y acuerdos del cabildo.");
-    expect(row!.ocrText).toBe("texto ocr");
     expect(row!.arrangement).toBe("Cronológico");
     expect(row!.accessConditions).toBe("Sin restricciones");
     expect(row!.reproductionConditions).toBe("Cita obligatoria");
@@ -203,12 +206,11 @@ describe("descriptions admin update action", () => {
     expect(row!.hasDigital).toBe(true);
   });
 
-  it("coerces absent genre to [] and absent ocrText to empty string", async () => {
+  it("coerces absent genre to [] and absent resourceType to null", async () => {
     const { admin, db, descId, repoId } = await seedAdminAndDescription();
 
     const fields = fullUpdateFields(repoId);
     delete fields.genre;
-    delete fields.ocrText;
     delete fields.resourceType;
     const res = await runUpdate(admin, descId, fields);
     expect(res).toEqual({ ok: true, message: "updated" });
@@ -216,15 +218,45 @@ describe("descriptions admin update action", () => {
     const row = await db
       .select({
         genre: schema.descriptions.genre,
-        ocrText: schema.descriptions.ocrText,
         resourceType: schema.descriptions.resourceType,
       })
       .from(schema.descriptions)
       .where(eq(schema.descriptions.id, descId))
       .get();
     expect(row!.genre).toBe("[]");
-    expect(row!.ocrText).toBe("");
     expect(row!.resourceType).toBeNull();
+  });
+
+  it("ignores an ocrText field in a posted form and leaves the page rows alone", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await seedPage({ descriptionId: descId, tenantId: admin.tenantId, pageSeq: 1, text: "texto intacto" });
+    const cols = await env.DB.prepare("SELECT name FROM pragma_table_info('descriptions')").all<{ name: string }>();
+    const hasColumn = cols.results.some((c) => c.name === "ocr_text");
+    if (hasColumn) {
+      await env.DB.prepare("UPDATE descriptions SET ocr_text = 'columna' WHERE id = ?").bind(descId).run();
+    }
+
+    const fields = { ...fullUpdateFields(repoId), title: "Título cambiado", ocrText: "sobrescrito" };
+    const res = await runUpdate(admin, descId, fields);
+    expect(res).toEqual({ ok: true, message: "updated" });
+
+    const row = await db
+      .select({ title: schema.descriptions.title })
+      .from(schema.descriptions)
+      .where(eq(schema.descriptions.id, descId))
+      .get();
+    expect(row!.title).toBe("Título cambiado");
+
+    const pages = await env.DB.prepare(
+      "SELECT page_seq, text FROM ocr_pages WHERE tenant_id = ? AND description_id = ? ORDER BY page_seq",
+    ).bind(admin.tenantId, descId).all<{ page_seq: number; text: string }>();
+    expect(pages.results).toEqual([{ page_seq: 1, text: "texto intacto" }]);
+
+    if (hasColumn) {
+      const col = await env.DB.prepare("SELECT ocr_text FROM descriptions WHERE id = ?")
+        .bind(descId).first<{ ocr_text: string }>();
+      expect(col!.ocr_text).toBe("columna");
+    }
   });
 
   it("rejects an invalid resourceType at the validator (never silently nulled)", async () => {

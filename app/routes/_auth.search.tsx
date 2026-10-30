@@ -1,14 +1,14 @@
 /**
  * Global Search
  *
- * One query over the whole workspace — archival records, entity
- * authorities, place authorities — reached from its own nav item under
- * Home. The three indexes have nothing in common but the words in
- * them, so results are GROUPED by category rather than blended into a
- * single ranking: normalising BM25 across indexes whose columns and
- * document lengths differ has no honest answer, and grouping is what
- * the facets (category, then level / repository / type / function)
- * actually want.
+ * This page is the workspace's global search: one query over the whole
+ * workspace — archival records, entity authorities, place authorities —
+ * reached from its own nav item under Home. The three indexes have
+ * nothing in common but the words in them, so results are GROUPED by
+ * category rather than blended into a single ranking: normalising BM25
+ * across indexes whose columns and document lengths differ has no
+ * honest answer, and grouping is what the facets (category, then level
+ * / repository / type / function) actually want.
  *
  * THE ANATOMY. Two columns, after Zasqua's search: a filter sidebar on
  * the left — a compact refine widget on top, checkbox facet groups
@@ -94,9 +94,9 @@
  * to code (records) or name (authorities).
  *
  * Gating. Search inherits the gates of the pages it links to and never
- * out-reaches them: the loader carries the admin guard the three
- * destination surfaces carry, and the authority categories appear only
- * when the tenant holds the `authorities` capability. A gated-out
+ * out-reaches them: the authority categories appear only when the
+ * tenant holds the `authorities` capability and the user passes the
+ * authorities area, the gate the entities and places surfaces carry. A gated-out
  * category is ABSENT — no tab, no count, no facet group, no snippet
  * teaser — because a count is itself a disclosure. Asking for
  * `?cat=entities` without the capability coerces back to the grouped
@@ -166,6 +166,14 @@
  * scoped question, exactly as the carry does: a promise about a query
  * is never turned into a list by the browser.
  *
+ * TWO INDEXES BEHIND RECORDS. A record can be found by its description
+ * or by its OCR pages. The action re-runs the page index for a records
+ * selection posted with `cat=transcripts`, when the query can reach
+ * that index (a match with no field scope), and passes the category on
+ * to the carry; any other records selection re-runs the record index.
+ * Either way the posted sort is read against the record sort keys, so
+ * the set is stored in the order the person saw.
+ *
  * CHOOSING A SET. The way in is offered from the pills row, beside the
  * constraints it will join, and drawn dashed rather than filled
  * because it is an offer and not yet a narrowing; once a set is
@@ -198,7 +206,7 @@
  * vocabulary cannot drift between the section and the search result
  * that points at it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useRef, useState } from "react";
@@ -240,6 +248,7 @@ import {
   PLACE_TYPES,
 } from "~/lib/validation/enums";
 import { useFormatters } from "~/lib/use-formatters";
+import { Marked, markedRuns } from "~/components/search/marked";
 // The query model is pure (no `.server` suffix) precisely so the
 // component can encode pills client-side with the same code the
 // loader parses with.
@@ -267,15 +276,31 @@ import type {
   DescriptionHit,
   EntityHit,
   GlobalSearchFacets,
+  GlobalSearchResult,
   NameSortKey,
   PlaceHit,
   RecordSortKey,
-  SearchCategory,
+  SearchCategory as GlobalSearchCategory,
   SortDir,
   SortSpec,
 } from "~/lib/global-search.server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { Route } from "./+types/_auth.search";
+
+/**
+ * The categories this page has tabs for. The search module also
+ * answers for OCR pages, but the loader does not ask it to: its scope
+ * leaves includeTranscripts unset, so that category never comes back
+ * to the page. The action is the one place this page reads the page
+ * index, when a records selection is posted with `cat=transcripts`.
+ */
+type SearchCategory = Exclude<GlobalSearchCategory, "transcripts">;
+
+/** One tab's page of rows, as this page reads it. */
+type SearchPage = Omit<NonNullable<GlobalSearchResult["page"]>, "category" | "rows"> & {
+  category: SearchCategory;
+  rows: DescriptionHit[] | EntityHit[] | PlaceHit[];
+};
 
 /** The tab vocabulary, in the order the surface renders it. */
 const CATEGORY_ORDER = ["descriptions", "entities", "places"] as const;
@@ -761,12 +786,19 @@ function readSearchRequest(
   // Sort travels as `key:dir`, validated against the active category's
   // key set — an unknown key, an unknown direction, or relevance
   // without a query to be relevant to all resolve to the mode default.
+  // This page has no transcripts tab, so `cat=transcripts` leaves the
+  // category on the grouped view; but the action re-runs a records
+  // selection posted with it on the page index or the record index,
+  // both of which sort by the record keys, so its sort is read against
+  // those keys rather than dropped.
+  const sortCategory: "all" | SearchCategory =
+    category === "all" && rawCat === "transcripts" ? "descriptions" : category;
   const rawSort = sp.get("sort");
   let sort: SortSpec | null = null;
-  if (rawSort && category !== "all") {
+  if (rawSort && sortCategory !== "all") {
     const [rawKey, rawDir] = rawSort.split(":");
     const keys: readonly string[] =
-      category === "descriptions" ? RECORD_SORT_KEYS : NAME_SORT_KEYS;
+      sortCategory === "descriptions" ? RECORD_SORT_KEYS : NAME_SORT_KEYS;
     const dirOk = rawDir === "asc" || rawDir === "desc";
     const keyOk = keys.includes(rawKey) && (matchMode || rawKey !== "relevance");
     if (dirOk && keyOk) {
@@ -916,14 +948,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   } = await import("~/lib/global-search.server");
 
   // Search is open to every workspace member (ruled 2026-08-16); only
-  // the authority reach carries the admin gate, because that is the
-  // gate its destination surfaces carry. For a non-admin the Entities
-  // and Places tabs simply do not exist — the same degrade a tenant
-  // without the capability gets, and the same branch of every read.
+  // the authority reach carries the authorities area gate, because that
+  // is the gate its destination surfaces carry. For anyone outside the
+  // area the Entities and Places tabs simply do not exist — the same
+  // degrade a tenant without the capability gets, and the same branch
+  // of every read.
+  const { canAdministerArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const includeAuthorities =
-    hasCapability(tenant, "authorities") && user.isAdmin;
+    hasCapability(tenant, "authorities") && canAdministerArea(user, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
   const sp = new URL(request.url).searchParams;
@@ -1068,7 +1102,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     facetCounts: result.facetCounts,
     mode: result.mode,
     preview: result.preview ?? null,
-    pageResult: result.page ?? null,
+    // Never a transcripts page: the scope above does not reach it.
+    pageResult: (result.page ?? null) as SearchPage | null,
     repositoryOptions,
     facets,
     sort,
@@ -1110,15 +1145,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq } = await import("drizzle-orm");
   const { repositories } = await import("~/db/schema");
-  const { stashCarriedScope } = await import("~/lib/carried-scopes.server");
+  const { stashCarriedScope, carryCategory } = await import(
+    "~/lib/carried-scopes.server"
+  );
 
-  // Member-level like the loader; the authority reach keeps the admin
-  // gate, so a non-admin can neither carry nor materialise an
-  // entities/places scope this surface would not have shown them.
+  // Member-level like the loader; the authority reach keeps the
+  // authorities area gate, so no one outside the area can carry or
+  // materialise an entities/places scope this surface would not have
+  // shown them.
+  const { canAdministerArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const includeAuthorities =
-    hasCapability(tenant, "authorities") && user.isAdmin;
+    hasCapability(tenant, "authorities") && canAdministerArea(user, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
   const formData = await request.formData();
@@ -1137,11 +1176,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     throw new Response("Malformed carry", { status: 400 });
   }
 
-  const category = CATEGORY_OF_RECORD_TYPE[recordType];
+  const ownCategory = CATEGORY_OF_RECORD_TYPE[recordType];
   // An authority scope on a tenant without the capability is not a
   // scope this session may hold — the same gate the tabs are absent
   // under, enforced where it can actually be crossed.
-  if (category !== "descriptions" && !includeAuthorities) {
+  if (ownCategory !== "descriptions" && !includeAuthorities) {
     throw new Response("Not found", { status: 404 });
   }
 
@@ -1166,19 +1205,38 @@ export async function action({ request, context }: Route.ActionArgs) {
     repositoryIds,
     handlistCategory: handlistCategoryOf(handlist),
   });
-  const facets = facetsForCategory(asked.facets, category);
+  // The records type names two indexes: the record index and the OCR
+  // page index, whose hits are records too. The posted `cat` says which
+  // one the selection was made on, and it is honoured only where the
+  // page index can answer at all: a matching query with no field scope.
+  // Anywhere else the selection falls back to the record index, as the
+  // results page would. The page index narrows by the record facets.
+  const transcriptsInReach =
+    asked.matchMode &&
+    !hasFieldRefinements(asked.parsed) &&
+    !hasAdvancedFieldRows(asked.advRows);
+  const category = carryCategory(
+    recordType,
+    transcriptsInReach ? sp.get("cat") : null,
+  );
+  const facets = facetsForCategory(asked.facets, ownCategory);
   const askedQuery = {
     input: asked.advanced ? asked.advRows : asked.parsed,
-    // The category is not repeated here: `recordType` above already
-    // names the index, and one fact stated twice is one fact that
-    // can disagree with itself.
+    // The category is carried only when it differs from the record
+    // type's own index, which is the transcripts case: there the
+    // record type alone would re-run the record index and store a set
+    // other than the one on screen. Otherwise `recordType` names the
+    // index, and one fact stated twice is one fact that can disagree
+    // with itself.
     facets: callFacetsFrom(facets, asked.dateFrom, asked.dateTo),
     sort: asked.sort,
+    ...(category === "transcripts" ? { category: "transcripts" as const } : {}),
   };
   const searchScope = {
     tenantId: tenant.id,
     federationId: tenant.federationId,
     includeAuthorities,
+    includeTranscripts: true,
     handlistId: asked.handlistApplies ? (handlist?.id ?? null) : null,
   };
 
@@ -1297,72 +1355,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   const resume = (formData.get("resume") as string) || "";
   if (resume.startsWith("/search")) return redirect(resume);
   return redirect(`/admin/exports?scope=${scopeId}`);
-}
-
-// ---------------------------------------------------------------------------
-// Highlight rendering
-// ---------------------------------------------------------------------------
-
-/**
- * Split a marked string into plain and matched runs. The markers are
- * control characters chosen because they cannot occur in stored text,
- * so the split is unambiguous and the result goes into the tree as
- * React children — never as raw HTML. A browse-mode title carries no
- * markers at all and comes through as one plain run.
- */
-function markedRuns(
-  text: string,
-  open: string,
-  close: string,
-): { text: string; hit: boolean }[] {
-  const runs: { text: string; hit: boolean }[] = [];
-  let rest = text;
-  while (rest.length > 0) {
-    const start = rest.indexOf(open);
-    if (start === -1) {
-      // A stray close marker with no opener would otherwise land in the
-      // DOM as an invisible control character — strip, never render.
-      runs.push({ text: rest.replaceAll(close, ""), hit: false });
-      break;
-    }
-    if (start > 0) runs.push({ text: rest.slice(0, start), hit: false });
-    const afterOpen = rest.slice(start + open.length);
-    const end = afterOpen.indexOf(close);
-    if (end === -1) {
-      // An unclosed marker can only mean a truncated snippet; take the
-      // remainder as matched rather than dropping it.
-      runs.push({ text: afterOpen, hit: true });
-      break;
-    }
-    runs.push({ text: afterOpen.slice(0, end), hit: true });
-    rest = afterOpen.slice(end + close.length);
-  }
-  return runs;
-}
-
-function Marked({
-  text,
-  markers,
-}: {
-  text: string;
-  markers: { open: string; close: string };
-}) {
-  return (
-    <>
-      {markedRuns(text, markers.open, markers.close).map((run, i) =>
-        run.hit ? (
-          <mark
-            key={i}
-            className="rounded-[2px] bg-saffron-tint px-px text-inherit"
-          >
-            {run.text}
-          </mark>
-        ) : (
-          <span key={i}>{run.text}</span>
-        ),
-      )}
-    </>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4234,3 +4226,5 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+
+// Version: v0.8.0

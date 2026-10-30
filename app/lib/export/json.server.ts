@@ -41,7 +41,13 @@
  * fifteen elements as `dc:*` keys, and its links ride in their
  * canonical shape for the reason `dc-form.server.ts` states.
  *
- * @version v0.7.0
+ * `ocrText`, which the ISAD(G) form lists, is filled from each
+ * description's OCR pages joined in page order (`readExportOcrText`):
+ * the migrated page-1 text as it stands, or a published run's pages. It
+ * is read only when the form lists the column; a description without
+ * pages carries `null`.
+ *
+ * @version v0.8.0
  */
 
 import { ENTITY_COLUMNS, PLACE_COLUMNS } from "./canonical-csv.server";
@@ -53,6 +59,7 @@ import type { ExportEmitInput } from "./emitters.server";
 import { generateCanonicalHeaders } from "../import/canonical-template";
 import {
   readEntityLinks,
+  readExportOcrText,
   readPlaceLinks,
   readScopedDescriptions,
   readScopedEntities,
@@ -143,7 +150,15 @@ async function buildCanonicalDocument(
   if (!authorityScopeKind) {
     await ctx.checkpoint("descriptions", 0, scope.memberIds.length);
     const rows = await readScopedDescriptions(db, tenant, scope.memberIds);
-    for (const scoped of rows) records.push(descriptionObject(scoped, columns));
+    const ocr = columns.includes("ocrText")
+      ? await readExportOcrText(db, tenant, scope.memberIds)
+      : null;
+    for (const scoped of rows) {
+      const withText = ocr
+        ? { ...scoped, row: { ...scoped.row, ocrText: ocr.get(scoped.row.id) ?? null } }
+        : scoped;
+      records.push(descriptionObject(withText, columns));
+    }
     await ctx.checkpoint("descriptions", records.length, scope.memberIds.length);
   }
 
@@ -310,4 +325,4 @@ function inColumnOrder(
   return out;
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

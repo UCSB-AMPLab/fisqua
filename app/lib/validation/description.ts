@@ -15,7 +15,11 @@
  * validators under `app/lib/standards/` — this base schema captures
  * the union shape only.
  *
- * @version v0.4.0
+ * OCR text is not part of the schema: transcripts are held as OCR page
+ * rows that no description write path edits, so a posted `ocrText` is
+ * stripped like any other unknown key.
+ *
+ * @version v0.8.0
  */
 
 import { z } from "zod/v4";
@@ -64,7 +68,6 @@ export const descriptionSchema = z.object({
   publicationTitle: z.string().max(500).optional(),
   provenance: z.string().optional(),
   scopeContent: z.string().optional(),
-  ocrText: z.string().default(""),
   arrangement: z.string().optional(),
   accessConditions: z.string().optional(),
   reproductionConditions: z.string().optional(),
