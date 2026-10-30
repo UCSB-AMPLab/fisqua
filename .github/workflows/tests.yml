@@ -1,7 +1,7 @@
 # Tests
 #
-# Runs the full test suite (`npm test` — all three vitest configs:
-# Workers pool, node, import) plus the TypeScript type-check.
+# This workflow runs the full test suite (`npm test` — all three vitest
+# configs: Workers pool, node, import) plus the TypeScript type-check.
 #
 # Triggers on every push to `main`: PRs are gated by preview.yml, but
 # a direct push to `main` would otherwise land unverified — this
@@ -18,7 +18,7 @@
 # Bump to `ubicloud-standard-8` if pool cold-starts begin pushing past
 # the timeout.
 #
-# @version v0.4.1
+# @version v0.8.0
 
 name: Tests
 
@@ -34,7 +34,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubicloud-standard-4
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
