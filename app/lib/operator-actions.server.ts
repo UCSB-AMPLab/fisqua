@@ -11,7 +11,7 @@
  * ## Form-field set
  *
  * `CreateTenantSchema` mirrors the `/operator/tenants/new` form fields
- * one-to-one (slug, name, descriptive_standard, six capability flags,
+ * one-to-one (slug, name, descriptive_standard, eight capability flags,
  * optional quota, bootstrap-superadmin email). The schema applies
  * `SlugSchema` for the slug field — the existing GLOB regex +
  * reserved-list refinement flows through unchanged.
@@ -40,6 +40,8 @@
  *   - `authorities`          → on   (authority cataloguing is the norm;
  *                                    strings-only tenants opt out)
  *   - `imports`              → off  (bulk import is opt-in)
+ *   - `media_pipeline`       → off  (image operations are operator-granted)
+ *   - `digitization`         → off  (only for a tenant with a Captua scanner)
  *
  * `SetCapabilitySchema` defaults each flag to FALSE — the form's
  * capability checkboxes mean "send a value only if checked"; an
@@ -58,7 +60,7 @@
  * `publish_pipeline`, `multi_repository`, `authorities`, `imports`) so
  * the audit details JSON is reviewable as-shipped.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { z } from "zod";
@@ -119,6 +121,8 @@ export const CreateTenantSchema = z.object({
   multiRepositoryEnabled: checkboxSchema.default(false),
   authoritiesEnabled: checkboxSchema.default(true),
   importsEnabled: checkboxSchema.default(false),
+  mediaPipelineEnabled: checkboxSchema.default(false),
+  digitizationEnabled: checkboxSchema.default(false),
   // Empty string from a blank form field becomes `null`; otherwise a
   // non-negative integer. Storing `null` matches the schema's nullable
   // `quota_storage_bytes` column.
@@ -151,6 +155,8 @@ export const SetCapabilitySchema = z.object({
   multiRepositoryEnabled: checkboxSchema.default(false),
   authoritiesEnabled: checkboxSchema.default(false),
   importsEnabled: checkboxSchema.default(false),
+  mediaPipelineEnabled: checkboxSchema.default(false),
+  digitizationEnabled: checkboxSchema.default(false),
 });
 
 /**
@@ -186,7 +192,9 @@ export type CapabilityName =
   | "publish_pipeline"
   | "multi_repository"
   | "authorities"
-  | "imports";
+  | "imports"
+  | "media_pipeline"
+  | "digitization";
 
 interface CapabilityRow {
   crowdsourcingEnabled: boolean;
@@ -195,6 +203,8 @@ interface CapabilityRow {
   multiRepositoryEnabled: boolean;
   authoritiesEnabled: boolean;
   importsEnabled: boolean;
+  mediaPipelineEnabled: boolean;
+  digitizationEnabled: boolean;
 }
 
 interface CapabilityDiffEntry {
@@ -211,7 +221,9 @@ interface CapabilityDiffEntry {
  *
  * Ordering: the entries follow the C-07 capability matrix order
  * (crowdsourcing → vocabulary_hub → publish_pipeline → multi_repository
- * → authorities → imports) so audit-UI rendering is stable across
+ * → authorities → imports → media_pipeline → digitization) so
+ * audit-UI rendering is
+ * stable across
  * renders.
  */
 export function diffCapabilities(
@@ -261,7 +273,21 @@ export function diffCapabilities(
       to: submitted.importsEnabled,
     });
   }
+  if (current.mediaPipelineEnabled !== submitted.mediaPipelineEnabled) {
+    changes.push({
+      capability: "media_pipeline",
+      from: current.mediaPipelineEnabled,
+      to: submitted.mediaPipelineEnabled,
+    });
+  }
+  if (current.digitizationEnabled !== submitted.digitizationEnabled) {
+    changes.push({
+      capability: "digitization",
+      from: current.digitizationEnabled,
+      to: submitted.digitizationEnabled,
+    });
+  }
   return changes;
 }
 
-// @version v0.6.0
+// @version v0.8.0

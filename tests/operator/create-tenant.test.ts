@@ -2,7 +2,7 @@
  * Tests — operator create-tenant route
  *
  * This suite pins the create-tenant action's atomicity + audit contract on
- * `app/routes/_operator.tenants.new.tsx`. Six tests covering:
+ * `app/routes/_operator.tenants.new.tsx`. Seven tests covering:
  *
  *   1. Happy path: full valid payload → tenant row + user row + audit
  *      row all land in one batch, magic-link generated for the
@@ -19,6 +19,8 @@
  *      generator to throw → tenant + user + audit ROW all still
  *      committed (the email send is non-blocking, outside the batch,
  *      mirroring the existing invites convention).
+ *   7. The media pipeline ticked → field error saying the storage
+ *      destination is not set up, no DB writes: a new tenant has none.
  *
  * The action handler runs inside the `_operator` middleware in
  * production (which sets userContext + tenantContext to the operator
@@ -26,7 +28,7 @@
  * function directly with a hand-built RouterContextProvider; the
  * middleware behaviour is covered by `operator-layout.test.ts`.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
@@ -181,6 +183,10 @@ describe("/operator/tenants/new — create tenant + bootstrap superadmin", () =>
       authorities: true,
       // Omitted from the form → CreateTenantSchema default (off).
       imports: false,
+      // Omitted from the form → CreateTenantSchema default (off).
+      media_pipeline: false,
+      // Omitted from the form → CreateTenantSchema default (off).
+      digitization: false,
     });
 
     // Magic-link row landed for the bootstrap user.
@@ -296,6 +302,34 @@ describe("/operator/tenants/new — create tenant + bootstrap superadmin", () =>
     expect(result.fieldErrors.bootstrapEmail).toBeDefined();
   });
 
+  it("media pipeline ticked → destination field error, no DB writes", async () => {
+    const { action } = await import(
+      "../../app/routes/_operator.tenants.new"
+    );
+    const request = buildFormRequest({
+      slug: "new-archive",
+      name: "New archive",
+      descriptiveStandard: "isadg",
+      mediaPipelineEnabled: "true",
+      bootstrapEmail: "bootstrap@example.test",
+    });
+
+    const result = (await action({
+      request,
+      context: buildContext(),
+      params: {},
+    } as any)) as { fieldErrors: Record<string, string[]> };
+
+    expect(result).not.toBeInstanceOf(Response);
+    expect(result.fieldErrors).toEqual({ mediaPipelineEnabled: ["destination_unset"] });
+    const rows = await getTestDb()
+      .select()
+      .from(schema.tenants)
+      .where(eq(schema.tenants.slug, "new-archive"))
+      .all();
+    expect(rows).toEqual([]);
+  });
+
   it("magic-link send failure is non-blocking — DB writes still commit", async () => {
     // Mock generateMagicLink to throw. The action handler's invocation
     // is wrapped in try/catch and the email failure is logged; the
@@ -356,4 +390,4 @@ describe("/operator/tenants/new — create tenant + bootstrap superadmin", () =>
   });
 });
 
-// @version v0.4.0
+// @version v0.8.0

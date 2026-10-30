@@ -12,7 +12,7 @@
  * son `tú prefieres / quieres / sabes / eres / tienes`. NUNCA usar
  * `preferís / querés / sabés / sos / tenés`.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   brand: "Fisqua Operador",
@@ -44,6 +44,8 @@ export default {
       multi_repository: "Multi-repositorio",
       authorities: "Autoridades",
       imports: "Importaciones",
+      media_pipeline: "Procesamiento de imágenes",
+      digitization: "Digitalización",
     },
     view_link: "Ver",
     empty_state: "Aún no hay inquilinos.",
@@ -80,6 +82,7 @@ export default {
       capabilities: "Capacidades",
       impersonate: "Ingresar como",
       danger_zone: "Zona de riesgo",
+      manifests: "Manifiestos IIIF",
     },
     overview: {
       slug: "Identificador",
@@ -91,6 +94,17 @@ export default {
     capabilities_form: {
       submit: "Guardar capacidades",
       success: "Capacidades guardadas.",
+      destination_unset:
+        "No se puede activar el procesamiento de imágenes: el destino de almacenamiento de este inquilino no está configurado.",
+    },
+    manifest_form: {
+      public_site_url: "URL del sitio público",
+      public_site_name: "Nombre del sitio público",
+      provider_name: "Nombre de la entidad responsable",
+      provider_url: "URL de la entidad responsable",
+      mets_base_url: "URL base de los archivos METS",
+      submit: "Guardar configuración de manifiestos",
+      success: "Configuración de manifiestos guardada.",
     },
     impersonate_form: {
       role_legend: "¿Con cuál rol quieres iniciar sesión en este inquilino?",
@@ -127,4 +141,4 @@ export default {
   },
 } as const;
 
-// @version v0.7.0
+// @version v0.8.0

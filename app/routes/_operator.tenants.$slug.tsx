@@ -2,7 +2,8 @@
  * Operator — Tenant Detail
  *
  * This page renders GET `/operator/tenants/:slug` — the tenant
- * overview, the capabilities edit form, the role-picker for
+ * overview, the capabilities edit form, the manifest settings form,
+ * the role-picker for
  * login-as, and the
  * danger-zone (soft-disable / re-enable). The platform tenant detail
  * page hides every editable surface; only the overview is shown — the
@@ -15,6 +16,19 @@
  *     non-empty, write a `set_capability` audit row carrying the change
  *     list in `details.changes`. No-ops (no flips) skip the audit
  *     write entirely so an idempotent submission produces no DB churn.
+ *     The media pipeline cannot be turned on for a tenant whose storage
+ *     destination is incomplete (its federation's destination columns,
+ *     or the Worker secrets their prefix names): the form answers with a field error that says the
+ *     destination is not set up, and shows none of its values. Turning
+ *     it off, or leaving it on, is never refused.
+ *   - `set_manifest_fields` — saves the tenant's manifest settings
+ *     (public site URL and name, provider name and URL, METS base
+ *     URL). The URLs must be http or https; trailing slashes are
+ *     stripped from the site and METS URLs; an empty field clears its
+ *     column. A change writes a `set_capability` audit row whose
+ *     details carry `settingsChanged='manifest_fields'` and the
+ *     before and after of each changed field; no change writes
+ *     nothing.
  *   - `soft_disable`   — confirmSlug must equal the URL slug (a
  *     simple anti-misclick guard); writes `disabled_at = now` + a
  *     `soft_disable_tenant` audit row. The platform tenant rejects
@@ -33,7 +47,7 @@
  * The role-picker form's POST target is
  * `/operator/tenants/:slug/login-as`.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Form, useLoaderData, useActionData } from "react-router";
@@ -48,7 +62,13 @@ import {
   SoftDisableSchema,
   diffCapabilities,
 } from "../lib/operator-actions.server";
+import {
+  readManifestFields,
+  TENANT_MANIFEST_FIELDS,
+} from "../lib/validation/manifest-fields";
+import { isTenantDestinationComplete } from "../lib/pipeline/tenant-destination.server";
 import { userContext } from "../context";
+import { useFormatters } from "../lib/use-formatters";
 import type { Route } from "./+types/_operator.tenants.$slug";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -117,6 +137,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!parsed.success) {
         return { fieldErrors: parsed.error.flatten().fieldErrors };
       }
+      // The pipeline writes to the federation's storage, under the
+      // tenant's slug, so it cannot be turned on before that storage is
+      // set up.
+      if (
+        parsed.data.mediaPipelineEnabled &&
+        !(tenant.mediaPipelineEnabled as unknown as boolean) &&
+        !(await isTenantDestinationComplete(db, tenant, env))
+      ) {
+        return { fieldErrors: { mediaPipelineEnabled: ["destination_unset"] } };
+      }
       const changes = diffCapabilities(
         {
           crowdsourcingEnabled: tenant.crowdsourcingEnabled as unknown as boolean,
@@ -125,6 +155,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           multiRepositoryEnabled: tenant.multiRepositoryEnabled as unknown as boolean,
           authoritiesEnabled: tenant.authoritiesEnabled as unknown as boolean,
           importsEnabled: tenant.importsEnabled as unknown as boolean,
+          mediaPipelineEnabled: tenant.mediaPipelineEnabled as unknown as boolean,
+          digitizationEnabled: tenant.digitizationEnabled as unknown as boolean,
         },
         {
           crowdsourcingEnabled: parsed.data.crowdsourcingEnabled,
@@ -133,6 +165,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           multiRepositoryEnabled: parsed.data.multiRepositoryEnabled,
           authoritiesEnabled: parsed.data.authoritiesEnabled,
           importsEnabled: parsed.data.importsEnabled,
+          mediaPipelineEnabled: parsed.data.mediaPipelineEnabled,
+          digitizationEnabled: parsed.data.digitizationEnabled,
         },
       );
       if (changes.length === 0) {
@@ -167,6 +201,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
               multiRepositoryEnabled: parsed.data.multiRepositoryEnabled,
               authoritiesEnabled: parsed.data.authoritiesEnabled,
               importsEnabled: parsed.data.importsEnabled,
+              mediaPipelineEnabled: parsed.data.mediaPipelineEnabled,
+              digitizationEnabled: parsed.data.digitizationEnabled,
               updatedAt: now,
             })
             .where(eq(tenants.id, tenant.id));
@@ -177,6 +213,49 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         },
       );
       return { saved: true, noop: false };
+    }
+
+    case "set_manifest_fields": {
+      // The public site, provider and METS location a pipeline manifest
+      // names. The three URLs must be http or https; an empty field
+      // clears its column. Audited as `set_capability`, as re-enable is,
+      // with `details.settingsChanged` naming what changed.
+      const read = readManifestFields(formData, TENANT_MANIFEST_FIELDS);
+      if (!read.ok) {
+        return { fieldErrors: read.errors };
+      }
+      const changes = TENANT_MANIFEST_FIELDS.filter(
+        (field) => (tenant[field] ?? null) !== read.values[field],
+      ).map((field) => ({ field, from: tenant[field] ?? null, to: read.values[field] }));
+      if (changes.length === 0) {
+        return { manifestSaved: true, noop: true };
+      }
+      const now = Date.now();
+      await withAuditLog(
+        db,
+        {
+          action: "set_capability",
+          actorUserId: user.id,
+          actorUserIdText: user.email,
+          actorTenantId: PLATFORM_TENANT_ID,
+          targetTenantId: tenant.id,
+          targetObjectKind: "tenant",
+          targetObjectId: tenant.id,
+          details: { slug: tenant.slug, settingsChanged: "manifest_fields", changes },
+          now,
+        },
+        async (txDb) => {
+          const update = txDb
+            .update(tenants)
+            .set({ ...read.values, updatedAt: now })
+            .where(eq(tenants.id, tenant.id));
+          return {
+            workStatements: [update],
+            result: { manifestSaved: true, changes },
+          };
+        },
+      );
+      return { manifestSaved: true, noop: false };
     }
 
     case "soft_disable": {
@@ -270,8 +349,17 @@ const ROLE_FLAGS = [
   "isCataloguer",
 ] as const;
 
+const MANIFEST_FIELD_INPUTS = [
+  { name: "publicSiteUrl", labelKey: "tenant_detail.manifest_form.public_site_url" },
+  { name: "publicSiteName", labelKey: "tenant_detail.manifest_form.public_site_name" },
+  { name: "providerName", labelKey: "tenant_detail.manifest_form.provider_name" },
+  { name: "providerUrl", labelKey: "tenant_detail.manifest_form.provider_url" },
+  { name: "metsBaseUrl", labelKey: "tenant_detail.manifest_form.mets_base_url" },
+] as const;
+
 interface ActionData {
   saved?: boolean;
+  manifestSaved?: boolean;
   noop?: boolean;
   disabled?: boolean;
   reenabled?: boolean;
@@ -283,6 +371,7 @@ export default function TenantDetailPage() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData() as ActionData | undefined;
   const { t } = useTranslation("operator");
+  const { formatDateTime } = useFormatters();
   const { tenant, canEdit, canImpersonate, canDisable, canReEnable } = data;
 
   return (
@@ -311,7 +400,7 @@ export default function TenantDetailPage() {
             {t("tenant_detail.overview.created_at")}
           </dt>
           <dd className="text-stone-900">
-            {new Date(tenant.createdAt).toISOString()}
+            {formatDateTime(tenant.createdAt)}
           </dd>
           {tenant.disabledAt !== null ? (
             <>
@@ -319,7 +408,7 @@ export default function TenantDetailPage() {
                 {t("tenant_detail.overview.disabled_at")}
               </dt>
               <dd className="text-rust">
-                {new Date(tenant.disabledAt).toISOString()}
+                {formatDateTime(tenant.disabledAt)}
               </dd>
             </>
           ) : null}
@@ -400,7 +489,34 @@ export default function TenantDetailPage() {
                 />
                 <span>{t("tenants_list.capabilities.imports")}</span>
               </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="mediaPipelineEnabled"
+                  value="true"
+                  defaultChecked={
+                    tenant.mediaPipelineEnabled as unknown as boolean
+                  }
+                />
+                <span>{t("tenants_list.capabilities.media_pipeline")}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="digitizationEnabled"
+                  value="true"
+                  defaultChecked={
+                    tenant.digitizationEnabled as unknown as boolean
+                  }
+                />
+                <span>{t("tenants_list.capabilities.digitization")}</span>
+              </label>
             </div>
+            {actionData?.fieldErrors?.mediaPipelineEnabled?.[0] === "destination_unset" ? (
+              <p className="font-sans text-xs text-rust">
+                {t("tenant_detail.capabilities_form.destination_unset")}
+              </p>
+            ) : null}
             <button
               type="submit"
               className="rounded bg-verdigris px-4 py-2 font-sans text-sm font-medium text-white hover:bg-verdigris/90"
@@ -410,6 +526,50 @@ export default function TenantDetailPage() {
             {actionData?.saved ? (
               <p className="font-sans text-sm text-verdigris">
                 {t("tenant_detail.capabilities_form.success")}
+              </p>
+            ) : null}
+          </Form>
+        </section>
+      ) : null}
+
+      {canEdit ? (
+        <section className="space-y-2">
+          <h2 className="font-display text-lg font-semibold text-stone-800">
+            {t("tenant_detail.sections.manifests")}
+          </h2>
+          <Form method="post" className="space-y-3">
+            <input type="hidden" name="intent" value="set_manifest_fields" />
+            {MANIFEST_FIELD_INPUTS.map(({ name, labelKey }) => (
+              <div key={name}>
+                <label
+                  htmlFor={name}
+                  className="block font-sans text-sm font-medium text-indigo"
+                >
+                  {t(labelKey)}
+                </label>
+                <input
+                  id={name}
+                  name={name}
+                  type="text"
+                  defaultValue={tenant[name] ?? ""}
+                  className="mt-1 block h-10 w-full rounded border border-stone-300 px-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+                />
+                {actionData?.fieldErrors?.[name]?.[0] ? (
+                  <p className="mt-1 font-sans text-xs text-rust">
+                    {actionData.fieldErrors[name]?.[0]}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+            <button
+              type="submit"
+              className="rounded bg-verdigris px-4 py-2 font-sans text-sm font-medium text-white hover:bg-verdigris/90"
+            >
+              {t("tenant_detail.manifest_form.submit")}
+            </button>
+            {actionData?.manifestSaved ? (
+              <p className="font-sans text-sm text-verdigris">
+                {t("tenant_detail.manifest_form.success")}
               </p>
             ) : null}
           </Form>
@@ -530,4 +690,4 @@ export default function TenantDetailPage() {
   );
 }
 
-// @version v0.7.0
+// @version v0.8.0
