@@ -1,0 +1,24 @@
+-- Digest default: hourly -> daily
+--
+-- This migration moves every account still on the old hourly digest
+-- default to daily. The notification sweep's cron went live on
+-- 2026-08-20 with the 0.7.0 deploy. Until that moment no digest had
+-- ever been sent, and the preference control shipped in the same
+-- release — so every account carrying 'hourly' has it because it was
+-- the column default, not because anyone chose it. This is the one
+-- window in which moving those rows cannot overwrite a real preference,
+-- which is why it happens now rather than later.
+--
+-- Accounts on '15min', 'weekly' or 'off' are left alone: those values
+-- can only have been set deliberately.
+--
+-- The column DEFAULT in the deployed DDL still reads 'hourly'. SQLite
+-- cannot alter a default in place and rebuilding a table as referenced
+-- as `users` was not worth it for a value no insert omits — every
+-- insert(users) site now passes DEFAULT_DIGEST_FREQUENCY explicitly
+-- (app/db/schema.ts). Fold the new default into the DDL if `users` is
+-- ever rebuilt for another reason.
+--
+-- Version: v0.8.0
+
+UPDATE users SET digest_frequency = 'daily' WHERE digest_frequency = 'hourly';

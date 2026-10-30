@@ -1,0 +1,12 @@
+-- Media pipeline capability flag.
+--
+-- This migration adds `media_pipeline_enabled` to `tenants`: the
+-- seventh capability flag, gating every media pipeline surface (run
+-- start, the ledger views, recipe settings). Default OFF and
+-- operator-granted, as with imports (0061): image operations are
+-- restricted in this release, and no tenant has the surface today. The
+-- capability is tenant-scoped; the federation-lead restriction is
+-- user-scoped and lives in app/lib/pipeline/access.server.ts, not here.
+--
+-- Version: v0.8.0
+ALTER TABLE tenants ADD COLUMN media_pipeline_enabled INTEGER NOT NULL DEFAULT 0;

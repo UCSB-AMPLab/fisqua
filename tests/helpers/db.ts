@@ -13,7 +13,7 @@
  * here so downstream test files share a single import surface for
  * tenant-aware fixtures.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
@@ -62,6 +62,10 @@ export async function applyMigrations() {
       "authorities_enabled INTEGER NOT NULL DEFAULT 1, " +
       // imports capability (migration 0061). DEFAULT 0 — operator-granted.
       "imports_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // media pipeline capability (migration 0081). DEFAULT 0 — operator-granted.
+      "media_pipeline_enabled INTEGER NOT NULL DEFAULT 0, " +
+      // digitization capability (migration 0098). DEFAULT 0 — operator-granted.
+      "digitization_enabled INTEGER NOT NULL DEFAULT 0, " +
       "quota_storage_bytes INTEGER, " +
       // Nullable soft-disable timestamp.
       "disabled_at INTEGER, " +
@@ -77,6 +81,13 @@ export async function applyMigrations() {
       "place_code_prefix TEXT, " +
       "created_at INTEGER NOT NULL, " +
       "updated_at INTEGER NOT NULL, " +
+      // Manifest settings (migration 0090): the public site, provider
+      // and METS location a pipeline manifest names. All nullable.
+      "public_site_url TEXT, " +
+      "public_site_name TEXT, " +
+      "provider_name TEXT, " +
+      "provider_url TEXT, " +
+      "mets_base_url TEXT, " +
       // SQLite CHECK only rejects on FALSE (not NULL). The second
       // branch must explicitly guard descriptive_standard IS NOT NULL
       // so that `kind='tenant', descriptive_standard=NULL` does not
@@ -114,18 +125,38 @@ export async function applyMigrations() {
       // pair on `tenants` covers tenant-owned records.
       "entity_code_prefix TEXT, " +
       "place_code_prefix TEXT, " +
-      "created_at INTEGER NOT NULL" +
+      "created_at INTEGER NOT NULL, " +
+      // Storage destination (migration 0091): where the media pipeline
+      // writes the federation's output, each tenant's under its slug,
+      // the masters bucket the runner reads, and the secret-name prefix.
+      "pipeline_delivery_endpoint TEXT, " +
+      "pipeline_tiles_bucket TEXT, " +
+      "pipeline_masters_bucket TEXT, " +
+      "pipeline_image_base_url TEXT, " +
+      "manifest_endpoint TEXT, " +
+      "manifest_bucket TEXT, " +
+      "manifest_base_url TEXT, " +
+      "storage_secret_prefix TEXT, " +
+      // The optional review-tiles bucket (migration 0097).
+      "pipeline_review_tiles_bucket TEXT" +
     ")",
   );
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_slug_idx ON federations(slug)");
   await db.exec("CREATE INDEX IF NOT EXISTS federations_lead_tenant_idx ON federations(lead_tenant_id)");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_pipeline_tiles_bucket_idx ON federations(pipeline_tiles_bucket) WHERE pipeline_tiles_bucket IS NOT NULL");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_pipeline_masters_bucket_idx ON federations(pipeline_masters_bucket) WHERE pipeline_masters_bucket IS NOT NULL");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_manifest_bucket_idx ON federations(manifest_bucket) WHERE manifest_bucket IS NOT NULL");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_manifest_base_url_idx ON federations(manifest_base_url) WHERE manifest_base_url IS NOT NULL");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_storage_secret_prefix_idx ON federations(storage_secret_prefix) WHERE storage_secret_prefix IS NOT NULL");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_pipeline_review_tiles_bucket_idx ON federations(pipeline_review_tiles_bucket) WHERE pipeline_review_tiles_bucket IS NOT NULL");
 
   // users carries tenant_id NOT NULL FK to tenants(id) ON DELETE
   // RESTRICT, immediately after id (mirrors drizzle/0035 column
   // order), plus the three notification/language preference columns
   // migration 0074 adds: digest_frequency (default 'hourly'),
-  // last_digest_at (the sweep's per-user clock) and locale.
-  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, digest_frequency TEXT NOT NULL DEFAULT 'hourly', last_digest_at INTEGER, locale TEXT, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
+  // last_digest_at (the sweep's per-user clock) and locale, and the
+  // four area-admin flags migration 0107 adds after is_cataloguer.
+  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, is_records_admin INTEGER NOT NULL DEFAULT 0, is_authorities_admin INTEGER NOT NULL DEFAULT 0, is_imports_admin INTEGER NOT NULL DEFAULT 0, is_digitization_admin INTEGER NOT NULL DEFAULT 0, digest_frequency TEXT NOT NULL DEFAULT 'hourly', last_digest_at INTEGER, locale TEXT, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
 
   // federation_memberships (migration 0049): the grant join table.
   // Declared after users + federations so both FKs resolve. Both FKs are
@@ -143,7 +174,9 @@ export async function applyMigrations() {
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS fed_memberships_user_federation_idx ON federation_memberships(user_id, federation_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS fed_memberships_federation_idx ON federation_memberships(federation_id)");
 
-  // audit_log table mirrors drizzle/0037 verbatim — same 12 columns,
+  // audit_log table mirrors drizzle/0037, with the action CHECK as
+  // 0101 and 0108 widen it (scanner_token; set_user_role,
+  // set_federation_role, set_project_membership, invite_user) — same 12 columns,
   // mixed FK delete behaviours (actor_user_id ON DELETE SET NULL
   // paired with denormalised actor_user_id_text NOT NULL for
   // forensic continuity; actor_tenant_id and target_tenant_id ON
@@ -160,7 +193,8 @@ export async function applyMigrations() {
       "actor_tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, " +
       "action TEXT NOT NULL CHECK (action IN (" +
         "'create_tenant','soft_disable_tenant','reset_superadmin','login_as'," +
-        "'edit_on_behalf','set_capability','set_quota'" +
+        "'edit_on_behalf','set_capability','set_quota','scanner_token'," +
+        "'set_user_role','set_federation_role','set_project_membership','invite_user'" +
       ")), " +
       "target_tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, " +
       "target_object_kind TEXT, " +
@@ -323,7 +357,7 @@ export async function applyMigrations() {
 
   // Archival management tables. repositories carries tenant_id NOT
   // NULL FK after id.
-  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, manifest_rights TEXT, attribution_en TEXT, attribution_es TEXT)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS repo_code_idx ON repositories(tenant_id, code)");
 
   // descriptions carries the union-schema column set: 9 dead
@@ -332,7 +366,7 @@ export async function applyMigrations() {
   // additions (admin_biog_history, preferred_citation,
   // acquisition_info, system_of_arrangement,
   // physical_characteristics), local_identifier nullable.
-  await db.exec("CREATE TABLE IF NOT EXISTS descriptions (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, repository_id TEXT NOT NULL REFERENCES repositories(id), parent_id TEXT, position INTEGER DEFAULT 0 NOT NULL, root_description_id TEXT, depth INTEGER DEFAULT 0 NOT NULL, child_count INTEGER DEFAULT 0 NOT NULL, path_cache TEXT DEFAULT '', description_level TEXT NOT NULL, resource_type TEXT, genre TEXT DEFAULT '[]', reference_code TEXT NOT NULL, local_identifier TEXT, title TEXT NOT NULL, translated_title TEXT, uniform_title TEXT, date_expression TEXT, date_start TEXT, date_end TEXT, date_certainty TEXT, extent TEXT, dimensions TEXT, medium TEXT, imprint TEXT, edition_statement TEXT, series_statement TEXT, volume_number TEXT, issue_number TEXT, pages TEXT, publication_title TEXT, provenance TEXT, scope_content TEXT, ocr_text TEXT DEFAULT '', arrangement TEXT, access_conditions TEXT, reproduction_conditions TEXT, language TEXT, location_of_originals TEXT, location_of_copies TEXT, finding_aids TEXT, section_title TEXT, notes TEXT, internal_notes TEXT, creator_display TEXT, place_display TEXT, iiif_manifest_url TEXT, has_digital INTEGER DEFAULT 0, is_published INTEGER DEFAULT 0, last_exported_at INTEGER, admin_biog_history TEXT, preferred_citation TEXT, acquisition_info TEXT, system_of_arrangement TEXT, physical_characteristics TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', created_by TEXT REFERENCES users(id), updated_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS descriptions (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, repository_id TEXT NOT NULL REFERENCES repositories(id), parent_id TEXT, position INTEGER DEFAULT 0 NOT NULL, root_description_id TEXT, depth INTEGER DEFAULT 0 NOT NULL, child_count INTEGER DEFAULT 0 NOT NULL, path_cache TEXT DEFAULT '', description_level TEXT NOT NULL, resource_type TEXT, genre TEXT DEFAULT '[]', reference_code TEXT NOT NULL, local_identifier TEXT, title TEXT NOT NULL, translated_title TEXT, uniform_title TEXT, date_expression TEXT, date_start TEXT, date_end TEXT, date_certainty TEXT, extent TEXT, dimensions TEXT, medium TEXT, imprint TEXT, edition_statement TEXT, series_statement TEXT, volume_number TEXT, issue_number TEXT, pages TEXT, publication_title TEXT, provenance TEXT, scope_content TEXT, arrangement TEXT, access_conditions TEXT, reproduction_conditions TEXT, language TEXT, location_of_originals TEXT, location_of_copies TEXT, finding_aids TEXT, section_title TEXT, notes TEXT, internal_notes TEXT, creator_display TEXT, place_display TEXT, iiif_manifest_url TEXT, has_digital INTEGER DEFAULT 0, is_published INTEGER DEFAULT 0, last_exported_at INTEGER, admin_biog_history TEXT, preferred_citation TEXT, acquisition_info TEXT, system_of_arrangement TEXT, physical_characteristics TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', created_by TEXT REFERENCES users(id), updated_by TEXT REFERENCES users(id), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS desc_parent_pos_idx ON descriptions(parent_id, position)");
   await db.exec("CREATE INDEX IF NOT EXISTS desc_root_idx ON descriptions(root_description_id)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS desc_ref_code_idx ON descriptions(tenant_id, reference_code)");
@@ -737,6 +771,24 @@ export async function applyMigrations() {
     "CREATE INDEX IF NOT EXISTS workspace_export_runs_tenant_idx ON workspace_export_runs (tenant_id, created_at DESC)",
   );
 
+  // Media pipeline (migrations 0082-0084). Each statement is copied
+  // from its migration and run through prepare(), which takes a
+  // multi-line statement as it stands, so the copy keeps the
+  // migration's layout and is easy to compare line by line. Every
+  // table RESTRICTs its tenant, and most RESTRICT descriptions or
+  // users, so cleanDatabase() wipes them before those tables.
+  for (const statement of MEDIA_PIPELINE_DDL) {
+    await db.prepare(statement).run();
+  }
+  // Capture link (0093), after the pipeline volumes its deliveries name.
+  for (const statement of CAPTURE_LINK_DDL) {
+    await db.prepare(statement).run();
+  }
+  // Capture QC (0094), after the deliveries its sets belong to.
+  for (const statement of CAPTURE_QC_DDL) {
+    await db.prepare(statement).run();
+  }
+
   // Decision threads live in `comments` (decision_id target) since
   // migration 0071 folded the short-lived decision_comments table in.
   // The comments CREATE above carries the post-0071 shape; comments is
@@ -754,6 +806,27 @@ export async function applyMigrations() {
   // federation's lead_tenant_id FK points at a tenant row, and each
   // tenant's federation_id is UPDATE-set to its federation here.
   await seedFederations();
+
+  // OCR pages (0.8.0) -- mirrors drizzle/0085: an external-content index
+  // over ocr_pages with 'delete'-command triggers. Kept in lockstep with
+  // the migration, like descriptions_fts.
+  await db.exec("CREATE TABLE IF NOT EXISTS ocr_pages (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE CASCADE, page_seq INTEGER NOT NULL CHECK (page_seq >= 1), text TEXT NOT NULL DEFAULT '', source_key TEXT, alto_key TEXT, run_id TEXT, created_at INTEGER NOT NULL)");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ocr_pages_desc_seq_idx ON ocr_pages(description_id, page_seq)");
+  await db.exec("CREATE INDEX IF NOT EXISTS ocr_pages_tenant_idx ON ocr_pages(tenant_id)");
+  await db.exec("CREATE TABLE IF NOT EXISTS ocr_pages_staging (attempt_id TEXT NOT NULL, run_id TEXT NOT NULL, description_id TEXT NOT NULL, page_seq INTEGER NOT NULL CHECK (page_seq >= 1), tenant_id TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', source_key TEXT, alto_key TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (attempt_id, page_seq))");
+  await db.exec("CREATE INDEX IF NOT EXISTS ocr_pages_staging_desc_idx ON ocr_pages_staging(tenant_id, description_id, created_at)");
+  await db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS ocr_pages_fts USING fts5(text, content='ocr_pages', content_rowid='rowid', tokenize='unicode61')");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS ocr_pages_fts_ai AFTER INSERT ON ocr_pages BEGIN INSERT INTO ocr_pages_fts(rowid, text) VALUES (new.rowid, new.text); END");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS ocr_pages_fts_ad AFTER DELETE ON ocr_pages BEGIN INSERT INTO ocr_pages_fts(ocr_pages_fts, rowid, text) VALUES ('delete', old.rowid, old.text); END");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS ocr_pages_fts_au AFTER UPDATE OF text ON ocr_pages BEGIN INSERT INTO ocr_pages_fts(ocr_pages_fts, rowid, text) VALUES ('delete', old.rowid, old.text); INSERT INTO ocr_pages_fts(rowid, text) VALUES (new.rowid, new.text); END");
+
+  // Media pipeline publications (migration 0088). Copied statement by
+  // statement from the migration, like the other pipeline tables; it
+  // RESTRICTs volumes, runs, run volumes, users and tenants, so
+  // cleanDatabase() wipes it before all of them.
+  for (const statement of PIPELINE_PUBLICATIONS_DDL) {
+    await db.prepare(statement).run();
+  }
 }
 
 /**
@@ -891,6 +964,42 @@ export async function cleanDatabase() {
     "volumes",
     "project_invites",
     "project_members",
+    // Media pipeline tables (0082-0084), children before parents. They
+    // RESTRICT descriptions, users and tenants, so they go before all
+    // three. Review items and gate passes RESTRICT runs and declarations,
+    // and run volumes RESTRICT declarations, so all three come before
+    // pipeline_recipe_declarations.
+    // Capture images (0093) RESTRICT their delivery; deliveries RESTRICT
+    // pipeline volumes and scanners, and scanners RESTRICT tenants, so all
+    // three go before the pipeline.
+    // Capture QC (0094): rotations RESTRICT their decision, decisions
+    // their set, and sets their delivery, so all four go before the
+    // capture link's tables. Fetches (0100) RESTRICT their delivery.
+    // Review runs (0103) RESTRICT their delivery, run and volume.
+    "capture_review_runs",
+    "capture_qc_fetches",
+    "capture_qc_rotations",
+    "capture_qc_decisions",
+    "capture_qc_sets",
+    "capture_qc_reviewers",
+    "capture_images",
+    "capture_deliveries",
+    "capture_scanners",
+    // Publications (0088) RESTRICT volumes, runs and run volumes, so
+    // they go first.
+    "pipeline_publications",
+    "pipeline_review_items",
+    "pipeline_gate_passes",
+    "pipeline_run_volumes",
+    "pipeline_run_chunks",
+    "pipeline_runs",
+    "pipeline_volume_pages",
+    "pipeline_volumes",
+    "pipeline_recipe_declarations",
+    // OCR pages (0085) CASCADE with their description but RESTRICT their
+    // tenant; wiped explicitly so the order does not rest on the cascade.
+    "ocr_pages_staging",
+    "ocr_pages",
     "descriptions",
     "places",
     "entities",
@@ -1194,3 +1303,482 @@ export async function seedOperatorUser(): Promise<void> {
     )
     .run();
 }
+
+/**
+ * The media pipeline tables, statement by statement, as their
+ * migrations create them (0082 recipe declarations, volumes and pages;
+ * 0083 runs, chunks and run volumes; 0084 review items and gate
+ * passes). The page table's `sha256` column, which 0092 adds, is
+ * declared inline after `pdf_page`, where its ADD COLUMN puts it, so the
+ * statements stay safe to run twice. The gate passes carry 0105's `note`
+ * and `carried_from` inline at the end. The runs table is as 0102 rebuilds
+ * it, taking a review run with no purpose and no user, and the run
+ * volumes carry 0103's `review_purge` inline at the end, where its ADD
+ * COLUMN puts it. `applyMigrations()` runs them in this order, after every
+ * table they reference.
+ */
+const MEDIA_PIPELINE_DDL: readonly string[] = [
+  // 0082
+  `CREATE TABLE IF NOT EXISTS pipeline_recipe_declarations (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  scope_description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE RESTRICT,
+  version INTEGER NOT NULL CHECK (version >= 1),
+  platen TEXT NOT NULL CHECK (platen IN ('v','none')),
+  background TEXT NOT NULL CHECK (background IN ('dark','light')),
+  output_class TEXT NOT NULL CHECK (output_class IN ('tonal','bilevel')),
+  ocr INTEGER NOT NULL DEFAULT 0,
+  ocr_lang TEXT,
+  tone_preset TEXT NOT NULL,
+  advanced_params TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(advanced_params)),
+  created_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at INTEGER NOT NULL,
+  CHECK (ocr = 0 OR output_class = 'bilevel'),
+  CHECK (ocr = 0 OR ocr_lang IS NOT NULL),
+  UNIQUE (tenant_id, scope_description_id, version)
+)`,
+  `CREATE TABLE IF NOT EXISTS pipeline_volumes (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE RESTRICT,
+  reference_code TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('volume_run','item_pdf')),
+  state TEXT NOT NULL DEFAULT 'received' CHECK (state IN ('received','prepared','ready','published')),
+  masters_backend TEXT NOT NULL CHECK (masters_backend IN ('b2','r2')),
+  masters_endpoint TEXT NOT NULL,
+  masters_bucket TEXT NOT NULL,
+  masters_prefix TEXT,
+  masters_key TEXT,
+  checksums_key TEXT,
+  expected_count INTEGER NOT NULL CHECK (expected_count >= 1),
+  recipe_scope_description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE RESTRICT,
+  restricted INTEGER NOT NULL DEFAULT 0 CHECK (restricted IN (0,1)),
+  restriction_checked_at INTEGER,
+  current_tile_root TEXT,
+  open_review_count INTEGER NOT NULL DEFAULT 0,
+  last_run_id TEXT,
+  held_by_run_id TEXT,
+  last_error TEXT CHECK (last_error IS NULL OR json_valid(last_error)),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  pages_revision INTEGER NOT NULL DEFAULT 0,
+  CHECK ((kind = 'volume_run' AND masters_prefix IS NOT NULL AND masters_key IS NULL)
+      OR (kind = 'item_pdf'   AND masters_key IS NOT NULL AND masters_prefix IS NULL)),
+  UNIQUE (tenant_id, reference_code),
+  UNIQUE (tenant_id, description_id)
+)`,
+  "CREATE INDEX IF NOT EXISTS pipeline_volumes_state_idx ON pipeline_volumes (tenant_id, state)",
+  "CREATE INDEX IF NOT EXISTS pipeline_volumes_held_idx ON pipeline_volumes (tenant_id, held_by_run_id)",
+  `CREATE TABLE IF NOT EXISTS pipeline_volume_pages (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  seq INTEGER NOT NULL CHECK (seq >= 1),
+  page_key TEXT NOT NULL CHECK (
+    length(page_key) > 0
+    AND substr(page_key, 1, 1) GLOB '[A-Za-z0-9_-]'
+    AND page_key NOT GLOB '*[^A-Za-z0-9._-]*'),
+  master_key TEXT CHECK (master_key IS NULL OR length(master_key) > 0),
+  pdf_page INTEGER CHECK (pdf_page IS NULL OR pdf_page >= 1),
+  sha256 TEXT CHECK (sha256 IS NULL OR (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*')),
+  CHECK ((master_key IS NOT NULL AND pdf_page IS NULL)
+      OR (master_key IS NULL AND pdf_page IS NOT NULL)),
+  UNIQUE (pipeline_volume_id, seq),
+  UNIQUE (pipeline_volume_id, page_key)
+)`,
+  // 0083
+  `CREATE TABLE IF NOT EXISTS pipeline_runs (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  federation_id TEXT REFERENCES federations(id) ON DELETE RESTRICT,
+  user_id TEXT REFERENCES users(id) ON DELETE RESTRICT,
+  kind TEXT NOT NULL CHECK (kind IN ('volume_run','item_pdf','review_run')),
+  purpose TEXT CHECK (purpose IS NULL OR purpose IN ('sample','wave')),
+  regenerates_run_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','dispatched','running','completed','halted','error','cancelled')),
+  runner_image TEXT NOT NULL CHECK (
+    length(runner_image) > 72
+    AND substr(runner_image, -72, 8) = '@sha256:'
+    AND substr(runner_image, -64) NOT GLOB '*[^0-9a-f]*'),
+  script_version TEXT NOT NULL CHECK (length(trim(script_version)) > 0),
+  arch TEXT NOT NULL CHECK (arch = 'x64'),
+  max_review_frac REAL NOT NULL CHECK (max_review_frac >= 0 AND max_review_frac <= 1),
+  spec_key TEXT NOT NULL,
+  spec_sha256 TEXT NOT NULL CHECK (length(spec_sha256) = 64),
+  spec_url_expires_at INTEGER NOT NULL,
+  chunk_count INTEGER NOT NULL CHECK (chunk_count >= 1),
+  volume_count INTEGER NOT NULL CHECK (volume_count >= 1),
+  volumes_reported INTEGER NOT NULL DEFAULT 0,
+  callback_token_hash TEXT NOT NULL CHECK (length(callback_token_hash) = 64),
+  token_expires_at INTEGER NOT NULL,
+  token_revoked_at INTEGER,
+  error TEXT CHECK (error IS NULL OR json_valid(error)),
+  created_at INTEGER NOT NULL,
+  dispatched_at INTEGER,
+  completed_at INTEGER,
+  CHECK (spec_url_expires_at < token_expires_at),
+  CHECK ((status IN ('pending','dispatched','running') AND token_revoked_at IS NULL)
+      OR (status IN ('completed','error','cancelled') AND token_revoked_at IS NOT NULL)
+      OR status = 'halted'),
+  CHECK ((kind = 'review_run') = (purpose IS NULL)),
+  CHECK (kind = 'review_run' OR user_id IS NOT NULL)
+)`,
+  "CREATE INDEX IF NOT EXISTS pipeline_runs_tenant_idx ON pipeline_runs (tenant_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS pipeline_runs_open_idx ON pipeline_runs (token_revoked_at, token_expires_at)",
+  `CREATE TABLE IF NOT EXISTS pipeline_run_chunks (
+  id TEXT PRIMARY KEY NOT NULL,
+  run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','dispatched','failed','not_sent','completed')),
+  dispatch_error TEXT CHECK (dispatch_error IS NULL OR json_valid(dispatch_error)),
+  claim_id TEXT,
+  idempotency_key TEXT,
+  body_sha256 TEXT,
+  stored_response TEXT,
+  attempt TEXT,
+  conclusion TEXT CHECK (conclusion IS NULL OR conclusion IN ('success','failure','cancelled')),
+  unreported_volume_ids TEXT CHECK (unreported_volume_ids IS NULL OR json_valid(unreported_volume_ids)),
+  dispatched_at INTEGER,
+  reported_at INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE (run_id, chunk_index)
+)`,
+  `CREATE TABLE IF NOT EXISTS pipeline_run_volumes (
+  id TEXT PRIMARY KEY NOT NULL,
+  run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  declaration_id TEXT NOT NULL REFERENCES pipeline_recipe_declarations(id) ON DELETE RESTRICT,
+  job_index INTEGER NOT NULL CHECK (job_index >= 0),
+  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+  reference_code TEXT NOT NULL,
+  tile_root TEXT NOT NULL,
+  expected_count INTEGER NOT NULL CHECK (expected_count >= 1),
+  resolved_recipe TEXT NOT NULL CHECK (json_valid(resolved_recipe)),
+  status TEXT NOT NULL DEFAULT 'dispatched'
+    CHECK (status IN ('dispatched','prepared','review_pending','aborted','halted')),
+  claim_id TEXT,
+  idempotency_key TEXT,
+  body_sha256 TEXT,
+  stored_response TEXT,
+  attempt TEXT,
+  runner_versions TEXT,
+  stages TEXT,
+  qc TEXT,
+  verification TEXT,
+  flags_count INTEGER,
+  flags TEXT CHECK (flags IS NULL OR json_valid(flags)),
+  flags_truncated INTEGER NOT NULL DEFAULT 0,
+  flags_ingested_at INTEGER,
+  flags_ingest_attempts INTEGER NOT NULL DEFAULT 0 CHECK (flags_ingest_attempts >= 0),
+  tiles_bytes INTEGER,
+  ocr_bytes INTEGER,
+  elapsed_s REAL,
+  manifest_key TEXT,
+  report_key TEXT,
+  error TEXT CHECK (error IS NULL OR json_valid(error)),
+  reported_at INTEGER,
+  created_at INTEGER NOT NULL,
+  review_purge TEXT CHECK (review_purge IS NULL OR json_valid(review_purge)),
+  UNIQUE (run_id, pipeline_volume_id)
+)`,
+  "CREATE INDEX IF NOT EXISTS pipeline_run_volumes_volume_idx ON pipeline_run_volumes (pipeline_volume_id, created_at)",
+  "CREATE INDEX IF NOT EXISTS pipeline_run_volumes_chunk_idx ON pipeline_run_volumes (run_id, chunk_index, status)",
+  "CREATE INDEX IF NOT EXISTS pipeline_run_volumes_flags_idx ON pipeline_run_volumes (flags_truncated, flags_ingested_at)",
+  // 0084
+  `CREATE TABLE IF NOT EXISTS pipeline_review_items (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+  page_key TEXT NOT NULL,
+  stage TEXT NOT NULL CHECK (stage IN ('preprocess','render','ocr','tile')),
+  code TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  declaration_id TEXT NOT NULL,
+  declaration_version INTEGER NOT NULL,
+  script_version TEXT NOT NULL,
+  verdict TEXT CHECK (verdict IS NULL OR verdict IN ('accept','amend','accept_with_record')),
+  verdict_note TEXT,
+  verdict_by TEXT REFERENCES users(id) ON DELETE RESTRICT,
+  verdict_at INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE (run_id, pipeline_volume_id, page_key, stage, code)
+)`,
+  `CREATE INDEX IF NOT EXISTS pipeline_review_items_open_idx
+  ON pipeline_review_items (tenant_id, pipeline_volume_id) WHERE verdict IS NULL`,
+  `CREATE TABLE IF NOT EXISTS pipeline_gate_passes (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  declaration_id TEXT NOT NULL REFERENCES pipeline_recipe_declarations(id) ON DELETE RESTRICT,
+  script_version TEXT NOT NULL,
+  sample_run_id TEXT,
+  passed_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  passed_at INTEGER NOT NULL,
+  note TEXT,
+  carried_from TEXT,
+  UNIQUE (declaration_id, script_version)
+)`,
+];
+
+/**
+ * The publication ledger, statement by statement, as migrations 0088
+ * and 0089 leave it (0089's two columns declared inline, last, where
+ * its ADD COLUMNs put them), and the slug freeze trigger from 0091.
+ * `applyMigrations()` runs it last, after the run tables it references.
+ */
+const PIPELINE_PUBLICATIONS_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS pipeline_publications (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+  run_volume_id TEXT NOT NULL REFERENCES pipeline_run_volumes(id) ON DELETE RESTRICT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK (status IN ('claimed','copying','published','failed','abandoned')),
+  claim_id TEXT NOT NULL,
+  canonical_url TEXT NOT NULL,
+  canonical_key TEXT NOT NULL,
+  manifest_sha256 TEXT NOT NULL CHECK (length(manifest_sha256) = 64),
+  canonical_expect TEXT NOT NULL CHECK (json_valid(canonical_expect)),
+  description_before TEXT CHECK (description_before IS NULL OR json_valid(description_before)),
+  previous_catalogue_url TEXT,
+  previous_manifest_sha256 TEXT,
+  previous_manifest_etag TEXT,
+  previous_manifest_copy_key TEXT,
+  previous_image_roots TEXT CHECK (previous_image_roots IS NULL OR json_valid(previous_image_roots)),
+  retirement_status TEXT NOT NULL DEFAULT 'none' CHECK (retirement_status IN ('none','pending')),
+  ocr_pages_written INTEGER,
+  ocr_bytes_read INTEGER,
+  error TEXT CHECK (error IS NULL OR json_valid(error)),
+  needs_person INTEGER NOT NULL DEFAULT 0 CHECK (needs_person IN (0,1)),
+  resolve_attempts INTEGER NOT NULL DEFAULT 0,
+  claimed_at INTEGER NOT NULL,
+  copying_at INTEGER,
+  published_at INTEGER,
+  finished_at INTEGER,
+  previous_ocr_copy_key TEXT,
+  previous_ocr_sha256 TEXT CHECK (previous_ocr_sha256 IS NULL OR length(previous_ocr_sha256) = 64),
+  CHECK ((status = 'published') = (published_at IS NOT NULL)),
+  CHECK (status <> 'copying' OR copying_at IS NOT NULL)
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS pipeline_publications_in_flight
+  ON pipeline_publications (pipeline_volume_id) WHERE status IN ('claimed','copying')`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS pipeline_publications_published
+  ON pipeline_publications (pipeline_volume_id) WHERE status = 'published'`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS pipeline_publications_canonical_key
+  ON pipeline_publications (canonical_key) WHERE status IN ('claimed','copying','published')`,
+  `CREATE INDEX IF NOT EXISTS pipeline_publications_tenant_idx
+  ON pipeline_publications (tenant_id, status, claimed_at)`,
+  `CREATE INDEX IF NOT EXISTS pipeline_publications_stalled_idx
+  ON pipeline_publications (needs_person, resolve_attempts, status, copying_at, claimed_at)
+  WHERE status IN ('claimed','copying')`,
+  // The slug freeze (0091), here because it reads the run tables: a
+  // tenant's slug cannot change once it has a volume in any run.
+  `CREATE TRIGGER IF NOT EXISTS tenants_slug_frozen
+  BEFORE UPDATE OF slug ON tenants
+  WHEN NEW.slug IS NOT OLD.slug
+    AND EXISTS (SELECT 1 FROM pipeline_run_volumes WHERE tenant_id = OLD.id)
+  BEGIN
+    SELECT RAISE(ABORT, 'tenant_slug_frozen: the tenant has pipeline output under its slug');
+  END`,
+];
+
+/**
+ * The capture link's scanners and deliveries, statement by statement,
+ * as migration 0093 creates them and 0095 rebuilds the deliveries, with
+ * their route, a scanner only for a link delivery, and their openings,
+ * and 0104's `review_declined_at` and 0110's `rejected_records` inline
+ * at the end, in that order, where their ADD COLUMNs put them, as
+ * 0109's `rotate_deg` is at the end of the images' columns.
+ * `applyMigrations()` runs them after
+ * the pipeline volumes a delivery names.
+ */
+const CAPTURE_LINK_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS capture_scanners (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 32 AND name NOT GLOB '*[^a-z0-9-]*'),
+  token_sha256 TEXT CHECK (token_sha256 IS NULL OR (length(token_sha256) = 64 AND token_sha256 NOT GLOB '*[^0-9a-f]*')),
+  token_created_at INTEGER,
+  last_seen_at INTEGER,
+  revoked_at INTEGER,
+  rate_window_start INTEGER,
+  rate_window_calls INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 0,
+  write_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (token_sha256 IS NOT NULL OR revoked_at IS NULL)
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_scanners_tenant_idx ON capture_scanners (tenant_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_scanners_token_idx ON capture_scanners (token_sha256)`,
+  `CREATE TABLE IF NOT EXISTS capture_deliveries (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  id TEXT NOT NULL,
+  route TEXT NOT NULL CHECK (route IN ('link','file')),
+  scanner_id TEXT REFERENCES capture_scanners(id) ON DELETE RESTRICT,
+  reference_code TEXT,
+  pipeline_volume_id TEXT REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  body_sha256 TEXT NOT NULL CHECK (length(body_sha256) = 64 AND body_sha256 NOT GLOB '*[^0-9a-f]*'),
+  state TEXT NOT NULL CHECK (state IN ('received','registered','refused','superseded')),
+  problems TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(problems)),
+  answer_status INTEGER NOT NULL,
+  answer_body TEXT NOT NULL CHECK (json_valid(answer_body)),
+  records TEXT CHECK (records IS NULL OR json_valid(records)),
+  openings INTEGER NOT NULL CHECK (openings >= 0),
+  received_at INTEGER NOT NULL,
+  superseded_by TEXT,
+  superseded_at INTEGER,
+  seq INTEGER NOT NULL,
+  write_id TEXT,
+  review_declined_at INTEGER,
+  rejected_records INTEGER NOT NULL DEFAULT 0 CHECK (rejected_records >= 0),
+  PRIMARY KEY (tenant_id, id),
+  CHECK ((route = 'link') = (scanner_id IS NOT NULL)),
+  CHECK ((state = 'superseded') = (superseded_by IS NOT NULL)),
+  CHECK (state NOT IN ('registered','superseded') OR pipeline_volume_id IS NOT NULL)
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_deliveries_ref_idx ON capture_deliveries (tenant_id, reference_code, received_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_deliveries_seq_idx ON capture_deliveries (tenant_id, seq)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_deliveries_holder_idx ON capture_deliveries (tenant_id, pipeline_volume_id)
+  WHERE state = 'registered'`,
+  `CREATE TABLE IF NOT EXISTS capture_images (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  captua_record_id INTEGER NOT NULL,
+  capture_id TEXT NOT NULL,
+  pair_id TEXT,
+  role TEXT NOT NULL CHECK (role IN ('left','right','single')),
+  page_key TEXT NOT NULL,
+  capture_key TEXT NOT NULL,
+  capture_sha256 TEXT NOT NULL CHECK (length(capture_sha256) = 64 AND capture_sha256 NOT GLOB '*[^0-9a-f]*'),
+  capture_bytes INTEGER,
+  preview_key TEXT,
+  preview_sha256 TEXT CHECK (preview_sha256 IS NULL OR (length(preview_sha256) = 64 AND preview_sha256 NOT GLOB '*[^0-9a-f]*')),
+  preview_bytes INTEGER,
+  record_status TEXT CHECK (record_status IS NULL OR record_status IN ('captured','in_review','approved','rejected')),
+  rotate_deg INTEGER CHECK (rotate_deg IS NULL OR rotate_deg IN (0, 90, 180, 270)),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
+  CHECK ((preview_key IS NULL) = (preview_sha256 IS NULL))
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_images_delivery_idx ON capture_images (tenant_id, delivery_id)`,
+];
+
+/**
+ * Capture QC's decision sets, decisions, rotations and reviewers,
+ * statement by statement, as migration 0094 creates them and 0096
+ * gives the rotations their key, which includes the image's role; and,
+ * as 0100 adds them, the set's `carried_from`, the decision's
+ * `set_revision`, the unit's fetches and the images' index by record.
+ * The images' `record_status` (0100) is in the capture link's table.
+ * The review runs of a delivery (0103) close the list. `applyMigrations()` runs them after the
+ * capture link's tables.
+ */
+const CAPTURE_QC_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS capture_qc_sets (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  decisions_id TEXT NOT NULL,
+  decided_at INTEGER NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  opening_count INTEGER NOT NULL CHECK (opening_count >= 1),
+  decided_count INTEGER NOT NULL DEFAULT 0,
+  approved_count INTEGER NOT NULL DEFAULT 0,
+  rejected_count INTEGER NOT NULL DEFAULT 0,
+  notes_bytes INTEGER NOT NULL DEFAULT 0 CHECK (notes_bytes <= 1000000),
+  state TEXT NOT NULL CHECK (state IN ('in_capture_qc','retakes_requested','approved')),
+  state_entered_at INTEGER NOT NULL,
+  write_id TEXT NOT NULL,
+  carried_from TEXT,
+  PRIMARY KEY (tenant_id, delivery_id),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
+  CHECK (approved_count + rejected_count = decided_count AND decided_count <= opening_count)
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_qc_sets_decisions_idx ON capture_qc_sets (tenant_id, decisions_id)`,
+  `CREATE INDEX IF NOT EXISTS capture_qc_sets_volume_idx ON capture_qc_sets (tenant_id, pipeline_volume_id)`,
+  `CREATE TABLE IF NOT EXISTS capture_qc_decisions (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  captua_record_id INTEGER NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('approved','rejected')),
+  reason TEXT CHECK (reason IS NULL OR reason IN ('blur','glare','shadow','focus','exposure','dirt','framing','obstruction','other')),
+  note TEXT CHECK (note IS NULL OR length(note) BETWEEN 1 AND 2000),
+  decided_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  decided_by_name TEXT NOT NULL CHECK (length(decided_by_name) BETWEEN 1 AND 256),
+  decided_at INTEGER NOT NULL,
+  set_revision INTEGER NOT NULL DEFAULT 0,
+  side TEXT CHECK (side IS NULL OR side IN ('left','right','both')) CHECK (side IS NULL OR decision = 'rejected'),
+  PRIMARY KEY (tenant_id, delivery_id, captua_record_id),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_qc_sets(tenant_id, delivery_id) ON DELETE RESTRICT,
+  CHECK ((decision = 'rejected') = (reason IS NOT NULL)),
+  CHECK (reason IS NOT 'other' OR note IS NOT NULL)
+)`,
+  `CREATE TABLE IF NOT EXISTS capture_qc_rotations (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  captua_record_id INTEGER NOT NULL,
+  capture_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('left','right','single')),
+  quarter_turns INTEGER NOT NULL CHECK (quarter_turns BETWEEN 1 AND 3),
+  PRIMARY KEY (tenant_id, delivery_id, captua_record_id, capture_id, role),
+  FOREIGN KEY (tenant_id, delivery_id, captua_record_id)
+    REFERENCES capture_qc_decisions(tenant_id, delivery_id, captua_record_id) ON DELETE RESTRICT
+)`,
+  `CREATE TABLE IF NOT EXISTS capture_qc_reviewers (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  reviewer_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  assigned_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  assigned_at INTEGER NOT NULL,
+  PRIMARY KEY (tenant_id, pipeline_volume_id)
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_qc_reviewers_reviewer_idx ON capture_qc_reviewers (tenant_id, reviewer_id)`,
+  `CREATE TABLE IF NOT EXISTS capture_qc_fetches (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  decisions_id TEXT NOT NULL,
+  set_revision INTEGER NOT NULL,
+  first_fetched_at INTEGER NOT NULL,
+  last_fetched_at INTEGER NOT NULL,
+  PRIMARY KEY (tenant_id, decisions_id),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
+  CHECK (last_fetched_at >= first_fetched_at)
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_qc_fetches_delivery_idx ON capture_qc_fetches (tenant_id, delivery_id, set_revision)`,
+  `CREATE INDEX IF NOT EXISTS capture_images_record_idx ON capture_images (tenant_id, delivery_id, captua_record_id)`,
+  // 0103
+  `CREATE TABLE IF NOT EXISTS capture_review_runs (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  pipeline_volume_id TEXT NOT NULL REFERENCES pipeline_volumes(id) ON DELETE RESTRICT,
+  review_prefix TEXT NOT NULL CHECK (length(review_prefix) > 1 AND substr(review_prefix, -1) = '/'),
+  status TEXT NOT NULL DEFAULT 'dispatched'
+    CHECK (status IN ('dispatched','review_ready','aborted','halted')),
+  claim_id TEXT,
+  idempotency_key TEXT,
+  body_sha256 TEXT,
+  stored_response TEXT,
+  attempt TEXT,
+  error TEXT CHECK (error IS NULL OR json_valid(error)),
+  tiles_bytes INTEGER,
+  report_key TEXT,
+  reported_at INTEGER,
+  created_at INTEGER NOT NULL,
+  purge_status TEXT CHECK (purge_status IS NULL OR purge_status IN ('purged','failed')),
+  purged_at INTEGER,
+  PRIMARY KEY (tenant_id, run_id, pipeline_volume_id),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
+  CHECK ((purge_status IS 'purged') = (purged_at IS NOT NULL))
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_review_runs_delivery_idx ON capture_review_runs (tenant_id, delivery_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS capture_review_runs_volume_idx ON capture_review_runs (tenant_id, pipeline_volume_id, created_at)`,
+];
+
+// @version v0.8.0

@@ -84,7 +84,7 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { sql } from "drizzle-orm";
@@ -95,6 +95,8 @@ import {
   real,
   index,
   uniqueIndex,
+  unique,
+  primaryKey,
 } from "drizzle-orm/sqlite-core";
 import {
   DESCRIPTION_LEVELS,
@@ -114,6 +116,29 @@ import {
   QC_PROBLEM_TYPES,
   QC_RESOLUTION_ACTIONS,
   GEONAMES_FCLASSES,
+  PIPELINE_RUN_KINDS,
+  PIPELINE_LEDGER_RUN_KINDS,
+  CAPTURE_REVIEW_RUN_STATUSES,
+  CAPTURE_REVIEW_PURGE_STATUSES,
+  PIPELINE_VOLUME_STATES,
+  PIPELINE_PLATENS,
+  PIPELINE_BACKGROUNDS,
+  PIPELINE_OUTPUT_CLASSES,
+  PIPELINE_RUN_PURPOSES,
+  PIPELINE_RUN_STATUSES,
+  PIPELINE_RUN_CHUNK_STATUSES,
+  PIPELINE_RUN_VOLUME_STATUSES,
+  PIPELINE_STAGES,
+  PIPELINE_VERDICTS,
+  PIPELINE_PUBLICATION_STATUSES,
+  PIPELINE_RETIREMENT_STATUSES,
+  CAPTURE_DELIVERY_ROUTES,
+  CAPTURE_DELIVERY_STATES,
+  CAPTURE_IMAGE_ROLES,
+  CAPTURE_QC_DECISIONS,
+  CAPTURE_QC_REASONS,
+  CAPTURE_QC_SET_STATES,
+  CAPTURE_QC_SIDES,
 } from "../lib/validation/enums";
 // AUDIT_LOG_ACTIONS lives in a tiny constants module so
 // `app/lib/audit.server.ts` (which imports the auditLog table from
@@ -163,6 +188,13 @@ export const tenants = sqliteTable(
     // bulk upsert is operator-granted per tenant when an import is
     // actually planned.
     importsEnabled: integer("imports_enabled", { mode: "boolean" }).notNull().default(false),
+    // Gates the media pipeline surface (migration 0081). DEFAULT false —
+    // image operations are operator-granted per tenant.
+    mediaPipelineEnabled: integer("media_pipeline_enabled", { mode: "boolean" }).notNull().default(false),
+    // Gates the Digitization section and its screens (migration 0098).
+    // DEFAULT false — operator-granted per tenant that works with a
+    // Captua scanner.
+    digitizationEnabled: integer("digitization_enabled", { mode: "boolean" }).notNull().default(false),
     quotaStorageBytes: integer("quota_storage_bytes"),
     // Soft-disable timestamp (migration 0039). Nullable — NULL means
     // active. When set, getTenantFromRequest 404s the tenant subdomain
@@ -207,6 +239,15 @@ export const tenants = sqliteTable(
     placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    // Manifest settings (migration 0090). The public site that shows the
+    // tenant's descriptions, the provider a manifest names, and where
+    // each description's METS file is published. Null means the
+    // manifest leaves that part out.
+    publicSiteUrl: text("public_site_url"),
+    publicSiteName: text("public_site_name"),
+    providerName: text("provider_name"),
+    providerUrl: text("provider_url"),
+    metsBaseUrl: text("mets_base_url"),
   },
   (table) => [
     uniqueIndex("tenants_slug_idx").on(table.slug),
@@ -274,6 +315,26 @@ export const federations = sqliteTable(
     entityCodePrefix: text("entity_code_prefix"),
     placeCodePrefix: text("place_code_prefix"),
     createdAt: integer("created_at").notNull(),
+    // Storage destination (migration 0091): the buckets the media
+    // pipeline writes the federation's tiles, page text and manifests
+    // to, each tenant's under its slug, the masters bucket the runner
+    // reads, and the prefix of the Worker secrets holding Fisqua's keys.
+    // Names and addresses only, never keys. Written by the operator's
+    // federation storage command; null means the pipeline refuses every
+    // tenant of the federation.
+    pipelineDeliveryEndpoint: text("pipeline_delivery_endpoint"),
+    pipelineTilesBucket: text("pipeline_tiles_bucket"),
+    pipelineMastersBucket: text("pipeline_masters_bucket"),
+    pipelineImageBaseUrl: text("pipeline_image_base_url"),
+    manifestEndpoint: text("manifest_endpoint"),
+    manifestBucket: text("manifest_bucket"),
+    manifestBaseUrl: text("manifest_base_url"),
+    storageSecretPrefix: text("storage_secret_prefix"),
+    // The private bucket the review run writes review tiles to, each
+    // tenant's under its slug (migration 0097). Optional: a federation
+    // without it is still a complete destination, and its volumes skip
+    // the review run.
+    pipelineReviewTilesBucket: text("pipeline_review_tiles_bucket"),
   },
   (table) => [
     uniqueIndex("federations_slug_idx").on(table.slug),
@@ -293,6 +354,24 @@ export const DIGEST_FREQUENCIES = [
   "off",
 ] as const;
 
+/**
+ * What a new account gets until someone chooses otherwise.
+ *
+ * Hourly until 2026-08-20, changed to daily the day the sweep first ran
+ * against real users: an hourly digest on a cataloguing workspace is
+ * more mail than the work generates, and a partner meeting their first
+ * digest should not meet twenty-four of them.
+ *
+ * Every `insert(users)` site passes this explicitly rather than relying
+ * on the column DEFAULT. The deployed DDL still says 'hourly' — SQLite
+ * cannot alter a default in place, and rebuilding a table this
+ * referenced was not worth it for a value no insert ever omits. If
+ * `users` is ever rebuilt for another reason, fold the new default in
+ * and this note can go.
+ */
+export const DEFAULT_DIGEST_FREQUENCY = "daily" satisfies
+  (typeof DIGEST_FREQUENCIES)[number];
+
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id")
@@ -306,6 +385,13 @@ export const users = sqliteTable("users", {
   isArchiveUser: integer("is_archive_user", { mode: "boolean" }).notNull().default(false),
   isUserManager: integer("is_user_manager", { mode: "boolean" }).notNull().default(false),
   isCataloguer: integer("is_cataloguer", { mode: "boolean" }).notNull().default(false),
+  // Area-admin flags (0107). Each passes one area of the workspace's
+  // administration; `isAdmin` (workspace admin) passes all four. The
+  // checks live in app/lib/user-access.server.ts.
+  isRecordsAdmin: integer("is_records_admin", { mode: "boolean" }).notNull().default(false),
+  isAuthoritiesAdmin: integer("is_authorities_admin", { mode: "boolean" }).notNull().default(false),
+  isImportsAdmin: integer("is_imports_admin", { mode: "boolean" }).notNull().default(false),
+  isDigitizationAdmin: integer("is_digitization_admin", { mode: "boolean" }).notNull().default(false),
   // Notification and language preferences (0074). `lastDigestAt` is the
   // sweep's per-user clock: due when now - lastDigestAt >= interval,
   // drift-based rather than wall-clock-anchored. `locale` is persisted
@@ -313,7 +399,7 @@ export const users = sqliteTable("users", {
   // renderer; NULL falls back to the app's fallback language (es).
   digestFrequency: text("digest_frequency", { enum: [...DIGEST_FREQUENCIES] })
     .notNull()
-    .default("hourly"),
+    .default("daily"),
   lastDigestAt: integer("last_digest_at"),
   locale: text("locale", { enum: ["en", "es"] }),
   lastActiveAt: integer("last_active_at"),
@@ -874,6 +960,12 @@ export const repositories = sqliteTable(
     enabled: integer("enabled", { mode: "boolean" }).default(true),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    // Manifest settings (migration 0090): the rights URI and the two
+    // languages of the attribution a pipeline manifest carries. Set by
+    // the repository; null until it is.
+    manifestRights: text("manifest_rights"),
+    attributionEn: text("attribution_en"),
+    attributionEs: text("attribution_es"),
   },
   (table) => [
     // Per-tenant unique (migration 0043): repository codes are unique
@@ -943,7 +1035,6 @@ export const descriptions = sqliteTable(
     provenance: text("provenance"),
     // Content (ISAD 3.3)
     scopeContent: text("scope_content"),
-    ocrText: text("ocr_text").default(""),
     arrangement: text("arrangement"),
     // Access (ISAD 3.4)
     accessConditions: text("access_conditions"),
@@ -1407,7 +1498,7 @@ export const stewardshipRuns = sqliteTable(
 // revert never replays a mapping (the journal's before-images carry
 // the effects). sharedWithFederation (spec §7.3) marks lead-tenant
 // profiles readable by federation members — app-layer enforced.
-// starterKey marks seeded starter profiles (phase 7); NULL =
+// starterKey marks seeded starter profiles; NULL =
 // operator-authored. Nothing references this table by FK: runs and
 // uploads keep FK-free profileId pointers so they outlive deletion.
 export const importProfiles = sqliteTable(
@@ -2075,3 +2166,841 @@ export const workspaceExportRuns = sqliteTable(
     ),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// Media pipeline (0.8.0)
+//
+// The tables behind the media pipeline: what it works on (recipe
+// declarations, pipeline volumes and their pages, migration 0082), what
+// it ran (runs, their dispatch chunks and their volumes, 0083), and
+// what people decided about the output (review items and gate passes,
+// 0084). Every table carries `tenant_id` and every statement on them is
+// tenant-scoped. The CHECK constraints live in the migrations; the
+// `enum` hints here narrow the TypeScript types and are pinned to the
+// same constants by the enum drift test.
+//
+// A recipe declaration family is the set of declaration rows sharing
+// one (tenantId, scopeDescriptionId). A row is immutable; amending
+// inserts `version + 1`. A pipeline volume points at its family through
+// `recipeScopeDescriptionId`, and a run resolves the family's latest
+// version when it is dispatched, so amending a declaration never
+// rewrites a volume row.
+//
+// `pipelineVolumes` is a third volume-shaped table beside
+// `descriptions` and `volumes`, which it does not alter. Its
+// `referenceCode` is copied at registration and is the tile root.
+// `lastRunId` and `heldByRunId` carry no foreign key; whether the run
+// named in `heldByRunId` still holds the volume is decided from the
+// run row when asked. `pipelineVolumePages` holds the canonical page
+// key of every page, with either a master object key (a volume run) or
+// a page of the item's PDF (an item PDF), never both, and the master's
+// SHA-256 when the volume was registered with one (0092).
+// ---------------------------------------------------------------------------
+
+export const pipelineRecipeDeclarations = sqliteTable(
+  "pipeline_recipe_declarations",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    scopeDescriptionId: text("scope_description_id")
+      .notNull()
+      .references(() => descriptions.id, { onDelete: "restrict" }),
+    version: integer("version").notNull(),
+    platen: text("platen", { enum: [...PIPELINE_PLATENS] }).notNull(),
+    background: text("background", { enum: [...PIPELINE_BACKGROUNDS] }).notNull(),
+    outputClass: text("output_class", { enum: [...PIPELINE_OUTPUT_CLASSES] }).notNull(),
+    ocr: integer("ocr", { mode: "boolean" }).notNull().default(false),
+    ocrLang: text("ocr_lang"),
+    tonePreset: text("tone_preset").notNull(),
+    /** JSON object of advanced parameters; `{}` when none are set. */
+    advancedParams: text("advanced_params").notNull().default("{}"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    unique().on(table.tenantId, table.scopeDescriptionId, table.version),
+  ]
+);
+
+export const pipelineVolumes = sqliteTable(
+  "pipeline_volumes",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    descriptionId: text("description_id")
+      .notNull()
+      .references(() => descriptions.id, { onDelete: "restrict" }),
+    referenceCode: text("reference_code").notNull(),
+    kind: text("kind", { enum: [...PIPELINE_RUN_KINDS] }).notNull(),
+    state: text("state", { enum: [...PIPELINE_VOLUME_STATES] })
+      .notNull()
+      .default("received"),
+    mastersBackend: text("masters_backend", { enum: ["b2", "r2"] }).notNull(),
+    mastersEndpoint: text("masters_endpoint").notNull(),
+    mastersBucket: text("masters_bucket").notNull(),
+    /** Set for a volume run, null for an item PDF. */
+    mastersPrefix: text("masters_prefix"),
+    /** Set for an item PDF, null for a volume run. */
+    mastersKey: text("masters_key"),
+    checksumsKey: text("checksums_key"),
+    expectedCount: integer("expected_count").notNull(),
+    recipeScopeDescriptionId: text("recipe_scope_description_id")
+      .notNull()
+      .references(() => descriptions.id, { onDelete: "restrict" }),
+    /**
+     * Whether this volume's material is restricted, set per volume for its
+     * archive; never derived from the description's access conditions.
+     * A restricted volume is never dispatched or published.
+     */
+    restricted: integer("restricted", { mode: "boolean" }).notNull().default(false),
+    restrictionCheckedAt: integer("restriction_checked_at"),
+    currentTileRoot: text("current_tile_root"),
+    openReviewCount: integer("open_review_count").notNull().default(0),
+    lastRunId: text("last_run_id"),
+    heldByRunId: text("held_by_run_id"),
+    /** JSON `{ class, ... }`, or null. */
+    lastError: text("last_error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    /**
+     * Raised by every write that replaces the volume's page list (0093).
+     * Dispatch claims the volume only at the revision it built its spec
+     * from.
+     */
+    pagesRevision: integer("pages_revision").notNull().default(0),
+  },
+  (table) => [
+    unique().on(table.tenantId, table.referenceCode),
+    unique().on(table.tenantId, table.descriptionId),
+    index("pipeline_volumes_state_idx").on(table.tenantId, table.state),
+    index("pipeline_volumes_held_idx").on(table.tenantId, table.heldByRunId),
+  ]
+);
+
+export const pipelineVolumePages = sqliteTable(
+  "pipeline_volume_pages",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    seq: integer("seq").notNull(),
+    pageKey: text("page_key").notNull(),
+    masterKey: text("master_key"),
+    pdfPage: integer("pdf_page"),
+    /**
+     * SHA-256 of the object at `masterKey`, 64 lowercase hex characters
+     * (migration 0092), or null when the route that registered the
+     * volume supplied none.
+     */
+    sha256: text("sha256"),
+  },
+  (table) => [
+    unique().on(table.pipelineVolumeId, table.seq),
+    unique().on(table.pipelineVolumeId, table.pageKey),
+  ]
+);
+
+// The run ledger (0083). A run is one request to process a set of
+// pipeline volumes, dispatched to the runner in chunks. Only the
+// SHA-256 digest of the callback token is stored. `tokenRevokedAt`
+// marks the run closed and decides whether anything new is accepted;
+// `status` records what happened, and a CHECK in the migration ties the
+// two together (`halted` may be open or closed). `runnerImage` is a
+// digest reference, never a tag. A run volume records the exact
+// declaration row resolved at dispatch and the complete resolved recipe
+// as JSON. `claimId` is the compare-and-swap value that makes a
+// callback batch apply at most once; `idempotencyKey`, `bodySha256` and
+// `storedResponse` serve exact replays. `regeneratesRunId` carries no
+// foreign key. Rows are never deleted by application code.
+//
+// A review run (0102) is a row here too, with kind `review_run`, no
+// purpose and, when a delivery started it, no user. It writes no run
+// volume: what it did is in `capture_review_runs`.
+
+export const pipelineRuns = sqliteTable(
+  "pipeline_runs",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    federationId: text("federation_id").references(() => federations.id, {
+      onDelete: "restrict",
+    }),
+    /** Who started the run; null only for a review run a delivery started (0102). */
+    userId: text("user_id").references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind", { enum: [...PIPELINE_LEDGER_RUN_KINDS] }).notNull(),
+    /** Sample or wave; null exactly for a review run (0102). */
+    purpose: text("purpose", { enum: [...PIPELINE_RUN_PURPOSES] }),
+    regeneratesRunId: text("regenerates_run_id"),
+    status: text("status", { enum: [...PIPELINE_RUN_STATUSES] })
+      .notNull()
+      .default("pending"),
+    runnerImage: text("runner_image").notNull(),
+    scriptVersion: text("script_version").notNull(),
+    arch: text("arch", { enum: ["x64"] }).notNull(),
+    maxReviewFrac: real("max_review_frac").notNull(),
+    specKey: text("spec_key").notNull(),
+    specSha256: text("spec_sha256").notNull(),
+    specUrlExpiresAt: integer("spec_url_expires_at").notNull(),
+    chunkCount: integer("chunk_count").notNull(),
+    volumeCount: integer("volume_count").notNull(),
+    volumesReported: integer("volumes_reported").notNull().default(0),
+    /** SHA-256 hex digest of the callback token; the token is never stored. */
+    callbackTokenHash: text("callback_token_hash").notNull(),
+    tokenExpiresAt: integer("token_expires_at").notNull(),
+    /** Set when the run closes; null while it is open. */
+    tokenRevokedAt: integer("token_revoked_at"),
+    /** JSON `{ class, ... }`, or null. */
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    dispatchedAt: integer("dispatched_at"),
+    completedAt: integer("completed_at"),
+  },
+  (table) => [
+    index("pipeline_runs_tenant_idx").on(table.tenantId, table.createdAt),
+    index("pipeline_runs_open_idx").on(table.tokenRevokedAt, table.tokenExpiresAt),
+  ]
+);
+
+export const pipelineRunChunks = sqliteTable(
+  "pipeline_run_chunks",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: "restrict" }),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    chunkIndex: integer("chunk_index").notNull(),
+    status: text("status", { enum: [...PIPELINE_RUN_CHUNK_STATUSES] })
+      .notNull()
+      .default("pending"),
+    /** JSON, or null. */
+    dispatchError: text("dispatch_error"),
+    claimId: text("claim_id"),
+    idempotencyKey: text("idempotency_key"),
+    bodySha256: text("body_sha256"),
+    storedResponse: text("stored_response"),
+    attempt: text("attempt"),
+    conclusion: text("conclusion", { enum: ["success", "failure", "cancelled"] }),
+    /** JSON array of volume ids, or null. */
+    unreportedVolumeIds: text("unreported_volume_ids"),
+    dispatchedAt: integer("dispatched_at"),
+    reportedAt: integer("reported_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [unique().on(table.runId, table.chunkIndex)]
+);
+
+export const pipelineRunVolumes = sqliteTable(
+  "pipeline_run_volumes",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: "restrict" }),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    declarationId: text("declaration_id")
+      .notNull()
+      .references(() => pipelineRecipeDeclarations.id, { onDelete: "restrict" }),
+    jobIndex: integer("job_index").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    referenceCode: text("reference_code").notNull(),
+    tileRoot: text("tile_root").notNull(),
+    expectedCount: integer("expected_count").notNull(),
+    /** JSON: the complete recipe as applied to this volume. */
+    resolvedRecipe: text("resolved_recipe").notNull(),
+    status: text("status", { enum: [...PIPELINE_RUN_VOLUME_STATUSES] })
+      .notNull()
+      .default("dispatched"),
+    claimId: text("claim_id"),
+    idempotencyKey: text("idempotency_key"),
+    bodySha256: text("body_sha256"),
+    storedResponse: text("stored_response"),
+    attempt: text("attempt"),
+    runnerVersions: text("runner_versions"),
+    stages: text("stages"),
+    qc: text("qc"),
+    verification: text("verification"),
+    flagsCount: integer("flags_count"),
+    /** JSON array of open flags, each with its assigned review-item id. */
+    flags: text("flags"),
+    flagsTruncated: integer("flags_truncated", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    flagsIngestedAt: integer("flags_ingested_at"),
+    /** Scheduled flag-ingest retries that made no progress. */
+    flagsIngestAttempts: integer("flags_ingest_attempts").notNull().default(0),
+    tilesBytes: integer("tiles_bytes"),
+    ocrBytes: integer("ocr_bytes"),
+    elapsedS: real("elapsed_s"),
+    manifestKey: text("manifest_key"),
+    reportKey: text("report_key"),
+    /** JSON `{ class, ... }`, or null. */
+    error: text("error"),
+    reportedAt: integer("reported_at"),
+    createdAt: integer("created_at").notNull(),
+    /**
+     * JSON: the report's `review_purge` block as it came (0103), when the
+     * spec named review prefixes to delete; null otherwise.
+     */
+    reviewPurge: text("review_purge"),
+  },
+  (table) => [
+    unique().on(table.runId, table.pipelineVolumeId),
+    index("pipeline_run_volumes_volume_idx").on(table.pipelineVolumeId, table.createdAt),
+    index("pipeline_run_volumes_chunk_idx").on(table.runId, table.chunkIndex, table.status),
+    index("pipeline_run_volumes_flags_idx").on(table.flagsTruncated, table.flagsIngestedAt),
+  ]
+);
+
+// Review items and gate passes (0084). A review item is one flag a run
+// raised on a page, open until it gets a verdict. Verdicts attach to the
+// recipe that produced the output: the declaration row, its version and
+// the script version. A gate pass covers one declaration row (one
+// version of a family) with one script version, so amending a
+// declaration needs a new pass. `declarationId` on a review item and
+// `sampleRunId` on a gate pass carry no foreign key.
+
+export const pipelineReviewItems = sqliteTable(
+  "pipeline_review_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: "restrict" }),
+    pageKey: text("page_key").notNull(),
+    stage: text("stage", { enum: [...PIPELINE_STAGES] }).notNull(),
+    code: text("code").notNull(),
+    summary: text("summary").notNull(),
+    declarationId: text("declaration_id").notNull(),
+    declarationVersion: integer("declaration_version").notNull(),
+    scriptVersion: text("script_version").notNull(),
+    verdict: text("verdict", { enum: [...PIPELINE_VERDICTS] }),
+    verdictNote: text("verdict_note"),
+    verdictBy: text("verdict_by").references(() => users.id, { onDelete: "restrict" }),
+    verdictAt: integer("verdict_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    unique().on(
+      table.runId,
+      table.pipelineVolumeId,
+      table.pageKey,
+      table.stage,
+      table.code,
+    ),
+    index("pipeline_review_items_open_idx")
+      .on(table.tenantId, table.pipelineVolumeId)
+      .where(sql`verdict IS NULL`),
+  ]
+);
+
+export const pipelineGatePasses = sqliteTable(
+  "pipeline_gate_passes",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    declarationId: text("declaration_id")
+      .notNull()
+      .references(() => pipelineRecipeDeclarations.id, { onDelete: "restrict" }),
+    scriptVersion: text("script_version").notNull(),
+    sampleRunId: text("sample_run_id"),
+    passedBy: text("passed_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    passedAt: integer("passed_at").notNull(),
+    /** Why the pass exists when no sample run won it (0105); null otherwise. */
+    note: text("note"),
+    /** The id of the pass this one was carried forward from (0105); null for a pass won directly. */
+    carriedFrom: text("carried_from"),
+  },
+  (table) => [unique().on(table.declarationId, table.scriptVersion)]
+);
+
+// OCR pages (0.8.0)
+// One row per page of OCR text, in canvas order. Text that the media
+// pipeline produced carries the key of its canonical object in
+// `sourceKey`; text migrated from the retired `ocr_text` column does
+// not. The full-text index over `text` (ocr_pages_fts) is a virtual
+// table maintained by triggers in migration 0085 and is not modelled
+// here, as `descriptions_fts` is not.
+export const ocrPages = sqliteTable(
+  "ocr_pages",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "restrict" }),
+    descriptionId: text("description_id").notNull().references(() => descriptions.id, { onDelete: "cascade" }),
+    pageSeq: integer("page_seq").notNull(),
+    text: text("text").notNull().default(""),
+    sourceKey: text("source_key"),
+    altoKey: text("alto_key"),
+    runId: text("run_id"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("ocr_pages_desc_seq_idx").on(t.descriptionId, t.pageSeq),
+    index("ocr_pages_tenant_idx").on(t.tenantId),
+  ],
+);
+
+export const ocrPagesStaging = sqliteTable(
+  "ocr_pages_staging",
+  {
+    attemptId: text("attempt_id").notNull(),
+    runId: text("run_id").notNull(),
+    descriptionId: text("description_id").notNull(),
+    pageSeq: integer("page_seq").notNull(),
+    tenantId: text("tenant_id").notNull(),
+    text: text("text").notNull().default(""),
+    sourceKey: text("source_key"),
+    altoKey: text("alto_key"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.attemptId, t.pageSeq] }),
+    index("ocr_pages_staging_desc_idx").on(t.tenantId, t.descriptionId, t.createdAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Media pipeline publication (0.8.0)
+// One row per attempt to publish a ready pipeline volume (migration
+// 0088). `claimed` and `copying` are in flight, at most one per volume;
+// one row per volume may be `published`; and at most one in-flight or
+// published row may name a canonical key across all tenants, because
+// the canonical key space is shared. Those three rules are partial
+// unique indexes in the migration. `canonicalExpect` is the condition
+// the canonical put is made under. The `previous*` columns record a
+// pre-pipeline chain of delivery objects, which nothing in Fisqua
+// deletes. Rows are never deleted by application code.
+// ---------------------------------------------------------------------------
+export const pipelinePublications = sqliteTable(
+  "pipeline_publications",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: "restrict" }),
+    runVolumeId: text("run_volume_id")
+      .notNull()
+      .references(() => pipelineRunVolumes.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: text("status", { enum: [...PIPELINE_PUBLICATION_STATUSES] }).notNull(),
+    claimId: text("claim_id").notNull(),
+    canonicalUrl: text("canonical_url").notNull(),
+    canonicalKey: text("canonical_key").notNull(),
+    manifestSha256: text("manifest_sha256").notNull(),
+    /** JSON `{ absent: true }` or `{ etag }`. */
+    canonicalExpect: text("canonical_expect").notNull(),
+    /** JSON `{ iiifManifestUrl, hasDigital }` read just before copying. */
+    descriptionBefore: text("description_before"),
+    previousCatalogueUrl: text("previous_catalogue_url"),
+    previousManifestSha256: text("previous_manifest_sha256"),
+    previousManifestEtag: text("previous_manifest_etag"),
+    previousManifestCopyKey: text("previous_manifest_copy_key"),
+    /** JSON array of image service roots, or null. */
+    previousImageRoots: text("previous_image_roots"),
+    retirementStatus: text("retirement_status", { enum: [...PIPELINE_RETIREMENT_STATUSES] })
+      .notNull()
+      .default("none"),
+    ocrPagesWritten: integer("ocr_pages_written"),
+    ocrBytesRead: integer("ocr_bytes_read"),
+    /** JSON `{ class, ... }`, or null. */
+    error: text("error"),
+    needsPerson: integer("needs_person", { mode: "boolean" }).notNull().default(false),
+    resolveAttempts: integer("resolve_attempts").notNull().default(0),
+    claimedAt: integer("claimed_at").notNull(),
+    copyingAt: integer("copying_at"),
+    publishedAt: integer("published_at"),
+    finishedAt: integer("finished_at"),
+    /** Where migrated OCR text replaced by this publication was kept. */
+    previousOcrCopyKey: text("previous_ocr_copy_key"),
+    previousOcrSha256: text("previous_ocr_sha256"),
+  },
+  (table) => [
+    uniqueIndex("pipeline_publications_in_flight")
+      .on(table.pipelineVolumeId)
+      .where(sql`status IN ('claimed','copying')`),
+    uniqueIndex("pipeline_publications_published")
+      .on(table.pipelineVolumeId)
+      .where(sql`status = 'published'`),
+    uniqueIndex("pipeline_publications_canonical_key")
+      .on(table.canonicalKey)
+      .where(sql`status IN ('claimed','copying','published')`),
+    index("pipeline_publications_tenant_idx").on(table.tenantId, table.status, table.claimedAt),
+    index("pipeline_publications_stalled_idx")
+      .on(table.needsPerson, table.resolveAttempts, table.status, table.copyingAt, table.claimedAt)
+      .where(sql`status IN ('claimed','copying')`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Capture link (0.8.0, migration 0093)
+// The direct link by which a Captua unit delivers its capture manifests
+// and follows its volumes, under the Captua exchange contract. A
+// scanner is one unit with its bearer token, of which only the SHA-256
+// is kept; one per tenant for now, kept a table of its own so that
+// several per tenant
+// only lift the unique index. `revokedAt` refuses the token from the
+// next call; `rateWindowStart` and `rateWindowCalls` are its fixed
+// one-minute call counter. A delivery is one manifest received, over the
+// link from its scanner or from a file by the registration command (its
+// `route`, 0095), with the answer given so a repeated id gets it back
+// verbatim; `bodySha256`
+// is the digest of the parsed body in canonical form (keys sorted, no
+// whitespace). `records` keeps the accepted manifest's records, which
+// capture QC decisions are made against; `seq`
+// orders deliveries by commit; one per volume is `registered`. An
+// image of an accepted manifest is a `captureImages` row, with every
+// object it names (the RAW capture and its preview), digests and sizes.
+// ---------------------------------------------------------------------------
+export const captureScanners = sqliteTable(
+  "capture_scanners",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    tokenSha256: text("token_sha256"),
+    tokenCreatedAt: integer("token_created_at"),
+    lastSeenAt: integer("last_seen_at"),
+    revokedAt: integer("revoked_at"),
+    rateWindowStart: integer("rate_window_start"),
+    rateWindowCalls: integer("rate_window_calls").notNull().default(0),
+    /** Raised by every token write, which is guarded by the value it read (0101). */
+    revision: integer("revision").notNull().default(0),
+    /** The id of the token write that set `revision` (0101). */
+    writeId: text("write_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("capture_scanners_tenant_idx").on(table.tenantId),
+    uniqueIndex("capture_scanners_token_idx").on(table.tokenSha256),
+  ],
+);
+
+export const captureDeliveries = sqliteTable(
+  "capture_deliveries",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    /** The manifest's envelope `id`. */
+    id: text("id").notNull(),
+    /** `link` or `file` (0095). */
+    route: text("route", { enum: [...CAPTURE_DELIVERY_ROUTES] }).notNull(),
+    /** The scanner of a link delivery; null for a file delivery. */
+    scannerId: text("scanner_id").references(() => captureScanners.id, { onDelete: "restrict" }),
+    referenceCode: text("reference_code"),
+    pipelineVolumeId: text("pipeline_volume_id").references(() => pipelineVolumes.id, {
+      onDelete: "restrict",
+    }),
+    bodySha256: text("body_sha256").notNull(),
+    state: text("state", { enum: [...CAPTURE_DELIVERY_STATES] }).notNull(),
+    /**
+     * JSON array of `{ rule, message, ... }` that an accepted delivery's
+     * registration reported without refusing it. A refusal's problems are
+     * in its answer only.
+     */
+    problems: text("problems").notNull().default("[]"),
+    answerStatus: integer("answer_status").notNull(),
+    /**
+     * The JSON body answered, returned verbatim on a repeated id. This,
+     * `problems` and `records` are stored as `{"$gzip": ...}` past
+     * 64 KiB (`packJson` in the capture link).
+     */
+    answerBody: text("answer_body").notNull(),
+    /** JSON array of the accepted manifest's records, or null. */
+    records: text("records"),
+    /** The accepted manifest's openings, records `in_review` or `approved`; 0 for a refusal (0095). */
+    openings: integer("openings").notNull(),
+    /**
+     * The accepted manifest's records `rejected`, each an opening with a
+     * retake outstanding on the unit; 0 for a refusal (0110). Any holds
+     * the volume from processing (`hold.server.ts`).
+     */
+    rejectedRecords: integer("rejected_records").notNull().default(0),
+    receivedAt: integer("received_at").notNull(),
+    supersededBy: text("superseded_by"),
+    supersededAt: integer("superseded_at"),
+    /** The tenant's deliveries in the order they were committed. */
+    seq: integer("seq").notNull(),
+    /** The request that wrote an accepted delivery; its images join on it. */
+    writeId: text("write_id"),
+    /**
+     * When the review run sweep declined the delivery for a reason of its
+     * own, in ms (0104); the sweep leaves it out until a person's Prepare
+     * or Retry clears it.
+     */
+    reviewDeclinedAt: integer("review_declined_at"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.id] }),
+    index("capture_deliveries_ref_idx").on(table.tenantId, table.referenceCode, table.receivedAt),
+    uniqueIndex("capture_deliveries_seq_idx").on(table.tenantId, table.seq),
+    uniqueIndex("capture_deliveries_holder_idx")
+      .on(table.tenantId, table.pipelineVolumeId)
+      .where(sql`state = 'registered'`),
+  ],
+);
+
+export const captureImages = sqliteTable(
+  "capture_images",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    /** With `tenantId`, the delivery's key (a composite foreign key in 0093). */
+    deliveryId: text("delivery_id").notNull(),
+    captuaRecordId: integer("captua_record_id").notNull(),
+    captureId: text("capture_id").notNull(),
+    pairId: text("pair_id"),
+    role: text("role", { enum: ["left", "right", "single"] }).notNull(),
+    pageKey: text("page_key").notNull(),
+    /** The capture as shot (the RAW on a RAW rig), by its full key in the masters bucket. */
+    captureKey: text("capture_key").notNull(),
+    captureSha256: text("capture_sha256").notNull(),
+    captureBytes: integer("capture_bytes"),
+    previewKey: text("preview_key"),
+    previewSha256: text("preview_sha256"),
+    previewBytes: integer("preview_bytes"),
+    /** The status of the image's record in the manifest (0100); null where it could not be told. */
+    recordStatus: text("record_status", { enum: ["captured", "in_review", "approved", "rejected"] }),
+    /**
+     * The clockwise rotation, 0, 90, 180 or 270 degrees, that makes the
+     * image the pipeline reads upright from its stored pixels, EXIF
+     * ignored (0109); null follows the EXIF tag.
+     */
+    rotateDeg: integer("rotate_deg"),
+  },
+  (table) => [
+    index("capture_images_delivery_idx").on(table.tenantId, table.deliveryId),
+    index("capture_images_record_idx").on(table.tenantId, table.deliveryId, table.captuaRecordId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Capture QC (0.8.0, migrations 0094 and 0096)
+// The decisions Fisqua makes on each opening a Captua unit delivered
+// (the Captua exchange contract's capture QC). A `captureQcSets` row is
+// the decision set of one delivery: decisions belong to the delivery
+// they were made
+// on. A retake's new delivery starts with the approvals of the openings
+// whose images it did not change, carried from the delivery it
+// supersedes (`carriedFrom`, migration 0100). `decisionsId` and
+// `decidedAt` change with every write; the counts and `state` are
+// recounted from the decisions in the same batch. A decision is one per
+// opening (Captua record), with its reason when rejected, an optional
+// note (required for `other`), and who decided, by id and by the name
+// the unit is told. Rotations are per image of a decision, in
+// quarter-turns clockwise. An image is its capture id and its role
+// together: the left and right images of a spread come from one trigger
+// of the rig and share a capture id. A volume's capture QC reviewer is one
+// `captureQcReviewers` row.
+// ---------------------------------------------------------------------------
+export const captureQcSets = sqliteTable(
+  "capture_qc_sets",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    /** With `tenantId`, the delivery's key (a composite foreign key in 0094). */
+    deliveryId: text("delivery_id").notNull(),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    decisionsId: text("decisions_id").notNull(),
+    decidedAt: integer("decided_at").notNull(),
+    revision: integer("revision").notNull(),
+    /** The delivery's openings: its records `in_review` or `approved`. */
+    openingCount: integer("opening_count").notNull(),
+    decidedCount: integer("decided_count").notNull().default(0),
+    approvedCount: integer("approved_count").notNull().default(0),
+    rejectedCount: integer("rejected_count").notNull().default(0),
+    /** The bytes of every note of the set; capped at 1,000,000 by a CHECK. */
+    notesBytes: integer("notes_bytes").notNull().default(0),
+    state: text("state", { enum: [...CAPTURE_QC_SET_STATES] }).notNull(),
+    stateEnteredAt: integer("state_entered_at").notNull(),
+    /** The request that last wrote the set. */
+    writeId: text("write_id").notNull(),
+    /** The delivery the set's first approvals were carried from on a retake (0100); null otherwise. */
+    carriedFrom: text("carried_from"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.deliveryId] }),
+    uniqueIndex("capture_qc_sets_decisions_idx").on(table.tenantId, table.decisionsId),
+    index("capture_qc_sets_volume_idx").on(table.tenantId, table.pipelineVolumeId),
+  ],
+);
+
+export const captureQcDecisions = sqliteTable(
+  "capture_qc_decisions",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    deliveryId: text("delivery_id").notNull(),
+    captuaRecordId: integer("captua_record_id").notNull(),
+    decision: text("decision", { enum: [...CAPTURE_QC_DECISIONS] }).notNull(),
+    reason: text("reason", { enum: [...CAPTURE_QC_REASONS] }),
+    /** The image of a two-image opening to retake, for a rejection only (0106). */
+    side: text("side", { enum: [...CAPTURE_QC_SIDES] }),
+    note: text("note"),
+    decidedBy: text("decided_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    decidedByName: text("decided_by_name").notNull(),
+    decidedAt: integer("decided_at").notNull(),
+    /** The set's revision as of the write that last wrote this decision (0100). */
+    setRevision: integer("set_revision").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.deliveryId, table.captuaRecordId] })],
+);
+
+export const captureQcRotations = sqliteTable(
+  "capture_qc_rotations",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    deliveryId: text("delivery_id").notNull(),
+    captuaRecordId: integer("captua_record_id").notNull(),
+    captureId: text("capture_id").notNull(),
+    role: text("role", { enum: [...CAPTURE_IMAGE_ROLES] }).notNull(),
+    quarterTurns: integer("quarter_turns").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.deliveryId, table.captuaRecordId, table.captureId, table.role] }),
+  ],
+);
+
+/**
+ * Each decision set the unit read from the decisions endpoint (0100):
+ * one row per `decisionsId`, with the set's revision as answered, and
+ * when the unit first and last read it.
+ */
+export const captureQcFetches = sqliteTable(
+  "capture_qc_fetches",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    deliveryId: text("delivery_id").notNull(),
+    decisionsId: text("decisions_id").notNull(),
+    /** The set's revision as the endpoint answered it. */
+    setRevision: integer("set_revision").notNull(),
+    firstFetchedAt: integer("first_fetched_at").notNull(),
+    lastFetchedAt: integer("last_fetched_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.decisionsId] }),
+    index("capture_qc_fetches_delivery_idx").on(table.tenantId, table.deliveryId, table.setRevision),
+  ],
+);
+
+export const captureQcReviewers = sqliteTable(
+  "capture_qc_reviewers",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    reviewerId: text("reviewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    assignedBy: text("assigned_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    assignedAt: integer("assigned_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.pipelineVolumeId] }),
+    index("capture_qc_reviewers_reviewer_idx").on(table.tenantId, table.reviewerId),
+  ],
+);
+
+/**
+ * The review runs of a capture delivery (0103): one row per review run
+ * and volume, with the runner's report and what became of the tiles.
+ * A review run writes no `pipeline_run_volumes` row, so it holds and
+ * releases nothing that processing reads.
+ */
+export const captureReviewRuns = sqliteTable(
+  "capture_review_runs",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: "restrict" }),
+    deliveryId: text("delivery_id").notNull(),
+    pipelineVolumeId: text("pipeline_volume_id")
+      .notNull()
+      .references(() => pipelineVolumes.id, { onDelete: "restrict" }),
+    /** `{slug}/{delivery id}/`, as the spec named it. */
+    reviewPrefix: text("review_prefix").notNull(),
+    status: text("status", { enum: [...CAPTURE_REVIEW_RUN_STATUSES] })
+      .notNull()
+      .default("dispatched"),
+    claimId: text("claim_id"),
+    idempotencyKey: text("idempotency_key"),
+    bodySha256: text("body_sha256"),
+    storedResponse: text("stored_response"),
+    attempt: text("attempt"),
+    /** JSON `{ class, ... }`, or null. */
+    error: text("error"),
+    tilesBytes: integer("tiles_bytes"),
+    reportKey: text("report_key"),
+    reportedAt: integer("reported_at"),
+    createdAt: integer("created_at").notNull(),
+    purgeStatus: text("purge_status", { enum: [...CAPTURE_REVIEW_PURGE_STATUSES] }),
+    purgedAt: integer("purged_at"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.runId, table.pipelineVolumeId] }),
+    index("capture_review_runs_delivery_idx").on(table.tenantId, table.deliveryId, table.createdAt),
+    index("capture_review_runs_volume_idx").on(table.tenantId, table.pipelineVolumeId, table.createdAt),
+  ],
+);
+
+// @version v0.8.0
