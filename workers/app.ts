@@ -9,12 +9,35 @@
  * The Worker has two entry points, not one. `fetch` is the request side
  * described above. `scheduled` is the clock side: Cloudflare invokes it on
  * the cron declared in `wrangler.jsonc` (every fifteen minutes) with no
- * request, no session, and no tenant, and it runs the notification sweep —
- * the pass that turns pending outbox rows into one digest email per due
- * recipient. Everything the sweep needs that would normally come off a
+ * request, no session, and no tenant, and it runs three steps in turn:
+ * the media pipeline sweep, the review run sweep and the notification
+ * sweep. The media pipeline sweep goes first and always runs: it closes runs
+ * whose callback token has expired, finishes review-flag ingests a
+ * request could not complete, and finishes or fails publications that
+ * stalled, checking each against its own tenant's manifest bucket. It runs
+ * in its own `try`, so a failure
+ * there is logged and the steps after it still run. The review run
+ * sweep follows in a `try` of its own: in production it starts the review
+ * run of each registered capture delivery that has none, such as one
+ * registered from a file (`startPendingReviewRuns`), within a fixed
+ * number of attempts per tick. The notification sweep comes last and
+ * turns pending outbox rows into one digest
+ * email per due recipient, and is skipped where no mail credential is
+ * set. Everything the sweeps need that would normally come off a
  * request (the app identity, the host suffix tenant subdomains hang off,
- * a mail transport) is assembled here from `env` and handed in, so the
- * sweep itself stays free of Worker plumbing.
+ * a mail transport, the media object reader) is assembled here from
+ * `env` and handed in, so the sweeps themselves stay free of Worker
+ * plumbing.
+ *
+ * Before any of that, the request side refuses two kinds of request with
+ * a bare 403 (`app/lib/same-origin.server.ts`). The first is a
+ * state-changing request that carries the session cookie but did not
+ * come from the request's own origin, which covers every route,
+ * including the resource routes React Router's own Origin check skips.
+ * The second, kept apart because it needs no cookie, is a cross-origin
+ * submission to `/login`, whose action sends a magic-link email. Token
+ * callers (the pipeline runner, the Captua scanner) send no cookie and
+ * pass.
  *
  * The request handler does two jobs. First, it wraps the Cloudflare context
  * (the `env` bindings declared in `wrangler.jsonc` and the runtime
@@ -29,7 +52,7 @@
  * server build for the app and is resolved during the bundle step, not at
  * runtime.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { createRequestHandler, RouterContextProvider } from "react-router";
@@ -37,6 +60,14 @@ import { drizzle } from "drizzle-orm/d1";
 import { Resend } from "resend";
 import { getAppConfig } from "../app/lib/config.server";
 import { runNotificationSweep } from "../app/lib/notification-sweep.server";
+import { runPipelineSweep } from "../app/lib/pipeline/sweep.server";
+import { getMediaObjectReader } from "../app/lib/pipeline/store.server";
+import { canonicalStoreForTenant } from "../app/lib/pipeline/publish.server";
+import { reviewRunDepsFor, startPendingReviewRuns } from "../app/lib/capture/review-run.server";
+import {
+  isCrossOriginLoginPost,
+  isCrossOriginSessionWrite,
+} from "../app/lib/same-origin.server";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -93,8 +124,23 @@ async function serveDocs(request: Request): Promise<Response> {
   });
 }
 
+// A refusal says nothing about why, and no cache may keep it.
+function forbidden(): Response {
+  return new Response(null, {
+    status: 403,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
+    // A state-changing request that carries the session cookie must come
+    // from this request's own origin, whatever the route.
+    if (isCrossOriginSessionWrite(request)) return forbidden();
+    // The login form sends email for someone not yet signed in, so it has
+    // no cookie for the rule above to see; it gets the same Origin
+    // requirement by path, and no other cookieless route does.
+    if (isCrossOriginLoginPost(request)) return forbidden();
     const { pathname } = new URL(request.url);
     if (
       (request.method === "GET" || request.method === "HEAD") &&
@@ -108,6 +154,33 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    // The pipeline sweep runs first and whatever the mail settings; a
+    // failure is logged and does not stop the notification sweep. The
+    // reader is built only when the sweep first reads through it.
+    try {
+      const counts = await runPipelineSweep({
+        db: drizzle(env.DB),
+        reader: { getText: (bucket, key) => getMediaObjectReader(env).getText(bucket, key) },
+        now: Date.now(),
+        workingBucket: env.PIPELINE_WORKING_BUCKET ?? "",
+        canonicalFor: (tenantId) => canonicalStoreForTenant(env, tenantId),
+      });
+      console.log(
+        `pipeline sweep: expired=${counts.expired} flags=${counts.flagsCompleted}/${counts.flagsAttempted} ` +
+          `publications=${counts.publicationsResolved} resolved, ${counts.publicationsUnresolved} unresolved`,
+      );
+    } catch (err) {
+      console.error(`pipeline sweep failed: ${err instanceof Error ? err.name : "error"}`);
+    }
+
+    // Review runs for deliveries that have none, in production only.
+    try {
+      const review = await startPendingReviewRuns(reviewRunDepsFor(env));
+      console.log(`review run sweep: started=${review.started} declined=${review.declined}`);
+    } catch (err) {
+      console.error(`review run sweep failed: ${err instanceof Error ? err.name : "error"}`);
+    }
+
     // No key, no mail. Local and preview deploys run without a Resend
     // credential; the sweep would then mark nothing and log a failure per
     // recipient on every tick, so it does not start at all.
@@ -144,3 +217,5 @@ export default {
     );
   },
 } satisfies ExportedHandler<Env>;
+
+// @version v0.8.0
