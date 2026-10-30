@@ -13,8 +13,10 @@
  * outline). Both badges resolve their colour pair from a shared
  * `--*-bg` / `--*-fg` token set; this keeps the palette swappable
  * from one design pass without having to chase every badge call site.
+ * `BADGE_SHAPE` is exported for badges elsewhere that keep the same
+ * shape with their own colour pairs (the Digitization screens).
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -54,7 +56,7 @@ export const DESCRIPTION_STATUS_STYLES: Record<
 // One shape, one size, one style — only the colour pair varies.
 // README §4.4: rounded-full px-2.5 py-0.5 text-11 font-sans
 // font-semibold tracking-[0.02em] uppercase.
-const BADGE_SHAPE =
+export const BADGE_SHAPE =
   "inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-11 font-semibold uppercase tracking-[0.02em]";
 
 type StatusBadgeProps = {
@@ -90,3 +92,5 @@ export function DescriptionStatusBadge({ status }: StatusBadgeProps) {
     </span>
   );
 }
+
+// @version v0.8.0
