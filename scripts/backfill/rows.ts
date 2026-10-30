@@ -27,7 +27,7 @@
  *
  *   1. No timestamps. `audit_log.json` and every per-pass file carry no
  *      date/time/pass field on any of the 91,187 decisions, so
- *      `created_at` is the single documented Phase-13 constant
+ *      `created_at` is the single documented import-date constant
  *      (`PHASE_13_CREATED_AT_MS`), never a per-op pass date.
  *   2. SEPARATE has no entity endpoints in the audit log. 11,024 of
  *      11,034 SEPARATE decisions carry an EMPTY `entity_ids` and only
@@ -43,7 +43,7 @@
  * from the per-pass edges, and the cluster-level agent reasoning survives
  * on each surviving entity's `resolve` row (`decision_reasoning`).
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import {
@@ -315,4 +315,4 @@ export function separatePairToRow(
   };
 }
 
-// Version: v0.4.2
+// Version: v0.8.0

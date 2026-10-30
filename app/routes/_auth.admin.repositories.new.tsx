@@ -4,9 +4,11 @@
  * This page is the create form for a new repository. It captures the minimum viable
  * record -- institutional code, display name, short name, city,
  * country, website -- and posts it to the server action. Richer fields
- * like rights statement, hero image, and subtitle live on the edit
- * page; the create form stays focused on "what you need to start
- * cataloguing for this institution".
+ * like hero image and subtitle live on the edit page; the create form
+ * stays focused on "what you need to start cataloguing for this
+ * institution", plus the rights statement and the manifest settings
+ * (rights URI and English and Spanish attribution) a pipeline manifest
+ * needs before any of the repository's volumes can be dispatched.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`; the new repository row is attributed to
@@ -18,7 +20,7 @@
  * open-redirect guard (`safeReturnTo`: internal paths only), a successful
  * create redirects there instead of the new repository's edit page.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { Form, useActionData, redirect, Link, useSearchParams } from "react-router";
@@ -57,10 +59,10 @@ async function canCreateRepository(
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
   if (!(await canCreateRepository(db, tenant))) {
@@ -71,7 +73,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { repositories } = await import("~/db/schema");
   const { createRepositorySchema } = await import(
@@ -79,7 +81,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -105,6 +107,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   const rightsText =
     (formData.get("rightsText") as string)?.trim() || undefined;
   const enabled = formData.get("enabled") === "on";
+
+  // Manifest settings: the rights URI must be http or https; empty
+  // fields are stored as null.
+  const { readManifestFields, REPOSITORY_MANIFEST_FIELDS } = await import(
+    "~/lib/validation/manifest-fields"
+  );
+  const manifestFields = readManifestFields(formData, REPOSITORY_MANIFEST_FIELDS);
+  if (!manifestFields.ok) {
+    return {
+      ok: false as const,
+      errors: manifestFields.errors,
+    };
+  }
 
   const parsed = createRepositorySchema.safeParse({
     code,
@@ -142,6 +157,9 @@ export async function action({ request, context }: Route.ActionArgs) {
       website: parsed.data.website ?? null,
       notes: parsed.data.notes ?? null,
       rightsText: rightsText ?? null,
+      manifestRights: manifestFields.values.manifestRights,
+      attributionEn: manifestFields.values.attributionEn,
+      attributionEs: manifestFields.values.attributionEs,
       createdAt: now,
       updatedAt: now,
     });
@@ -171,7 +189,9 @@ export default function NewRepositoryPage() {
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo");
 
-  const errors =
+  // One field map, whichever check refused: the schema's or the
+  // manifest settings'.
+  const errors: Record<string, string[] | undefined> | undefined =
     actionData && "errors" in actionData ? actionData.errors : undefined;
   const globalError =
     actionData && "error" in actionData ? actionData.error : undefined;
@@ -306,6 +326,21 @@ export default function NewRepositoryPage() {
               error={errors?.rightsText?.[0]}
               help={t("rights_text_help")}
             />
+            <FieldInput
+              name="manifestRights"
+              label={t("field.manifestRights")}
+              error={errors?.manifestRights?.[0]}
+            />
+            <FieldTextarea
+              name="attributionEn"
+              label={t("field.attributionEn")}
+              error={errors?.attributionEn?.[0]}
+            />
+            <FieldTextarea
+              name="attributionEs"
+              label={t("field.attributionEs")}
+              error={errors?.attributionEs?.[0]}
+            />
             <div>
               <div className="flex items-center gap-2">
                 <input
@@ -437,3 +472,5 @@ function FieldTextarea({
     </div>
   );
 }
+
+// @version v0.8.0

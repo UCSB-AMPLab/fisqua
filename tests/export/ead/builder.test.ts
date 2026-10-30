@@ -20,7 +20,7 @@
  *   - Two `legacyIds` providers ("ca", "django") so the primary +
  *     secondary unitid emission scheme is exercised end-to-end.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -53,13 +53,13 @@ describe("buildEad3 — common structural invariants", () => {
     expect(archdescMatch?.[1]).toBe("did");
   });
 
-  it("escapes XML-special chars in titles (T-37-02)", () => {
+  it("escapes XML-special chars in titles", () => {
     const xml = buildEad3(sampleFondsRows, sampleRepositoryById, ISADG_EAD_PROFILE, CREATE_DATE);
     expect(xml).toContain("&lt;colonial period&gt;");
     expect(xml).not.toContain("Rionegro <colonial period>");
   });
 
-  it("escapes ampersands in scopeContent (T-37-02)", () => {
+  it("escapes ampersands in scopeContent", () => {
     const xml = buildEad3(sampleFondsRows, sampleRepositoryById, ISADG_EAD_PROFILE, CREATE_DATE);
     expect(xml).toContain("Documentos administrativos &amp; judiciales");
     expect(xml).not.toContain("Documentos administrativos & judiciales");

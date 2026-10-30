@@ -1,13 +1,13 @@
 /**
- * Global search — one query across records, entities and places
+ * Global search — one query across records, entities, places and OCR pages
  *
  * This module deals with the workspace-wide search: a single query
- * answered by all three full-text indexes at once, grouped by category
+ * answered by all four full-text indexes at once, grouped by category
  * rather than blended into one ranked list. It is the only place the
  * search statements live; the surface that renders them decides gates,
  * facets and paging, and asks this module for rows.
  *
- * WHY GROUPED, NOT BLENDED. The three indexes describe different
+ * WHY GROUPED, NOT BLENDED. The four indexes describe different
  * things and have nothing comparable about their document lengths or
  * column sets, so a merged ranking would need BM25 scores normalised
  * across them — fiddly to tune and rarely satisfying. Each group is
@@ -110,7 +110,7 @@
  * THE QUERY. The caller hands over a ParsedSearch — the query model
  * search-query defines: positive box text, refinements with an
  * include/exclude operator and an optional field scope, phrase mode.
- * ONE compiled expression serves all three indexes: exclusions are
+ * ONE compiled expression serves all four indexes: exclusions are
  * column-free and subtract from the name indexes exactly as they do
  * from records, and a field-scoped refinement — which only the record
  * index's columns can answer — takes the name indexes out of play
@@ -151,6 +151,30 @@
  * only records carry dates, a date bound narrows the authorities out
  * exactly as a field scope does.
  *
+ * TRANSCRIPTS. The OCR page index (ocr_pages_fts, one row per page,
+ * one column of text) is the fourth category, and it answers for
+ * records: a matching page stands for its description, and a row is
+ * one description with the number of its pages that match and the
+ * best few of them, ranked by the best page's bm25 inside the record.
+ * The category is ABSENT, as the authorities are when gated out, in
+ * three cases: the caller's includeTranscripts gate is off or unset; the
+ * request browses, because there is no page hit without a matched
+ * term; and a field-scoped refinement or advanced row is present,
+ * because the page index has no column to answer it. A date bound
+ * keeps the category, since dates, levels, repositories and the
+ * handlist all apply through the description join. Exclusions ride in
+ * the compiled expression, so they subtract PAGES, not records: a
+ * record whose excluded word sits on a different page from its match
+ * still answers.
+ *
+ * Every statement over the page index names the tenant on the page row
+ * and on the description in the same template. SQLite refuses bm25()
+ * inside an aggregate and snippet() beside a window function, and
+ * flattens a plain subquery back into the same refusal, so the FTS read
+ * is materialised first in a MATERIALIZED common table expression and
+ * the grouping and the window run over its rows. snippet() then runs
+ * only on the pages shown, never on every matching page.
+ *
  * BAD SYNTAX. Compiled expressions are valid FTS5 by construction —
  * every unit is quoted, so hyphens, apostrophes, colons and the
  * boolean keywords are ordinary text. The one input that can still
@@ -167,7 +191,7 @@
  * workspace-wide LIKE scan over every indexed column is a table scan
  * wearing a search's clothes.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { sql } from "drizzle-orm";
@@ -201,7 +225,10 @@ const SNIPPET_TOKENS = 12;
 /** Ellipsis `snippet()` uses where it cuts the surrounding text. */
 const SNIPPET_ELLIPSIS = "…";
 
-export type SearchCategory = "descriptions" | "entities" | "places";
+export type SearchCategory = "descriptions" | "entities" | "places" | "transcripts";
+
+/** Best-matching pages listed on one transcript row. */
+export const TRANSCRIPT_HITS_PER_ROW = 3;
 
 export interface DescriptionHit {
   id: string;
@@ -228,6 +255,25 @@ export interface PlaceHit {
   displayName: string;
   placeCode: string | null;
   placeType: string | null;
+}
+
+/**
+ * One record found by its OCR pages. The row is the record; the match
+ * is in the pages, so the title comes back plain and the snippets come
+ * from the pages that matched best.
+ */
+export interface TranscriptHit {
+  /** The description id. */
+  id: string;
+  referenceCode: string;
+  /** Plain title: the match is in the pages, not in the title. */
+  title: string;
+  level: string;
+  dateExpression: string | null;
+  /** How many of the record's pages match. */
+  matchedPages: number;
+  /** Best first, at most TRANSCRIPT_HITS_PER_ROW. */
+  pages: { seq: number; snippet: string | null }[];
 }
 
 /**
@@ -285,7 +331,12 @@ export interface GlobalSearchResult {
    * Facet-free per-category counts (the tab numbers). Categories the
    * caller excluded are ABSENT (undefined), never zero.
    */
-  counts: { descriptions?: number; entities?: number; places?: number };
+  counts: {
+    descriptions?: number;
+    entities?: number;
+    places?: number;
+    transcripts?: number;
+  };
   /** Sidebar numbers, always present. */
   facetCounts: FacetCounts;
   /** "match" when a positive query drove the reads; "browse" otherwise. */
@@ -295,11 +346,12 @@ export interface GlobalSearchResult {
     descriptions: DescriptionHit[];
     entities: EntityHit[];
     places: PlaceHit[];
+    transcripts: TranscriptHit[];
   };
   /** single-category view */
   page?: {
     category: SearchCategory;
-    rows: DescriptionHit[] | EntityHit[] | PlaceHit[];
+    rows: DescriptionHit[] | EntityHit[] | PlaceHit[] | TranscriptHit[];
     /** Honest count under the active facets (drives pagination). */
     total: number;
     /** 1-based. */
@@ -325,6 +377,13 @@ export interface GlobalSearchScope {
    * here is one id, never a materialised list of members.
    */
   handlistId?: string | null;
+  /**
+   * Whether the OCR page index is reachable: the caller's gate for the
+   * transcripts category. Absent means false, as an absent handlist
+   * means no handlist, so a scope built before the category existed
+   * still reads exactly what it read before.
+   */
+  includeTranscripts?: boolean;
 }
 
 /** What a single-category view asks for, or the combined view. */
@@ -981,6 +1040,202 @@ async function countPlaceTypeFacet(
   return toValueCounts(rows);
 }
 
+// --- transcripts --------------------------------------------------
+//
+// The OCR page index answers for records: a page that matches stands
+// for its description, and one row per description carries how many
+// of its pages match and the best few of them. Every statement joins
+// the page row to its description so that the record facets, the date
+// bounds and the handlist narrow this category through d, exactly as
+// they narrow the record index, and every statement names the tenant
+// on the page row AND on the description in the same template.
+//
+// bm25() inside an aggregate and snippet() beside a window function
+// are both refused by SQLite ("unable to use function ... in the
+// requested context"), and a plain subquery is flattened back into the
+// same refusal. The FTS read is therefore materialised first, in a
+// MATERIALIZED common table expression, and the grouping and the
+// window run over the materialised rows.
+
+interface RawTranscriptRow {
+  id: string;
+  reference_code: string;
+  title: string | null;
+  description_level: string;
+  date_expression: string | null;
+  matched_pages: number;
+  best: number;
+}
+
+interface RawTranscriptPageRow {
+  description_id: string;
+  seq: number;
+  snippet: string | null;
+}
+
+/**
+ * The transcript ORDER BY. Relevance is the best page's score inside
+ * the record; the other keys are the record order fragments, since a
+ * transcript row is its record.
+ */
+function transcriptOrderSql(sort: ResolvedRecordSort): SQL {
+  if (sort.key === "relevance") return sql` ORDER BY best ASC, d.id ASC`;
+  return descriptionOrderSql(sort);
+}
+
+async function countTranscripts(
+  db: DrizzleD1Database<any>,
+  scope: GlobalSearchScope,
+  query: ReadQuery,
+  facets: GlobalSearchFacets,
+): Promise<number> {
+  if (query.match === null) return 0;
+  const rows = (await db.all(sql`
+    SELECT count(DISTINCT p.description_id) AS total
+    FROM ocr_pages p
+    INNER JOIN ocr_pages_fts f ON f.rowid = p.rowid
+    INNER JOIN descriptions d ON d.id = p.description_id
+    WHERE p.tenant_id = ${scope.tenantId} AND d.tenant_id = ${scope.tenantId}
+      AND f.ocr_pages_fts MATCH ${query.match}${descriptionFacetClauses(facets)}${descriptionHandlistClause(scope)}
+  `)) as RawCountRow[];
+  return Number(rows[0]?.total ?? 0);
+}
+
+/** Matching pages with their scores, read once so they can be grouped and ranked. */
+function transcriptHitsCte(
+  scope: GlobalSearchScope,
+  match: string,
+  facets: GlobalSearchFacets,
+): SQL {
+  return sql`WITH hits AS MATERIALIZED (
+    SELECT p.description_id AS description_id, bm25(f.ocr_pages_fts) AS score
+    FROM ocr_pages p
+    INNER JOIN ocr_pages_fts f ON f.rowid = p.rowid
+    INNER JOIN descriptions d ON d.id = p.description_id
+    WHERE p.tenant_id = ${scope.tenantId} AND d.tenant_id = ${scope.tenantId}
+      AND f.ocr_pages_fts MATCH ${match}${descriptionFacetClauses(facets)}${descriptionHandlistClause(scope)}
+  )`;
+}
+
+async function selectTranscripts(
+  db: DrizzleD1Database<any>,
+  scope: GlobalSearchScope,
+  query: ReadQuery,
+  facets: GlobalSearchFacets,
+  sort: ResolvedRecordSort,
+  limit: number,
+  offset: number,
+): Promise<TranscriptHit[]> {
+  if (query.match === null) return [];
+  const ranked = (await db.all(sql`
+    ${transcriptHitsCte(scope, query.match, facets)}
+    SELECT d.id AS id, d.reference_code AS reference_code, d.title AS title,
+           d.description_level AS description_level, d.date_expression AS date_expression,
+           count(*) AS matched_pages, min(h.score) AS best
+    FROM hits h
+    INNER JOIN descriptions d ON d.id = h.description_id
+    WHERE d.tenant_id = ${scope.tenantId}
+    GROUP BY d.id
+    ${transcriptOrderSql(sort)}
+    LIMIT ${limit} OFFSET ${offset}
+  `)) as RawTranscriptRow[];
+  if (ranked.length === 0) return [];
+
+  // At most SEARCH_PAGE_SIZE ids, one binding each. snippet() runs only
+  // on the pages the window kept: three per shown record, never every
+  // matching page.
+  const ids = ranked.map((row) => row.id);
+  const pageRows = (await db.all(sql`
+    WITH scored AS MATERIALIZED (
+      SELECT p.rowid AS r, p.description_id AS description_id, p.page_seq AS seq,
+             bm25(f.ocr_pages_fts) AS score
+      FROM ocr_pages p INNER JOIN ocr_pages_fts f ON f.rowid = p.rowid
+      WHERE p.tenant_id = ${scope.tenantId} AND f.ocr_pages_fts MATCH ${query.match}
+        AND p.description_id IN (${inList(ids)})
+    ),
+    top AS MATERIALIZED (
+      SELECT r, description_id, seq,
+             row_number() OVER (PARTITION BY description_id ORDER BY score, seq) AS rn
+      FROM scored
+    )
+    SELECT top.description_id AS description_id, top.seq AS seq,
+           snippet(f.ocr_pages_fts, 0, ${HIGHLIGHT_OPEN}, ${HIGHLIGHT_CLOSE}, ${SNIPPET_ELLIPSIS}, ${SNIPPET_TOKENS}) AS snippet
+    FROM top
+    INNER JOIN ocr_pages p ON p.rowid = top.r
+    INNER JOIN ocr_pages_fts f ON f.rowid = top.r
+    WHERE p.tenant_id = ${scope.tenantId} AND f.ocr_pages_fts MATCH ${query.match}
+      AND top.rn <= ${TRANSCRIPT_HITS_PER_ROW}
+    ORDER BY top.description_id, top.rn
+  `)) as RawTranscriptPageRow[];
+
+  const pagesById = new Map<string, TranscriptHit["pages"]>();
+  for (const row of pageRows) {
+    const list = pagesById.get(row.description_id) ?? [];
+    list.push({ seq: Number(row.seq), snippet: snippetOrNull(row.snippet) });
+    pagesById.set(row.description_id, list);
+  }
+
+  return ranked.map((row) => ({
+    id: row.id,
+    referenceCode: row.reference_code,
+    title: row.title ?? "",
+    level: row.description_level,
+    dateExpression: row.date_expression,
+    matchedPages: Number(row.matched_pages ?? 0),
+    pages: pagesById.get(row.id) ?? [],
+  }));
+}
+
+/**
+ * The level group over transcript matches: records whose pages match,
+ * counted once each, under the other groups' selections.
+ */
+async function countTranscriptLevelFacet(
+  db: DrizzleD1Database<any>,
+  scope: GlobalSearchScope,
+  query: ReadQuery,
+  facets: GlobalSearchFacets,
+): Promise<FacetValueCount[]> {
+  if (query.match === null) return [];
+  const rows = (await db.all(sql`
+    SELECT d.description_level AS value, count(DISTINCT d.id) AS total
+    FROM ocr_pages p
+    INNER JOIN ocr_pages_fts f ON f.rowid = p.rowid
+    INNER JOIN descriptions d ON d.id = p.description_id
+    WHERE p.tenant_id = ${scope.tenantId} AND d.tenant_id = ${scope.tenantId}
+      AND f.ocr_pages_fts MATCH ${query.match}${descriptionFacetClauses(facets, "levels")}${descriptionHandlistClause(scope)}
+    GROUP BY d.description_level
+    ORDER BY count(DISTINCT d.id) DESC, d.description_level ASC
+  `)) as RawValueCountRow[];
+  return toValueCounts(rows);
+}
+
+/** The repository group over transcript matches. */
+async function countTranscriptRepositoryFacet(
+  db: DrizzleD1Database<any>,
+  scope: GlobalSearchScope,
+  query: ReadQuery,
+  facets: GlobalSearchFacets,
+): Promise<RepositoryFacetCount[]> {
+  if (query.match === null) return [];
+  const rows = (await db.all(sql`
+    SELECT r.id AS id, r.name AS name, count(DISTINCT d.id) AS total
+    FROM ocr_pages p
+    INNER JOIN ocr_pages_fts f ON f.rowid = p.rowid
+    INNER JOIN descriptions d ON d.id = p.description_id
+    INNER JOIN repositories r ON r.id = d.repository_id AND r.tenant_id = ${scope.tenantId}
+    WHERE p.tenant_id = ${scope.tenantId} AND d.tenant_id = ${scope.tenantId}
+      AND f.ocr_pages_fts MATCH ${query.match}${descriptionFacetClauses(facets, "repoIds")}${descriptionHandlistClause(scope)}
+    GROUP BY r.id, r.name
+    ORDER BY count(DISTINCT d.id) DESC, r.name ASC
+  `)) as RawRepositoryCountRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    count: Number(row.total ?? 0),
+  }));
+}
+
 // --- facet counts ---------------------------------------------------
 
 /** Group rows, with the NULL bucket a GROUP BY can still produce out. */
@@ -1018,6 +1273,12 @@ function trimFnFacet(
 /**
  * Every sidebar group for every in-scope category, in one pass. The
  * statements are independent, so they all start before any is awaited.
+ *
+ * The level and repository groups are record facets, and a transcript
+ * row is its record, so when the transcripts category is the one on
+ * screen those two groups count records found by their pages instead
+ * of records found by the record index. The omit-own-group rule is the
+ * same either way.
  */
 async function collectFacetCounts(
   db: DrizzleD1Database<any>,
@@ -1026,17 +1287,26 @@ async function collectFacetCounts(
   retry: string | null,
   facets: GlobalSearchFacets,
   authorities: boolean,
+  transcriptsSelected: boolean,
 ): Promise<FacetCounts> {
-  const levelsP = attempt("descriptions", query, retry, [] as FacetValueCount[], (q) =>
-    countLevelFacet(db, scope, q, facets),
-  );
-  const reposP = attempt(
-    "descriptions",
-    query,
-    retry,
-    [] as RepositoryFacetCount[],
-    (q) => countRepositoryFacet(db, scope, q, facets),
-  );
+  const levelsP = transcriptsSelected
+    ? attempt("transcripts", query, retry, [] as FacetValueCount[], (q) =>
+        countTranscriptLevelFacet(db, scope, q, facets),
+      )
+    : attempt("descriptions", query, retry, [] as FacetValueCount[], (q) =>
+        countLevelFacet(db, scope, q, facets),
+      );
+  const reposP = transcriptsSelected
+    ? attempt("transcripts", query, retry, [] as RepositoryFacetCount[], (q) =>
+        countTranscriptRepositoryFacet(db, scope, q, facets),
+      )
+    : attempt(
+        "descriptions",
+        query,
+        retry,
+        [] as RepositoryFacetCount[],
+        (q) => countRepositoryFacet(db, scope, q, facets),
+      );
   const typesP = authorities
     ? attempt("entities", query, retry, [] as FacetValueCount[], (q) =>
         countEntityTypeFacet(db, scope, q, facets),
@@ -1159,6 +1429,49 @@ function authorityReach(
 }
 
 /**
+ * Whether the OCR page index is in play. The caller's gate has to be
+ * on, and the request has to be matching: a page hit is a matched term
+ * on a page, so a browse question has no transcript answer. The page
+ * index has one column, text, so a field-scoped refinement or a
+ * field-scoped advanced row takes it out of play exactly as it takes
+ * the name indexes out. A date bound does not: dates are the record's,
+ * and they apply through the description join.
+ */
+function transcriptReach(scope: GlobalSearchScope, read: CompiledRead): boolean {
+  return (
+    scope.includeTranscripts === true &&
+    read.matching &&
+    !hasFieldRefinements(read.parsedQuery) &&
+    !(read.advancedRows !== null && hasAdvancedFieldRows(read.advancedRows))
+  );
+}
+
+/** Whether one category can be asked for under this scope and query. */
+function categoryInReach(
+  category: SearchCategory,
+  scope: GlobalSearchScope,
+  read: CompiledRead,
+  facets: GlobalSearchFacets,
+): boolean {
+  switch (category) {
+    case "descriptions":
+      return true;
+    case "transcripts":
+      return transcriptReach(scope, read);
+    case "entities":
+    case "places":
+      return authorityReach(scope, read, facets);
+  }
+}
+
+/** What put a category out of reach, for the caller-bug error. */
+function outOfReach(category: SearchCategory): string {
+  return category === "transcripts"
+    ? "the OCR page index out of reach"
+    : "authorities out of scope";
+}
+
+/**
  * Answer one search.
  *
  * `scope` is the request's visibility as the caller's gates resolved
@@ -1177,11 +1490,16 @@ function authorityReach(
  * (undefined counts, empty previews, no facet groups) — the same shape
  * a capability gate produces.
  *
+ * The transcripts category has its own reach: the caller's
+ * includeTranscripts gate, a matching query, and no field scope. A
+ * date bound keeps it. Out of reach it is ABSENT in the same way.
+ *
  * Asking for `entities` or `places` while authorities are out of
  * scope — gated out by the caller, or forced out by any of those
- * three — is a caller bug: the gate should have coerced the category
- * before it got here, and this throws rather than quietly answering a
- * question the viewer was not allowed to ask.
+ * three — or for `transcripts` while the page index is out of reach,
+ * is a caller bug: the gate should have coerced the category before it
+ * got here, and this throws rather than quietly answering a question
+ * the viewer was not allowed to ask.
  */
 export async function runGlobalSearch(
   db: DrizzleD1Database<any>,
@@ -1196,15 +1514,24 @@ export async function runGlobalSearch(
   const sort = view.category === "all" ? null : view.sort;
 
   const authorities = authorityReach(scope, read, facets);
-  if (view.category !== "all" && view.category !== "descriptions" && !authorities) {
+  const transcripts = transcriptReach(scope, read);
+  if (view.category !== "all" && !categoryInReach(view.category, scope, read, facets)) {
     throw new Error(
-      `Global search asked for the "${view.category}" category with authorities out of scope`,
+      `Global search asked for the "${view.category}" category with ${outOfReach(view.category)}`,
     );
   }
 
   // The sidebar is the one thing every shape returns, so its
   // statements go out first and are awaited last.
-  const facetCountsP = collectFacetCounts(db, scope, query, retry, facets, authorities);
+  const facetCountsP = collectFacetCounts(
+    db,
+    scope,
+    query,
+    retry,
+    facets,
+    authorities,
+    view.category === "transcripts",
+  );
 
   // Landing: nothing is being asked of any category, so nothing is
   // read from one. The sidebar still answers, which is what makes the
@@ -1282,6 +1609,26 @@ export async function runGlobalSearch(
           }),
         )
       : null;
+    const transcriptsP = transcripts
+      ? attempt(
+          "transcripts",
+          query,
+          retry,
+          { count: 0, rows: [] as TranscriptHit[] },
+          async (q) => ({
+            count: await countTranscripts(db, scope, q, NO_FACETS),
+            rows: await selectTranscripts(
+              db,
+              scope,
+              q,
+              NO_FACETS,
+              recordSort,
+              SEARCH_PREVIEW_LIMIT,
+              0,
+            ),
+          }),
+        )
+      : null;
 
     const records = await recordsP;
     counts.descriptions = records.count;
@@ -1296,6 +1643,12 @@ export async function runGlobalSearch(
       counts.places = places.count;
       placeRows = places.rows;
     }
+    let transcriptRows: TranscriptHit[] = [];
+    if (transcriptsP) {
+      const found = await transcriptsP;
+      counts.transcripts = found.count;
+      transcriptRows = found.rows;
+    }
 
     return {
       counts,
@@ -1305,6 +1658,7 @@ export async function runGlobalSearch(
         descriptions: records.rows,
         entities: entityRows,
         places: placeRows,
+        transcripts: transcriptRows,
       },
     };
   }
@@ -1316,6 +1670,15 @@ export async function runGlobalSearch(
     ? Math.max(1, Math.floor(view.page))
     : 1;
   const offset = (pageNumber - 1) * SEARCH_PAGE_SIZE;
+
+  // The transcripts tab count, for every view but its own, which
+  // counts inside its own attempt.
+  const transcriptsCountP =
+    transcripts && view.category !== "transcripts"
+      ? attempt("transcripts", query, retry, 0, (q) =>
+          countTranscripts(db, scope, q, NO_FACETS),
+        )
+      : null;
 
   // Records: the selected category's own reads carry its facets and
   // its honest total; the other categories contribute their tab count.
@@ -1359,12 +1722,68 @@ export async function runGlobalSearch(
       counts.entities = await entitiesCountP;
       counts.places = await placesCountP;
     }
+    if (transcriptsCountP) counts.transcripts = await transcriptsCountP;
     return {
       counts,
       facetCounts: await facetCountsP,
       mode,
       page: {
         category: "descriptions",
+        rows: selected.rows,
+        total: selected.total,
+        pageNumber,
+      },
+    };
+  }
+
+  if (view.category === "transcripts") {
+    const recordSort = resolveRecordSort(sort, matching);
+    const selectedP = attempt(
+      "transcripts",
+      query,
+      retry,
+      { count: 0, total: 0, rows: [] as TranscriptHit[] },
+      async (q) => {
+        const count = await countTranscripts(db, scope, q, NO_FACETS);
+        const total = hasDescriptionFacets(facets)
+          ? await countTranscripts(db, scope, q, facets)
+          : count;
+        const rows = await selectTranscripts(
+          db,
+          scope,
+          q,
+          facets,
+          recordSort,
+          SEARCH_PAGE_SIZE,
+          offset,
+        );
+        return { count, total, rows };
+      },
+    );
+    const descriptionsCountP = attempt("descriptions", query, retry, 0, (q) =>
+      countDescriptions(db, scope, q, NO_FACETS),
+    );
+    const entitiesCountP = authorities
+      ? attempt("entities", query, retry, 0, (q) =>
+          countEntities(db, scope, q, NO_FACETS),
+        )
+      : null;
+    const placesCountP = authorities
+      ? attempt("places", query, retry, 0, (q) => countPlaces(db, scope, q, NO_FACETS))
+      : null;
+    const selected = await selectedP;
+    counts.descriptions = await descriptionsCountP;
+    if (entitiesCountP && placesCountP) {
+      counts.entities = await entitiesCountP;
+      counts.places = await placesCountP;
+    }
+    counts.transcripts = selected.count;
+    return {
+      counts,
+      facetCounts: await facetCountsP,
+      mode,
+      page: {
+        category: "transcripts",
         rows: selected.rows,
         total: selected.total,
         pageNumber,
@@ -1407,6 +1826,7 @@ export async function runGlobalSearch(
     counts.descriptions = await descriptionsCountP;
     counts.entities = selected.count;
     counts.places = await placesCountP;
+    if (transcriptsCountP) counts.transcripts = await transcriptsCountP;
     return {
       counts,
       facetCounts: await facetCountsP,
@@ -1449,6 +1869,7 @@ export async function runGlobalSearch(
   counts.descriptions = await descriptionsCountP;
   counts.places = selected.count;
   counts.entities = await entitiesCountP;
+  if (transcriptsCountP) counts.transcripts = await transcriptsCountP;
   return {
     counts,
     facetCounts: await facetCountsP,
@@ -1522,6 +1943,34 @@ async function selectEntityIds(
   return rows.map((row) => row.id);
 }
 
+/**
+ * The records behind transcript hits, in the transcripts page's order.
+ * Built from the same materialised read as the paged statement, never
+ * from a GROUP BY over bm25() directly. best is selected because the
+ * relevance order names it; only id is read back.
+ */
+async function selectTranscriptIds(
+  db: DrizzleD1Database<any>,
+  scope: GlobalSearchScope,
+  query: ReadQuery,
+  facets: GlobalSearchFacets,
+  sort: ResolvedRecordSort,
+  limit: number,
+): Promise<string[]> {
+  if (query.match === null) return [];
+  const rows = (await db.all(sql`
+    ${transcriptHitsCte(scope, query.match, facets)}
+    SELECT d.id AS id, min(h.score) AS best
+    FROM hits h
+    INNER JOIN descriptions d ON d.id = h.description_id
+    WHERE d.tenant_id = ${scope.tenantId}
+    GROUP BY d.id
+    ${transcriptOrderSql(sort)}
+    LIMIT ${limit}
+  `)) as RawIdRow[];
+  return rows.map((row) => row.id);
+}
+
 async function selectPlaceIds(
   db: DrizzleD1Database<any>,
   scope: GlobalSearchScope,
@@ -1568,10 +2017,14 @@ export interface MatchedIds {
  * sets should compare `total` against its own cap rather than measuring
  * `ids`, which the cap may have truncated.
  *
+ * A transcript hit is its record, so the transcripts category
+ * enumerates description ids.
+ *
  * Asking for `entities` or `places` when authorities are out of reach —
  * gated out by the caller, or forced out by a field scope or a date
- * bound — throws, exactly as the paged read does: the gate should have
- * coerced the category before it got here.
+ * bound — or for `transcripts` when the page index is out of reach,
+ * throws, exactly as the paged read does: the gate should have coerced
+ * the category before it got here.
  */
 export async function selectMatchingIds(
   db: DrizzleD1Database<any>,
@@ -1589,9 +2042,9 @@ export async function selectMatchingIds(
   const { matching, query, retry } = read;
   const facets = view.facets ?? NO_FACETS;
 
-  if (view.category !== "descriptions" && !authorityReach(scope, read, facets)) {
+  if (!categoryInReach(view.category, scope, read, facets)) {
     throw new Error(
-      `Global search asked to enumerate the "${view.category}" category with authorities out of scope`,
+      `Global search asked to enumerate the "${view.category}" category with ${outOfReach(view.category)}`,
     );
   }
 
@@ -1605,6 +2058,14 @@ export async function selectMatchingIds(
     }));
   }
 
+  if (view.category === "transcripts") {
+    const sort = resolveRecordSort(view.sort, matching);
+    return attempt("transcripts", query, retry, empty, async (q) => ({
+      total: await countTranscripts(db, scope, q, facets),
+      ids: await selectTranscriptIds(db, scope, q, facets, sort, view.limit),
+    }));
+  }
+
   const sort = resolveNameSort(view.sort, matching);
   if (view.category === "entities") {
     return attempt("entities", query, retry, empty, async (q) => ({
@@ -1612,6 +2073,7 @@ export async function selectMatchingIds(
       ids: await selectEntityIds(db, scope, q, facets, sort, view.limit),
     }));
   }
+  // Places, by elimination: every other category returned above.
   return attempt("places", query, retry, empty, async (q) => ({
     total: await countPlaces(db, scope, q, facets),
     ids: await selectPlaceIds(db, scope, q, facets, sort, view.limit),
@@ -1630,7 +2092,8 @@ export async function selectMatchingIds(
  *
  * It is the count half of `selectMatchingIds` and shares every fragment
  * with it, so a number it reports can never mean something the paged
- * read would disagree with.
+ * read would disagree with. Every category has its own branch, so a
+ * new one cannot fall through to another index.
  */
 export async function countMatching(
   db: DrizzleD1Database<any>,
@@ -1642,9 +2105,9 @@ export async function countMatching(
   const { query, retry } = read;
   const facets = view.facets ?? NO_FACETS;
 
-  if (view.category !== "descriptions" && !authorityReach(scope, read, facets)) {
+  if (!categoryInReach(view.category, scope, read, facets)) {
     throw new Error(
-      `Global search asked to count the "${view.category}" category with authorities out of scope`,
+      `Global search asked to count the "${view.category}" category with ${outOfReach(view.category)}`,
     );
   }
 
@@ -1658,9 +2121,17 @@ export async function countMatching(
       countEntities(db, scope, q, facets),
     );
   }
-  return attempt("places", query, retry, 0, (q) =>
-    countPlaces(db, scope, q, facets),
-  );
+  if (view.category === "transcripts") {
+    return attempt("transcripts", query, retry, 0, (q) =>
+      countTranscripts(db, scope, q, facets),
+    );
+  }
+  if (view.category === "places") {
+    return attempt("places", query, retry, 0, (q) =>
+      countPlaces(db, scope, q, facets),
+    );
+  }
+  throw new Error(`Global search asked to count an unknown category`);
 }
 
 // --- heading mentions ----------------------------------------------
@@ -1711,7 +2182,7 @@ interface RawMentionRow {
 }
 
 /** The heading as one FTS phrase, inner quotes doubled. */
-function headingPhraseExpression(heading: string): string | null {
+export function headingPhraseExpression(heading: string): string | null {
   if (!hasIndexableContent(heading)) return null;
   return '"' + heading.split('"').join('""') + '"';
 }

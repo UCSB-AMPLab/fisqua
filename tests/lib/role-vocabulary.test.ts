@@ -1,7 +1,7 @@
 /**
  * Tests — relationship-role vocabulary + grouped picker options
  *
- * This suite is the structural backstop for the phase-5 role vocabulary.
+ * This suite is the structural backstop for the relationship-role vocabulary.
  * It pins three contracts so drift fails loudly:
  *
  *  1. ENTITY_ROLES / PLACE_ROLES equal the CANONICAL zasqua-backend role
@@ -26,7 +26,7 @@
  *     label key (not a raw code) — so the linkers can never render free
  *     text or an untranslated option.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import {

@@ -45,9 +45,8 @@
  *     IS rendered, as indentation; the ids themselves are not.
  *
  * A second, separate list (`NOT_AN_ELEMENT`) holds columns that are
- * public but are not descriptive elements — `ocrText` (a machine
- * transcript, published to the public site but not a finding-aid
- * element), `hasDigital` and `iiifManifestUrl` (surrogate plumbing).
+ * public but are not descriptive elements — `hasDigital` and
+ * `iiifManifestUrl` (surrogate plumbing).
  * Keeping the two lists apart matters: one is a confidentiality rule
  * and the other is an editorial one, and conflating them would let a
  * future editorial decision quietly weaken the confidentiality rule.
@@ -102,7 +101,7 @@
  * in Chrome but not in Firefox, which would double the running head on
  * the first sheet everywhere that margin boxes do work.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, eq, inArray } from "drizzle-orm";
@@ -155,7 +154,6 @@ export const NEVER_RENDERED: ReadonlySet<string> = new Set([
  * kept apart from the confidentiality rule above on purpose.
  */
 const NOT_AN_ELEMENT: ReadonlySet<string> = new Set([
-  "ocrText",
   "hasDigital",
   "iiifManifestUrl",
   // Linker pseudo-columns the profiles declare for the form renderer;
@@ -1383,4 +1381,4 @@ html,body{margin:0;padding:0;background:#e9e7e3;color:var(--ink)}
 }`;
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

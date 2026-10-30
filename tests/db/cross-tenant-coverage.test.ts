@@ -31,6 +31,11 @@
  *   - `entities`, `places`, `vocabulary_terms` — federation-scoped
  *     (`federation_id`, migrations 0045-0048)
  *
+ *   - the eight media pipeline tables (migrations 0082-0084), each
+ *     created with a NOT NULL `tenant_id`; SQL they run inside `sql`
+ *     templates is checked by `tests/media-pipeline/raw-sql-scope.test.ts`,
+ *     which this scanner cannot see
+ *
  * If a future schema change adds a scope column to another table, update
  * TENANT_TABLES / FEDERATION_TABLES below in lockstep with the migration.
  *
@@ -67,6 +72,10 @@
  *     now routinely served on a host that is not their home tenant,
  *     and a membership-derived query on these surfaces renders their
  *     home tenant's work under someone else's name.
+ *
+ *   - `app/lib/ocr/**` — the OCR page ingest, the reads inside one
+ *     description and the budget report, added in v0.8 with the
+ *     `ocr_pages` table.
  *
  * Still outside: `app/lib/export/**`, `_auth.dashboard.tsx`,
  * `_auth.configuracion.tsx`, and the pre-session auth routes. The
@@ -162,7 +171,7 @@
  * tenant-scoped tables (users/repositories/descriptions). See the
  * TENANT_TABLES / FEDERATION_TABLES split below.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -247,6 +256,22 @@ const memberLibFiles = import.meta.glob(
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
+// The OCR ingest, reads and budget modules are scanned so a page read or
+// a staging delete that loses its tenant predicate fails here.
+// The capture link's modules: a unit's machine calls, whose tenant is
+// the request's host.
+const captureLibFiles = import.meta.glob("../../app/lib/capture/**/*.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
+const ocrLibFiles = import.meta.glob("../../app/lib/ocr/**/*.ts", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 /**
  * The six scoped domain tables the keystone guards. MUST stay in
  * lockstep with the schema. Split by scoping level after migrations
@@ -261,6 +286,9 @@ const memberLibFiles = import.meta.glob(
  *     against regression too. authorityOperations joined with migration
  *     0057 (federation_id NOT NULL FK): the ledger is federation-scoped,
  *     so any future admin read surface over it must carry the predicate.
+ *
+ * The eight media pipeline tables (migrations 0082-0084) are tenant-scoped
+ * from creation, so they sit in TENANT_TABLES.
  */
 const TENANT_TABLES = [
   "users",
@@ -278,6 +306,35 @@ const TENANT_TABLES = [
   "resegmentationFlags",
   "activityLog",
   "drafts",
+  // Media pipeline (migrations 0082-0084). Every table carries a NOT
+  // NULL tenant_id; a machine caller's tenant comes from the run row,
+  // never from the host.
+  "pipelineRecipeDeclarations",
+  "pipelineVolumes",
+  "pipelineVolumePages",
+  "pipelineRuns",
+  "pipelineRunChunks",
+  "pipelineRunVolumes",
+  "pipelineReviewItems",
+  "pipelineGatePasses",
+  // OCR pages — migration 0085. Both tables carry a NOT NULL tenant_id.
+  "ocrPages",
+  "ocrPagesStaging",
+  // Media pipeline publications — migration 0088, NOT NULL tenant_id.
+  "pipelinePublications",
+  // The capture link's scanners, deliveries and images — migration 0093, NOT
+  // NULL tenant_id.
+  "captureScanners",
+  "captureDeliveries",
+  "captureImages",
+  // Capture QC's sets, decisions, rotations and reviewers — migration
+  // 0094, NOT NULL tenant_id.
+  "captureQcSets",
+  "captureQcDecisions",
+  "captureQcRotations",
+  "captureQcReviewers",
+  // The unit's fetches of a decision set — migration 0100, NOT NULL tenant_id.
+  "captureQcFetches",
 ] as const;
 const FEDERATION_TABLES = [
   "entities",
@@ -336,6 +393,30 @@ const STATEMENT_EXEMPTIONS: ReadonlyArray<StatementExemption> = [
     file: "../../app/lib/invites.server.ts",
     match: "eq(users.email, invite.email)",
     why: "acceptInvite resolves a user by globally-unique email (schema UNIQUE) from a public token-bound URL, before any tenant context exists",
+  },
+  {
+    file: "../../app/routes/_auth.admin.users.action.server.ts",
+    match: "eq(users.email, email)",
+    why: "the invite's duplicate check reads by email, which is UNIQUE across every tenant, so a match in another tenant must also refuse the invite; the INSERT that follows carries the request tenant",
+  },
+  // ------------------------------------------------------------------
+  // Media pipeline machine routes: the caller is the runner, not a
+  // signed-in person, and the run row is where its tenant comes from.
+  // ------------------------------------------------------------------
+  {
+    file: "../../app/lib/pipeline/callback.server.ts",
+    match: "eq(pipelineRuns.id, runId)",
+    why: "loadRunById reads the run named in the machine caller's path; the run row is the tenant's source of truth for that caller, and the bearer token check against its stored hash decides whether the caller may act on it",
+  },
+  {
+    file: "../../app/lib/pipeline/run-state.server.ts",
+    match: "where(and(isNull(pipelineRuns.tokenRevokedAt), lte(pipelineRuns.tokenExpiresAt, now)))",
+    why: "the scheduled sweep's token expiry runs with no tenant and closes every tenant's expired open runs; it changes only the run rows themselves, by the same rule a tenant-scoped expiry applies",
+  },
+  {
+    file: "../../app/lib/pipeline/publish.server.ts",
+    match: "eq(pipelinePublications.needsPerson, false)",
+    why: "the scheduled sweep selects stalled publications with no tenant, as its token expiry does; every write that follows is guarded by the row's own tenant_id",
   },
   // ------------------------------------------------------------------
   // Crowdsourcing writer libs: statements keyed by a PK or parent FK
@@ -828,7 +909,7 @@ function scanFiles(
   return violations;
 }
 
-/** Every file the keystone scans, from all seven globs. */
+/** Every file the keystone scans, from all eight globs. */
 function allScannedFiles(): Record<string, string> {
   return {
     ...adminRouteFiles,
@@ -838,6 +919,8 @@ function allScannedFiles(): Record<string, string> {
     ...middlewareFiles,
     ...memberRouteFiles,
     ...memberLibFiles,
+    ...captureLibFiles,
+    ...ocrLibFiles,
   } as Record<string, string>;
 }
 
@@ -937,7 +1020,8 @@ describe("cross-tenant coverage", () => {
     // schema change, this assertion fails. entities/places/vocabularyTerms
     // are federation-scoped after migrations 0045-0048; the crowdsourcing
     // subtree joined the tenant-scoped set in step 4 (migration 0042 gave
-    // each a NOT NULL tenant_id).
+    // each a NOT NULL tenant_id); the media pipeline tables joined with
+    // migrations 0082-0084, each created with a NOT NULL tenant_id.
     expect(TENANT_TABLES).toEqual([
       "users",
       "repositories",
@@ -951,6 +1035,25 @@ describe("cross-tenant coverage", () => {
       "resegmentationFlags",
       "activityLog",
       "drafts",
+      "pipelineRecipeDeclarations",
+      "pipelineVolumes",
+      "pipelineVolumePages",
+      "pipelineRuns",
+      "pipelineRunChunks",
+      "pipelineRunVolumes",
+      "pipelineReviewItems",
+      "pipelineGatePasses",
+      "ocrPages",
+      "ocrPagesStaging",
+      "pipelinePublications",
+      "captureScanners",
+      "captureDeliveries",
+      "captureImages",
+      "captureQcSets",
+      "captureQcDecisions",
+      "captureQcRotations",
+      "captureQcReviewers",
+      "captureQcFetches",
     ]);
     expect(FEDERATION_TABLES).toEqual([
       "entities",
@@ -971,6 +1074,25 @@ describe("cross-tenant coverage", () => {
       "resegmentationFlags",
       "activityLog",
       "drafts",
+      "pipelineRecipeDeclarations",
+      "pipelineVolumes",
+      "pipelineVolumePages",
+      "pipelineRuns",
+      "pipelineRunChunks",
+      "pipelineRunVolumes",
+      "pipelineReviewItems",
+      "pipelineGatePasses",
+      "ocrPages",
+      "ocrPagesStaging",
+      "pipelinePublications",
+      "captureScanners",
+      "captureDeliveries",
+      "captureImages",
+      "captureQcSets",
+      "captureQcDecisions",
+      "captureQcRotations",
+      "captureQcReviewers",
+      "captureQcFetches",
       "entities",
       "places",
       "vocabularyTerms",
@@ -978,3 +1100,5 @@ describe("cross-tenant coverage", () => {
     ]);
   });
 });
+
+// @version v0.8.0

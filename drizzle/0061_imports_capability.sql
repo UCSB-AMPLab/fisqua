@@ -1,4 +1,4 @@
--- Imports capability flag (imports module spec §1; build plan phase 1).
+-- Imports capability flag (imports module spec §1).
 --
 -- Adds the `imports_enabled` capability column to `tenants` — the sixth
 -- capability flag, gating the bulk-import surface: the admin routes,
@@ -10,5 +10,5 @@
 -- bulk upsert is an operator-granted power, enabled per tenant when an
 -- import is actually planned — the crowdsourcing_enabled precedent.
 --
--- Version: v0.6.0
+-- Version: v0.8.0
 ALTER TABLE tenants ADD COLUMN imports_enabled INTEGER NOT NULL DEFAULT 0;

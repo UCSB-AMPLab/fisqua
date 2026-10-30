@@ -1,13 +1,14 @@
 /**
  * The export dialog — one dialog, four states, never blocking
  *
- * The confirm bar already carries the summary, so this dialog is not a
- * second chance to read it: it is where a run that takes minutes
- * becomes something you can watch, leave, and come back to. The three
- * axes are restated as a small ledger rather than a sentence, because
- * that is the shape the history row and the ledger entry both take,
- * and the counts sit apart from the axes because they are the
- * consequence, not the choice.
+ * This component is the export dialog: one dialog with four states,
+ * none of which blocks the page. The confirm bar already carries the
+ * summary, so this dialog is not a second chance to read it: it is
+ * where a run that takes minutes becomes something you can watch,
+ * leave, and come back to. The three axes are restated as a small
+ * ledger rather than a sentence, because that is the shape the history
+ * row and the ledger entry both take, and the counts sit apart from the
+ * axes because they are the consequence, not the choice.
  *
  * FOUR STATES, TWO COMPONENTS. Confirm happens before a run row
  * exists, so it is driven by the page's chosen axes; working, ready
@@ -29,7 +30,7 @@
  * nearest the thumb, which is the opposite of the rule the card is
  * stating.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -46,11 +47,6 @@ import {
   useExportLabels,
 } from "./export-labels";
 import { etaMinutes, useRunPoll } from "./use-run-poll";
-
-/** Mono stamps stay ISO in both languages — they are machine facts. */
-function clock(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(11, 16);
-}
 
 function DialogShell({
   provenance,
@@ -295,14 +291,19 @@ export function ExportRunDialog({
 }) {
   const { t } = useTranslation("exports");
   const labels = useExportLabels();
-  const { formatBytes, formatDuration } = useFormatters();
+  const { formatBytes, formatDuration, formatIsoDateTime, now } = useFormatters();
+  // Mono stamps stay 24-hour HH:MM in both languages, on the reader's clock.
+  const clock = (timestamp: number) => formatIsoDateTime(timestamp).slice(11, 16);
   const run = useRunPoll(initial);
 
   const recordClass: ExportRecordClass = run.recordClass ?? "records";
   const total = run.progressTotal ?? 0;
   const items = labels.primary(recordClass, total);
   const artifact = run.format ? t(ARTIFACT_KEYS[run.format]) : "";
-  const eta = etaMinutes(run, Date.now());
+  // The loader's row is measured from the request time, as the server
+  // render measured it; a polled row arrives after hydration, where the
+  // clock is the fresher reference.
+  const eta = etaMinutes(run, run === initial ? (now ?? Date.now()) : Date.now());
 
   const provenance = t("dialogProvenance", { scope: scopeSummary });
 
@@ -510,4 +511,4 @@ export function ExportRunDialog({
   );
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

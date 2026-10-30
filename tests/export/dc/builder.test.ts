@@ -29,7 +29,7 @@
  * (`app/lib/export/dc/builder.ts`) is iterated until the contract
  * holds.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -176,7 +176,7 @@ describe("buildDcBulk — element ordering inside <oai_dc:dc>", () => {
   });
 });
 
-describe("buildDcBulk — null-safety (RESEARCH Pitfall 4)", () => {
+describe("buildDcBulk — null-safety", () => {
   it("emits no empty <dc:date> when dateExpression is null", () => {
     const xml = buildDcBulk(sampleFondsRows, sampleRepositoryById, FONDS_CODE, DATESTAMP);
     expect(xml).not.toContain("<dc:date></dc:date>");
@@ -200,7 +200,7 @@ describe("buildDcBulk — null-safety (RESEARCH Pitfall 4)", () => {
   });
 });
 
-describe("buildDcBulk — XML escape (T-37-02)", () => {
+describe("buildDcBulk — XML escape", () => {
   it("escapes XML-special chars in element content", () => {
     const xml = buildDcBulk(sampleFondsRows, sampleRepositoryById, FONDS_CODE, DATESTAMP);
     // sampleFondsRows[0] title = "Gobernación de Rionegro <colonial period>"
@@ -212,4 +212,4 @@ describe("buildDcBulk — XML escape (T-37-02)", () => {
   });
 });
 
-/* @version v0.4.0 */
+/* @version v0.8.0 */

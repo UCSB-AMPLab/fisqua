@@ -1,14 +1,14 @@
 /**
  * Descriptions Admin — Edit
  *
- * The standard-aware editor for a single archival description.
- * Surfaces every section defined by the active descriptive standard
- * (resolved from `tenant.descriptiveStandard` via
+ * This route is the standard-aware editor for a single archival
+ * description. Surfaces every section defined by the active descriptive
+ * standard (resolved from `tenant.descriptiveStandard` via
  * `getStandardConfig`) plus the bibliographic, digital, and entity/
- * place linker primitives the renderer composes. Autosaves to
- * `drafts` on a debounce and writes a diff to `changelog` on
- * explicit save so every edit is auditable. A conflict banner warns
- * when another user holds an open draft on the same record.
+ * place linker primitives the renderer composes. Autosaves to `drafts`
+ * on a debounce and writes a diff to `changelog` on explicit save so
+ * every edit is auditable. A conflict banner warns when another user
+ * holds an open draft on the same record.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Every read/update/delete of `descriptions`,
@@ -32,7 +32,16 @@
  * It offers only handlists that hold records, and it reports the
  * resulting count rather than a bare "Added".
  *
- * @version v0.7.0
+ * OCR text is not a form field. The transcript lives in OCR page rows,
+ * read-only in Fisqua; the loader reports its page count and length
+ * (`transcript`) without reading the page text, and the update action
+ * ignores a posted `ocrText`. Under the level and reference badges, a
+ * read-only line gives the page count and links to the transcript view
+ * when the description has OCR pages. A `?page=` value opens the image
+ * viewer at that canvas, so a transcript hit can link to the page it
+ * was read from.
+ *
+ * @version v0.8.0
  */
 
 import { useState, useEffect } from "react";
@@ -42,17 +51,22 @@ import {
   useActionData,
   redirect,
   Link,
+  useSearchParams,
 } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Pencil, Trash2, Plus, Image } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { DescriptionForm } from "~/components/descriptions/description-form";
 import { ResizablePane } from "~/components/descriptions/resizable-pane";
-import { AdminIiifViewer } from "~/components/descriptions/admin-iiif-viewer";
+import {
+  AdminIiifViewer,
+  parsePageParam,
+} from "~/components/descriptions/admin-iiif-viewer";
 import { DraftsBanner } from "~/components/admin/drafts-banner";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
 import { PublishToggle } from "~/components/descriptions/publish-toggle";
+import { TranscriptLine } from "~/components/descriptions/transcript-line";
 import { HandlistPicker } from "~/components/handlists/handlist-picker";
 import type { Route } from "./+types/_auth.admin.descriptions.$id";
 
@@ -61,7 +75,7 @@ import type { Route } from "./+types/_auth.admin.descriptions.$id";
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const {
@@ -77,7 +91,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
   // Schema-invariant guard — see action handler.
   if (tenant.descriptiveStandard == null) {
@@ -233,6 +247,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { countHoldingHandlists } = await import("~/lib/handlists.server");
   const holdingHandlists = await countHoldingHandlists(db, tenant, user, id);
 
+  // The transcript is read-only here: its size, not its page text.
+  const { transcriptSummary } = await import("~/lib/ocr/search.server");
+  const transcript = await transcriptSummary(db, tenant.id, id);
+
   return {
     description,
     ancestors,
@@ -248,6 +266,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // record: the affordance states where it is rather than only
     // offering to put it somewhere.
     holdingHandlists,
+    transcript,
     // Hand the active standard down to <DescriptionForm> so the
     // renderer picks the correct StandardConfig.
     descriptiveStandard,
@@ -262,11 +281,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, sql, and } = await import("drizzle-orm");
-  const { descriptions, descriptionEntities, descriptionPlaces } =
+  const { descriptions, descriptionEntities, descriptionPlaces, entities, places } =
     await import("~/db/schema");
+  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { isValidChildLevel } = await import("~/lib/description-levels");
   const {
     DESCRIPTION_LEVELS,
@@ -282,7 +302,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     import("~/lib/standards/types").DescriptionLevel;
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -308,7 +328,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   if (AUTHORITY_LINK_INTENTS.has(intent)) {
     const { requireCapability } = await import("~/lib/tenant");
     requireCapability(tenant, "authorities");
+    // Every link intent acts on this page's description, which must be
+    // the request tenant's; a link row is only ever reached through it.
+    const own = await db
+      .select({ id: descriptions.id })
+      .from(descriptions)
+      .where(and(eq(descriptions.id, id), eq(descriptions.tenantId, tenant.id)))
+      .get();
+    if (!own) throw new Response("Not found", { status: 404 });
   }
+  const notFound = () => new Response("Not found", { status: 404 });
 
   switch (intent) {
     case "toggle_publish": {
@@ -373,7 +402,6 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         "medium",
         "provenance",
         "scopeContent",
-        "ocrText",
         "arrangement",
         "accessConditions",
         "reproductionConditions",
@@ -570,7 +598,6 @@ export async function action({ params, request, context }: Route.ActionArgs) {
             ? (raw.resourceType as (typeof RESOURCE_TYPES)[number])
             : null,
         genre: raw.genre ?? "[]",
-        ocrText: raw.ocrText ?? "",
         hasDigital,
       };
 
@@ -698,6 +725,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!parsed.success) {
         return { ok: false as const, errors: parsed.error.flatten().fieldErrors };
       }
+      // The link is made on this page's description, to an entity this
+      // tenant can see (shared, or its own).
+      if (parsed.data.descriptionId !== id) throw notFound();
+      const entity = await db
+        .select({ id: entities.id })
+        .from(entities)
+        .where(
+          and(
+            eq(entities.id, parsed.data.entityId),
+            authorityScope(entities, tenant.federationId, tenant.id),
+          ),
+        )
+        .get();
+      if (!entity) throw notFound();
       try {
         await db.insert(descriptionEntities).values({
           id: crypto.randomUUID(),
@@ -739,6 +780,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!parsed.success) {
         return { ok: false as const, errors: parsed.error.flatten().fieldErrors };
       }
+      const entityLinkHere = and(
+        eq(descriptionEntities.id, parsed.data.linkId),
+        eq(descriptionEntities.descriptionId, id),
+      );
+      const entityLink = await db
+        .select({ id: descriptionEntities.id })
+        .from(descriptionEntities)
+        .where(entityLinkHere)
+        .get();
+      if (!entityLink) throw notFound();
       await db
         .update(descriptionEntities)
         .set({
@@ -747,16 +798,24 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           function: parsed.data.function ?? null,
           nameAsRecorded: parsed.data.nameAsRecorded ?? null,
         })
-        .where(eq(descriptionEntities.id, parsed.data.linkId));
+        .where(entityLinkHere);
       return { ok: true as const, message: "updated" };
     }
 
     case "remove_entity_link": {
       const linkId = formData.get("linkId") as string;
       if (!linkId) return { ok: false as const, error: "generic" };
-      await db
-        .delete(descriptionEntities)
-        .where(eq(descriptionEntities.id, linkId));
+      const entityLinkHere = and(
+        eq(descriptionEntities.id, linkId),
+        eq(descriptionEntities.descriptionId, id),
+      );
+      const entityLink = await db
+        .select({ id: descriptionEntities.id })
+        .from(descriptionEntities)
+        .where(entityLinkHere)
+        .get();
+      if (!entityLink) throw notFound();
+      await db.delete(descriptionEntities).where(entityLinkHere);
       return { ok: true as const, message: "link_removed" };
     }
 
@@ -769,7 +828,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const current = await db
         .select()
         .from(descriptionEntities)
-        .where(eq(descriptionEntities.id, linkId))
+        .where(
+          and(
+            eq(descriptionEntities.id, linkId),
+            eq(descriptionEntities.descriptionId, id),
+          ),
+        )
         .get();
       if (!current) return { ok: false as const, error: "generic" };
 
@@ -820,6 +884,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!parsed.success) {
         return { ok: false as const, errors: parsed.error.flatten().fieldErrors };
       }
+      // The link is made on this page's description, to a place this
+      // tenant can see (shared, or its own).
+      if (parsed.data.descriptionId !== id) throw notFound();
+      const place = await db
+        .select({ id: places.id })
+        .from(places)
+        .where(
+          and(
+            eq(places.id, parsed.data.placeId),
+            authorityScope(places, tenant.federationId, tenant.id),
+          ),
+        )
+        .get();
+      if (!place) throw notFound();
       try {
         await db.insert(descriptionPlaces).values({
           id: crypto.randomUUID(),
@@ -850,19 +928,37 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (!parsed.success) {
         return { ok: false as const, errors: parsed.error.flatten().fieldErrors };
       }
+      const placeLinkHere = and(
+        eq(descriptionPlaces.id, parsed.data.linkId),
+        eq(descriptionPlaces.descriptionId, id),
+      );
+      const placeLink = await db
+        .select({ id: descriptionPlaces.id })
+        .from(descriptionPlaces)
+        .where(placeLinkHere)
+        .get();
+      if (!placeLink) throw notFound();
       await db
         .update(descriptionPlaces)
         .set({ role: parsed.data.role })
-        .where(eq(descriptionPlaces.id, parsed.data.linkId));
+        .where(placeLinkHere);
       return { ok: true as const, message: "updated" };
     }
 
     case "remove_place_link": {
       const linkId = formData.get("linkId") as string;
       if (!linkId) return { ok: false as const, error: "generic" };
-      await db
-        .delete(descriptionPlaces)
-        .where(eq(descriptionPlaces.id, linkId));
+      const placeLinkHere = and(
+        eq(descriptionPlaces.id, linkId),
+        eq(descriptionPlaces.descriptionId, id),
+      );
+      const placeLink = await db
+        .select({ id: descriptionPlaces.id })
+        .from(descriptionPlaces)
+        .where(placeLinkHere)
+        .get();
+      if (!placeLink) throw notFound();
+      await db.delete(descriptionPlaces).where(placeLinkHere);
       return { ok: true as const, message: "link_removed" };
     }
 
@@ -889,6 +985,7 @@ export default function DescriptionDetailPage({
     placeLinks,
     conflictDraft,
     holdingHandlists,
+    transcript,
     descriptiveStandard,
     authoritiesEnabled,
   } = loaderData;
@@ -923,6 +1020,9 @@ export default function DescriptionDetailPage({
   // Autosave via shared debounced-draft hook
   const { formRef, handleFormChange, draftStatus } = useAutosaveDraft(isEditing);
 
+  const [searchParams] = useSearchParams();
+  const initialCanvas = parsePageParam(searchParams.get("page"));
+
   // Collapse middle breadcrumb ancestors if > 4
   const showAllAncestors = ancestors.length <= 4;
   const visibleAncestors = showAllAncestors
@@ -930,9 +1030,13 @@ export default function DescriptionDetailPage({
     : [...ancestors.slice(0, 1), ...ancestors.slice(-2)];
   const collapsedCount = showAllAncestors ? 0 : ancestors.length - 3;
 
-  // Right pane content: IIIF viewer or placeholder
+  // Right pane content: IIIF viewer or placeholder. `?page=` opens the
+  // viewer at that canvas; transcript hits link here with it.
   const rightPane = description.iiifManifestUrl ? (
-    <AdminIiifViewer manifestUrl={description.iiifManifestUrl} />
+    <AdminIiifViewer
+      manifestUrl={description.iiifManifestUrl}
+      initialCanvas={initialCanvas}
+    />
   ) : (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <Image className="h-16 w-16 text-stone-300" />
@@ -1065,6 +1169,13 @@ export default function DescriptionDetailPage({
           updatedAt={description.updatedAt}
         />
       </div>
+
+      {/* OCR transcript: page count and a link to read it; absent when
+          the description has no OCR pages. */}
+      <TranscriptLine
+        descriptionId={description.id}
+        pageCount={transcript.pageCount}
+      />
 
       {/* Draft conflict banner */}
       {conflictDraft && (

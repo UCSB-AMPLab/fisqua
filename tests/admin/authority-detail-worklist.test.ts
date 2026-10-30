@@ -1,17 +1,19 @@
 /**
  * Tests — authority detail linked-descriptions worklist (spec §5)
  *
- * Pins the detail loaders' worklist contract for BOTH record types:
- * the loader ships ONE filtered/sorted page (never the whole link
- * set), role counts come from a real GROUP BY, totals come from real
- * COUNTs under every filter combination (the 3b honest-counts defect
- * class), search covers description title AND reference code, the
- * three sorts order as ruled (date newest-first with undated rows
+ * This suite pins the detail loaders' worklist contract for BOTH record
+ * types: the loader ships ONE filtered/sorted page (never the whole
+ * link set), role counts come from a real GROUP BY, totals come from
+ * real COUNTs under every filter combination (the 3b honest-counts
+ * defect class), search covers description title AND reference code,
+ * the three sorts order as ruled (date newest-first with undated rows
  * last; title; reference code), page size is menu-validated, and a
- * superseded record still serves the worklist data alongside its
- * merge target (the dimming is client-side).
+ * superseded record still serves the worklist data alongside its merge
+ * target (the dimming is client-side). The full-transcript branch reads
+ * the description's OCR page rows, which the test seeds under the
+ * description's own tenant.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -28,6 +30,7 @@ import { createTestUser } from "../helpers/auth";
 import { createTestPlace } from "../helpers/places";
 import { createTestEntity } from "../helpers/entities";
 import { createTestRepository } from "../helpers/repositories";
+import { seedPage } from "../helpers/ocr-fixtures";
 import {
   tenantContext,
   userContext,
@@ -514,10 +517,17 @@ describe("place detail — repository filter and progressive disclosure", () => 
       .where(eq(schema.descriptionPlaces.placeId, place.id))
       .get();
     const transcript = "Huanuco ".repeat(500);
-    await db
-      .update(schema.descriptions)
-      .set({ ocrText: transcript })
-      .where(eq(schema.descriptions.id, owned!.descriptionId));
+    const holder = await db
+      .select({ tenantId: schema.descriptions.tenantId })
+      .from(schema.descriptions)
+      .where(eq(schema.descriptions.id, owned!.descriptionId))
+      .get();
+    await seedPage({
+      descriptionId: owned!.descriptionId,
+      tenantId: holder!.tenantId,
+      pageSeq: 1,
+      text: transcript,
+    });
 
     // The card/full branch returns a bare Response (JSON), not the page
     // payload — parse it.
@@ -525,20 +535,20 @@ describe("place detail — repository filter and progressive disclosure", () => 
     const full = await (fullRes as Response).json();
     expect((full as any).ocrFull).toBe(transcript);
 
-    // A foreign junction id → null, never a leak.
+    // A junction id that is not this place's → 404, never a leak.
     const foreignPlace = await createTestPlace({
       id: crypto.randomUUID(),
       displayName: "Otra",
       label: "Otra",
       placeCode: "nl-otra01",
     });
-    const foreignRes = await load(
+    const foreign = await load(
       foreignPlace.id,
       ctxUser,
       `?card=${owned!.id}&full=1`,
-    );
-    const foreign = await (foreignRes as Response).json();
-    expect((foreign as any).ocrFull).toBeNull();
+    ).catch((e: unknown) => e);
+    expect(foreign).toBeInstanceOf(Response);
+    expect((foreign as Response).status).toBe(404);
   });
 });
 

@@ -5,10 +5,11 @@
  * entry. Shares the card chrome with `CommentCard` but adapts spacing and
  * truncation to the narrower outline column.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatters } from "../../lib/use-formatters";
 import { CheckCircle2, ChevronRight, MessageSquare } from "lucide-react";
 import type { CommentWithAuthor } from "../../lib/description-types";
 import { RegionChip } from "../comments/region-chip";
@@ -163,9 +164,13 @@ export function computeCardShellClass(
   return `${base} border-parchment-deep bg-parchment hover:border-indigo/30`;
 }
 
-function formatRelativeTime(timestamp: number, locale: string): string {
+function formatRelativeTime(
+  timestamp: number,
+  locale: string,
+  now: number = Date.now(),
+): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  const diffMs = timestamp - Date.now();
+  const diffMs = timestamp - now;
   const diffSec = Math.round(diffMs / 1000);
   const diffMin = Math.round(diffSec / 60);
   const diffHr = Math.round(diffMin / 60);
@@ -196,6 +201,7 @@ export function OutlineCommentCard({
   onResolveComment,
 }: OutlineCommentCardProps) {
   const { t, i18n } = useTranslation(["viewer", "comments"]);
+  const { formatDateTime, now } = useFormatters();
   const locale = i18n.language?.startsWith("es") ? "es-CO" : "en-US";
   const [isReplying, setIsReplying] = useState(false);
   // Task #13 local UI state.
@@ -342,7 +348,7 @@ export function OutlineCommentCard({
  {isEdited && (
  <span
  className="shrink-0 font-sans text-10 font-medium uppercase tracking-wider text-stone-500"
- title={new Date(comment.editedAt!).toISOString()}
+ title={formatDateTime(comment.editedAt!)}
  >
  · {t("comments:comments.status.edited")}
  </span>
@@ -365,7 +371,7 @@ export function OutlineCommentCard({
  <span
  className={`${replyCount != null && !isExpanded ? "" : "ml-auto"} shrink-0 font-sans text-10 font-medium text-stone-400`}
  >
- {formatRelativeTime(comment.createdAt, locale)}
+ {formatRelativeTime(comment.createdAt, locale, now)}
  </span>
  <ChevronRight
  className={`h-4 w-4 shrink-0 text-stone-500 transition-transform ${
@@ -472,7 +478,7 @@ export function OutlineCommentCard({
  </span>
  </div>
  <span className="font-sans text-10 font-medium text-stone-400 shrink-0">
- {formatRelativeTime(reply.createdAt, locale)}
+ {formatRelativeTime(reply.createdAt, locale, now)}
  </span>
  </div>
  <p className="font-serif text-15 leading-[1.5] text-stone-700">
@@ -575,3 +581,4 @@ export function OutlineCommentCard({
   );
 }
 
+/* @version v0.8.0 */

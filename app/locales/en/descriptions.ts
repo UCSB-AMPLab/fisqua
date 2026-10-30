@@ -29,7 +29,7 @@
  * column was dropped in migration 0036 (0% populated in the production
  * audit); the locale entry is removed in lockstep.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 export default {
   // Page
@@ -210,7 +210,7 @@ export default {
     // RAD-specific section labels
     edition: "Edition",
     // RAD class-specific section renders empty in v0.4 (no
-    // cartographic/architectural/philatelic columns post-Phase-30; see
+    // cartographic/architectural/philatelic columns; see
     // `app/lib/standards/rad.ts` header).
     class_specific: "Class of Materials Specific Details",
     dates_creation: "Dates of Creation",
@@ -262,7 +262,6 @@ export default {
     systemOfArrangement: "System of arrangement",
     physicalCharacteristics: "Physical characteristics",
     arrangement: "Arrangement",
-    ocrText: "OCR text",
 
     // Conditions
     accessConditions: "Conditions governing access",
@@ -455,6 +454,14 @@ export default {
   root_column_title: "Contents",
   loading: "Loading...",
 
+  // OCR transcript, read-only on the detail page
+  transcript: {
+    label: "Transcript",
+    pages_one: "{{count}} page",
+    pages_other: "{{count}} pages",
+    view: "View transcript",
+  },
+
   // No manifest placeholder
   no_manifest: "No digitized material",
   add_manifest: "Add IIIF manifest URL",
@@ -469,4 +476,4 @@ export default {
   next_page: "Next page",
 } as const;
 
-/* @version v0.4.3 */
+/* @version v0.8.0 */

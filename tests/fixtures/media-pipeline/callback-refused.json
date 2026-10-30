@@ -1,0 +1,49 @@
+{
+  "spec_version": 1,
+  "run_id": "6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10",
+  "volume_id": "pv_01",
+  "attempt": "11223344.1",
+  "outcome": "aborted",
+  "error": {
+    "class": "spec",
+    "stage": "spec",
+    "message": "restricted volume refused",
+    "page_keys": []
+  },
+  "runner": {},
+  "stages": {
+    "pull": {
+      "status": "not_reached"
+    },
+    "preprocess": {
+      "status": "not_reached"
+    },
+    "render": {
+      "status": "not_reached"
+    },
+    "ocr": {
+      "status": "not_reached"
+    },
+    "tile": {
+      "status": "not_reached"
+    },
+    "upload": {
+      "status": "not_reached"
+    },
+    "verify": {
+      "status": "not_reached"
+    }
+  },
+  "qc": null,
+  "verification": null,
+  "flags": [],
+  "flags_truncated": false,
+  "outputs": {
+    "tile_root": "co-ahrb-aht-008",
+    "tiles_bytes": 0,
+    "ocr_bytes": 0,
+    "manifest_key": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/pv_01/manifest.json",
+    "report_key": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/pv_01/report.json"
+  },
+  "elapsed_s": 0
+}

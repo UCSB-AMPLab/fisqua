@@ -10,15 +10,15 @@
  *
  * The four cases here cover:
  *
- *   (a) Loader on a crowdsourcing-off tenant returns capability info
- *       indicating the two checkboxes must be hidden in the JSX.
- *   (b) Loader on a crowdsourcing-on tenant (Neogranadina) returns
- *       capability info indicating both checkboxes still render.
+ *   (a) Loader on a crowdsourcing-off tenant leaves out the
+ *       Cataloguing section, which holds the two checkboxes, and so
+ *       sends neither flag to the page.
+ *   (b) Loader on a crowdsourcing-on tenant (Neogranadina) includes
+ *       the section with both checkboxes and the person's state.
  *   (c) Dormant flag preserved across a no-op cycle: a user with
  *       `isCataloguer = true` on a crowdsourcing-off tenant still has
  *       the flag set after a roundtrip — confirms the seed schema
- *       does not auto-clear capability-dependent flags (CONTEXT.md
- *       C-05) and gives a baseline for case (d).
+ *       does not auto-clear capability-dependent flags and gives a baseline for case (d).
  *   (d) Action helper does NOT auto-clear `isCollabAdmin` /
  *       `isCataloguer` when the form post omits them and the tenant
  *       has crowdsourcing off. Without the route patch, today's
@@ -32,10 +32,15 @@
  *       the route module from the Workers test pool would pull in
  *       `~/locales` which `vitest.config.ts` does not alias).
  *
- * `applyUpdateRoles` now also takes the caller's `assignableFlags` —
- * the privilege half of the write filter, covered in
+ * `applyUpdateRoles` also takes the caller's `assignableFlags` — the
+ * privilege half of the write filter, covered in
  * `users-role-scope.test.ts`. These cases pass a super admin's full
- * set so the capability half is what they exercise, in isolation.
+ * set so the capability half is what they exercise, in isolation. The
+ * same filter holds the authorities, imports and digitization admin
+ * flags to their areas: a body that names one of them, with its shown
+ * value, for a workspace without the area writes nothing to it. Each
+ * form carries the shown value of every flag it posts, as the page
+ * does.
  *
  * Test mechanics: each route case constructs a `RouterContextProvider`
  * pre-populated with `userContext`, `tenantContext`, and
@@ -44,7 +49,7 @@
  * runs (the middleware is bypassed and we set `tenantContext` on the
  * context directly).
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -58,7 +63,13 @@ import {
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
-import { tenantContext, userContext, type User } from "../../app/context";
+import {
+  grantContext,
+  impersonationContext,
+  tenantContext,
+  userContext,
+  type User,
+} from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 
 type Db = ReturnType<typeof drizzle>;
@@ -82,8 +93,63 @@ function buildContext(args: { user: User; crowdsourcingEnabled: boolean }): any 
       multiRepositoryEnabled: true,
     }),
   );
+  ctx.set(impersonationContext, null);
+  ctx.set(grantContext, null);
   (ctx as any).cloudflare = { env };
   return ctx;
+}
+
+/** Runs `applyUpdateRoles` as a super admin would, on `tenantId`. */
+async function applyAsSuperAdmin(
+  db: Db,
+  args: {
+    tenantId: string;
+    capabilities: Partial<Parameters<typeof makeTenantContext>[0]>;
+    targetUserId: string;
+    formData: FormData;
+  },
+) {
+  const { applyUpdateRoles } = await import(
+    "../../app/routes/_auth.admin.users.$id.roles.server"
+  );
+  const { assignableRoleFlags } = await import(
+    "../../app/lib/permissions.server"
+  );
+  // A real row: the audit row names its actor by a foreign key.
+  const superAdmin = makeUserContext({
+    id: await seedUser(db, { tenantId: args.tenantId, flags: { isSuperAdmin: true } }),
+    tenantId: args.tenantId,
+    isSuperAdmin: true,
+  });
+  return applyUpdateRoles({
+    db,
+    d1: env.DB,
+    tenant: makeTenantContext({ id: args.tenantId, ...args.capabilities }),
+    targetUserId: args.targetUserId,
+    formData: args.formData,
+    // A super admin: every flag is assignable, so the only thing that
+    // can hold a flag back is the capability.
+    assignableFlags: assignableRoleFlags(superAdmin),
+    currentUser: superAdmin,
+    actor: {
+      user: superAdmin,
+      homeTenantId: args.tenantId,
+      impersonationSessionId: null,
+    },
+    now: Date.now(),
+    newId: () => crypto.randomUUID(),
+  });
+}
+
+/** A roles form: each flag with the value shown and the box as posted. */
+function rolesForm(flags: Record<string, { shown: boolean; on: boolean }>): FormData {
+  const formData = new FormData();
+  formData.append("_action", "updateRoles");
+  for (const [flag, { shown, on }] of Object.entries(flags)) {
+    formData.append(`shown_${flag}`, shown ? "1" : "0");
+    if (on) formData.append(flag, "on");
+  }
+  return formData;
 }
 
 async function seedUser(
@@ -142,12 +208,10 @@ describe("admin user-edit capability filter", () => {
       context: ctx,
     } as any)) as any;
 
-    // Loader exposes the capability flag the JSX gates on.
-    expect(res.tenant).toBeDefined();
-    expect(res.tenant.crowdsourcingEnabled).toBe(false);
-    // The seeded dormant flag is still on the user row the loader
-    // returns; the JSX simply will not render it.
-    expect(res.targetUser.isCataloguer).toBeTruthy();
+    // No Cataloguing section, so neither checkbox renders and the
+    // dormant flag does not reach the page.
+    expect(res.sections).not.toContain("cataloguing");
+    expect(res.roles.cataloguing).toBeUndefined();
   });
 
   it("loader returns crowdsourcingEnabled=true on a crowdsourcing-on tenant", async () => {
@@ -173,8 +237,9 @@ describe("admin user-edit capability filter", () => {
       context: ctx,
     } as any)) as any;
 
-    expect(res.tenant.crowdsourcingEnabled).toBe(true);
-    expect(res.targetUser.isCataloguer).toBeTruthy();
+    expect(res.sections).toContain("cataloguing");
+    const cataloguer = res.roles.cataloguing.find((r: { key: string }) => r.key === "cataloguer");
+    expect(cataloguer).toEqual({ key: "cataloguer", field: "isCataloguer", checked: true });
   });
 
   it("dormant flag survives roundtrip: isCataloguer=true on crowdsourcing-off tenant stays set in DB", async () => {
@@ -205,33 +270,25 @@ describe("admin user-edit capability filter", () => {
       flags: { isCataloguer: true, isCollabAdmin: true },
     });
 
-    // Build a form body shaped exactly as the JSX would emit when
-    // crowdsourcing is off: only the four always-rendered flags
-    // appear; isCollabAdmin and isCataloguer are NOT in the body.
-    const formData = new FormData();
-    formData.append("_action", "updateRoles");
-    formData.append("isAdmin", "on");
-    formData.append("isUserManager", "on");
-    // isSuperAdmin and isArchiveUser deliberately omitted (off).
+    // A tampered body for a crowdsourcing-off workspace: it names the
+    // pair with their shown values and unchecks them, beside two flags
+    // the page does render.
+    const formData = rolesForm({
+      isAdmin: { shown: false, on: true },
+      isUserManager: { shown: false, on: true },
+      isSuperAdmin: { shown: false, on: false },
+      isArchiveUser: { shown: false, on: false },
+      isCollabAdmin: { shown: true, on: false },
+      isCataloguer: { shown: true, on: false },
+    });
 
-    const { applyUpdateRoles } = await import(
-      "../../app/routes/_auth.admin.users.$id"
-    );
-    const { assignableRoleFlags } = await import(
-      "../../app/lib/permissions.server"
-    );
-    await applyUpdateRoles({
-      db,
+    const result = await applyAsSuperAdmin(db, {
       tenantId: SECOND_TEST_TENANT_ID,
-      crowdsourcingEnabled: false,
+      capabilities: { crowdsourcingEnabled: false },
       targetUserId: targetId,
       formData,
-      // A super admin: every flag is assignable, so the only thing
-      // that can hold the crowdsourcing pair back is the capability.
-      assignableFlags: assignableRoleFlags(
-        makeUserContext({ isSuperAdmin: true }),
-      ),
     });
+    expect(result).toEqual({ ok: true });
 
     // The dormant flags are still set; the helper skipped them
     // because crowdsourcingEnabled was false.
@@ -243,46 +300,36 @@ describe("admin user-edit capability filter", () => {
     expect(after).toBeTruthy();
     expect(after!.isCataloguer).toBeTruthy();
     expect(after!.isCollabAdmin).toBeTruthy();
-    // The four always-rendered flags reflect the post body.
+    // The flags the page renders reflect the post body.
     expect(after!.isAdmin).toBeTruthy();
     expect(after!.isUserManager).toBeTruthy();
     expect(after!.isSuperAdmin).toBeFalsy();
     expect(after!.isArchiveUser).toBeFalsy();
   });
 
-  it("applyUpdateRoles helper writes all six flags when crowdsourcing is on (Neogranadina shape)", async () => {
+  it("applyUpdateRoles helper writes the cataloguing pair when crowdsourcing is on (Neogranadina shape)", async () => {
     const db = drizzle(env.DB);
     const targetId = await seedUser(db, {
       tenantId: DEFAULT_TEST_TENANT_ID,
       flags: { isCataloguer: true, isCollabAdmin: true },
     });
 
-    // Form body emitted by the JSX when crowdsourcing is on: all six
-    // flags are renderable; here we deliberately uncheck the two
-    // capability-dependent ones to confirm the helper writes them
-    // (no auto-skip when capability is on).
-    const formData = new FormData();
-    formData.append("_action", "updateRoles");
-    formData.append("isAdmin", "on");
-    formData.append("isUserManager", "on");
-    // isCollabAdmin and isCataloguer omitted (unchecked).
+    // Crowdsourcing on: the pair is on the page; here both are
+    // unchecked to confirm the helper writes them.
+    const formData = rolesForm({
+      isAdmin: { shown: false, on: true },
+      isUserManager: { shown: false, on: true },
+      isCollabAdmin: { shown: true, on: false },
+      isCataloguer: { shown: true, on: false },
+    });
 
-    const { applyUpdateRoles } = await import(
-      "../../app/routes/_auth.admin.users.$id"
-    );
-    const { assignableRoleFlags } = await import(
-      "../../app/lib/permissions.server"
-    );
-    await applyUpdateRoles({
-      db,
+    const result = await applyAsSuperAdmin(db, {
       tenantId: DEFAULT_TEST_TENANT_ID,
-      crowdsourcingEnabled: true,
+      capabilities: { crowdsourcingEnabled: true },
       targetUserId: targetId,
       formData,
-      assignableFlags: assignableRoleFlags(
-        makeUserContext({ isSuperAdmin: true }),
-      ),
     });
+    expect(result).toEqual({ ok: true });
 
     const after = await db
       .select()
@@ -290,12 +337,49 @@ describe("admin user-edit capability filter", () => {
       .where(eq(schema.users.id, targetId))
       .get();
     expect(after).toBeTruthy();
-    // Capability-on tenant: the unchecked fields ARE cleared (the
-    // existing v0.3 behaviour for an admin who uses the form to
-    // strip a role).
     expect(after!.isCataloguer).toBeFalsy();
     expect(after!.isCollabAdmin).toBeFalsy();
     expect(after!.isAdmin).toBeTruthy();
     expect(after!.isUserManager).toBeTruthy();
   });
+
+  it("applyUpdateRoles helper writes no area admin flag for an area the workspace does not have", async () => {
+    const db = drizzle(env.DB);
+    const targetId = await seedUser(db, {
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      flags: { isDigitizationAdmin: true },
+    });
+
+    // Authorities on, imports and digitization off: a tampered body
+    // grants imports, revokes digitization and grants authorities.
+    const formData = rolesForm({
+      isAuthoritiesAdmin: { shown: false, on: true },
+      isImportsAdmin: { shown: false, on: true },
+      isDigitizationAdmin: { shown: true, on: false },
+    });
+
+    const result = await applyAsSuperAdmin(db, {
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      capabilities: { authoritiesEnabled: true, importsEnabled: false, digitizationEnabled: false },
+      targetUserId: targetId,
+      formData,
+    });
+    expect(result).toEqual({ ok: true });
+
+    const after = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.id, targetId))
+      .get();
+    expect(after!.isAuthoritiesAdmin).toBeTruthy();
+    expect(after!.isImportsAdmin).toBeFalsy();
+    expect(after!.isDigitizationAdmin).toBeTruthy();
+    // Only the one change that landed is in the audit log.
+    const rows = await db.select().from(schema.auditLog).all();
+    expect(rows.map((r) => JSON.parse(r.details!))).toEqual([
+      { flag: "isAuthoritiesAdmin", step: "granted" },
+    ]);
+  });
 });
+
+// @version v0.8.0

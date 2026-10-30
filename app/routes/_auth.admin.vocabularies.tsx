@@ -14,7 +14,7 @@
  * sidebar's capability gate as belt-and-braces against direct-URL
  * access.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { Outlet } from "react-router";
@@ -23,10 +23,10 @@ import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.vocabularies";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("../lib/permissions.server");
+  const { requireArea } = await import("../lib/user-access.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "vocabulary_hub");
 

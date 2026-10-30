@@ -1,25 +1,26 @@
 /**
  * Tests — export legality matrix
  *
- * Covers `app/lib/export/matrix.ts`, the pure module the export
- * surface's dimming teaches from. What is pinned here is every rule the
- * module's own header states as a promise: the permission tier (PDF for
- * any member, CSV/EAD XML/JSON admin-only), the two encoded formats'
- * need for a descriptive-standard form, the authority scope's closed
- * form axis and closed doors, the ABSENT/dimmed distinction (a role
- * gate hides a tile entirely; the matrix dims one with its reason), and
- * that every dim reason carries the exact machine code the surface maps
- * to a sentence — never English computed here.
+ * This suite covers `app/lib/export/matrix.ts`, the pure module the
+ * export surface's dimming teaches from. What is pinned here is every
+ * rule the module's own header states as a promise: the permission tier
+ * (PDF for any member, CSV/EAD XML/JSON only for those who may take
+ * machine-readable data), the two encoded formats' need for a
+ * descriptive-standard form, the authority scope's closed form axis and
+ * closed doors, the ABSENT/dimmed distinction (a role gate hides a tile
+ * entirely; the matrix dims one with its reason), and that every dim
+ * reason carries the exact machine code the surface maps to a sentence
+ * — never English computed here.
  *
  * No database and no fixtures beyond an `ExportMatrixContext` literal:
  * the module takes record class, the workspace's own standard, and
- * `isAdmin` as its only three inputs, so every scenario is built inline.
+ * `machineReadable` as its only three inputs, so every scenario is built inline.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import {
-  formatRequiresAdmin,
+  formatIsMachineReadable,
   availableFormats,
   isCombinationLegal,
   assertCombinationLegal,
@@ -33,30 +34,30 @@ import type { ExportMatrixContext } from "../../app/lib/export/matrix";
 const recordsAdmin: ExportMatrixContext = {
   recordClass: "records",
   ownStandard: "isadg",
-  isAdmin: true,
+  machineReadable: true,
 };
 const recordsNonAdmin: ExportMatrixContext = {
   recordClass: "records",
   ownStandard: "isadg",
-  isAdmin: false,
+  machineReadable: false,
 };
 const authorityAdmin: ExportMatrixContext = {
   recordClass: "entities",
   ownStandard: "isadg",
-  isAdmin: true,
+  machineReadable: true,
 };
 const authorityNonAdmin: ExportMatrixContext = {
   recordClass: "entities",
   ownStandard: "isadg",
-  isAdmin: false,
+  machineReadable: false,
 };
 
 describe("the permission tier", () => {
-  it("requires admin for csv, ead-xml and json, and not for pdf", () => {
-    expect(formatRequiresAdmin("csv")).toBe(true);
-    expect(formatRequiresAdmin("ead-xml")).toBe(true);
-    expect(formatRequiresAdmin("json")).toBe(true);
-    expect(formatRequiresAdmin("pdf")).toBe(false);
+  it("marks csv, ead-xml and json machine-readable, and not pdf", () => {
+    expect(formatIsMachineReadable("csv")).toBe(true);
+    expect(formatIsMachineReadable("ead-xml")).toBe(true);
+    expect(formatIsMachineReadable("json")).toBe(true);
+    expect(formatIsMachineReadable("pdf")).toBe(false);
   });
 
   it("leaves a non-admin only the pdf format", () => {

@@ -84,7 +84,7 @@
  * for shared records, which is still every record in every federation
  * until one is explicitly claimed.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -184,8 +184,8 @@ export async function resolveMintOwner(
  *   - any record owned by another tenant -> bare 404. The caller must
  *     not learn that a foreign record exists, so this outranks the other
  *     branches and is checked first.
- *   - every record owned by the request tenant -> the ordinary tenant
- *     admin check (`requireAdmin`), no steward.
+ *   - every record owned by the request tenant -> the authorities area
+ *     check (`requireArea(user, "authorities")`), no steward.
  *   - otherwise (all shared, mixed shared/owned, or the ids match
  *     nothing in this federation) -> `requireFederationSteward`,
  *     unchanged.
@@ -201,7 +201,7 @@ export async function requireAuthorityMutation(
   recordType: AuthorityRecordType,
   recordIds: ReadonlyArray<string | null | undefined>,
 ): Promise<void> {
-  const { requireAdmin } = await import("./permissions.server");
+  const { requireArea } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const ids = Array.from(
@@ -223,9 +223,10 @@ export async function requireAuthorityMutation(
     throw new Response("Not found", { status: 404 });
   }
 
-  // Every record involved is this tenant's own: ordinary admin rights.
+  // Every record involved is this tenant's own: the authorities area
+  // admits its admins.
   if (rows.length > 0 && rows.every((r) => r.tenantId === tenant.id)) {
-    requireAdmin(user);
+    requireArea(user, "authorities");
     return;
   }
 
@@ -239,21 +240,21 @@ export async function requireAuthorityMutation(
  *
  * A federation that shares its authorities mints into the shared space,
  * which is a steward act. A federation that does not mints the request
- * tenant's own record, which its admins may do freely.
+ * tenant's own record, which its authorities admins may do freely.
  */
 export async function requireAuthorityMint(
   db: DrizzleD1Database<any>,
   user: User,
   tenant: Tenant,
 ): Promise<string | null> {
-  const { requireAdmin } = await import("./permissions.server");
+  const { requireArea } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const owner = await resolveMintOwner(db, tenant);
   if (owner === null) {
     await requireFederationSteward(db, user, tenant);
   } else {
-    requireAdmin(user);
+    requireArea(user, "authorities");
   }
   return owner;
 }

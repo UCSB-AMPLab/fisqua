@@ -1,15 +1,15 @@
 /**
- * Tests — authority merge/split workbenches (phase 3a)
+ * Tests — authority merge/split workbenches
  *
- * Drives real `FormData` through the full-page merge and split workbench
- * route actions (`entities.$id.merge`, `entities.$id.split`) and their
- * loaders, plus the ledger-derived superseded-status helper and the
- * entities list show-merged filter. Harness mirrors
- * `vocab-merge-split-action.test.ts`: a `RouterContextProvider` carrying
- * userContext + tenantContext with `cloudflare.env` attached, and a real
- * users row so the ledger FK (`user_id NOT NULL REFERENCES users(id)`)
- * and the federation-steward gate (home admin on the lead tenant) are
- * satisfiable.
+ * This suite drives real `FormData` through the full-page merge and
+ * split workbench route actions (`entities.$id.merge`,
+ * `entities.$id.split`) and their loaders, plus the ledger-derived
+ * superseded-status helper and the entities list show-merged filter.
+ * Harness mirrors `vocab-merge-split-action.test.ts`: a
+ * `RouterContextProvider` carrying userContext + tenantContext with
+ * `cloudflare.env` attached, and a real users row so the ledger FK
+ * (`user_id NOT NULL REFERENCES users(id)`) and the federation-steward
+ * gate (home admin on the lead tenant) are satisfiable.
  *
  * What it pins:
  *   - merge: reason required (empty rejected), survivor reassignment
@@ -35,7 +35,7 @@
  *   - show-merged: the list loader excludes merged-away rows by default
  *     and includes them when `showMerged=true`.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -470,7 +470,7 @@ describe("superseded derivation + show-merged filter", () => {
     }
 
     const db = drizzle(env.DB);
-    const { getOperationActor, bandDate } = await import(
+    const { getOperationActor } = await import(
       "../../app/lib/authority-workbench.server"
     );
     const actor = await getOperationActor(db, {
@@ -481,7 +481,7 @@ describe("superseded derivation + show-merged filter", () => {
     });
     expect(actor).not.toBeNull();
     expect(actor!.userName).toBe("Ada Lovelace");
-    expect(bandDate(actor!.createdAt)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(typeof actor!.createdAt).toBe("number");
   });
 
   it("the list loader excludes merged rows by default and includes them with showMerged", async () => {
@@ -1069,3 +1069,5 @@ describe("old detail-route merge/split intents are gone (DEFECT 1 regression)", 
     expect(ops).toHaveLength(0);
   });
 });
+
+/* @version v0.8.0 */

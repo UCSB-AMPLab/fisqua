@@ -43,7 +43,7 @@
  * keeping everything else. A history row outliving its own file is the
  * honest end state — the workspace can still say what left and when.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
@@ -52,8 +52,10 @@ import { workspaceExportRuns } from "../../db/schema";
 import type { Standard } from "../standards/types";
 import type { Tenant, User } from "../../context";
 import { EXPORT_EMITTERS } from "./emitters.server";
+import { formatIsoDateTime } from "../format";
 import type { ExportStage } from "./emitters.server";
 import { assertCombinationLegal } from "./matrix";
+import { mayExportMachineReadable } from "../user-access.server";
 import type { ExportForm, ExportFormat, ExportRecordClass } from "./matrix";
 import { consumeCarriedScope, resolveExportScope } from "./scopes.server";
 import type { ExportScopeDescriptor, ExportScopeRequest } from "./scopes.server";
@@ -144,6 +146,12 @@ export interface ExportRunDeps {
    * furniture read it — the finding aid's labels and colophon.
    */
   locale?: "en" | "es";
+  /**
+   * The exporting member's IANA time zone, from the route
+   * (`requestTimeZone(request)`). The file name's date is the day in
+   * this zone; without it, the default zone in `app/lib/format.ts`.
+   */
+  timeZone?: string;
   /** Injectable clock, for tests and for a stable file-name date. */
   now?: () => number;
 }
@@ -220,7 +228,11 @@ export async function startExportRun(
   });
 
   assertCombinationLegal(
-    { recordClass: scope.recordClass, ownStandard, isAdmin: user.isAdmin },
+    {
+      recordClass: scope.recordClass,
+      ownStandard,
+      machineReadable: mayExportMachineReadable(user, scope.recordClass),
+    },
     input.form,
     input.format,
   );
@@ -284,6 +296,7 @@ export async function startExportRun(
         input.form,
         artifact.extension,
         clock(),
+        deps.timeZone,
       );
       const key = exportObjectKey(tenant.id, runId, fileName);
       const body = new TextEncoder().encode(artifact.body);
@@ -426,15 +439,17 @@ async function recordFailure(
 /**
  * `<slugified-scope>-<form>-<date>.<ext>` — the card's naming. The
  * scope half is the ledger row's own words about the scope, so a file
- * on a desktop a week later still says which export it was.
+ * on a desktop a week later still says which export it was. The date
+ * is the calendar day in `timeZone`, the exporting member's.
  */
 export function buildFileName(
   descriptor: ExportScopeDescriptor,
   form: ExportForm,
   extension: string,
   now: number,
+  timeZone?: string,
 ): string {
-  const date = new Date(now).toISOString().slice(0, 10);
+  const date = formatIsoDateTime(now, timeZone).slice(0, 10);
   return `${slugify(scopeLabel(descriptor))}-${form}-${date}.${extension}`;
 }
 
@@ -634,4 +649,4 @@ export async function sweepExpiredExports(
   return stale.length;
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

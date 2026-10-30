@@ -28,10 +28,34 @@
  *     entity and place workbenches, on both merge sides and the split
  *     assignment list.
  *
- * @version v0.4.3
+ *   - OCR transcripts are page rows (`ocr_pages`), and a transcript can
+ *     run to hundreds of pages, so a card never searches a prefix of it.
+ *     The name is looked up in the page index and the snippet is built
+ *     from the first page that holds it; when the index finds no page
+ *     (a name inside a longer word, say), or the page it finds does not
+ *     hold the name as the card's substring match reads it (a long s,
+ *     which the index folds), the card searches the first
+ *     OCR_FULL_CAP characters of the assembled transcript instead. The
+ *     caption length is always the whole transcript's.
+ *
+ *   - Entities and places are federation-scoped, so the descriptions
+ *     linked to one shared record can belong to different tenants.
+ *     Every loader here takes the request tenant (`tenantId`) and reads
+ *     only links whose description is that tenant's: another tenant's
+ *     description, its metadata and its transcript never reach a card,
+ *     a count or "Show all", and a link id of theirs resolves to null.
+ *
+ * @version v0.8.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { headingPhraseExpression } from "./global-search.server";
+import {
+  findAnchorPages,
+  loadTranscriptText,
+  MAX_IDS,
+  transcriptSummaries,
+} from "./ocr/search.server";
 
 /** Records per side rendered as cards; honest totals report the rest. */
 export const LINKED_CARD_CAP = 25;
@@ -44,9 +68,14 @@ export const SCOPE_WINDOW = 160;
 export const OCR_WINDOW = 280;
 
 /** Wide capped OCR window (~1.5 KB centred on the first match) shipped
- * with the card for "Show more"; the full transcript (up to 89 KB) is
+ * with the card for "Show more"; the transcript, up to OCR_FULL_CAP, is
  * fetched only on "Show all" (`&full=1`). */
 export const OCR_WIDE = 1500;
+
+/** Most characters of an assembled transcript read for a card's
+ * fallback match and for "Show all". Every transcript backfilled from
+ * the old column is shorter; a long pipeline transcript is cut here. */
+export const OCR_FULL_CAP = 200_000;
 
 /** Full-scope ship cap. Scope notes cap at ~6.3 KB, so the whole note
  * rides the card payload for "Show more"; OCR never does. */
@@ -55,7 +84,7 @@ export const SCOPE_CAP = 6300;
 /**
  * Which text a snippet came from (the ruled ladder, spec §5):
  *   - `scope`      accent-insensitive name match in `scope_content`;
- *   - `ocr`        no scope match — matched in `ocr_text` instead;
+ *   - `ocr`        no scope match — matched in the OCR transcript instead;
  *   - `scope-head` no name match anywhere — head of a non-empty scope.
  */
 export type SnippetSource = "scope" | "ocr" | "scope-head";
@@ -326,6 +355,109 @@ export function buildCardSnippet(
   return null;
 }
 
+/** What a card knows of one description's transcript: the text the
+ * ladder searches (the first page the name is on, or the capped
+ * assembled transcript) and the whole transcript's length. */
+interface CardTranscript {
+  text: string;
+  totalChars: number;
+}
+
+/** The card snippet, with the OCR caption length set to the whole
+ * transcript's rather than the length of the text searched. */
+function cardSnippet(
+  scopeContent: string | null,
+  transcript: CardTranscript | undefined,
+  anchor: string,
+): CardSnippet | null {
+  const snippet = buildCardSnippet(scopeContent, transcript?.text ?? null, anchor);
+  if (snippet && snippet.source === "ocr" && transcript) {
+    return { ...snippet, ocrLength: transcript.totalChars };
+  }
+  return snippet;
+}
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Read the OCR text the cards search, for a bounded list of
+ * descriptions. The name is looked up in the page index first, and the
+ * first page that holds it is the text searched, so a name on page 400
+ * of a volume is found without reading the volume. When the index finds
+ * no page (its tokens can differ from the card's accent-insensitive
+ * substring match, as for a name inside a longer word), or finds a page
+ * on which that substring match does not find the name (the index folds
+ * a long s, the card does not), the text is the first OCR_FULL_CAP
+ * characters of the assembled transcript. Reads are
+ * grouped by each description's own tenant; descriptions with no pages
+ * are absent from the result.
+ */
+async function loadCardTranscripts(
+  db: DrizzleD1Database<any>,
+  items: { descriptionId: string; tenantId: string; anchor: string }[],
+): Promise<Map<string, CardTranscript>> {
+  const out = new Map<string, CardTranscript>();
+  const byTenant = new Map<string, { descriptionId: string; anchor: string }[]>();
+  for (const item of items) {
+    const list = byTenant.get(item.tenantId) ?? [];
+    list.push(item);
+    byTenant.set(item.tenantId, list);
+  }
+
+  for (const [tenantId, list] of byTenant) {
+    const ids = list.map((i) => i.descriptionId);
+    const summaries = new Map<string, { pageCount: number; totalChars: number }>();
+    for (const part of chunks(ids, MAX_IDS)) {
+      for (const [id, s] of await transcriptSummaries(db, tenantId, part)) summaries.set(id, s);
+    }
+    const withPages = list.filter((i) => (summaries.get(i.descriptionId)?.pageCount ?? 0) > 0);
+    if (withPages.length === 0) continue;
+
+    const byAnchor = new Map<string, string[]>();
+    for (const item of withPages) {
+      const group = byAnchor.get(item.anchor) ?? [];
+      group.push(item.descriptionId);
+      byAnchor.set(item.anchor, group);
+    }
+    const text = new Map<string, string>();
+    for (const [anchor, group] of byAnchor) {
+      const expression = headingPhraseExpression(anchor);
+      if (expression === null) continue;
+      for (const part of chunks(group, MAX_IDS)) {
+        try {
+          for (const [id, page] of await findAnchorPages(db, tenantId, part, expression)) {
+            // The index matches tokens and the card matches substrings,
+            // and the two can disagree (unicode61 folds a long s, the
+            // card does not). A page the card cannot find the name on
+            // would give no snippet, so it is not used; the capped text
+            // below serves the card instead.
+            if (firstMatchOffset(page.text, anchor) !== null) text.set(id, page.text);
+          }
+        } catch (error) {
+          // A quoted phrase is valid FTS5 by construction; if the index
+          // read fails anyway, the capped text below still serves the card.
+          console.error("Linked-description cards: OCR anchor lookup failed", error);
+        }
+      }
+    }
+    const rest = withPages.map((i) => i.descriptionId).filter((id) => !text.has(id));
+    for (const part of chunks(rest, MAX_IDS)) {
+      for (const [id, t] of await loadTranscriptText(db, tenantId, part, OCR_FULL_CAP)) text.set(id, t);
+    }
+
+    for (const item of withPages) {
+      const t = text.get(item.descriptionId);
+      if (t === undefined) continue;
+      out.set(item.descriptionId, { text: t, totalChars: summaries.get(item.descriptionId)!.totalChars });
+    }
+  }
+  return out;
+}
+
 /** One record (place or entity) linked to a description — a metadata-strip
  * chip on the merge/split card, and a grouped-by-role chip on the detail
  * unfold panel. `isCurrent` marks the record the worklist belongs to, so
@@ -392,7 +524,8 @@ interface JunctionRow {
   extent: string | null;
   repositoryId: string;
   scopeContent: string | null;
-  ocrText: string | null;
+  /** The description's own tenant; its OCR pages are read under it. */
+  tenantId: string;
   order: number;
 }
 
@@ -410,6 +543,8 @@ export async function loadLinkedDescriptionCards(
     recordType: "entity" | "place";
     ownerId: string;
     displayName: string;
+    /** The request tenant; only its descriptions are read. */
+    tenantId: string;
     cap?: number;
   },
 ): Promise<LinkedDescriptionCardList> {
@@ -446,13 +581,19 @@ export async function loadLinkedDescriptionCards(
         extent: descriptions.extent,
         repositoryId: descriptions.repositoryId,
         scopeContent: descriptions.scopeContent,
+        tenantId: descriptions.tenantId,
       })
       .from(descriptionEntities)
       .innerJoin(
         descriptions,
         eq(descriptionEntities.descriptionId, descriptions.id),
       )
-      .where(eq(descriptionEntities.entityId, args.ownerId))
+      .where(
+        and(
+          eq(descriptionEntities.entityId, args.ownerId),
+          eq(descriptions.tenantId, args.tenantId),
+        ),
+      )
       .orderBy(asc(descriptionEntities.sequence))
       .all();
     rows = raw.map((r, i) => ({
@@ -469,10 +610,9 @@ export async function loadLinkedDescriptionCards(
       extent: r.extent,
       repositoryId: r.repositoryId,
       scopeContent: r.scopeContent,
-      // OCR is fetched only for the visible (capped) descriptions below —
-      // transcripts reach 89 KB and must never be selected across every
-      // junction row.
-      ocrText: null,
+      // OCR pages are read only for the visible (capped) descriptions
+      // below, never across every junction row.
+      tenantId: r.tenantId,
       order: i,
     }));
   } else {
@@ -490,13 +630,19 @@ export async function loadLinkedDescriptionCards(
         extent: descriptions.extent,
         repositoryId: descriptions.repositoryId,
         scopeContent: descriptions.scopeContent,
+        tenantId: descriptions.tenantId,
       })
       .from(descriptionPlaces)
       .innerJoin(
         descriptions,
         eq(descriptionPlaces.descriptionId, descriptions.id),
       )
-      .where(eq(descriptionPlaces.placeId, args.ownerId))
+      .where(
+        and(
+          eq(descriptionPlaces.placeId, args.ownerId),
+          eq(descriptions.tenantId, args.tenantId),
+        ),
+      )
       .orderBy(asc(descriptionPlaces.createdAt))
       .all();
     rows = raw.map((r, i) => ({
@@ -513,10 +659,9 @@ export async function loadLinkedDescriptionCards(
       extent: r.extent,
       repositoryId: r.repositoryId,
       scopeContent: r.scopeContent,
-      // OCR is fetched only for the visible (capped) descriptions below —
-      // transcripts reach 89 KB and must never be selected across every
-      // junction row.
-      ocrText: null,
+      // OCR pages are read only for the visible (capped) descriptions
+      // below, never across every junction row.
+      tenantId: r.tenantId,
       order: i,
     }));
   }
@@ -568,23 +713,10 @@ export async function loadLinkedDescriptionCards(
     }
   }
 
-  // OCR transcripts for the visible descriptions only (bounded by the
-  // cap) — the ladder consults them when the name is absent from scope.
-  const ocrByDescription = new Map<string, string | null>();
-  if (visibleIds.length > 0) {
-    const ocrRows = await db
-      .select({ id: descriptions.id, ocrText: descriptions.ocrText })
-      .from(descriptions)
-      .where(inArray(descriptions.id, visibleIds))
-      .all();
-    for (const r of ocrRows) ocrByDescription.set(r.id, r.ocrText);
-  }
-
-  const cards: LinkedDescriptionCardData[] = visibleIds.map((descId) => {
-    const g = groups.get(descId)!;
-    const first = g[0];
-    // Anchor: the row with a non-empty nameAsRecorded (entity only);
-    // otherwise the record's display name (always, for places).
+  // Anchor per visible card: the row with a non-empty nameAsRecorded
+  // (entity only); otherwise the record's display name (always, for
+  // places).
+  const anchorOf = (g: JunctionRow[]) => {
     const asRecordedRow = g.find(
       (r) => r.nameAsRecorded && r.nameAsRecorded.trim().length > 0,
     );
@@ -592,6 +724,25 @@ export async function loadLinkedDescriptionCards(
       args.recordType === "place"
         ? args.displayName
         : (asRecordedRow?.nameAsRecorded ?? args.displayName);
+    return { asRecordedRow, anchor };
+  };
+
+  // OCR transcripts for the visible descriptions only (bounded by the
+  // cap) — the ladder consults them when the name is absent from scope.
+  // Each description's pages are read under its own tenant: the
+  // descriptions linked to one authority record span the federation.
+  const transcripts = await loadCardTranscripts(
+    db,
+    visibleIds.map((descId) => {
+      const g = groups.get(descId)!;
+      return { descriptionId: descId, tenantId: g[0].tenantId, anchor: anchorOf(g).anchor };
+    }),
+  );
+
+  const cards: LinkedDescriptionCardData[] = visibleIds.map((descId) => {
+    const g = groups.get(descId)!;
+    const first = g[0];
+    const { asRecordedRow, anchor } = anchorOf(g);
 
     return {
       descriptionId: descId,
@@ -608,11 +759,7 @@ export async function loadLinkedDescriptionCards(
       nameAsRecorded: asRecordedRow?.nameAsRecorded ?? null,
       asRecordedRoleRaw: asRecordedRow?.roleRaw ?? null,
       asRecordedRole: asRecordedRow?.role ?? null,
-      snippet: buildCardSnippet(
-        first.scopeContent,
-        ocrByDescription.get(descId) ?? null,
-        anchor,
-      ),
+      snippet: cardSnippet(first.scopeContent, transcripts.get(descId), anchor),
     };
   });
 
@@ -643,6 +790,8 @@ export async function loadLinkedDescriptionCard(
     ownerId: string;
     displayName: string;
     junctionId: string;
+    /** The request tenant; another tenant's link resolves to null. */
+    tenantId: string;
   },
 ): Promise<LinkedDescriptionCardData | null> {
   const { and, eq, inArray, asc } = await import("drizzle-orm");
@@ -655,28 +804,33 @@ export async function loadLinkedDescriptionCard(
     entities,
   } = await import("../db/schema");
 
-  // Resolve the junction to its description, scoped to the owner. A
-  // junction id that is not this record's is not found — ownership is
-  // the WHERE clause, not a post-hoc check.
+  // Resolve the junction to its description, scoped to the owner and
+  // to the request tenant's descriptions. A junction id that is not
+  // this record's, or whose description is another tenant's, is not
+  // found — ownership is the WHERE clause, not a post-hoc check.
   const owned =
     args.recordType === "entity"
       ? await db
           .select({ descriptionId: descriptionEntities.descriptionId })
           .from(descriptionEntities)
+          .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
           .where(
             and(
               eq(descriptionEntities.id, args.junctionId),
               eq(descriptionEntities.entityId, args.ownerId),
+              eq(descriptions.tenantId, args.tenantId),
             ),
           )
           .get()
       : await db
           .select({ descriptionId: descriptionPlaces.descriptionId })
           .from(descriptionPlaces)
+          .innerJoin(descriptions, eq(descriptionPlaces.descriptionId, descriptions.id))
           .where(
             and(
               eq(descriptionPlaces.id, args.junctionId),
               eq(descriptionPlaces.placeId, args.ownerId),
+              eq(descriptions.tenantId, args.tenantId),
             ),
           )
           .get();
@@ -701,7 +855,7 @@ export async function loadLinkedDescriptionCard(
         extent: descriptions.extent,
         repositoryId: descriptions.repositoryId,
         scopeContent: descriptions.scopeContent,
-        ocrText: descriptions.ocrText,
+        tenantId: descriptions.tenantId,
       })
       .from(descriptionEntities)
       .innerJoin(
@@ -732,7 +886,7 @@ export async function loadLinkedDescriptionCard(
         extent: descriptions.extent,
         repositoryId: descriptions.repositoryId,
         scopeContent: descriptions.scopeContent,
-        ocrText: descriptions.ocrText,
+        tenantId: descriptions.tenantId,
       })
       .from(descriptionPlaces)
       .innerJoin(
@@ -827,7 +981,15 @@ export async function loadLinkedDescriptionCard(
     nameAsRecorded: asRecordedRow?.nameAsRecorded ?? null,
     asRecordedRoleRaw: asRecordedRow?.roleRaw ?? null,
     asRecordedRole: asRecordedRow?.role ?? null,
-    snippet: buildCardSnippet(first.scopeContent, first.ocrText, anchor),
+    snippet: cardSnippet(
+      first.scopeContent,
+      (
+        await loadCardTranscripts(db, [
+          { descriptionId: descId, tenantId: first.tenantId, anchor },
+        ])
+      ).get(descId),
+      anchor,
+    ),
     entities: cardEntities,
   };
 }
@@ -836,8 +998,10 @@ export async function loadLinkedDescriptionCard(
  * Fetch the FULL OCR transcript for the description behind a junction —
  * the "Show all" (`&full=1`) on-demand branch. Ownership is the WHERE
  * clause, identical to `loadLinkedDescriptionCard`: a junction id that is
- * not this record's resolves to null, never a foreign transcript. Never
- * called on page load — transcripts reach 89 KB.
+ * not this record's, or whose description is not the request tenant's,
+ * resolves to null, never a foreign transcript. The pages are assembled
+ * under the request tenant and cut at OCR_FULL_CAP. Never called on
+ * page load.
  */
 export async function loadJunctionOcrText(
   db: DrizzleD1Database<any>,
@@ -845,6 +1009,8 @@ export async function loadJunctionOcrText(
     recordType: "entity" | "place";
     ownerId: string;
     junctionId: string;
+    /** The request tenant; another tenant's link resolves to null. */
+    tenantId: string;
   },
 ): Promise<string | null> {
   const { and, eq } = await import("drizzle-orm");
@@ -854,7 +1020,7 @@ export async function loadJunctionOcrText(
   const row =
     args.recordType === "entity"
       ? await db
-          .select({ ocrText: descriptions.ocrText })
+          .select({ id: descriptions.id, tenantId: descriptions.tenantId })
           .from(descriptionEntities)
           .innerJoin(
             descriptions,
@@ -864,11 +1030,12 @@ export async function loadJunctionOcrText(
             and(
               eq(descriptionEntities.id, args.junctionId),
               eq(descriptionEntities.entityId, args.ownerId),
+              eq(descriptions.tenantId, args.tenantId),
             ),
           )
           .get()
       : await db
-          .select({ ocrText: descriptions.ocrText })
+          .select({ id: descriptions.id, tenantId: descriptions.tenantId })
           .from(descriptionPlaces)
           .innerJoin(
             descriptions,
@@ -878,9 +1045,13 @@ export async function loadJunctionOcrText(
             and(
               eq(descriptionPlaces.id, args.junctionId),
               eq(descriptionPlaces.placeId, args.ownerId),
+              eq(descriptions.tenantId, args.tenantId),
             ),
           )
           .get();
   if (!row) return null;
-  return row.ocrText ?? "";
+  const text = await loadTranscriptText(db, row.tenantId, [row.id], OCR_FULL_CAP);
+  return text.get(row.id) ?? "";
 }
+
+// Version: v0.8.0

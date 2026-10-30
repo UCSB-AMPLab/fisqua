@@ -14,8 +14,8 @@
  * `version` below is NOT persisted on minted rows — only `starter_key`
  * is. Minted profiles are independent copies, so definition updates can
  * never corrupt them, but a minted row cannot say WHICH definition
- * version it came from. Revisit deliberately in phase 8 / stewardship
- * stage 2 if mint provenance needs to be reconstructable.
+ * version it came from. Revisit deliberately if mint provenance needs to be
+ * reconstructable.
  *
  * BINDING DISCIPLINE (every binding traces to a verified header source;
  * nothing is guessed). Sources cited per starter below:
@@ -46,7 +46,7 @@
  * requires every binding target to be valid for the tenant's standard
  * (`isValidTarget`). A starter is offered only when both hold.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import type { Standard } from "../standards/types";

@@ -32,9 +32,16 @@
  * exercised in the order the request meets them. That needs an i18n
  * instance in context, which `runI18nMiddleware` supplies by invoking
  * the real middleware — the action calls `i18n.t(...)` on every
- * refusal path, and a stub would not prove the keys exist.
+ * refusal path, and a stub would not prove the keys exist. Each roles
+ * form carries the shown value (`shown_<flag>`) of every flag it posts,
+ * as the page does; a user seeded here starts with every flag off.
  *
- * @version v0.7.0
+ * The split is a workspace admin's eight workspace roles against the
+ * super admin's two platform roles; the grant and revoke cases for
+ * each flag, the federation roles and the audit rows are in
+ * `users-granting.test.ts`.
+ *
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -48,7 +55,13 @@ import {
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
-import { tenantContext, userContext, type User } from "../../app/context";
+import {
+  grantContext,
+  impersonationContext,
+  tenantContext,
+  userContext,
+  type User,
+} from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import {
   assignableRoleFlags,
@@ -97,13 +110,20 @@ async function buildContext(args: {
       crowdsourcingEnabled: args.crowdsourcingEnabled ?? true,
     }),
   );
+  ctx.set(impersonationContext, null);
+  ctx.set(grantContext, null);
   (ctx as any).cloudflare = { env };
   await runI18nMiddleware(ctx, args.request);
   return ctx;
 }
 
+/** A roles form; every flag posted is shown as off unless `fields` says. */
 function roleForm(fields: Record<string, string>): Request {
-  const body = new URLSearchParams({ _action: "updateRoles", ...fields });
+  const shown: Record<string, string> = {};
+  for (const key of Object.keys(fields)) {
+    if (!key.startsWith("shown_")) shown[`shown_${key}`] = "0";
+  }
+  const body = new URLSearchParams({ _action: "updateRoles", ...shown, ...fields });
   return new Request("http://localhost/admin/users/x", {
     method: "POST",
     body,
@@ -154,17 +174,47 @@ function readUser(db: Db, id: string) {
   return db.select().from(schema.users).where(eq(schema.users.id, id)).get();
 }
 
+const TENANT_ADMIN_ID = "00000000-0000-4000-8000-0000000000a1";
+const SUPER_ADMIN_ID = "00000000-0000-4000-8000-0000000000a2";
+
 /** A tenant admin: what a federation steward's effective flags look like. */
 const tenantAdmin = (tenantId: string) =>
   makeUserContext({
-    id: crypto.randomUUID(),
+    id: TENANT_ADMIN_ID,
     tenantId,
     isAdmin: true,
     isUserManager: true,
   });
 
 const superAdmin = (tenantId: string) =>
-  makeUserContext({ id: crypto.randomUUID(), tenantId, isSuperAdmin: true });
+  makeUserContext({ id: SUPER_ADMIN_ID, tenantId, isSuperAdmin: true });
+
+/**
+ * The two actors as rows of the default tenant: an audit row names its
+ * actor by a foreign key to `users`.
+ */
+async function seedActors(db: Db): Promise<void> {
+  const now = Date.now();
+  await db.insert(schema.users).values([
+    {
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      id: TENANT_ADMIN_ID,
+      email: "tenant-admin@example.com",
+      isAdmin: true,
+      isUserManager: true,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      id: SUPER_ADMIN_ID,
+      email: "super-admin@example.com",
+      isSuperAdmin: true,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]);
+}
 
 // ---------------------------------------------------------------------------
 // The split itself
@@ -183,9 +233,21 @@ describe("role-assignment scope helpers", () => {
     }
   });
 
-  it("a tenant admin may assign the tenant-scoped roles and nothing else", () => {
+  it("a tenant admin may assign the eight tenant-scoped roles and nothing else", () => {
     const flags = assignableRoleFlags(tenantAdmin(DEFAULT_TEST_TENANT_ID));
     expect([...flags]).toEqual([...TENANT_SCOPED_ROLE_FLAGS]);
+    expect([...flags].sort()).toEqual(
+      [
+        "isAdmin",
+        "isArchiveUser",
+        "isRecordsAdmin",
+        "isAuthoritiesAdmin",
+        "isImportsAdmin",
+        "isDigitizationAdmin",
+        "isCollabAdmin",
+        "isCataloguer",
+      ].sort(),
+    );
     for (const flag of PLATFORM_SCOPED_ROLE_FLAGS) {
       expect(flags).not.toContain(flag);
     }
@@ -230,6 +292,7 @@ describe("user detail action - role scope", () => {
 
   beforeEach(async () => {
     await cleanDatabase();
+    await seedActors(drizzle(env.DB));
   });
 
   it("a tenant admin grants Records admin to a user of their own tenant", async () => {
@@ -470,6 +533,7 @@ describe("user detail action - target scoping", () => {
 
   beforeEach(async () => {
     await cleanDatabase();
+    await seedActors(drizzle(env.DB));
   });
 
   function postForm(fields: Record<string, string>): Request {
@@ -605,6 +669,7 @@ describe("user detail loader - editable role set", () => {
 
   beforeEach(async () => {
     await cleanDatabase();
+    await seedActors(drizzle(env.DB));
   });
 
   async function loadFor(user: User, targetId: string) {
@@ -622,7 +687,7 @@ describe("user detail loader - editable role set", () => {
     } as any)) as any;
   }
 
-  it("a tenant admin gets the two tenant-scoped roles as editable", async () => {
+  it("a tenant admin gets the workspace roles of the areas the workspace has as editable", async () => {
     const db = drizzle(env.DB);
     const targetId = await seedUser(db, { tenantId: DEFAULT_TEST_TENANT_ID });
 
@@ -630,7 +695,12 @@ describe("user detail loader - editable role set", () => {
 
     expect(res.canEditRoles).toBe(true);
     expect(res.canEditAllRoles).toBe(false);
-    expect(res.editableRoles).toEqual([...TENANT_SCOPED_ROLE_FLAGS]);
+    // Crowdsourcing and authorities on; imports and digitization off.
+    expect(res.editableRoles).toEqual(
+      TENANT_SCOPED_ROLE_FLAGS.filter(
+        (f) => f !== "isImportsAdmin" && f !== "isDigitizationAdmin",
+      ),
+    );
     for (const flag of PLATFORM_SCOPED_ROLE_FLAGS) {
       expect(res.editableRoles).not.toContain(flag);
     }

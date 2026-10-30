@@ -1,5 +1,5 @@
 -- Changelog becomes the stewardship journal
--- (stewardship record spec §3; imports build plan phase 2).
+-- (stewardship record spec §3).
 --
 -- Two additive columns:
 --   * run_id — which stewardship run caused this row; NULL = an
@@ -25,7 +25,7 @@
 -- survey §1). The only way past the triggers is DROP TRIGGER in a
 -- migration, auditable in source control.
 --
--- Version: v0.6.0
+-- Version: v0.8.0
 
 ALTER TABLE changelog ADD COLUMN run_id TEXT;
 ALTER TABLE changelog ADD COLUMN kind TEXT NOT NULL DEFAULT 'update' CHECK (kind IN ('create', 'update', 'delete', 'link', 'unlink'));

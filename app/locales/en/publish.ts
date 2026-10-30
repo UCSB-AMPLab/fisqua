@@ -11,7 +11,7 @@
  * raw step prefixes. EN labels are presented for review alongside the
  * matching ES translations in the plan summary.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   title: "Publish",
@@ -140,4 +140,6 @@ export default {
     message: "Export complete. To publish changes, trigger the site rebuild in GitHub Actions.",
     link: "Go to GitHub Actions",
   },
+  publish_in_progress: "Another publish is still running. Wait for it to finish before starting a new one.",
+  publish_start_failed: "The publish could not be started. Try again.",
 } as const;

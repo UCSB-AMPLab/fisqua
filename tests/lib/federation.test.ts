@@ -1,22 +1,23 @@
 /**
  * Tests - federation grants + steward authorization (federation step 4)
  *
- * The authz matrix for the grant model (federation spec §4/§5, ruled
- * additions 2026-07-07/08). Fixtures put a MEMBER tenant inside the
+ * This suite tests the authz matrix for the grant model (federation
+ * spec §4/§5, ruled additions 2026-07-07/08). Fixtures put a MEMBER tenant inside the
  * Neogranadina federation (whose lead is the neogranadina tenant) so the
  * cross-tenant paths are real, then exercise:
  *
  *   - resolveGrant across home / grant / none × steward / staff ×
  *     active / suspended (federation and tenant) - invariant I2.
  *   - grantEffectiveRoleFlags / applyGrantEffectiveRole - staff never
- *     confers administration, steward is admin-equivalent (invariant I6).
+ *     confers administration, steward is admin-equivalent (invariant I6),
+ *     and neither carries a home area-admin flag into the member tenant.
  *   - requireTenantUser's grant branch (unit) - home / matching-grant /
  *     mismatched-federation-grant / none.
  *   - isFederationSteward / requireFederationSteward - the authority
  *     mutation gate: lead admin (home) allowed, member admin denied,
  *     steward grant allowed, staff grant denied (ruled 2026-07-08 + I6).
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -43,6 +44,7 @@ import {
   type Federation,
 } from "../../app/lib/federation.server";
 import type { Tenant, User } from "../../app/context";
+import { canAdministerArea, requireArea } from "../../app/lib/user-access.server";
 
 // A member tenant inside the Neogranadina federation (its lead is the
 // neogranadina tenant). This is the tenant grant-holders reach into.
@@ -65,6 +67,10 @@ function makeUser(overrides: Partial<User> & Pick<User, "id" | "tenantId">): Use
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -261,6 +267,47 @@ describe("federation grants + steward authorization", () => {
       expect(effective.isAdmin).toBe(false);
       expect(effective.isSuperAdmin).toBe(false);
       expect(effective.isCataloguer).toBe(true);
+    });
+
+    it("both roles set every area-admin flag to false", () => {
+      for (const role of ["steward", "staff"] as const) {
+        const flags = grantEffectiveRoleFlags(role);
+        expect(flags.isRecordsAdmin).toBe(false);
+        expect(flags.isAuthoritiesAdmin).toBe(false);
+        expect(flags.isImportsAdmin).toBe(false);
+        expect(flags.isDigitizationAdmin).toBe(false);
+      }
+    });
+
+    it("a staff grant over a home records admin gives no records access", () => {
+      const homeRecordsAdmin = makeUser({
+        id: STAFF_GRANT_ID,
+        tenantId: NEOGRANADINA_TENANT_ID,
+        isRecordsAdmin: true,
+      });
+      expect(canAdministerArea(homeRecordsAdmin, "records")).toBe(true);
+      const effective = applyGrantEffectiveRole(homeRecordsAdmin, {
+        role: "staff",
+        federationId: NEOGRANADINA_FEDERATION_ID,
+        homeTenantId: NEOGRANADINA_TENANT_ID,
+      });
+      expect(effective.isRecordsAdmin).toBe(false);
+      expect(canAdministerArea(effective, "records")).toBe(false);
+      expect(() => requireArea(effective, "records")).toThrow(Response);
+    });
+
+    it("a steward grant passes every area as a workspace admin", () => {
+      const effective = applyGrantEffectiveRole(
+        makeUser({ id: STEWARD_GRANT_ID, tenantId: NEOGRANADINA_TENANT_ID }),
+        {
+          role: "steward",
+          federationId: NEOGRANADINA_FEDERATION_ID,
+          homeTenantId: NEOGRANADINA_TENANT_ID,
+        },
+      );
+      for (const area of ["records", "authorities", "imports", "digitization"] as const) {
+        expect(canAdministerArea(effective, area)).toBe(true);
+      }
     });
   });
 

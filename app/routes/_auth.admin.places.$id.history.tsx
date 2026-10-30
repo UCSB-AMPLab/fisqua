@@ -1,20 +1,21 @@
 /**
  * Places Admin — Operation history (read-only)
  *
- * The per-record ledger history page for places (spec §4), the place
- * counterpart of the entities history route: every ledger operation
- * touching this place as source or target, newest first, with
- * direction-aware titles, the acting user, the reason, and compact
- * link-count summaries. Read-only — no action is exported.
+ * This route is the per-record ledger history page for places (spec
+ * §4), the place counterpart of the entities history route: every
+ * ledger operation touching this place as source or target, newest
+ * first, with direction-aware titles, the acting user, the reason, and
+ * compact link-count summaries. Read-only — no action is exported.
  *
  * Gated on the `authorities` capability; federation-scoped.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { useFormatters } from "../lib/use-formatters";
 import {
   OperationHistory,
   type HistoryEntry,
@@ -23,7 +24,7 @@ import type { Route } from "./+types/_auth.admin.places.$id.history";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray } = await import("drizzle-orm");
   const { places } = await import("~/db/schema");
@@ -32,7 +33,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -83,6 +84,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function PlaceHistoryPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("authorities");
+  const { formatIsoDateTime } = useFormatters();
   const { place, history, historyTotal, counterpartNames } = loaderData;
 
   const entries: HistoryEntry[] = history.map((h) => {
@@ -137,7 +139,7 @@ export default function PlaceHistoryPage({ loaderData }: Route.ComponentProps) {
       operation: h.operation,
       title,
       counterpartHref,
-      date: new Date(h.createdAt).toISOString().slice(0, 10),
+      date: formatIsoDateTime(h.createdAt).slice(0, 10),
       user: h.userName || t("bandUnknownUser"),
       reason: h.reason,
       detailParts,
@@ -156,3 +158,5 @@ export default function PlaceHistoryPage({ loaderData }: Route.ComponentProps) {
     />
   );
 }
+
+/* @version v0.8.0 */

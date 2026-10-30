@@ -1,14 +1,14 @@
 /**
  * Tests — global search
  *
- * Covers `app/lib/global-search.server.ts`, the workspace-wide search
- * that answers one query from all three full-text indexes at once.
- * What is pinned here is everything the surface cannot check for
- * itself: that the widened record index really does find text nobody
- * could search before, that every category's boundary holds, that the
- * numbers on the tabs and the number driving pagination mean different
- * things and each is honest about which, and that a query with stray
- * punctuation degrades instead of exploding.
+ * This suite covers `app/lib/global-search.server.ts`, the
+ * workspace-wide search that answers one query from all three full-text
+ * indexes at once. What is pinned here is everything the surface cannot
+ * check for itself: that the widened record index really does find text
+ * nobody could search before, that every category's boundary holds,
+ * that the numbers on the tabs and the number driving pagination mean
+ * different things and each is honest about which, and that a query
+ * with stray punctuation degrades instead of exploding.
  *
  * The refine grammar rides the same fixtures: terms match WHOLE WORDS
  * unless a trailing star asks otherwise, exclusions subtract a known
@@ -58,7 +58,11 @@
  * against a baseline read in the same test rather than hard-coded.
  * Nothing here writes, so the fixtures are seeded once.
  *
- * @version v0.7.0
+ * The transcripts category has its own file; the static keystone at
+ * the end of this one also pins the tenant predicate in every
+ * statement that reads OCR pages.
+ *
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { env } from "cloudflare:test";
@@ -2522,6 +2526,12 @@ describe("global search", () => {
           s.includes("tenant_id =") || s.includes("authorityScopeSql"),
         ).toBe(true);
       }
+    });
+
+    it("every OCR page read carries the page tenant in the same statement", () => {
+      const reads = templates.filter((s) => s.includes("FROM ocr_pages"));
+      expect(reads.length).toBeGreaterThanOrEqual(3);
+      for (const s of reads) expect(s).toContain("p.tenant_id =");
     });
 
     it("binds the date bounds rather than writing them into a statement", () => {

@@ -5,7 +5,9 @@
  * ISAD-adjacent field is editable here, including the display metadata
  * that the public
  * frontend surfaces -- display title, subtitle, hero image -- plus the
- * institution's rights statement. Autosaves to `drafts` via useFetcher
+ * institution's rights statement and the manifest settings: the rights
+ * URI and the English and Spanish attribution a pipeline manifest
+ * carries for this repository's volumes. Autosaves to `drafts` via useFetcher
  * on a debounce so a curator's work survives a page reload, and
  * commits a final row to the `changelog` table on explicit save so
  * editors can audit who changed what and when. A draft conflict banner
@@ -22,7 +24,7 @@
  * rewritten), and a stored free-text country matching no ISO entry is
  * kept verbatim behind a fallback option.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -54,13 +56,13 @@ import type { Route } from "./+types/_auth.admin.repositories.$id";
 // ---------------------------------------------------------------------------
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, asc, sql } = await import("drizzle-orm");
   const { repositories, descriptions } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -146,7 +148,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { repositories, descriptions } = await import("~/db/schema");
@@ -155,7 +157,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -201,7 +203,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         (formData.get("heroImageUrl") as string)?.trim() || null;
       const enabled = formData.get("enabled") === "on";
 
-      // T-28-01: Validate heroImageUrl — only http/https protocols
+      // Validate heroImageUrl — only http/https protocols
       if (heroImageUrl) {
         try {
           const parsed = new URL(heroImageUrl);
@@ -217,6 +219,19 @@ export async function action({ params, request, context }: Route.ActionArgs) {
             errors: { heroImageUrl: ["Invalid URL"] },
           };
         }
+      }
+
+      // Manifest settings: the rights URI must be http or https; an
+      // empty field clears its column.
+      const { readManifestFields, REPOSITORY_MANIFEST_FIELDS } = await import(
+        "~/lib/validation/manifest-fields"
+      );
+      const manifestFields = readManifestFields(formData, REPOSITORY_MANIFEST_FIELDS);
+      if (!manifestFields.ok) {
+        return {
+          ok: false as const,
+          errors: manifestFields.errors,
+        };
       }
 
       const parsed = updateRepositorySchema.safeParse({
@@ -276,6 +291,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         displayTitle,
         subtitle,
         heroImageUrl,
+        manifestRights: manifestFields.values.manifestRights,
+        attributionEn: manifestFields.values.attributionEn,
+        attributionEs: manifestFields.values.attributionEs,
       };
 
       try {
@@ -772,6 +790,9 @@ function ViewMode({
           <FieldDisplay label={t("display_title_label")} value={repository.displayTitle} />
           <FieldDisplay label={t("subtitle_label")} value={repository.subtitle} />
           <FieldDisplay label={t("hero_image_url_label")} value={repository.heroImageUrl} />
+          <FieldDisplay label={t("field.manifestRights")} value={repository.manifestRights} />
+          <FieldDisplay label={t("field.attributionEn")} value={repository.attributionEn} />
+          <FieldDisplay label={t("field.attributionEs")} value={repository.attributionEs} />
           <div>
             <p className="text-xs text-stone-500">{t("field.enabled")}</p>
             {repository.enabled ? (
@@ -956,6 +977,25 @@ function EditMode({
           helperText={t("hero_image_url_helper")}
           type="url"
         />
+        <EditField
+          name="manifestRights"
+          label={t("field.manifestRights")}
+          defaultValue={repository.manifestRights ?? ""}
+          error={errors?.manifestRights?.[0]}
+          type="url"
+        />
+        <EditTextarea
+          name="attributionEn"
+          label={t("field.attributionEn")}
+          defaultValue={repository.attributionEn ?? ""}
+          error={errors?.attributionEn?.[0]}
+        />
+        <EditTextarea
+          name="attributionEs"
+          label={t("field.attributionEs")}
+          defaultValue={repository.attributionEs ?? ""}
+          error={errors?.attributionEs?.[0]}
+        />
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1090,3 +1130,5 @@ function EditTextarea({
     </div>
   );
 }
+
+// @version v0.8.0

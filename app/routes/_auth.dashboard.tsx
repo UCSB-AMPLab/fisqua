@@ -1,30 +1,47 @@
 /**
  * Role-Dependent Dashboard
  *
- * The app's default landing surface: the apex redirect, both
- * post-login flows, and the top-bar brand link all point here. The
+ * This route is the app's default landing surface: the apex redirect,
+ * both post-login flows, and the top-bar brand link all point here. The
  * loader determines the caller's primary project role — lead taking
- * precedence over reviewer, reviewer over cataloguer — and renders
- * the appropriate dashboard view (`LeadDashboard`, `ReviewerDashboard`,
- * or `CataloguerDashboard`) with the role-specific payload the loader
+ * precedence over reviewer, reviewer over cataloguer — and renders the
+ * appropriate dashboard view (`LeadDashboard`, `ReviewerDashboard`, or
+ * `CataloguerDashboard`) with the role-specific payload the loader
  * assembled from volumes, entries, and assignments.
  *
- * Admins additionally get a "Pending decisions" card — open authority
- * proposals (from `pending-decisions.server.ts`) plus open vocabulary
- * proposals (the same federation-scoped `proposed`/`mergedInto`
- * predicate the vocabularies review queue uses). Both are cheap COUNT
- * queries, not row fetches, and (like the records-management empty
- * state) the gate is `user.isAdmin` alone — these are federation admin
- * functions, not crowdsourcing-module content, so they don't wait on
- * `caps.crowdsourcing`. The card renders nothing at all when both
- * counts are zero.
+ * Records and authorities admins additionally get a "Pending
+ * decisions" card — open authority proposals (from
+ * `pending-decisions.server.ts`) for those who pass the authorities
+ * area, and open vocabulary proposals (the same federation-scoped
+ * `proposed`/`mergedInto` predicate the vocabularies review queue
+ * uses) for those who pass the records area; each person sees only the
+ * counts of the areas they administer, so workspace and super admins
+ * see both. Both are cheap COUNT queries, not row fetches, and they are
+ * workspace administration, not crowdsourcing-module content, so they
+ * don't wait on `caps.crowdsourcing`. The card renders nothing at all
+ * when both counts are zero, and links to the vocabulary tab when only
+ * vocabulary proposals wait.
  *
- * Admins also get the workspace search box, directly under the heading
- * row: a plain GET form posting to /search, mirroring that page's own
- * box. It holds no state and shows no results — it is a door, and the
- * search page behind it carries the same admin gate.
+ * The same people get the workspace search box, directly under the
+ * heading row: a plain GET form posting to /search, mirroring that
+ * page's own box. It holds no state and shows no results — it is a
+ * door, and the search page behind it gates its tabs by area.
  *
- * @version v0.7.0
+ * The empty state on a tenant without crowdsourcing links to
+ * Descriptions for the records area and to Imports for the imports
+ * area. The area rule (`canAdministerArea`, `user-access.server.ts`)
+ * is restated in the component as local booleans read from `user`,
+ * since this module also renders in the browser. New project and the
+ * project-lead view stay with the workspace admin (`isAdmin`).
+ *
+ * The Admin button in the heading row and the empty state's manage
+ * users link both go to /admin/users and show under that page's gate,
+ * `canManageTenantUsers` (super admin, user manager or tenant admin).
+ * The loader computes it as `canManageUsers`, since the rule lives in
+ * server code. The Admin button does not depend on crowdsourcing; New
+ * project does.
+ *
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -106,7 +123,13 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { loadPendingDecisionCounts } = await import(
     "../lib/pending-decisions.server"
   );
+  const { canManageTenantUsers } = await import("../lib/permissions.server");
+  const { canAdministerArea } = await import("../lib/user-access.server");
   const user = context.get(userContext);
+  // The Admin button and the empty state's manage-users link both lead
+  // to /admin/users, so they show under that page's own gate. Computed
+  // here because the rule lives in server code.
+  const canManageUsers = canManageTenantUsers(user);
   const tenant = context.get(tenantContext);
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -121,16 +144,26 @@ export async function loader({ context }: Route.LoaderArgs) {
     lang = "en";
   }
 
-  // Pending-decision counts (authority + vocabulary proposals) are a
-  // federation admin function, not crowdsourcing-module content — they
-  // are computed for admins on every tenant, crowdsourcing on or off,
-  // same as the records-management empty-state links below. The count
-  // helpers live in the server lib: this file also exports components,
-  // so a module-scope value import of server code would leak into the
-  // client bundle.
-  const pendingDecisions = user.isAdmin
-    ? await loadPendingDecisionCounts(db, tenant)
-    : null;
+  // Pending-decision counts (authority + vocabulary proposals) are
+  // workspace administration, not crowdsourcing-module content — they
+  // are computed on every tenant, crowdsourcing on or off, for those
+  // who pass the authorities or records area, and each count only for
+  // its own area. The count helpers live in the server lib: this file
+  // also exports components, so a module-scope value import of server
+  // code would leak into the client bundle. Each count needs its area
+  // and the capability its tab sits behind: authority proposals the
+  // authorities capability, vocabulary proposals the vocabulary hub.
+  const authorityCounts =
+    canAdministerArea(user, "authorities") && tenant.authoritiesEnabled;
+  const vocabularyCounts =
+    canAdministerArea(user, "records") && tenant.vocabularyHubEnabled;
+  const pendingDecisions =
+    authorityCounts || vocabularyCounts
+      ? await loadPendingDecisionCounts(db, tenant).then((counts) => ({
+          authorityProposals: authorityCounts ? counts.authorityProposals : 0,
+          vocabularyProposals: vocabularyCounts ? counts.vocabularyProposals : 0,
+        }))
+      : null;
 
   // The dashboard's project/volume/queue content is crowdsourcing-module
   // data. On a crowdsourcing-off tenant there is nothing of it to show —
@@ -145,7 +178,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   };
 
   if (!tenant.crowdsourcingEnabled) {
-    return { user, caps, primaryRole: "none" as const, data: null, pendingDecisions, lang };
+    return { user, caps, primaryRole: "none" as const, data: null, pendingDecisions, canManageUsers, lang };
   }
 
   // Memberships for role determination — scoped to THIS tenant's
@@ -168,7 +201,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const primaryRole = user.isAdmin ? "lead" : determinePrimaryRole(memberships);
 
   if (primaryRole === "none") {
-    return { user, caps, primaryRole, data: null, pendingDecisions, lang };
+    return { user, caps, primaryRole, data: null, pendingDecisions, canManageUsers, lang };
   }
 
   if (primaryRole === "cataloguer") {
@@ -182,6 +215,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       primaryRole,
       data: { ...segData, descriptionEntries: descData },
       pendingDecisions,
+      canManageUsers,
       lang,
     };
   }
@@ -197,6 +231,7 @@ export async function loader({ context }: Route.LoaderArgs) {
       primaryRole,
       data: { ...segData, descriptionData: descData },
       pendingDecisions,
+      canManageUsers,
       lang,
     };
   }
@@ -208,6 +243,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     primaryRole,
     data: await loadLeadData(db, user.id, user.isAdmin, tenant.id),
     pendingDecisions,
+    canManageUsers,
     lang,
   };
 }
@@ -1104,7 +1140,11 @@ function PendingDecisionsCard({ counts }: { counts: PendingDecisionCounts }) {
 
   return (
     <Link
-      to="/admin/decisions"
+      to={
+        counts.authorityProposals > 0
+          ? "/admin/decisions"
+          : "/admin/decisions/vocabulary"
+      }
       className="group mt-6 flex items-center gap-4 rounded-lg border border-stone-200 bg-white p-4 transition-shadow hover:border-indigo hover:shadow-sm"
     >
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-saffron-tint">
@@ -1124,12 +1164,18 @@ function PendingDecisionsCard({ counts }: { counts: PendingDecisionCounts }) {
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
-  const { user, caps, primaryRole, data, pendingDecisions } = loaderData;
+  const { user, caps, primaryRole, data, pendingDecisions, canManageUsers } =
+    loaderData;
   const { t } = useTranslation("dashboard");
   // Aliased: the search box borrows the search page's own strings so
   // the two surfaces cannot drift apart.
   const { t: tSearch } = useTranslation("search");
   const [activeTab, setActiveTab] = useState<"segmentation" | "description">("segmentation");
+  // Who passes each area (see the file header).
+  const anyArea = user.isAdmin || user.isSuperAdmin;
+  const recordsArea = anyArea || user.isRecordsAdmin;
+  const authoritiesArea = anyArea || user.isAuthoritiesAdmin;
+  const importsArea = anyArea || user.isImportsAdmin;
 
   // Compute tab counts for cataloguer
   const cataloguerData = primaryRole === "cataloguer" && data
@@ -1175,27 +1221,31 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
               ? t("heading.my_reviews")
               : t("heading.dashboard")}
         </h1>
-        {user.isAdmin && caps.crowdsourcing && (
+        {(canManageUsers || (user.isAdmin && caps.crowdsourcing)) && (
           <div className="flex items-center gap-3">
-            <Link
-              to="/admin/cataloguing/users"
-              className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-            >
-              {t("nav.admin")}
-            </Link>
-            <Link
-              to="/projects/new"
-              className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
-            >
-              {t("new_project")}
-            </Link>
+            {canManageUsers && (
+              <Link
+                to="/admin/users"
+                className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+              >
+                {t("nav.admin")}
+              </Link>
+            )}
+            {user.isAdmin && caps.crowdsourcing && (
+              <Link
+                to="/projects/new"
+                className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
+              >
+                {t("new_project")}
+              </Link>
+            )}
           </div>
         )}
       </div>
 
       {/* Workspace search: a door onto /search, nothing more — no
           state here, no results here. */}
-      {user.isAdmin && (
+      {(recordsArea || authoritiesArea) && (
         <Form method="get" action="/search" className="mt-6 flex gap-2">
           <div className="relative flex-1">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
@@ -1216,7 +1266,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
         </Form>
       )}
 
-      {user.isAdmin && pendingDecisions && (
+      {pendingDecisions && (
         <PendingDecisionsCard counts={pendingDecisions} />
       )}
 
@@ -1235,15 +1285,17 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                   <p className="mt-2 font-serif text-15 text-stone-500 max-w-measure mx-auto">
                     {t("empty.records_body")}
                   </p>
-                  {user.isAdmin && (
+                  {(recordsArea || (importsArea && caps.imports)) && (
                     <div className="mt-5 flex items-center justify-center gap-3">
-                      <Link
-                        to="/admin/descriptions"
-                        className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
-                      >
-                        {t("empty.go_to_descriptions")}
-                      </Link>
-                      {caps.imports && (
+                      {recordsArea && (
+                        <Link
+                          to="/admin/descriptions"
+                          className="rounded-md bg-indigo px-3 py-2 text-sm font-medium text-parchment hover:bg-indigo-deep"
+                        >
+                          {t("empty.go_to_descriptions")}
+                        </Link>
+                      )}
+                      {importsArea && caps.imports && (
                         <Link
                           to="/admin/imports"
                           className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
@@ -1269,12 +1321,14 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
                     >
                       {t("new_project")}
                     </Link>
-                    <Link
-                      to="/admin/cataloguing/users"
-                      className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
-                    >
-                      {t("manage_users")}
-                    </Link>
+                    {canManageUsers && (
+                      <Link
+                        to="/admin/users"
+                        className="rounded-md border border-stone-300 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                      >
+                        {t("manage_users")}
+                      </Link>
+                    )}
                   </div>
                 </>
               ) : (
@@ -1330,3 +1384,5 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+
+// @version v0.8.0

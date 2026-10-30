@@ -3,7 +3,7 @@
  *
  * This loader streams a dry-run artefact — the rejects CSV or the report
  * JSON — from the staging store (spec §4). It is capability-gated
- * (`requireAdmin` + the `imports` capability) and tenant-scoped: the
+ * (`requireArea(user, "imports")` + the `imports` capability) and tenant-scoped: the
  * upload is resolved through `getUpload`, which filters by tenant id, and
  * the staging key is derived from the tenant id, so one tenant can never
  * fetch another tenant's artefact even by guessing an upload id.
@@ -14,7 +14,7 @@
  * source artefact). Any other value 404s. A missing artefact 404s rather
  * than streaming an empty body.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { tenantContext, userContext } from "../context";
@@ -22,7 +22,7 @@ import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.imports.uploads.$uploadId.download.$kind";
 
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { getUpload } = await import("~/lib/import/uploads.server");
   const { getStagingStore, stagingKey } = await import(
@@ -30,7 +30,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 

@@ -38,7 +38,7 @@
  * `<Link>` navigation, same mounted route); a filter change reloads the
  * document and clears it, as it always has.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -113,15 +113,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope, authorityScopeSql } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, asc, desc, isNull, eq, like, or, inArray, sql } =
     await import("drizzle-orm");
-  const { entities, descriptionEntities } = await import("~/db/schema");
+  const { entities, descriptionEntities, descriptions } = await import("~/db/schema");
   const { normaliseName } = await import("~/lib/authority-duplicates.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -372,7 +372,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Attach the real linked-description count to each visible row with a
   // single per-page grouped query over the page's ids (cheap — the page
-  // is at most 50 rows). Federation-scoped through the entities join.
+  // is at most 50 rows). Federation-scoped through the entities join, and
+  // counting only this tenant's descriptions.
   async function attachLinkCounts(rows: Entity[]): Promise<Entity[]> {
     if (rows.length === 0) return rows;
     const ids = rows.map((r) => r.id);
@@ -383,10 +384,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       })
       .from(descriptionEntities)
       .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
+      .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
       .where(
         and(
           authorityScope(entities, tenant.federationId, tenant.id),
           inArray(descriptionEntities.entityId, ids),
+          eq(descriptions.tenantId, tenant.id),
         ),
       )
       .groupBy(descriptionEntities.entityId)
@@ -489,7 +492,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (linksSort) {
     const { total, typeCounts } = await standardCounts();
     const offset = cursor ? Math.max(0, parseInt(cursor, 10) || 0) : 0;
-    const linkCountSub = sql<number>`(SELECT COUNT(*) FROM description_entities de WHERE de.entity_id = ${entities.id})`;
+    const linkCountSub = sql<number>`(SELECT COUNT(*) FROM description_entities de JOIN descriptions d ON d.id = de.description_id WHERE de.entity_id = ${entities.id} AND d.tenant_id = ${tenant.id})`;
     const raw = (await db
       .select()
       .from(entities)

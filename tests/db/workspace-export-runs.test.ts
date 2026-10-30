@@ -1,15 +1,15 @@
 /**
  * Tests — workspace export runs
  *
- * Covers `app/lib/export/scopes.server.ts` (the four What doors resolved
- * to what will leave) and `app/lib/export/run.server.ts` (the ledger
- * row's lifecycle: start, execute, cancel, fail, read, sweep). What is
- * pinned here is everything a surface cannot check for itself: that a
- * branch walk never leaks another tenant's row even when that row
- * spoofs the parent link; that a carried scope's stashed ids are
- * re-read under THIS tenant rather than trusted, so a foreign id never
- * surfaces; that a handlist export takes the handlist's own order and
- * excludes tombstones; the three named refusals a handlist scope can
+ * This suite covers `app/lib/export/scopes.server.ts` (the four What
+ * doors resolved to what will leave) and `app/lib/export/run.server.ts`
+ * (the ledger row's lifecycle: start, execute, cancel, fail, read,
+ * sweep). What is pinned here is everything a surface cannot check for
+ * itself: that a branch walk never leaks another tenant's row even when
+ * that row spoofs the parent link; that a carried scope's stashed ids
+ * are re-read under THIS tenant rather than trusted, so a foreign id
+ * never surfaces; that a handlist export takes the handlist's own order
+ * and excludes tombstones; the three named refusals a handlist scope can
  * raise (needs-review, empty, untyped); that a run row lands `running`
  * before the artifact exists and `completed` with counts and an R2
  * object once it does; that a carried scope is spent when the RUN
@@ -45,7 +45,7 @@
  * from before the index existed — is to seed the collision the index
  * would otherwise refuse.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
@@ -72,6 +72,7 @@ import {
   listExportRuns,
   sweepExpiredExports,
   exportObjectKey,
+  buildFileName,
 } from "../../app/lib/export/run.server";
 import type { Tenant, User } from "../../app/context";
 
@@ -105,6 +106,10 @@ function makeUser(overrides: Partial<User> & Pick<User, "id" | "tenantId">): Use
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -854,3 +859,25 @@ describe("workspace export runs", () => {
     });
   });
 });
+
+describe("buildFileName", () => {
+  // 2026-10-26T04:46:08.454Z: 25 October in Bogotá, 26 October in Tokyo.
+  const NEAR_MIDNIGHT = 1792989968454;
+
+  it("dates the file on the exporting member's calendar", () => {
+    expect(
+      buildFileName({ kind: "workspace" }, "isadg", "csv", NEAR_MIDNIGHT, "America/Bogota"),
+    ).toBe("workspace-isadg-2026-10-25.csv");
+    expect(
+      buildFileName({ kind: "workspace" }, "isadg", "csv", NEAR_MIDNIGHT, "Asia/Tokyo"),
+    ).toBe("workspace-isadg-2026-10-26.csv");
+  });
+
+  it("dates the file in America/Los_Angeles when no zone is given", () => {
+    expect(
+      buildFileName({ kind: "workspace" }, "isadg", "csv", NEAR_MIDNIGHT),
+    ).toBe("workspace-isadg-2026-10-25.csv");
+  });
+});
+
+/* @version v0.8.0 */

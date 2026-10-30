@@ -9,8 +9,10 @@
  *     `Host` header to a seeded `tenants` row. Three branches:
  *     legacy host `catalogacion.zasqua.org` (Neogranadina's
  *     pre-subdomain production host); subdomain hosts on
- *     `<slug>.localhost`, `<slug>.fisqua.test`, and
- *     `<slug>.fisqua.org` (slug looked up in `tenants.slug`); and
+ *     `<slug>.localhost`, `<slug>.fisqua.test`,
+ *     `<slug>.staging.fisqua.org` (the staging deploy's tenant
+ *     hosts), and `<slug>.fisqua.org` (slug looked up in
+ *     `tenants.slug`); and
  *     unknown -- a bare `Response(null, {status: 404})` so no
  *     header or body leaks information about which slugs exist.
  *     Multi-level subdomains (`evil.neogranadina.fisqua.org`) are
@@ -20,7 +22,8 @@
  *   - `hasCapability(tenant, cap)` / `requireCapability(tenant, cap)`
  *     -- the route-loader gates for the capability flags
  *     (`crowdsourcing`, `vocabulary_hub`, `publish_pipeline`,
- *     `multi_repository`, `authorities`, `imports`). The `require` form throws a bare 404 so
+ *     `multi_repository`, `authorities`, `imports`,
+ *     `media_pipeline`, `digitization`). The `require` form throws a bare 404 so
  *     a disabled-capability surface looks identical to a missing
  *     route from the outside; v0.4 capabilities are operator-set
  *     and effectively immutable (multi-tenancy.md), so the "user
@@ -59,16 +62,16 @@
  * platform and Neogranadina rows and changing them silently breaks
  * the back-fill.
  *
- * v0.4 carve-outs documented in CONTEXT.md `<threat_model>`:
- *   - T-31-01-06 (suspended-tenant access): `getTenantFromRequest`
+ * v0.4 carve-outs:
+ *   - Suspended-tenant access: `getTenantFromRequest`
  *     does NOT yet gate on `tenants.status === "suspended"`. v0.4
  *     has no real suspended tenants; the gate ships alongside the
  *     operator soft-disable action.
- *   - T-31-01-07 (capability-off audit): not logged. `audit_log` is
+ *   - Capability-off audit: not logged. `audit_log` is
  *     for operator actions touching tenant data; URL hits on
  *     disabled capabilities are not operator actions.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { eq } from "drizzle-orm";
@@ -190,13 +193,22 @@ export const LEGACY_HOST_MAP: Readonly<Record<string, string>> = {
  * Recognised subdomain suffixes for slug-based tenant resolution.
  * Browsers resolve `*.localhost` to 127.0.0.1 by default (no DNS
  * setup needed for dev); `*.fisqua.test` is the test convention;
- * `*.fisqua.org` is the production subdomain. Each suffix is matched
- * with a leading `.` so a top-level host such as `fisqua.org` does
- * not accidentally resolve to an empty slug.
+ * `*.staging.fisqua.org` is the staging deploy's tenant host (e.g.
+ * `ahr.staging.fisqua.org`); `*.fisqua.org` is the production
+ * subdomain. Each suffix is matched with a leading `.` so a top-level
+ * host such as `fisqua.org` does not accidentally resolve to an empty
+ * slug.
+ *
+ * Callers take the FIRST suffix in this list that the host ends
+ * with, so a longer suffix must come before any shorter suffix it
+ * ends with: `.staging.fisqua.org` sits ahead of `.fisqua.org`, or
+ * `ahr.staging.fisqua.org` would strip to the two-level slug
+ * `ahr.staging` and be refused as a nested host.
  */
 export const SUBDOMAIN_HOST_SUFFIXES = [
   ".localhost",
   ".fisqua.test",
+  ".staging.fisqua.org",
   ".fisqua.org",
 ] as const;
 
@@ -207,11 +219,10 @@ export const SUBDOMAIN_HOST_SUFFIXES = [
  * staging deploy's apex (`staging.fisqua.org`), which serves as a
  * deploy-smoke environment rather than hosting tenants.
  *
- * Staging is a sandbox/smoke environment, not a per-tenant mirror.
- * Per-tenant testing happens locally via `wrangler dev` +
- * `seed:dev-tenant`. So `staging.fisqua.org` is
- * apex-equivalent for the landing render and 404s on tenant-scoped
- * routes (correctly — there are no tenants on staging).
+ * `staging.fisqua.org` is apex-equivalent for the landing render and
+ * 404s on tenant-scoped routes. Staging's tenants answer one level
+ * below it, on `<slug>.staging.fisqua.org` (the `.staging.fisqua.org`
+ * suffix above); the apex itself stays reserved.
  *
  * `getTenantFromRequest` short-circuits to 404 for these hosts so a
  * tenant-scoped route on `staging.fisqua.org/<...>` returns the same
@@ -320,7 +331,9 @@ export type Capability =
   | "publish_pipeline"
   | "multi_repository"
   | "authorities"
-  | "imports";
+  | "imports"
+  | "media_pipeline"
+  | "digitization";
 
 /**
  * Returns the boolean value of the matching `*Enabled` field on
@@ -342,6 +355,10 @@ export function hasCapability(tenant: Tenant, cap: Capability): boolean {
       return tenant.authoritiesEnabled;
     case "imports":
       return tenant.importsEnabled;
+    case "media_pipeline":
+      return tenant.mediaPipelineEnabled;
+    case "digitization":
+      return tenant.digitizationEnabled;
   }
 }
 
@@ -477,9 +494,11 @@ export async function getTenantFromRequest(
     throw new Response(null, { status: 404 });
   }
 
-  // Branch 2: subdomain suffixes. Match the longest suffix first by
-  // iterating the static list; each entry is a literal `.<suffix>`
-  // so the leading-dot anchoring is implicit.
+  // Branch 2: subdomain suffixes. The first suffix in the static list
+  // that the host ends with wins; the list orders a longer suffix
+  // (`.staging.fisqua.org`) ahead of a shorter one it ends with
+  // (`.fisqua.org`), so the longest match is taken. Each entry is a
+  // literal `.<suffix>`, so the leading-dot anchoring is implicit.
   for (const suffix of SUBDOMAIN_HOST_SUFFIXES) {
     if (host.endsWith(suffix)) {
       const slug = host.slice(0, host.length - suffix.length);
@@ -590,3 +609,5 @@ export function buildTenantOriginUrl(
   }
   return null;
 }
+
+// @version v0.8.0

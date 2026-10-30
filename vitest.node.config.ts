@@ -3,7 +3,7 @@
  *
  * Some tests can't run under the Workers pool because they depend on
  * Node-only APIs that the miniflare sandbox doesn't expose. This config
- * routes those tests to the standard Node pool. Two suites currently
+ * routes those tests to the standard Node pool. These suites currently
  * live here:
  *
  *   - `tests/schema/migrations.test.ts` — replays every migration file
@@ -18,17 +18,24 @@
  *     themselves (`tests/fixtures/ead3/ead3.rng`) are read via
  *     `fs/promises` — neither of those work inside the Workers pool sandbox.
  *
+ *   - `tests/media-pipeline-node/**` — checks that the media pipeline's
+ *     run-spec JSON Schema and its runtime validator agree. A JSON
+ *     Schema engine compiles validators with `new Function`, which the
+ *     Workers runtime forbids.
+ *
  * Tests not matching these globs belong with the main `vitest.config.ts`
  * (Workers pool). The corresponding entries in `vitest.config.ts`'s
  * `exclude` list keep the Workers pool from also picking these up.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // The development machine is shared; cap the worker pool.
+    maxWorkers: 2,
     include: [
       "tests/schema/migrations.test.ts",
       "tests/export/ead/schema-*.test.ts",
@@ -38,6 +45,10 @@ export default defineConfig({
       // system layer the Workers pool doesn't expose.
       "tests/i18n-coverage.test.ts",
       "tests/i18n-keys.test.ts",
+      // Media pipeline checks that need a JSON Schema engine, which
+      // compiles validators with `new Function` and cannot run in the
+      // Workers pool.
+      "tests/media-pipeline-node/**/*.test.ts",
     ],
   },
 });

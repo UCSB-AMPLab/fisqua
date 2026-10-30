@@ -13,7 +13,11 @@
  * (class_name: ImportCommitWorkflow) and re-exported from
  * workers/app.ts so the Workflows runtime can resolve it.
  *
- * @version v0.6.0
+ * The terminal counts include `ocrPagesWritten`, the page-1 OCR rows the
+ * batches wrote; a step return recorded before that count existed adds
+ * nothing to it.
+ *
+ * @version v0.8.0
  */
 
 import {
@@ -95,6 +99,7 @@ export class ImportCommitWorkflow extends WorkflowEntrypoint<
         skipped: config.counts.skipped,
         rejected: config.counts.rejected,
         pathCacheCapped: 0,
+        ocrPagesWritten: 0,
       };
 
       // Create batches, in topological order (parents before children).
@@ -111,11 +116,13 @@ export class ImportCommitWorkflow extends WorkflowEntrypoint<
             ...executed,
             created: executed.created + res.created,
             pathCacheCapped: (executed.pathCacheCapped ?? 0) + res.pathCacheCapped,
+            ocrPagesWritten: (executed.ocrPagesWritten ?? 0) + (res.ocrPagesWritten ?? 0),
           });
           return res;
         });
         executed.created += r.created;
         executed.pathCacheCapped = (executed.pathCacheCapped ?? 0) + r.pathCacheCapped;
+        executed.ocrPagesWritten = (executed.ocrPagesWritten ?? 0) + (r.ocrPagesWritten ?? 0);
       }
 
       // Update batches (independent; any order).
@@ -129,11 +136,13 @@ export class ImportCommitWorkflow extends WorkflowEntrypoint<
             ...executed,
             updated: executed.updated + res.updated,
             unchanged: executed.unchanged + res.unchanged,
+            ocrPagesWritten: (executed.ocrPagesWritten ?? 0) + (res.ocrPagesWritten ?? 0),
           });
           return res;
         });
         executed.updated += r.updated;
         executed.unchanged += r.unchanged;
+        executed.ocrPagesWritten = (executed.ocrPagesWritten ?? 0) + (r.ocrPagesWritten ?? 0);
       }
 
       // Structural-cache reconciliation after the hierarchy writes. Its

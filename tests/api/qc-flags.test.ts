@@ -16,7 +16,7 @@
  * 404 shape an unknown description would produce, so probe traffic
  * cannot enumerate cross-tenant ids.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -44,6 +44,10 @@ function buildUser(overrides: { id: string; email: string; isAdmin?: boolean; te
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
   };

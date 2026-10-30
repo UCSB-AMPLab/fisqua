@@ -1,26 +1,32 @@
 /**
  * Tests — import commit step bodies (spec §5; stewardship spec §§2–3)
  *
- * Drives the ImportCommitWorkflow's step functions directly against the
- * real D1 harness with an in-memory staging store (the pipeline.test.ts
- * pattern), so the write path is exercised without the Workflows runtime.
- * Pins: the create round-trip (rows minted with `created_by` = the run
- * author, requeryable by natural key, each paired with a full-snapshot
- * journal row carrying null before-images), the update before-image diff
- * with an `updated_at` bump, idempotent re-run (no double insert, no double
- * journal), structural-cache recompute (an existing container's childCount
- * reconciled, journalled, and attributed), profile-version drift refusal,
- * the WRITE-DERIVED count contract (record_counts = summed step returns,
- * with an `unchanged` bucket), blank-means-keep on update, legacyIds
- * merge-append (unbound profiles leave archived identifiers untouched;
- * bound ones union without dropping), the double-submit mint mutex, and
- * the pathCache cap-and-warn.
+ * This suite drives the ImportCommitWorkflow's step functions directly
+ * against the real D1 harness with an in-memory staging store (the
+ * pipeline.test.ts pattern), so the write path is exercised without the
+ * Workflows runtime. Pins: the create round-trip (rows minted with
+ * `created_by` = the run author, requeryable by natural key, each paired
+ * with a full-snapshot journal row carrying null before-images), the update
+ * before-image diff with an `updated_at` bump, idempotent re-run (no double
+ * insert, no double journal), structural-cache recompute (an existing
+ * container's childCount reconciled, journalled, and attributed),
+ * profile-version drift refusal, the WRITE-DERIVED count contract
+ * (record_counts = summed step returns, with an `unchanged` bucket),
+ * blank-means-keep on update, legacyIds merge-append (unbound profiles
+ * leave archived identifiers untouched; bound ones union without dropping),
+ * the double-submit mint mutex, the pathCache cap-and-warn, and bound OCR
+ * text, which lands as a page-1 row in the shape migration 0086 wrote:
+ * inserted on create, inserted or replaced in place on update, kept out of
+ * the journal, and refused (by the plan step and again by the update batch)
+ * for a description whose pages a pipeline run wrote; a blank OCR cell
+ * keeps what is there.
  *
  * Fixtures are REAL SBMAL rows over the verbatim DACS headers; the
  * hierarchy fixtures add a parent-reference-code column but invent no
- * archival metadata (placeholder container codes only).
+ * archival metadata (placeholder container codes only). The OCR column's
+ * cells are synthetic placeholders.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -35,6 +41,7 @@ import {
 import { createTestUser } from "../helpers/auth";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
+import { seedPage } from "../helpers/ocr-fixtures";
 import { changelog, descriptions, importProfiles, stewardshipRuns, tenants } from "../../app/db/schema";
 import { createProfile } from "../../app/lib/import/profiles.server";
 import { getProfileById } from "../../app/lib/import/runs.server";
@@ -183,17 +190,20 @@ async function driveCommit(
     skipped: config.counts.skipped,
     rejected: config.counts.rejected,
     pathCacheCapped: 0,
+    ocrPagesWritten: 0,
   };
   const BS = 50;
   for (let i = 0; i < config.createCodes.length; i += BS) {
     const r = await processCreateBatch(db(), ctx.store, config, config.createCodes.slice(i, i + BS));
     executed.created += r.created;
     executed.pathCacheCapped += r.pathCacheCapped;
+    executed.ocrPagesWritten += r.ocrPagesWritten;
   }
   for (let i = 0; i < config.updateCodes.length; i += BS) {
     const r = await processUpdateBatch(db(), ctx.store, config, config.updateCodes.slice(i, i + BS));
     executed.updated += r.updated;
     executed.unchanged += r.unchanged;
+    executed.ocrPagesWritten += r.ocrPagesWritten;
   }
   await recomputeStructuralCaches(db(), config);
   await finalizeRun(db(), ctx.runId, executed);
@@ -921,3 +931,242 @@ async function setupWithCsv(opts: { csv: string; bindings: unknown; updateExisti
   if (!minted) throw new Error("mint refused (upload not staged)");
   return { tenantId, userId: user.id, repositoryId: repo.id, uploadId, runId: minted.runId, store, profileId: created.id, profileVersion: created.version };
 }
+
+describe("import commit — bound OCR text becomes a page-1 row", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  // The cell values are synthetic placeholders, not archival text. Each
+  // test's terms are its own, so the full-text checks cannot match
+  // another test's rows.
+  const OCR_BINDINGS = [
+    ...SBMAL_DACS_BINDINGS,
+    { source: "OCR_Text", target: "ocrText", transform: { kind: "direct" as const } },
+  ];
+  const csvWithOcr = (byCode: Record<string, string>) =>
+    makeSbmalCsv(
+      SBMAL_REAL_ROWS.map((row) => ({ ...row, OCR_Text: byCode[row.Reference_Code ?? ""] ?? "" }) as typeof row),
+      ["OCR_Text"],
+    );
+
+  interface PageRow {
+    id: string;
+    tenant_id: string;
+    description_id: string;
+    page_seq: number;
+    text: string;
+    source_key: string | null;
+    alto_key: string | null;
+    run_id: string | null;
+  }
+  async function pagesOf(descriptionId: string): Promise<PageRow[]> {
+    const { results } = await env.DB.prepare(
+      "SELECT id, tenant_id, description_id, page_seq, text, source_key, alto_key, run_id FROM ocr_pages WHERE description_id = ? ORDER BY page_seq",
+    ).bind(descriptionId).all<PageRow>();
+    return results;
+  }
+  async function ftsHits(term: string): Promise<string[]> {
+    const { results } = await env.DB.prepare(
+      "SELECT p.description_id AS id FROM ocr_pages p JOIN ocr_pages_fts f ON f.rowid = p.rowid WHERE f.ocr_pages_fts MATCH ?",
+    ).bind(term).all<{ id: string }>();
+    return results.map((r) => r.id);
+  }
+  async function idOf(tenantId: string, code: string): Promise<string> {
+    const row = await db()
+      .select({ id: descriptions.id })
+      .from(descriptions)
+      .where(and(eq(descriptions.tenantId, tenantId), eq(descriptions.referenceCode, code)))
+      .get();
+    if (!row) throw new Error(`no description ${code}`);
+    return row.id;
+  }
+  async function journalFor(runId: string) {
+    return db().select({ recordId: changelog.recordId, diff: changelog.diff }).from(changelog)
+      .where(eq(changelog.runId, runId)).all();
+  }
+  async function seedExisting(tenantId: string, code: string) {
+    const repo = await createTestRepository({ tenantId });
+    return createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: code, title: "Old title", descriptionLevel: "item",
+    });
+  }
+
+  it("writes a created row's OCR text as a page-1 row in the migrated shape, indexed and outside the journal", async () => {
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "placeholder zorvanite text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: false,
+    });
+    const { executed } = await driveCommit(s, false);
+    expect(executed.created).toBe(8);
+    expect(executed.ocrPagesWritten).toBe(1);
+
+    const id = await idOf(s.tenantId, "CMD 1");
+    const pages = await pagesOf(id);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toMatchObject({
+      tenant_id: s.tenantId, page_seq: 1, text: "placeholder zorvanite text",
+      source_key: null, alto_key: null, run_id: null,
+    });
+    expect(await pagesOf(await idOf(s.tenantId, "CMD 2"))).toHaveLength(0);
+    expect(await ftsHits("zorvanite")).toEqual([id]);
+    for (const entry of await journalFor(s.runId)) {
+      expect(entry.diff).not.toContain("ocrText");
+      expect(entry.diff).not.toContain("zorvanite");
+    }
+  });
+
+  it("an ocrText binding whose cells are all blank writes no page rows", async () => {
+    const s = await setup({ csv: csvWithOcr({}), bindings: OCR_BINDINGS, updateExisting: false });
+    const { executed } = await driveCommit(s, false);
+    expect(executed.created).toBe(8);
+    expect(executed.ocrPagesWritten).toBe(0);
+    const { results } = await env.DB.prepare("SELECT count(*) AS n FROM ocr_pages").all<{ n: number }>();
+    expect(results[0].n).toBe(0);
+  });
+
+  it("an update gives a description without pages a page-1 row, journalling no OCR text", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "placeholder quillmoss text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(1);
+    const pages = await pagesOf(seeded.id);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toMatchObject({ page_seq: 1, text: "placeholder quillmoss text", run_id: null, source_key: null, alto_key: null });
+    expect(await ftsHits("quillmoss")).toEqual([seeded.id]);
+    for (const entry of await journalFor(s.runId)) expect(entry.diff).not.toContain("quillmoss");
+  });
+
+  it("an update replaces a migrated page-1 row's text in place and keeps the index in step", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "older brambleton text" });
+    const [before] = await pagesOf(seeded.id);
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "newer fernwhistle text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(1);
+    const pages = await pagesOf(seeded.id);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].id).toBe(before.id);
+    expect(pages[0].text).toBe("newer fernwhistle text");
+    expect(await ftsHits("fernwhistle")).toEqual([seeded.id]);
+    expect(await ftsHits("brambleton")).toEqual([]);
+  });
+
+  it("equal OCR text leaves the migrated page-1 row untouched", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "steady larkspindle text" });
+    const [before] = await pagesOf(seeded.id);
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "steady larkspindle text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(0);
+    expect(await pagesOf(seeded.id)).toEqual([before]);
+  });
+
+  it("a blank OCR cell on update leaves the migrated page-1 row as it is", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "kept mirrowfen text" });
+    const [before] = await pagesOf(seeded.id);
+    const s = await setup({ csv: csvWithOcr({}), bindings: OCR_BINDINGS, updateExisting: true });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(0);
+    expect(await pagesOf(seeded.id)).toEqual([before]);
+  });
+
+  it("refuses a run that would write OCR text to a description with pipeline pages, writing nothing", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "pipeline page one", runId: "run-1", sourceKey: "k/1.txt" });
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 2, text: "pipeline page two", runId: "run-1", sourceKey: "k/2.txt" });
+    const before = await pagesOf(seeded.id);
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "placeholder OCR text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    await expect(
+      loadCommitConfig(db(), s.store, {
+        runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: true,
+      }),
+    ).rejects.toThrow(/OCR text cannot be imported for 1 description.*CMD 1/);
+    expect(await pagesOf(seeded.id)).toEqual(before);
+    const rows = await db().select({ id: descriptions.id }).from(descriptions)
+      .where(eq(descriptions.tenantId, tenantId)).all();
+    expect(rows).toHaveLength(1);
+  });
+
+  it("refuses a page-1 row without a run id that is not in the migrated shape", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "keyed text", sourceKey: "k/1.txt" });
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "placeholder OCR text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    await expect(
+      loadCommitConfig(db(), s.store, {
+        runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: true,
+      }),
+    ).rejects.toThrow(/OCR text cannot be imported/);
+  });
+
+  it("the update batch refuses OCR text for a description with pipeline pages, writing and journalling nothing", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    // Plan the run against blank OCR cells, then put OCR text into the
+    // staged object and give the description pipeline pages, so the
+    // batch sees what the plan did not.
+    const s = await setup({ csv: csvWithOcr({}), bindings: OCR_BINDINGS, updateExisting: true });
+    const config = await loadCommitConfig(db(), s.store, {
+      runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: true,
+    });
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "pipeline page one", runId: "run-1", sourceKey: "k/1.txt" });
+    const before = await pagesOf(seeded.id);
+    await s.store.put(config.sourceArtifact, withBom(csvWithOcr({ "CMD 1": "placeholder OCR text" })));
+
+    await expect(processUpdateBatch(db(), s.store, config, ["CMD 1"])).rejects.toThrow(/OCR text cannot be imported/);
+    const cmd1 = (await db().select({ title: descriptions.title }).from(descriptions)
+      .where(eq(descriptions.id, seeded.id)).get()) as { title: string };
+    expect(cmd1.title).toBe("Old title");
+    expect(await pagesOf(seeded.id)).toEqual(before);
+    expect(await journalFor(s.runId)).toHaveLength(0);
+  });
+
+  it("reads and writes pages only within the run's tenant", async () => {
+    // A description in another tenant with the same reference code and
+    // a migrated row keeps its row when this tenant imports OCR text.
+    const other = await seedExisting(SECOND_TEST_TENANT_ID, "CMD 1");
+    await seedPage({ descriptionId: other.id, tenantId: SECOND_TEST_TENANT_ID, pageSeq: 1, text: "other tenant text" });
+    const otherBefore = await pagesOf(other.id);
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "placeholder tenant text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    await driveCommit(s, true);
+    expect(await pagesOf(other.id)).toEqual(otherBefore);
+    expect((await pagesOf(seeded.id))[0]).toMatchObject({ tenant_id: tenantId, text: "placeholder tenant text" });
+  });
+});

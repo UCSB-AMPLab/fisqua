@@ -17,7 +17,7 @@
  * cases — the user-CRUD cases are pure D1 round-trips, not route
  * exercises, so they stay focused on the table contract.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import {
   describe,
@@ -56,6 +56,10 @@ describe("admin area", () => {
         isArchiveUser: false,
         isUserManager: false,
         isCataloguer: false,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
         lastActiveAt: null,
         githubId: null,
       };
@@ -74,6 +78,10 @@ describe("admin area", () => {
         isArchiveUser: false,
         isUserManager: false,
         isCataloguer: false,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
         lastActiveAt: null,
         githubId: null,
       };

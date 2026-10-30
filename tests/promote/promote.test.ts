@@ -17,7 +17,12 @@
  * with one mocked failure scenario pinning the all-or-nothing
  * rollback.
  *
- * @version v0.4.0
+ * Each tenant's manifests go to the manifest bucket it is given, under
+ * the manifest base it is given: two promotions with two tenants'
+ * writers and bases each write only to their own bucket, and each
+ * description's manifest URL sits under its own base.
+ *
+ * @version v0.8.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -25,7 +30,9 @@ import {
   getPromotableEntries,
   getVolumesWithPromotableEntries,
 } from "../../app/lib/promote/promote.server";
-import { DEFAULT_TEST_TENANT_ID } from "../helpers/db";
+import { DEFAULT_TEST_TENANT_ID, SECOND_TEST_TENANT_ID } from "../helpers/db";
+import { fakeS3 } from "../helpers/fake-s3";
+import { s3ManifestWriter } from "../../app/lib/pipeline/canonical.server";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,7 +118,6 @@ function makeParentDescription(overrides: Record<string, unknown> = {}) {
     pages: null,
     provenance: null,
     scopeContent: null,
-    ocrText: "",
     arrangement: null,
     accessConditions: null,
     reproductionConditions: null,
@@ -409,6 +415,55 @@ describe("promoteEntries", () => {
         manifestBaseUrl: "https://manifests.zasqua.org",
       })
     ).rejects.toThrow("batch_too_large");
+  });
+
+  it("writes each tenant's manifest to its own bucket, under its own base", async () => {
+    const s3 = fakeS3(["first-manifests", "second-manifests"]);
+    const tenants = [
+      { tenantId: DEFAULT_TEST_TENANT_ID, bucket: "first-manifests", base: "https://manifests.first.example.test", key: "first-key" },
+      { tenantId: SECOND_TEST_TENANT_ID, bucket: "second-manifests", base: "https://manifests.second.example.test", key: "second-key" },
+    ];
+    const inserted: any[][] = [];
+    for (const t of tenants) {
+      const db = createMockDb({
+        entries: [makeEntryRow({ id: "e1", dateExpression: "1650" })],
+        volumes: [makeVolume()],
+        parentDescription: makeParentDescription({
+          id: "11111111-1111-4111-8111-111111111111",
+          repositoryId: "22222222-2222-4222-8222-222222222222",
+          rootDescriptionId: "33333333-3333-4333-8333-333333333333",
+        }),
+        volumePages: [makeVolumePageRow(1)],
+      });
+      const result = await promoteEntries({
+        db,
+        manifestsBucket: s3ManifestWriter(
+          { endpoint: "https://acct.r2.cloudflarestorage.com", bucket: t.bucket, keyId: t.key, secretKey: "s" },
+          s3.fetch,
+        ),
+        entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
+        volumeId: "vol-001",
+        userId: "44444444-4444-4444-8444-444444444444",
+        tenantId: t.tenantId,
+        standard: "isadg",
+        manifestBaseUrl: t.base,
+      });
+      expect(result.errors).toEqual([]);
+      expect(result.promoted).toHaveLength(1);
+      inserted.push(db._inserted);
+    }
+    const puts = s3.requests.filter((r) => r.method === "PUT");
+    expect(puts.map((r) => [r.bucket, r.key, r.keyId])).toEqual([
+      ["first-manifests", "iiif/AHRB-001-d001/manifest.json", "first-key"],
+      ["second-manifests", "iiif/AHRB-001-d001/manifest.json", "second-key"],
+    ]);
+    const urls = inserted.map((rows) => rows.find((r: any) => r.iiifManifestUrl)?.iiifManifestUrl);
+    expect(urls).toEqual([
+      "https://manifests.first.example.test/iiif/AHRB-001-d001/manifest.json",
+      "https://manifests.second.example.test/iiif/AHRB-001-d001/manifest.json",
+    ]);
+    const second = JSON.parse(s3.text("second-manifests", "iiif/AHRB-001-d001/manifest.json")!);
+    expect(second.id).toBe("https://manifests.second.example.test/iiif/AHRB-001-d001/manifest.json");
   });
 
   it("rejects entries with type other than item", async () => {

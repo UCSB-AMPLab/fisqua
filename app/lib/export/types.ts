@@ -22,7 +22,7 @@
  * `app/lib/export/ead/profiles/registry.ts` resolves a tenant's
  * `descriptiveStandard` to the right profile.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import type { Standard, DescriptionLevel } from "../standards/types";
@@ -70,7 +70,9 @@ export interface ExportDescription {
   children_level: string | null;
   has_digital: boolean;
   iiif_manifest_url: string;
-  mets_url: string;
+  mets_url?: string;
+  /** Reference codes this description was published under before; omitted when none. */
+  former_reference_codes?: string[];
   scope_content: string | null;
   ocr_text: string | null;
   extent: string | null;
@@ -132,14 +134,19 @@ export interface ExportEntity {
   date_end: string | null;
   history: string | null;
   legal_status: string | null;
-  functions: string | null;
+  /** Omitted when the entity has none. */
+  functions?: Array<Record<string, unknown>>;
   sources: string | null;
   wikidata_id: string | null;
   viaf_id: string | null;
+  /** Codes zasqua.org published this entity under before; omitted when none. */
+  former_codes?: string[];
 }
 
 /** Place record in places.json */
 export interface ExportPlace {
+  /** Stable string id, the same on every publish. */
+  id: string;
   label: string;
   place_code: string | null;
   display_name: string;
@@ -159,6 +166,8 @@ export interface ExportPlace {
   hgis_id: string | null;
   whg_id: string | null;
   wikidata_id: string | null;
+  /** Codes zasqua.org published this place under before; omitted when none. */
+  former_codes?: string[];
 }
 
 /** Entry in children/{referenceCode}.json */

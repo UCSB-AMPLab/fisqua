@@ -1,11 +1,13 @@
 # Preview
 #
-# Gates every PR to `main`: runs the full test suite (`npm test` — all
-# three vitest configs: Workers pool, node, import) and the TypeScript
-# type-check. Direct pushes to `main` are gated separately by
-# tests.yml.
+# This workflow gates every PR to `main`: it runs the full test suite (`npm
+# test` — all three vitest configs: Workers pool, node, import), the
+# TypeScript type-check and the production build. The build is what refuses
+# a route whose client code reaches a server-only module, which neither the
+# tests nor the type-check see. Direct pushes to `main` are gated separately
+# by tests.yml.
 #
-# @version v0.4.1
+# @version v0.8.0
 
 name: Preview
 
@@ -20,7 +22,7 @@ concurrency:
 jobs:
   preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       pull-requests: write
@@ -33,3 +35,4 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
+      - run: npm run build

@@ -1,12 +1,13 @@
 /**
  * Segmentation Viewer Route
  *
- * The cataloguing workspace: IIIF viewer on the left, outline on the
- * right, with the QC flag and comment surfaces integrated through the
- * toolbar and overlays. The loader pulls everything the page needs in
- * a single round-trip — pages, entries, open comments partitioned by
- * page / entry / flag / region, open QC flags per page, and any open
- * resegmentation requests — so the render never waterfalls.
+ * This route is the cataloguing workspace: IIIF viewer on the left,
+ * outline on the right, with the QC flag and comment surfaces
+ * integrated through the toolbar and overlays. The loader pulls
+ * everything the page needs in a single round-trip — pages, entries,
+ * open comments partitioned by page / entry / flag / region, open QC
+ * flags per page, and any open resegmentation requests — so the render
+ * never waterfalls.
  *
  * In-app navigation must not discard in-flight saves. `useBlocker`
  * (React Router 7) interrupts any client-side navigation away from
@@ -44,7 +45,7 @@
  * MARK_SAVING / MARK_SAVED / MARK_ERROR transitions inside the
  * hook itself.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRevalidator, useBlocker } from "react-router";
@@ -889,7 +890,8 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
  <div className="flex h-full flex-col">
  <ViewerTopBar
  volumeName={volume.name}
- projectId={projectId}
+ backTo={`/projects/${projectId}/volumes`}
+ backLabel={t("viewer:toolbar.back_to_volumes")}
  saveStatus={saveStatus}
  canUndo={canUndo}
  canRedo={canRedo}
@@ -1186,3 +1188,4 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   );
 }
 
+// @version v0.8.0

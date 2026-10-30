@@ -54,7 +54,7 @@
  * tenant.descriptiveStandard` read from `tenantContext`. Level
  * labels — even in a future breadcrumb — stay flat.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -102,7 +102,7 @@ interface Repository {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, lt, asc, desc, eq, like, isNotNull, sql } = await import(
     "drizzle-orm"
@@ -110,7 +110,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { descriptions, repositories } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -333,14 +333,14 @@ const LEVEL_BADGE_STYLES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, asc, sql } = await import("drizzle-orm");
   const { descriptions } = await import("~/db/schema");
   const { isValidChildLevel } = await import("~/lib/description-levels");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;

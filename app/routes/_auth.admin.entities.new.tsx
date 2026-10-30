@@ -22,7 +22,7 @@
  * shares them — and that same setting decides whether creating one
  * needs a steward.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -42,9 +42,9 @@ import type { Route } from "./+types/_auth.admin.entities.new";
 // ---------------------------------------------------------------------------
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   return {};
@@ -56,7 +56,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, sql } = await import("drizzle-orm");
   const { entities, vocabularyTerms } = await import("~/db/schema");
@@ -64,7 +64,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { generateUniqueCode } = await import("~/lib/codes.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 

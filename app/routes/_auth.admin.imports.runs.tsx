@@ -12,7 +12,7 @@
  * runs tenant-scoped: `stewardship_runs` carries a first-class `tenant_id`,
  * so one tenant can never see another's runs.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useEffect } from "react";
@@ -20,17 +20,17 @@ import { Link, useRevalidator } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { formatIsoDateTime } from "../lib/format-date";
+import { useFormatters } from "../lib/use-formatters";
 import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { listRuns } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -55,6 +55,7 @@ function parseCounts(json: string | null): Record<string, number> | null {
 
 export default function ImportRunsPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("imports");
+  const { formatIsoDateTime } = useFormatters();
   const { runs } = loaderData;
   const revalidator = useRevalidator();
 
@@ -151,3 +152,5 @@ export default function ImportRunsPage({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+
+/* @version v0.8.0 */

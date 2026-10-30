@@ -25,7 +25,7 @@
  * reading `custodial_history` still learns which field was dropped,
  * and a blank teaches nothing.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -268,6 +268,7 @@ export interface ScopeText {
  */
 export function useScopeText(): ScopeText {
   const { t } = useTranslation("exports");
+  const { formatIsoDateTime } = useFormatters();
 
   return useMemo(
     () => ({
@@ -293,18 +294,15 @@ export function useScopeText(): ScopeText {
             return descriptor.referenceCode || null;
           case "carried":
             return t("carriedRunStamp", {
-              stamp: new Date(descriptor.carriedAt)
-                .toISOString()
-                .slice(0, 16)
-                .replace("T", " "),
+              stamp: formatIsoDateTime(descriptor.carriedAt).slice(0, 16),
             });
           default:
             return null;
         }
       },
     }),
-    [t],
+    [t, formatIsoDateTime],
   );
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

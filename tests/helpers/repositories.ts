@@ -7,7 +7,7 @@
  * this helper. Defaults to DEFAULT_TEST_TENANT_ID; pass `tenantId` for
  * cross-tenant scenarios.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { drizzle } from "drizzle-orm/d1";
 import { env } from "cloudflare:test";
@@ -31,6 +31,9 @@ export async function createTestRepository(overrides: Partial<{
   subtitle: string | null;
   heroImageUrl: string | null;
   enabled: boolean;
+  manifestRights: string | null;
+  attributionEn: string | null;
+  attributionEs: string | null;
 }> = {}) {
   const db = drizzle(env.DB);
   const now = Date.now();
@@ -52,6 +55,9 @@ export async function createTestRepository(overrides: Partial<{
     subtitle: overrides.subtitle ?? null,
     heroImageUrl: overrides.heroImageUrl ?? null,
     enabled: overrides.enabled ?? true,
+    manifestRights: overrides.manifestRights ?? null,
+    attributionEn: overrides.attributionEn ?? null,
+    attributionEs: overrides.attributionEs ?? null,
     createdAt: now,
     updatedAt: now,
   };

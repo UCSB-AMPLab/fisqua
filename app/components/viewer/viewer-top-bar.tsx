@@ -1,21 +1,26 @@
 /**
  * Viewer Top Bar
  *
- * This component is the page-level top bar for the viewer route — volume
- * title, progress breadcrumbs, and the save-status pill. Sits above the
- * viewer toolbar and is scroll-locked to the top of the page.
+ * This component is the page-level top bar for the full-height viewers —
+ * a back link, the volume's title, undo and redo, and the save-status
+ * pill. It sits above the viewer toolbar and is scroll-locked to the top
+ * of the page. Two viewers use it: the segmentation viewer, whose back
+ * link returns to the project's volumes, and the capture QC viewer,
+ * whose back link returns to the capture QC queue; each passes where
+ * the link goes (`backTo`) and what it is called (`backLabel`). The
+ * arrow, undo and redo icons are Lucide's, as everywhere in the app.
  *
  * The shared `<SaveStatus>` component is i18n-agnostic; this top bar
  * resolves the four state labels (saved / saving / unsaved / error)
  * and the retry-affordance label from the `viewer` namespace's nested
- * `save_status.*` shape and passes them down as props. The viewer
- * route does not yet dispatch the `error` state — the `error` label
- * still lands here so the bounded-retry surface can adopt the wider
- * union without re-touching the top bar.
+ * `save_status.*` shape and passes them down as props. The capture QC
+ * viewer reaches the `error` state when its saves run out of retries,
+ * and passes `onRetrySave` for the pill's retry link.
  *
  * The top bar also renders a visible "Save now" button next to the
- * SaveStatus pill (the manual-save escape hatch). The click handler
- * is forwarded from the viewer route via the optional `onSaveNow`
+ * SaveStatus pill (the manual-save escape hatch) when the viewer
+ * passes one. The segmentation viewer's click handler is forwarded
+ * via the optional `onSaveNow`
  * prop; the route owns the `flush()` binding (see
  * `_auth.viewer.$projectId.$volumeId.tsx`'s `handleSaveNow`). Keeping
  * the click closure in the route rather than passing `flush` itself
@@ -24,15 +29,19 @@
  * prop to the shared `<SaveStatus>` component, because the
  * labels-as-props contract keeps that component presentation-only.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import { ArrowLeft, Redo2, Undo2 } from "lucide-react";
 import { SaveStatus, type SaveStatusValue } from "./save-status";
 
 type ViewerTopBarProps = {
   volumeName: string;
-  projectId: string;
+  /** Where the back link goes. */
+  backTo: string;
+  /** The back link's accessible name. */
+  backLabel: string;
   saveStatus?: SaveStatusValue;
   canUndo: boolean;
   canRedo: boolean;
@@ -50,7 +59,8 @@ type ViewerTopBarProps = {
 
 export function ViewerTopBar({
   volumeName,
-  projectId,
+  backTo,
+  backLabel,
   saveStatus,
   canUndo,
   canRedo,
@@ -69,25 +79,13 @@ export function ViewerTopBar({
 
   return (
  <div className="flex h-10 shrink-0 items-center border-b border-stone-200 bg-white px-4">
- {/* Left: back arrow */}
+ {/* Left: back link */}
  <Link
- to={`/projects/${projectId}/volumes`}
+ to={backTo}
  className="flex shrink-0 items-center text-stone-500 hover:text-stone-700"
- aria-label={t("toolbar.back_to_volumes")}
+ aria-label={backLabel}
  >
- <svg
- className="h-4 w-4"
- fill="none"
- viewBox="0 0 24 24"
- strokeWidth={2}
- stroke="currentColor"
- >
- <path
- strokeLinecap="round"
- strokeLinejoin="round"
- d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"
- />
- </svg>
+ <ArrowLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
  </Link>
 
  {/* Centre: volume name */}
@@ -105,19 +103,7 @@ export function ViewerTopBar({
  aria-label={t("toolbar.undo")}
  title={t("toolbar.undo_shortcut")}
  >
- <svg
- className="h-4 w-4"
- fill="none"
- viewBox="0 0 24 24"
- strokeWidth={2}
- stroke="currentColor"
- >
- <path
- strokeLinecap="round"
- strokeLinejoin="round"
- d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
- />
- </svg>
+ <Undo2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
  </button>
  <button
  type="button"
@@ -127,19 +113,7 @@ export function ViewerTopBar({
  aria-label={t("toolbar.redo")}
  title={t("toolbar.redo_shortcut")}
  >
- <svg
- className="h-4 w-4"
- fill="none"
- viewBox="0 0 24 24"
- strokeWidth={2}
- stroke="currentColor"
- >
- <path
- strokeLinecap="round"
- strokeLinejoin="round"
- d="M15 15l6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"
- />
- </svg>
+ <Redo2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
  </button>
  {saveStatus && (
  <SaveStatus
@@ -162,3 +136,5 @@ export function ViewerTopBar({
  </div>
   );
 }
+
+// @version v0.8.0

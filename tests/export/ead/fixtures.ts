@@ -15,7 +15,7 @@
  * `77777777-7777-4777-8777-777777777777` = RAD). See app/lib/tenant.ts and
  * tests/helpers/db.ts for the canonical declarations these mirror.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import type { Standard } from "../../../app/lib/standards/types";
@@ -112,9 +112,9 @@ export const sampleRepositoryById: ReadonlyMap<string, EadRepository> = new Map(
 /**
  * Sample fonds-level + child rows for a single fonds (`co-ahr-gob`).
  *
- * Includes XML-special characters in `title`/`scopeContent` (T-37-02
+ * Includes XML-special characters in `title`/`scopeContent` (XML-escape
  * exercise on every test run), null `dateExpression` on the file-level
- * row (RESEARCH Pitfall 4 null-safety coverage), and four description
+ * row (null-safety coverage), and four description
  * levels so per-level emission can be exercised end-to-end.
  */
 export const sampleFondsRows: ReadonlyArray<EadInput> = [
@@ -162,7 +162,7 @@ export const sampleFondsRows: ReadonlyArray<EadInput> = [
     referenceCode: "co-ahr-gob-s1-f1",
     title: "Carpeta 1 — Borradores",
     descriptionLevel: "file",
-    dateExpression: null, // null on purpose — RESEARCH Pitfall 4
+    dateExpression: null, // null on purpose — null-safety coverage
     extent: "1 carpeta",
     creatorDisplay: null,
     scopeContent: "Borradores administrativos",

@@ -1,16 +1,17 @@
 /**
  * Entities Admin — Merge workbench (full-page)
  *
- * The full-viewport merge surface for entity authorities (spec §4,
- * handoff surface 1), replacing the old modal. The `:id` record is the
- * one that will be merged away; the survivor is chosen via the
- * `?survivor=<id>` query param (typeahead selection, list two-row
- * select, or direction swap all navigate here). The loader renders the
- * server-side field comparison for the pair; the action performs the
- * soft merge — the loser keeps its page with `mergedInto` set — and
- * writes the required reason into the ledger row's `detail.reason`.
+ * This route is the full-viewport merge surface for entity authorities
+ * (spec §4, handoff surface 1), replacing the old modal. The `:id`
+ * record is the one that will be merged away; the survivor is chosen
+ * via the `?survivor=<id>` query param (typeahead selection, list
+ * two-row select, or direction swap all navigate here). The loader
+ * renders the server-side field comparison for the pair; the action
+ * performs the soft merge — the loser keeps its page with `mergedInto`
+ * set — and writes the required reason into the ledger row's
+ * `detail.reason`.
  *
- * Gated on the `authorities` capability like the six phase-2 admin
+ * Gated on the `authorities` capability like the other authority admin
  * routes; the mutation additionally follows the authority ownership
  * rule (migration 0067) — no steward needed when this tenant owns both
  * the survivor and the loser, steward-gated otherwise.
@@ -18,7 +19,7 @@
  * Both merge sides load rich linked-description context cards
  * (`loadLinkedDescriptionCards`); the survivor's cards are read-only.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -26,6 +27,7 @@ import { redirect } from "react-router";
 import { useActionData } from "react-router";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
+import { formatIsoDateTime, requestTimeZone } from "~/lib/format";
 import {
   MergeWorkbench,
   type ComparisonField,
@@ -34,7 +36,7 @@ import type { Route } from "./+types/_auth.admin.entities.$id.merge";
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { entities } = await import("~/db/schema");
@@ -43,7 +45,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -63,6 +65,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     recordType: "entity",
     ownerId: id,
     displayName: loser.displayName,
+    tenantId: tenant.id,
   });
 
   let survivor: typeof loser | null = null;
@@ -85,6 +88,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
         recordType: "entity",
         ownerId: survivorId,
         displayName: survivor.displayName,
+        tenantId: tenant.id,
       });
     }
   }
@@ -101,16 +105,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { and, eq, sql } = await import("drizzle-orm");
-  const { entities, descriptionEntities } = await import("~/db/schema");
+  const { and, eq, inArray, sql } = await import("drizzle-orm");
+  const { entities, descriptionEntities, descriptions } = await import("~/db/schema");
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -169,6 +173,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   // role) unique index are captured in full for the ledger, then deleted.
   // Each link must belong to the LOSER — a crafted linkId pointing at
   // another record's junction row is skipped, never repointed.
+  // Only the request tenant's description links are touched: a link
+  // whose description belongs to another tenant stays where it is,
+  // whatever ids the form names.
+  const tenantDescriptions = db
+    .select({ id: descriptions.id })
+    .from(descriptions)
+    .where(eq(descriptions.tenantId, tenant.id));
   const linkStatements: any[] = [];
   const droppedLinks: unknown[] = [];
   let movedLinks = 0;
@@ -180,6 +191,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         and(
           eq(descriptionEntities.id, linkId),
           eq(descriptionEntities.entityId, loserId),
+          inArray(descriptionEntities.descriptionId, tenantDescriptions),
         ),
       )
       .get();
@@ -230,13 +242,18 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     survivorVariants = JSON.stringify(Array.from(merged));
   }
 
-  // Links left behind on the loser = its live links minus those
+  // Links left behind on the loser = this tenant's live links on it minus those
   // actually reassigned or conflict-dropped (not the raw client count,
   // which may contain ids that were skipped as not the loser's).
   const [{ count: loserLinkCount }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(descriptionEntities)
-    .where(eq(descriptionEntities.entityId, loserId))
+    .where(
+      and(
+        eq(descriptionEntities.entityId, loserId),
+        inArray(descriptionEntities.descriptionId, tenantDescriptions),
+      ),
+    )
     .all();
   const leftBehind = Math.max(
     0,
@@ -244,7 +261,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const timestamp = Date.now();
-  const now = new Date().toISOString().slice(0, 10);
+  // The provenance line's date is the acting member's calendar day.
+  const now = formatIsoDateTime(timestamp, requestTimeZone(request)).slice(0, 10);
   const sourceNote = `Merged into ${survivor.displayName} (${survivor.entityCode}) on ${now}`;
 
   const batch: any[] = [
@@ -357,3 +375,5 @@ export default function EntityMergeWorkbench({
     />
   );
 }
+
+/* @version v0.8.0 */

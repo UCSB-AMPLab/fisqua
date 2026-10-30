@@ -1,13 +1,13 @@
 /**
  * Tests — admin publish + promote layout capability gate
  *
- * This suite pins the `_auth.admin.publish` page loader and the
- * `_auth.admin.promote` legacy redirect, both of which throw
- * `Response(null, {status: 404})` when
- * the resolved tenant has the `publish_pipeline` capability flag
- * off. Pairs with the sidebar gate (which hides the Publish nav item
- * AND the Promote sub-item under cataloguing when publish_pipeline
- * is off) as belt-and-braces against direct-URL access.
+ * This suite pins the `_auth.admin.publish` page loader, which throws
+ * `Response(null, {status: 404})` when the resolved tenant has the
+ * `publish_pipeline` capability flag off, and the `_auth.admin.promote`
+ * legacy redirect, which throws the same 404 when `crowdsourcing` is
+ * off. Promote is a cataloguing feature with no tie to the publish
+ * pipeline, so the redirect ignores `publish_pipeline`. Each pairs
+ * with its sidebar gate as belt-and-braces against direct-URL access.
  *
  * The seed fixture's second tenant has
  * `publish_pipeline_enabled = 0`, so the off-case here exercises the
@@ -19,9 +19,7 @@
  * to (those are covered by the `_auth.admin.publish.tsx` integration
  * suite when run end-to-end off-laptop).
  *
- * Threat model coverage: T-31-04-02.
- *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -38,6 +36,7 @@ import { makeTenantContext, makeUserContext } from "../helpers/context";
 function buildContext(args: {
   user: User;
   publishPipelineEnabled: boolean;
+  crowdsourcingEnabled?: boolean;
 }): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, args.user);
@@ -52,7 +51,7 @@ function buildContext(args: {
       publishPipelineEnabled: args.publishPipelineEnabled,
       // Other capabilities stay ON so the publish_pipeline gate is
       // exercised in isolation.
-      crowdsourcingEnabled: true,
+      crowdsourcingEnabled: args.crowdsourcingEnabled ?? true,
       vocabularyHubEnabled: true,
       multiRepositoryEnabled: true,
     }),
@@ -151,14 +150,15 @@ describe("admin promote legacy redirect capability gate", () => {
     await cleanDatabase();
   });
 
-  it("promote redirect 404s when publish_pipeline is off", async () => {
+  it("promote redirect 404s when crowdsourcing is off, publish pipeline on", async () => {
     const admin = makeUserContext({
       tenantId: SECOND_TEST_TENANT_ID,
       isCollabAdmin: true,
     });
     const ctx = buildContext({
       user: admin,
-      publishPipelineEnabled: false,
+      publishPipelineEnabled: true,
+      crowdsourcingEnabled: false,
     });
 
     const { loader } = await import("../../app/routes/_auth.admin.promote");
@@ -178,14 +178,14 @@ describe("admin promote legacy redirect capability gate", () => {
     }
   });
 
-  it("promote redirect issues a 301 when publish_pipeline is on", async () => {
+  it("promote redirect issues a 301 when crowdsourcing is on, publish pipeline off", async () => {
     const admin = makeUserContext({
       tenantId: DEFAULT_TEST_TENANT_ID,
       isCollabAdmin: true,
     });
     const ctx = buildContext({
       user: admin,
-      publishPipelineEnabled: true,
+      publishPipelineEnabled: false,
     });
 
     const { loader } = await import("../../app/routes/_auth.admin.promote");
@@ -210,3 +210,5 @@ describe("admin promote legacy redirect capability gate", () => {
     );
   });
 });
+
+// @version v0.8.0

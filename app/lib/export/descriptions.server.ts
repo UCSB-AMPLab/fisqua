@@ -8,7 +8,13 @@
  * publish — internal bookkeeping columns (createdBy, updatedBy,
  * internal notes) are deliberately excluded.
  *
- * @version v0.4.0
+ * A description's `mets_url` is built from its tenant's `mets_base_url`
+ * as `{base}/{reference_code}.xml`, with `?` and `#` removed from the
+ * code and trailing slashes from the base, the same address the IIIF
+ * manifest's `seeAlso` names. A tenant without a base exports no
+ * `mets_url`; the data contract makes the field optional.
+ *
+ * @version v0.8.0
  */
 
 import type { ExportDescription } from "./types";
@@ -70,10 +76,19 @@ export function publicationTitle(
   return null;
 }
 
+/** The METS address of a description, or undefined when the tenant has no base. */
+export function metsUrl(referenceCode: string, metsBaseUrl: string | null | undefined): string | undefined {
+  const base = (metsBaseUrl ?? "").trim().replace(/\/+$/, "");
+  if (!base) return undefined;
+  return `${base}/${referenceCode.replace(/[?#]/g, "")}.xml`;
+}
+
 /**
  * Map a D1 description row + its repository to ExportDescription.
  * Only exported fields are included — internal fields (internalNotes,
- * createdBy, updatedBy) are excluded.
+ * createdBy, updatedBy) are excluded. `formerReferenceCodes` are the
+ * reference codes the description was published under before
+ * (`former-codes.server.ts`); the field is omitted when there are none.
  */
 export function formatDescription(
   row: {
@@ -110,8 +125,11 @@ export function formatDescription(
   },
   repo: { code: string; country: string | null },
   parentRefCode: string | null,
-  childRefs: string[]
+  childRefs: string[],
+  metsBaseUrl: string | null = null,
+  formerReferenceCodes: string[] = []
 ): ExportDescription {
+  const mets = metsUrl(row.referenceCode, metsBaseUrl);
   return {
     id: row.id,
     repository_code: repo.code,
@@ -136,7 +154,10 @@ export function formatDescription(
     ),
     has_digital: row.hasDigital ?? false,
     iiif_manifest_url: row.iiifManifestUrl ?? "",
-    mets_url: `https://mets.zasqua.org/${row.referenceCode.replace(/[?#]/g, "")}.xml`,
+    ...(mets ? { mets_url: mets } : {}),
+    ...(formerReferenceCodes.length > 0
+      ? { former_reference_codes: formerReferenceCodes }
+      : {}),
     scope_content: row.scopeContent,
     ocr_text: row.ocrText ?? "",
     extent: row.extent,
@@ -162,3 +183,5 @@ export function formatDescription(
     place_display: row.placeDisplay,
   };
 }
+
+// @version v0.8.0

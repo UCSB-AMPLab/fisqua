@@ -9,7 +9,7 @@
  * (`tests/i18n-coverage.test.ts`) runs equally over the parallel
  * ES file.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   brand: "Fisqua Operator",
@@ -41,6 +41,8 @@ export default {
       multi_repository: "Multi-repository",
       authorities: "Authorities",
       imports: "Imports",
+      media_pipeline: "Media pipeline",
+      digitization: "Digitization",
     },
     view_link: "View",
     empty_state: "No tenants yet.",
@@ -77,6 +79,7 @@ export default {
       capabilities: "Capabilities",
       impersonate: "Log in as",
       danger_zone: "Danger zone",
+      manifests: "IIIF manifests",
     },
     overview: {
       slug: "Slug",
@@ -88,6 +91,17 @@ export default {
     capabilities_form: {
       submit: "Save capabilities",
       success: "Capabilities saved.",
+      destination_unset:
+        "The media pipeline can't be turned on: this tenant's storage destination is not set up.",
+    },
+    manifest_form: {
+      public_site_url: "Public site URL",
+      public_site_name: "Public site name",
+      provider_name: "Provider name",
+      provider_url: "Provider URL",
+      mets_base_url: "METS base URL",
+      submit: "Save manifest settings",
+      success: "Manifest settings saved.",
     },
     impersonate_form: {
       role_legend: "Sign in as which role on this tenant?",
@@ -124,4 +138,4 @@ export default {
   },
 } as const;
 
-// @version v0.7.0
+// @version v0.8.0

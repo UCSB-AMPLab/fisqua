@@ -14,9 +14,12 @@
  * `tenantId` to `DEFAULT_TEST_TENANT_ID` (the seeded Neogranadina
  * row), and accepts a `Partial<User>` to override any field.
  *
- * `makeTenantContext` defaults to a `kind: "tenant"` row with all
- * four capability flags ON (matching the Neogranadina seed) and
- * `descriptiveStandard: "isadg"`. Pass overrides to flip
+ * `makeTenantContext` defaults to a `kind: "tenant"` row with the
+ * five long-standing capability flags ON (matching the Neogranadina
+ * seed) and `descriptiveStandard: "isadg"`. The three operator-granted
+ * flags, `importsEnabled`, `mediaPipelineEnabled` and
+ * `digitizationEnabled`, default to `false`, because their columns
+ * default to 0. Pass overrides to flip
  * capabilities, change `kind` to `"platform"` (operator carve-out
  * tests), or seed a different tenant id.
  *
@@ -25,7 +28,7 @@
  * round-trip should use the integration scaffolding in
  * `tests/middleware/auth.test.ts` instead.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import type { User, Tenant } from "../../app/context";
 import { DEFAULT_TEST_TENANT_ID } from "./db";
@@ -49,6 +52,10 @@ export function makeUserContext(overrides: Partial<User> = {}): User {
     isArchiveUser: overrides.isArchiveUser ?? false,
     isUserManager: overrides.isUserManager ?? false,
     isCataloguer: overrides.isCataloguer ?? false,
+    isRecordsAdmin: overrides.isRecordsAdmin ?? false,
+    isAuthoritiesAdmin: overrides.isAuthoritiesAdmin ?? false,
+    isImportsAdmin: overrides.isImportsAdmin ?? false,
+    isDigitizationAdmin: overrides.isDigitizationAdmin ?? false,
     lastActiveAt: overrides.lastActiveAt ?? null,
     githubId: overrides.githubId ?? null,
   };
@@ -79,6 +86,10 @@ export function makeTenantContext(overrides: Partial<Tenant> = {}): Tenant {
     // imports (migration 0061) defaults OFF platform-wide; tests that
     // exercise the import surface flip it on explicitly.
     importsEnabled: overrides.importsEnabled ?? false,
+    // media pipeline (migration 0081) defaults OFF, as imports does.
+    mediaPipelineEnabled: overrides.mediaPipelineEnabled ?? false,
+    // digitization (migration 0098) defaults OFF, as imports does.
+    digitizationEnabled: overrides.digitizationEnabled ?? false,
     quotaStorageBytes: overrides.quotaStorageBytes ?? null,
     disabledAt: overrides.disabledAt ?? null,
     federationId: overrides.federationId ?? NEOGRANADINA_FEDERATION_ID,
@@ -91,5 +102,12 @@ export function makeTenantContext(overrides: Partial<Tenant> = {}): Tenant {
     placeCodePrefix: overrides.placeCodePrefix ?? null,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
+    // Manifest settings (migration 0090) default to NULL, as on every
+    // row the migration found.
+    publicSiteUrl: overrides.publicSiteUrl ?? null,
+    publicSiteName: overrides.publicSiteName ?? null,
+    providerName: overrides.providerName ?? null,
+    providerUrl: overrides.providerUrl ?? null,
+    metsBaseUrl: overrides.metsBaseUrl ?? null,
   };
 }

@@ -1,5 +1,5 @@
 /**
- * Tests — imports capability gate (imports module phase 1)
+ * Tests — imports capability gate
  *
  * This suite pins the `imports` capability introduced in migration
  * 0061: the placeholder admin route, and the operator capability
@@ -14,7 +14,7 @@
  * Harness mirrors tests/admin/authorities-capability.test.ts and
  * tests/operator/tenant-detail.test.ts.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";

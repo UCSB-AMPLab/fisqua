@@ -6,6 +6,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-30
+
+### Added
+
+- **Captua link.** A workspace's Captua scanner unit delivers its capture manifest to Fisqua over HTTPS and asks how its volumes are getting on. Fisqua checks every image the manifest names against the federation's masters bucket, registers the volume and its pages in one guarded write, and answers with the state the exchange contract defines for each volume. Each unit has its own token, which Fisqua keeps only as a hash and limits to its workspace's delivery and status calls, at 60 calls a minute. Until processing starts on a volume, Fisqua replaces its manifest with a newer one; after that, it refuses a newer manifest. Volumes registered from a manifest file with the `register-capture-volumes` command get the same delivery record, so capture QC and the hold on processing apply to them too. A manifest at contract version 1.5 may give an image's orientation as `rotateDeg`, a clockwise quarter turn counted from its stored pixels. Fisqua and the runner (v1.2.0 or later) use it instead of the EXIF tag, and capture QC rotations are counted after it. Masters and their tags are never changed.
+
+- **Digitization.** A new per-workspace capability, switched on by an operator, adds a Digitization section to the sidebar with four screens. Volumes lists every volume the scanner has delivered, with its state and next step. Capture QC lists the volumes waiting for review, with their reviewer, the approved, rejected and undecided openings, and the days waited, and lets an administrator assign or reassign the reviewer. Retakes lists the openings rejected for retake and where each stands: requested, sent to scanner, or replaced. Scanner shows the unit, when it last called Fisqua, and its token, which administrators make, replace and revoke there; Fisqua shows a new token once and stores only its hash. Volumes and Scanner are for workspace administrators, digitization administrators and federation stewards; Capture QC and Retakes are also open to a volume's assigned reviewer.
+
+- **Capture QC.** The unit of decision is the opening. A reviewer approves it, or rejects it for retake with a reason (motion blur, glare or reflection, shadows, out of focus, exposure, debris on surface, framing, obstruction, other) and a note, which Other requires. Rejecting a two-image opening asks which side to retake: left, right or both. A rotation correction is recorded per image in quarter turns, and the media pipeline applies it before processing. The unit receives the decisions at its next call. Fisqua holds a volume back from processing until every opening is approved, and a decision can be changed until processing starts. An opening the manifest marks `rejected` counts as not approved until a newer delivery replaces it, and the unit is told `retakes_requested` once every other opening is approved. When a retake arrives, Fisqua carries over the approval of every opening whose images did not change, so the reviewer looks again only at the new images.
+
+- **Capture QC viewer.** Openings appear as a scrolling column of pairs or single images, with the decision controls, rotation and opening number in the margins. Zoom runs from 25% to 200%, the contact sheet shows review thumbnails, and filters narrow the column to undecided or rejected openings. Keyboard shortcuts cover approve, reject, rotate, moving between openings and undo. For an opening delivered again after a rejection, the viewer offers the earlier images in place, with the reason they were rejected. A decision can be cleared until the unit has fetched it.
+
+- **Review images.** When Fisqua registers a delivery, it starts a review run that tiles the unprocessed previews, exactly as captured, into a private review-tiles bucket of the federation. The viewer reads the tiles straight from that bucket with a download authorization limited to the delivery's folder and to a short time. Volumes shows Preparing review images while the run is open, and Retry if it fails. Reviewers can approve and reject without images in the meantime. The processing run deletes a volume's review tiles once its own tiles are verified.
+
+- **Media pipeline.** Fisqua sends image processing to a separate runner on GitHub Actions, dispatched through a GitHub App, and receives the runner's reports by callback. The media pipeline needs this runner, which is not yet public; the rest of Fisqua works without it. Fisqua records each run, its jobs, the volumes in it, the pages the runner flags for review, and the gate pass a recipe needs, after a sample run, before it runs at scale. A recipe declaration on a description sets the platen, background, output class (tonal or bilevel), OCR language and preset. A volume flagged as restricted is never put in a run or published. For volumes registered from a Captua manifest, the runner checks each page's SHA-256 when it pulls the file and stops the volume on a mismatch. The capability is set per workspace by an operator. Federation stewards start runs on member workspaces' volumes; a member workspace's own administrators do not. There are no run screens yet: a processing run is started by a request to the start route, and recipe declarations have no form.
+
+- **Publishing processed volumes.** Fisqua builds each IIIF manifest's descriptive fields from the description, its repository and the workspace: rights statement, attribution in English and Spanish, public site, provider and METS link. The operator forms for repositories and workspaces edit these settings, and a run is refused for a repository with no rights statement or with an attribution in one language only. Publishing copies the manifest to its public address without overwriting, and replaces a description's migrated page-1 transcript with the pipeline's pages, keeping the old text. It is off unless the deployment sets `PIPELINE_PUBLISH_ENABLED`.
+
+- **Pipeline storage per federation.** Pipeline output goes to buckets recorded on the workspace's federation, under each workspace's slug. Operator commands create or adopt the federation's tiles, masters, manifest and review-tiles buckets and Fisqua's keys (`provision-federation-storage`), each workspace's runner keys (`provision-tenant-storage`), the shared working bucket (`provision-working-bucket`), a capture unit's upload and read keys (`provision-appliance-key`) and its link token (`scanner-token`). Every command does a dry run unless told to apply, and production needs `--confirm-production`. Each bucket records its role in its bucket info, and the commands refuse to issue keys over a bucket recorded for another role, environment or federation.
+
+- **Captures made before contract naming.** `copy-renamed-captures` copies images captured before Captua named files by the contract into the masters bucket under contract names, from a rename map Captua supplies. It copies on the server, checks each copy's SHA-1 and size, never overwrites, and stops on any earlier version, hidden file or unfinished upload at a destination key.
+
+- **Area administrators.** Four roles each administer one area of a workspace: Records admin (descriptions, repositories and vocabularies), Authorities admin (entities, places, authority decisions and authority handlists), Imports admin (imports) and Digitization admin (the scanner and its volumes). Workspace admins and super admins administer every area. The sidebar, the dashboard's counts and its search box follow the areas a person administers. Machine-readable exports are open to the administrator of the records' area and to the imports administrator. An area role applies only in its own workspace and does not carry through a federation grant.
+
+- **Granting roles.** Roles are granted and revoked on a person's detail page. Workspace admins and super admins grant their workspace's members the workspace roles: Workspace admin, Reader, the four area admin roles where the workspace has the area, and Cataloguing admin and Cataloguer where it uses crowdsourcing. Only super admins grant Super admin and User manager. A super admin at home on the federation's lead workspace grants and revokes federation stewards, and stewards grant and revoke federation staff; a steward with no workspace role can open the users list and the detail page's Federation section for that purpose alone. When workspace admins and super admins invite someone, they can choose an initial role: Workspace admin, Records admin, the admin role of each other area the workspace has, or Reader. No one can change their own roles, the last workspace admin cannot be removed, and during an operator's impersonation session no role or federation membership can be changed and an invitation carries no role. A change is saved only while the person's roles are still as the page showed them. Fisqua records each role change, federation role change, project membership change made on the detail page, and invitation in the audit log, and the detail page shows them, with who made each one, in the person's access history.
+
+- **Users by area.** The users list shows each person's access as one badge per area (Platform, Federation, Records management, Authorities, Cataloguing, Digitization, Imports and exports), marked as administering or working in it, with search by name or email and an area filter. People from other workspaces in the federation who work here appear in a separate, read-only table. The detail page shows the profile, then a section for each area the viewer may see, with project memberships under Cataloguing, reviewed volumes under Digitization, and the person's access history from the audit log.
+
+- **Reader.** The archive-user role becomes Reader, a read-only role for published records. A Reader opens Records, the workspace's published records, and each record with its published parent levels, its published children, and the people and places linked to it. Records pages show published records only, to everyone who opens them; records administrators can open them too.
+
+- **Sidebar sections can be folded**, each with its own show and hide control.
+
+### Changed
+
+- **Dates and times appear in your own time zone.** Fisqua writes dates in the zone your browser reports, and in America/Los_Angeles until the browser has reported one. Relative times ("5 minutes ago") are measured from the moment of the request. Dates in machine formats stay in UTC: API answers, export data, Captua messages and OAI datestamps.
+
+- **Transcripts are stored page by page.** OCR text moves out of the description into its own table, one row per page, with a full-text index. The description page shows a Transcript line with the number of pages, linked to a transcript view that pages through the text and finds words in it. The transcript is no longer a field on the description form.
+
+- **Imports write OCR text to the transcript.** An import that carries OCR text writes it as page 1 of the description's transcript. An update that would replace pages the media pipeline produced is refused before anything is written, and a blank cell keeps what is there.
+
+- **Merges and splits move only your workspace's links.** On a person or place shared by the federation, a merge or split moves the links on your workspace's descriptions; other workspaces' links stay on the record merged away or split.
+
+- **Workspace admins reach the users area.** The sidebar's Users link, the dashboard's Admin button and its link to manage users now appear for everyone the users page admits, and no longer depend on crowdsourcing. With crowdsourcing on, workspace admins also see All projects and Team.
+
+- **The Collaborative cataloguing item Manage users is now called Team**, the name of the page it opens. The dashboard's Manage users button, which opens the users area, keeps its name.
+
+- **Members with no role, project membership or grant are kept to the no-access page** and their own settings, for data requests as well as pages.
+
+- **One publish per workspace at a time.** Fisqua refuses a second publish while one is running, and the publish page says why a start failed.
+
+- **Publishing to Zasqua writes the files the public site needs.** The export now includes `entity_links.json` and `place_links.json`, written in parts across workflow steps so that a large catalog fits; a `mets_url` built from the workspace's METS address, and none when the workspace has no such address; an `id` on every place; entity functions as an array, or no field when there are none; and `former_codes` and `former_reference_codes`, so a site can redirect retired addresses.
+
+- **Digest emails default to daily.** New accounts start on a daily digest, and the upgrade moves accounts on the hourly digest to daily.
+
+### Removed
+
+- **The cataloging users page.** `/admin/cataloguing/users` redirects to the users list filtered to Cataloguing.
+
+- **The OCR text column on descriptions** (`descriptions.ocr_text`), replaced by the page-by-page transcript. The upgrade copies each description's text into page 1 before dropping the column.
+
+### Fixed
+
+- **Description links could reach into other workspaces.** A direct request could change, remove or create a link between a description in another workspace and a person or place; merges, splits and pair merges could move or drop other workspaces' links on a shared record; and the pages of a shared person or place listed, counted and opened descriptions held by other workspaces, transcripts included. Every link action, merge, split and authority page now works only on the request workspace's descriptions.
+
+- **A request to the Team page could remove a membership in another workspace's project** when it named the membership's id.
+
+- **Writes from other sites were not refused reliably.** A request missing its `Origin` header passed, a forwarded host header was trusted, and resource routes had no check. Fisqua now refuses any write that carries the session cookie unless it comes from the page's own origin, and refuses sign-in requests posted from another site, which could otherwise send a sign-in email to any address.
+
+- **A direct data request for a vocabulary page skipped the check that the workspace uses vocabularies**, and vocabulary usage and authority link counts included other workspaces' descriptions.
+
+- **The sidebar cut off My settings and the users link** on workspaces with many capabilities switched on. The sidebar can now be scrolled.
+
+- **A date near midnight could show as two different days**, one in the server's rendering and one in the browser's, and relative times could disagree the same way.
+
+- **The tenant clear command read no rows from a remote database**, so its before-and-after counts came back empty.
+
 ## [0.7.0] - 2026-08-17
 
 ### Added

@@ -1,10 +1,10 @@
 /**
  * Tests — pending decisions (server core)
  *
- * Covers `app/lib/pending-decisions.server.ts`: filing authority
- * proposals, the open-count the dashboard reads, ruling a proposal
- * (accept / amend / reject) across mint, link, and topic shapes, the
- * three-way ownership gate a ruling passes through
+ * This suite covers `app/lib/pending-decisions.server.ts`: filing
+ * authority proposals, the open-count the dashboard reads, ruling a
+ * proposal (accept / amend / reject) across mint, link, and topic
+ * shapes, the three-way ownership gate a ruling passes through
  * (`requireRulableDecision`, mirroring `requireAuthorityMutation`'s
  * shape one level up), and the duplicate-pair lifecycle: lazy
  * get-or-create keyed on the sorted pairKey, and ruling a pair
@@ -37,7 +37,7 @@
  * nothing, so they isolate the DECISION-ownership gate from the
  * mint-owner gate entirely.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -94,6 +94,10 @@ function makeUser(
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,

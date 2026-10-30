@@ -49,7 +49,7 @@
  * target = the member tenant (invariant I6). Reads are not audited,
  * consistent with the operator-surface precedent in `audit.server.ts`.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { and, eq } from "drizzle-orm";
@@ -68,8 +68,9 @@ export type Federation = typeof federations.$inferSelect;
 
 /**
  * The role-flag surface a grant-access user carries in the member
- * tenant. Mirrors the six role flags on `User`. Computed per request
- * from the federation role; never persisted to the member tenant.
+ * tenant. Mirrors the six role flags and the four area-admin flags on
+ * `User`. Computed per request from the federation role; never
+ * persisted to the member tenant.
  */
 export interface GrantRoleFlags {
   isAdmin: boolean;
@@ -78,6 +79,10 @@ export interface GrantRoleFlags {
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  isRecordsAdmin: boolean;
+  isAuthoritiesAdmin: boolean;
+  isImportsAdmin: boolean;
+  isDigitizationAdmin: boolean;
 }
 
 /**
@@ -94,6 +99,11 @@ export interface GrantRoleFlags {
  *   - `staff` -> cataloguer/editor-equivalent. Every administrative flag
  *     is false: staff access NEVER confers member-tenant administration
  *     (I6).
+ *
+ * Both roles set the four area-admin flags to false, so an area flag
+ * held at home never reaches a member tenant: a home records admin with
+ * a staff grant is no records admin there. A steward passes every area
+ * through `isAdmin`.
  */
 export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
   switch (role) {
@@ -105,6 +115,10 @@ export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
         isArchiveUser: false,
         isUserManager: true,
         isCataloguer: true,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
       };
     case "staff":
       return {
@@ -114,6 +128,10 @@ export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
         isArchiveUser: false,
         isUserManager: false,
         isCataloguer: true,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
       };
   }
 }

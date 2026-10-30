@@ -15,13 +15,14 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
-import { tenantContext } from "../context";
+import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.vocabularies._index";
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,18 @@ export async function loader({ context }: Route.LoaderArgs) {
     entities,
     descriptionEntities,
     descriptionPlaces,
+    descriptions,
     places,
   } = await import("~/db/schema");
 
-  // Tenant context is populated by authMiddleware; the loader does
-  // not need the user object directly but every domain query is
-  // scoped to the calling tenant.
+  const { requireArea } = await import("~/lib/user-access.server");
+
+  // The layout checks the same two gates, but a data request for this
+  // route alone runs this loader without the layout's, so it carries
+  // its own. Every domain query is scoped to the calling tenant.
+  requireArea(context.get(userContext), "records");
   const tenant = context.get(tenantContext);
+  requireCapability(tenant, "vocabulary_hub");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -70,12 +76,14 @@ export async function loader({ context }: Route.LoaderArgs) {
     .where(authorityScope(entities, tenant.federationId, tenant.id))
     .all();
 
-  // Entity roles: count distinct values in use. descriptionEntities has
-  // no tenantId column; tenant scope is implied by the FK chain to
-  // descriptions which always carries tenantId.
+  // Entity roles: count distinct values in use within this tenant.
+  // description_entities has no tenant_id of its own, so each link is
+  // read through its description, which does.
   const entityRoleCount = await db
-    .select({ count: sql<number>`count(distinct role)` })
+    .select({ count: sql<number>`count(distinct ${descriptionEntities.role})` })
     .from(descriptionEntities)
+    .innerJoin(descriptions, eq(descriptions.id, descriptionEntities.descriptionId))
+    .where(eq(descriptions.tenantId, tenant.id))
     .all();
 
   // Place types: count distinct values in use within this tenant
@@ -85,10 +93,13 @@ export async function loader({ context }: Route.LoaderArgs) {
     .where(authorityScope(places, tenant.federationId, tenant.id))
     .all();
 
-  // Place roles: count distinct values in use
+  // Place roles: count distinct values in use within this tenant, read
+  // through each link's description as above.
   const placeRoleCount = await db
-    .select({ count: sql<number>`count(distinct role)` })
+    .select({ count: sql<number>`count(distinct ${descriptionPlaces.role})` })
     .from(descriptionPlaces)
+    .innerJoin(descriptions, eq(descriptions.id, descriptionPlaces.descriptionId))
+    .where(eq(descriptions.tenantId, tenant.id))
     .all();
 
   return {

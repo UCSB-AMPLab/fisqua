@@ -1,17 +1,16 @@
 /**
  * Pending Decisions — proposal detail
  *
- * The considered lane. The queue's cards answer clear-cut questions in
- * place; this page opens one proposal full-screen for the rest, and it
- * is deliberately NOT a bigger card: the left column is the record as
- * it would be created — the mint-time fields, pre-filled from the
- * proposal and editable in place — and the right column is the case
- * for it (reasoning, quoted evidence, provenance, the judgement
+ * This page is the considered lane. The queue's cards answer clear-cut
+ * questions in place; this page opens one proposal full-screen for the
+ * rest, and it is deliberately NOT a bigger card: the left column is
+ * the record as it would be created — the mint-time fields, pre-filled
+ * from the proposal and editable in place — and the right column is the
+ * case for it (reasoning, quoted evidence, provenance, the judgement
  * callout when the producer could not settle it). The reviewer reads
- * right, edits left, and the primary action mints exactly what the
- * form says at that moment, so "amend" stops being a separate concept
- * here: an edited form and an untouched form go through the same
- * button.
+ * right, edits left, and the primary action mints exactly what the form
+ * says at that moment, so "amend" stops being a separate concept here:
+ * an edited form and an untouched form go through the same button.
  *
  * The boundary is the mint: this form owns what a mint writes (type,
  * names, variants, place type, internal notes). Everything else a
@@ -22,8 +21,8 @@
  * Permissions are the queue's: visibility via the scoped read
  * (`getAuthorityProposal` — foreign and missing are both this route's
  * 404), the ruling gate inside `ruleAuthorityProposal`. The route adds
- * the admin guard and the `authorities` capability gate its siblings
- * carry.
+ * the authorities area guard and the `authorities` capability gate its
+ * siblings carry.
  *
  * The conversation is writable here, not just readable: the thread is
  * handed the signed-in reader, and the two acts it can raise — rewrite
@@ -42,7 +41,7 @@
  * picks it and accepts, which is why its radios post through the
  * ruling form rather than a form of their own.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -132,7 +131,7 @@ function isCommentResult(
 // ---------------------------------------------------------------------------
 
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const {
     getAuthorityProposal,
@@ -144,7 +143,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -205,7 +204,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 
   return {
     comments,
-    viewer: { userId: user.id, isAdmin: user.isAdmin },
+    viewer: { userId: user.id, isAdmin: canAdministerArea(user, "authorities") },
     refIds,
     evidence: {
       phrase: mentions.phrase,
@@ -239,14 +238,14 @@ export async function action({
   context,
   params,
 }: Route.ActionArgs): Promise<DetailActionResult> {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { ruleAuthorityProposal, PROPOSAL_TYPES } = await import(
     "~/lib/pending-decisions.server"
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);

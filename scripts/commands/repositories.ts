@@ -15,6 +15,8 @@
  *     customisation columns that import as NULL; the operator fills
  *     them via the admin UI after import — they are not present in
  *     the Django dump
+ *   - manifest_rights, attribution_en, attribution_es are the manifest
+ *     settings (migration 0090); they import as NULL
  *
  * The COLUMNS array is the contract enforced by
  * `tests/import/columns-coverage.test.ts`: every column declared on
@@ -26,7 +28,7 @@
  * no FKs to other domain tables and the human-readable code (e.g.
  * `AHRB`, `AGN`) ships verbatim from Django.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 import * as fs from "node:fs/promises";
 import * as crypto from "node:crypto";
@@ -42,6 +44,7 @@ const COLUMNS = [
   "rights_text",
   "display_title", "subtitle", "hero_image_url",
   "enabled", "created_at", "updated_at",
+  "manifest_rights", "attribution_en", "attribution_es",
 ];
 
 /**
@@ -104,6 +107,11 @@ export async function importRepositories(
       escapeSql(record.enabled ?? true),
       escapeSql(createdAt),
       escapeSql(updatedAt),
+      // Manifest settings are imported as NULL; an administrator sets
+      // them on the repository's form.
+      escapeSql(null),
+      escapeSql(null),
+      escapeSql(null),
     ]);
   }
 
@@ -123,4 +131,4 @@ export async function importRepositories(
   };
 }
 
-// Version: v0.4.1
+// Version: v0.8.0

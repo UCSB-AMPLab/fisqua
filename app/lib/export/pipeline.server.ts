@@ -24,10 +24,36 @@
  * and overwrote Tenant B's R2 objects. The current shape closes that
  * exposure.
  *
- * @version v0.4.2
+ * A description's `ocr_text` comes from its OCR page rows, joined in
+ * page order with a blank line between pages (`joinPageTexts`), so
+ * zasqua.org's search keeps reading a description's whole transcript.
+ * Text migrated from the old `descriptions.ocr_text` column is one
+ * page-1 row and is exported exactly as the column held it; a published
+ * volume's description has the run's pages instead. The fonds step
+ * reads the pages in one statement that names the tenant on both
+ * tables; root descriptions, whose `ocr_text` the repositories file
+ * strips, are formatted with none.
+ *
+ * A description's `mets_url` comes from its own tenant's
+ * `mets_base_url` (`formatDescription`): the fonds step reads it once
+ * for the fonds' tenant, the repositories step once per member tenant.
+ *
+ * The link files (`entity_links.json`, `place_links.json`) are written by
+ * `link-files.server.ts`, which keeps its own multipart-upload steps out of
+ * this module.
+ *
+ * @version v0.8.0
  */
 
-import { eq, and, inArray, isNull, sql } from "drizzle-orm";
+import {
+  asc,
+  eq,
+  and,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import { authorityScope } from "../authority-ownership.server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { z } from "zod";
@@ -40,6 +66,8 @@ import {
   descriptionPlaces,
   exportRuns,
   vocabularyTerms,
+  ocrPages,
+  tenants,
 } from "../../db/schema";
 import type { ExportStorage } from "./r2-client.server";
 import type {
@@ -49,9 +77,17 @@ import type {
   ExportTenant,
 } from "./types";
 import { formatDescription } from "./descriptions.server";
+import { joinPageTexts } from "./rows.server";
 import { formatRepositories } from "./repositories.server";
 import { formatEntity } from "./entities.server";
 import { formatPlace } from "./places.server";
+import {
+  FORMER_REFERENCE_PROVIDER,
+  formerCodesFor,
+  legacyIdsOf,
+  mergedFormerCodes,
+} from "./former-codes.server";
+
 import { generateChildrenMap } from "./children.server";
 import { buildEad3 } from "./ead/builder";
 import { getEadProfile } from "./ead/profiles/registry";
@@ -59,6 +95,8 @@ import { buildDcBulk } from "./dc/builder";
 import { sanitiseRefForKey } from "./xml/escape";
 
 const CHILDREN_PUT_BATCH = 50;
+/** Reference codes per query when checking former codes against live ones (D1 binds at most 100). */
+const REFERENCE_CODE_CHUNK = 90;
 
 /**
  * Export descriptions for a single fonds: query, format, upload one per-fonds
@@ -70,7 +108,8 @@ export async function exportFondsDescriptions(
   db: DrizzleD1Database<any>,
   storage: ExportStorage,
   fondsCode: string,
-  tenant: ExportTenant
+  tenant: ExportTenant,
+  memberTenantIds?: string[]
 ): Promise<{ recordCount: number; byteSize: number }> {
   const root = await db
     .select({ id: descriptions.id })
@@ -100,6 +139,23 @@ export async function exportFondsDescriptions(
     )
     .all();
 
+  // OCR text comes from the page rows, not the description row.
+  const pages = await db
+    .select({ id: ocrPages.descriptionId, text: ocrPages.text })
+    .from(ocrPages)
+    .innerJoin(descriptions, eq(descriptions.id, ocrPages.descriptionId))
+    .where(
+      and(
+        eq(ocrPages.tenantId, tenant.id),
+        eq(descriptions.tenantId, tenant.id),
+        eq(descriptions.rootDescriptionId, root.id),
+        eq(descriptions.isPublished, true)
+      )
+    )
+    .orderBy(asc(ocrPages.descriptionId), asc(ocrPages.pageSeq))
+    .all();
+  const ocrById = joinPageTexts(pages);
+
   // Build per-fonds parent/child lookups so formatDescription can resolve
   // parent_reference_code and children_level without leaking out of the fonds.
   const byId = new Map(fondsRows.map((r) => [r.id, r]));
@@ -110,6 +166,34 @@ export async function exportFondsDescriptions(
       if (refs) refs.push(row.referenceCode);
       else childRefsByParent.set(row.parentId, [row.referenceCode]);
     }
+  }
+
+  const metsBaseUrl = (
+    await db
+      .select({ metsBaseUrl: tenants.metsBaseUrl })
+      .from(tenants)
+      .where(eq(tenants.id, tenant.id))
+      .get()
+  )?.metsBaseUrl ?? null;
+
+  // Former reference codes, less any a description holds now in any
+  // tenant whose files are published together: a live page cannot
+  // redirect (former-codes.server.ts).
+  // The tenants are matched here rather than bound in the query, so a
+  // large federation never pushes a query past D1's bound-parameter limit.
+  const liveTenantIds = new Set(memberTenantIds ?? [tenant.id]);
+  const formerByRow = new Map(
+    fondsRows.map((r) => [r.id, legacyIdsOf(r.legacyIds, FORMER_REFERENCE_PROVIDER)])
+  );
+  const candidates = [...new Set([...formerByRow.values()].flat())];
+  const live = new Set<string>();
+  for (let i = 0; i < candidates.length; i += REFERENCE_CODE_CHUNK) {
+    const rows = await db
+      .select({ referenceCode: descriptions.referenceCode, tenantId: descriptions.tenantId })
+      .from(descriptions)
+      .where(inArray(descriptions.referenceCode, candidates.slice(i, i + REFERENCE_CODE_CHUNK)))
+      .all();
+    for (const r of rows) if (liveTenantIds.has(r.tenantId)) live.add(r.referenceCode);
   }
 
   // Repository cache scoped to this fonds (almost always one repo per fonds).
@@ -142,7 +226,14 @@ export async function exportFondsDescriptions(
     const childRefs = childRefsByParent.get(row.id) ?? [];
 
     fondsFormatted.push(
-      formatDescription(row, repo, parentRefCode, childRefs)
+      formatDescription(
+        { ...row, ocrText: ocrById.get(row.id) ?? null },
+        repo,
+        parentRefCode,
+        childRefs,
+        metsBaseUrl,
+        (formerByRow.get(row.id) ?? []).filter((code) => !live.has(code))
+      )
     );
   }
 
@@ -522,15 +613,26 @@ export async function exportRepositories(
     )
     .all();
 
+  const metsBaseByTenant = new Map(
+    (
+      await db
+        .select({ id: tenants.id, metsBaseUrl: tenants.metsBaseUrl })
+        .from(tenants)
+        .where(inArray(tenants.id, tenantIds))
+        .all()
+    ).map((t) => [t.id, t.metsBaseUrl])
+  );
+
   const formattedRoots: ExportDescription[] = [];
   for (const row of rootRows) {
     const repo = allRepos.find((r) => r.id === row.repositoryId);
     formattedRoots.push(
       formatDescription(
-        row,
+        { ...row, ocrText: null },
         { code: repo?.code ?? "", country: repo?.country ?? null },
         null,
-        []
+        [],
+        metsBaseByTenant.get(row.tenantId) ?? null
       )
     );
   }
@@ -593,6 +695,7 @@ export async function exportEntities(
       sources: entities.sources,
       wikidataId: entities.wikidataId,
       viafId: entities.viafId,
+      legacyIds: entities.legacyIds,
       mergedInto: entities.mergedInto,
     })
     .from(entities)
@@ -636,13 +739,33 @@ export async function exportEntities(
     return { count: 0 };
   }
 
+  // Retired site codes of records merged into an exported one (see
+  // former-codes.server.ts). Merged records are few, so one read.
+  const inherited = mergedFormerCodes(
+    (
+      await db
+        .select({ id: entities.id, mergedInto: entities.mergedInto, legacyIds: entities.legacyIds })
+        .from(entities)
+        .where(
+          and(
+            authorityScope(entities, tenant.federationId, tenantIds),
+            isNotNull(entities.mergedInto)
+          )
+        )
+        .all()
+    ).map((r) => ({ ...r, mergedInto: r.mergedInto! }))
+  );
+
   const formatted = entityRows.map((row) =>
-    formatEntity({
-      ...row,
-      primaryFunctionCanonical: row.primaryFunctionId
-        ? termMap.get(row.primaryFunctionId) ?? null
-        : null,
-    })
+    formatEntity(
+      {
+        ...row,
+        primaryFunctionCanonical: row.primaryFunctionId
+          ? termMap.get(row.primaryFunctionId) ?? null
+          : null,
+      },
+      formerCodesFor(row.entityCode, row.legacyIds, inherited.get(row.id))
+    )
   );
   await storage.putObject(
     `${tenant.slug}/entities.json`,
@@ -688,6 +811,7 @@ export async function exportPlaces(
       tgnId: places.tgnId,
       hgisId: places.hgisId,
       whgId: places.whgId,
+      legacyIds: places.legacyIds,
       mergedInto: places.mergedInto,
     })
     .from(places)
@@ -717,14 +841,29 @@ export async function exportPlaces(
     return { count: 0 };
   }
 
-  const formatted = placeRows.map(formatPlace);
+  const inherited = mergedFormerCodes(
+    (
+      await db
+        .select({ id: places.id, mergedInto: places.mergedInto, legacyIds: places.legacyIds })
+        .from(places)
+        .where(
+          and(
+            authorityScope(places, tenant.federationId, tenantIds),
+            isNotNull(places.mergedInto)
+          )
+        )
+        .all()
+    ).map((r) => ({ ...r, mergedInto: r.mergedInto! }))
+  );
+  const formatted = placeRows.map((row) =>
+    formatPlace(row, formerCodesFor(row.placeCode, row.legacyIds, inherited.get(row.id)))
+  );
   await storage.putObject(
     `${tenant.slug}/places.json`,
     JSON.stringify(formatted)
   );
   return { count: formatted.length };
 }
-
 /**
  * Heartbeat helpers — write the new export_runs columns from migration 0019
  * so the operator can watch a long publish run advance through its steps.

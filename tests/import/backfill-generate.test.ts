@@ -7,7 +7,7 @@
  * …)`), with `user_id` never hard-coded. Also checks JSON detail is
  * single-quote-escaped and NULL targets render as SQL NULL.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import { generateStatements, partitionRows } from "../../scripts/backfill/generate";
@@ -48,7 +48,7 @@ describe("backfill/generate generateStatements", () => {
     expect(sql).toContain("d''Anconia"); // single quote doubled
   });
 
-  it("carries the Phase-13 constant, not a run date", () => {
+  it("carries the import-date constant, not a run date", () => {
     const [sql] = generateStatements([row({})]);
     expect(sql).toContain(String(PHASE_13_CREATED_AT_MS));
   });
@@ -95,4 +95,4 @@ describe("backfill/generate partitionRows", () => {
   });
 });
 
-// Version: v0.4.2
+// Version: v0.8.0

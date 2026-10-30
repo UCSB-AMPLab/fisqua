@@ -19,7 +19,7 @@
  * gives way to a teaching note — the /new route refuses server-side too,
  * so a direct URL cannot bypass.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -61,9 +61,9 @@ interface Repository {
 // ---------------------------------------------------------------------------
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
 
   const { drizzle } = await import("drizzle-orm/d1");

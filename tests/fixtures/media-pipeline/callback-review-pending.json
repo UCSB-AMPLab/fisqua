@@ -1,0 +1,96 @@
+{
+  "spec_version": 1,
+  "run_id": "6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10",
+  "volume_id": "pv_01",
+  "attempt": "11223344.1",
+  "outcome": "review_pending",
+  "error": null,
+  "runner": {
+    "image": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "script_version": "v1.0.0",
+    "arch": "x86_64",
+    "versions": {
+      "python": "3.12.0",
+      "cv2": "4.10.0",
+      "pillow": "11.0.0",
+      "numpy": "2.1.0",
+      "vips": "8.15.0",
+      "tesseract": "5.4.0"
+    }
+  },
+  "stages": {
+    "pull": {
+      "status": "ok",
+      "count": 734,
+      "bytes": 0,
+      "elapsed_s": 0
+    },
+    "preprocess": {
+      "status": "ok",
+      "count": 734,
+      "elapsed_s": 0,
+      "flags": 0,
+      "detail": {}
+    },
+    "render": {
+      "status": "ok",
+      "count": 734,
+      "elapsed_s": 0,
+      "flags": 0,
+      "detail": {}
+    },
+    "ocr": {
+      "status": "skipped",
+      "reason": "output_class tonal"
+    },
+    "tile": {
+      "status": "ok",
+      "count": 734,
+      "elapsed_s": 0,
+      "detail": {
+        "tile_file_count": 52697,
+        "canvas_count": 734
+      }
+    },
+    "upload": {
+      "status": "ok",
+      "bytes": 7310000000,
+      "elapsed_s": 0
+    },
+    "verify": {
+      "status": "ok",
+      "elapsed_s": 0
+    }
+  },
+  "qc": {
+    "expected_count": 734,
+    "processed_count": 734,
+    "canvas_count": 734,
+    "info_json_complete": true,
+    "homepage_conformant": true,
+    "ocr_pairs_complete": null
+  },
+  "verification": {
+    "method": "rclone-check",
+    "passed": true,
+    "files_checked": 52697,
+    "differences": 0
+  },
+  "flags": [
+    {
+      "page_key": "p0012",
+      "stage": "render",
+      "code": "edge_overflow",
+      "summary": "The render withheld the trim on this page because the detected edge ran past the frame."
+    }
+  ],
+  "flags_truncated": false,
+  "outputs": {
+    "tile_root": "co-ahrb-aht-008",
+    "tiles_bytes": 7310000000,
+    "ocr_bytes": 0,
+    "manifest_key": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/pv_01/manifest.json",
+    "report_key": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/pv_01/report.json"
+  },
+  "elapsed_s": 0
+}

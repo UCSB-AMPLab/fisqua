@@ -63,7 +63,7 @@
  * source. `--dump-dir` is the integrator's Django dump verification
  * directory (no default — supplied per run). No `--remote`, ever.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import * as fs from "node:fs";
@@ -578,7 +578,7 @@ async function runGenerate(args: Args): Promise<void> {
         `${contentJoin.unmatched.length} content-unmatched + ${contentJoin.ambiguous.length} content-ambiguous ` +
         "pipeline entities stand against the unclaimed production rows. The deferred fingerprint hypotheses " +
         "suggest Django-ingest consolidation (many-to-one), but no generated row asserts it.",
-      "created_at is the single documented Phase-13 constant for every row: the audit files carry no " +
+      "created_at is the single documented import-date constant for every row: the audit files carry no " +
         "timestamps of any kind, so §10's 'pipeline pass date where recoverable' clause is moot.",
     ];
   }
@@ -690,7 +690,7 @@ function printReport(r: RunReport): void {
   console.log(
     `  sql       files=${r.sqlFiles.length} totalRows=${r.totalRows} totalBytes=${r.totalBytes} (${(r.totalBytes / 1e6).toFixed(1)} MB)`,
   );
-  console.log(`  createdAt ${r.createdAtConstantMs} (Phase-13 constant)`);
+  console.log(`  createdAt ${r.createdAtConstantMs} (import-date constant)`);
   console.log("---------------------------------------------");
 }
 
@@ -948,4 +948,4 @@ if (isMain) {
   });
 }
 
-// Version: v0.4.2
+// Version: v0.8.0

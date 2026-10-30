@@ -23,7 +23,7 @@
  * merge, so `buildLegacyIdsForPlace` emits one `ca-place` entry per
  * array element rather than a single value.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { LegacyIdsSchema } from "../../app/lib/validation/legacy-ids";
@@ -69,11 +69,9 @@ export function stringifyJsonArray(value: unknown): string {
  * Reads `id` (Django pk → "django-zasqua"), `ca_object_id` (CA object
  * pk → "ca-object"), and `ca_collection_id` (CA collection pk →
  * "ca-collection") from the input record. Null/undefined values are
- * omitted. The optional `extras` list is appended verbatim — the
- * importer uses it to record `{provider: "ocr-truncated", id: <bytes>}`
- * for descriptions whose ocr_text was clipped to fit D1's 100 KB
- * statement limit (see `OCR_MAX_BYTES` in `scripts/commands/descriptions.ts`
- * and the deferred OCR-to-R2 migration). The result is
+ * omitted. The optional `extras` list is appended verbatim; the
+ * descriptions importer passes an `ocr-truncated` marker when it cut a
+ * record's OCR text. The result is
  * Validated through `LegacyIdsSchema.parse` before stringify so a
  * malformed input cannot produce a malformed output.
  */
@@ -154,4 +152,4 @@ export function buildLegacyIdsForPlace(
   return JSON.stringify(LegacyIdsSchema.parse(ids));
 }
 
-// Version: v0.4.0
+// Version: v0.8.0

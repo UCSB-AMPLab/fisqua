@@ -1,0 +1,14 @@
+-- Digitization capability flag.
+--
+-- This migration adds `digitization_enabled` to `tenants`: the eighth
+-- capability flag, gating the Digitization section of the sidebar and
+-- its screens (the volumes a Captua scanner handed over, and the
+-- capture QC queue). Default OFF and operator-granted, as with imports
+-- (0061) and the media pipeline (0081): a tenant has the surface only
+-- once it works with a Captua scanner. The capability is tenant-scoped;
+-- who may use each screen (tenant admins, federation stewards, a
+-- volume's assigned reviewer) is user-scoped and checked in the
+-- screens' loaders.
+--
+-- Version: v0.8.0
+ALTER TABLE tenants ADD COLUMN digitization_enabled INTEGER NOT NULL DEFAULT 0;

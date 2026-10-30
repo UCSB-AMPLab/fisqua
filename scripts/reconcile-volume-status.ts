@@ -41,7 +41,7 @@
  * grep over this file should not show any DML keywords outside
  * comments or string literals that document the contract.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 
 import { execSync } from "node:child_process";
@@ -227,7 +227,7 @@ function buildReport(rows: DriftRow[]): ReportRow[] {
     activity_log_created_at_iso: isoOrUnknown(row.activity_log_created_at),
     comment:
       row.volume_id === KNOWN_DRIFT_VOLUME
-        ? "Known Apr 24 drift documented in CONTEXT.md; repair deferred to a separate operator-gated step"
+        ? "Known Apr 24 drift; repair deferred to a separate operator-gated step"
         : "Drift surfaced by volume-status reconciliation; review before any repair",
   }));
 }

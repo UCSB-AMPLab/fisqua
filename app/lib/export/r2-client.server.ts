@@ -14,7 +14,15 @@
  * and XML put paths share the same backing bucket; only the
  * `Content-Type` header differs.
  *
- * @version v0.4.0
+ * The byte and multipart methods serve the link files
+ * (`entity_links.json`, `place_links.json`), which run to 60-110 MB
+ * and cannot be built as one string inside a Worker. They are written
+ * as an R2 multipart upload in fixed-size parts (R2 requires every
+ * part but the last to be the same size and at least 5 MiB), and the
+ * bytes that do not yet fill a part are kept in a small staging object
+ * between Workflow steps. See `json-array-upload.server.ts`.
+ *
+ * @version v0.8.0
  */
 export class ExportStorage {
   constructor(private bucket: R2Bucket) {}
@@ -71,12 +79,90 @@ export class ExportStorage {
   }
 
   /**
+   * Upload raw bytes. Used for the link files' staging objects (bytes
+   * that may end mid-character, so they cannot travel as a string) and
+   * for a link file small enough to fit in one part.
+   */
+  async putObjectBytes(
+    key: string,
+    body: Uint8Array,
+    contentType = "application/json; charset=utf-8",
+    customMetadata?: Record<string, string>
+  ): Promise<void> {
+    await this.bucket.put(key, body, {
+      httpMetadata: { contentType },
+      ...(customMetadata ? { customMetadata } : {}),
+    });
+  }
+
+  /**
+   * Read an object's bytes, or null when it does not exist. Only used
+   * for the link files' staging objects, which are smaller than one part.
+   */
+  async getObjectBytes(key: string): Promise<Uint8Array | null> {
+    const obj = await this.bucket.get(key);
+    if (!obj) return null;
+    return new Uint8Array(await obj.arrayBuffer());
+  }
+
+  /**
+   * Start a multipart upload to `key`; returns its upload id. The
+   * custom metadata is carried by the object once the upload completes.
+   */
+  async createMultipartUpload(
+    key: string,
+    customMetadata?: Record<string, string>
+  ): Promise<string> {
+    const upload = await this.bucket.createMultipartUpload(key, {
+      httpMetadata: { contentType: "application/json; charset=utf-8" },
+      ...(customMetadata ? { customMetadata } : {}),
+    });
+    return upload.uploadId;
+  }
+
+  /**
+   * Upload one part of a multipart upload started in this or an earlier
+   * Workflow step. Re-uploading a part number replaces it, so a retried
+   * step can send the same parts again.
+   */
+  async uploadPart(
+    key: string,
+    uploadId: string,
+    partNumber: number,
+    body: Uint8Array
+  ): Promise<{ partNumber: number; etag: string }> {
+    const upload = this.bucket.resumeMultipartUpload(key, uploadId);
+    const part = await upload.uploadPart(partNumber, body);
+    return { partNumber: part.partNumber, etag: part.etag };
+  }
+
+  /** Complete a multipart upload from its recorded parts. */
+  async completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: Array<{ partNumber: number; etag: string }>
+  ): Promise<void> {
+    const upload = this.bucket.resumeMultipartUpload(key, uploadId);
+    await upload.complete(parts);
+  }
+
+  /** Abort a multipart upload; its parts are discarded. */
+  async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+    const upload = this.bucket.resumeMultipartUpload(key, uploadId);
+    await upload.abort();
+  }
+
+  /**
    * HEAD an object to retrieve its size without fetching the body.
    * Used by the per-fonds byteSize guard in streamCombinedDescriptions to
-   * fail fast on oversized fonds before any body is loaded into memory.
+   * fail fast on oversized fonds before any body is loaded into memory,
+   * and by the link-file upload to recognise its own finished object by
+   * the token in its custom metadata.
    */
-  async getObjectHead(key: string): Promise<{ size: number } | null> {
+  async getObjectHead(
+    key: string
+  ): Promise<{ size: number; customMetadata?: Record<string, string> } | null> {
     const head = await this.bucket.head(key);
-    return head ? { size: head.size } : null;
+    return head ? { size: head.size, customMetadata: head.customMetadata } : null;
   }
 }

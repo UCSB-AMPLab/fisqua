@@ -1,0 +1,167 @@
+{
+  "spec_version": 1,
+  "run_id": "6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10",
+  "tenant_id": "test-tenant",
+  "kind": "volume_run",
+  "created_at": "2026-11-02T14:00:00Z",
+  "regenerates_run_id": null,
+  "runner": {
+    "image": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "script_version": "v1.0.0",
+    "arch": "x64"
+  },
+  "callback": {
+    "url_template": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/{volume_id}/callback",
+    "complete_url": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/complete",
+    "token_expires_at": "2026-11-03T02:00:00Z",
+    "token": "fpr_TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+  },
+  "max_review_frac": 0.1,
+  "destination": {
+    "backend": "b2",
+    "endpoint": "https://s3.b2.test.example",
+    "tiles_bucket": "zasqua-iiif-tiles",
+    "tiles_prefix": "",
+    "image_base_url": "https://tiles.test.example",
+    "ocr_bucket": "zasqua-iiif-tiles",
+    "ocr_prefix": "ocr/",
+    "credentials_ref": "fisqua-pipeline-test-tenant"
+  },
+  "working": {
+    "backend": "b2",
+    "endpoint": "https://s3.b2.test.example",
+    "bucket": "test-working-bucket",
+    "prefix": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/"
+  },
+  "jobs": [
+    {
+      "job_index": 0,
+      "volume_ids": [
+        "pv_01"
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "volume_id": "pv_01",
+      "reference_code": "co-ahrb-aht-008",
+      "description_id": "test-description-pv_01",
+      "tile_root": "co-ahrb-aht-008",
+      "restricted": false,
+      "expected_count": 3,
+      "pages": [
+        {
+          "seq": 1,
+          "page_key": "p0001",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0001.tif"
+        },
+        {
+          "seq": 2,
+          "page_key": "p0002",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0002.tif"
+        },
+        {
+          "seq": 3,
+          "page_key": "p0003",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0003.tif"
+        }
+      ],
+      "source": {
+        "backend": "b2",
+        "endpoint": "https://s3.b2.test.example",
+        "bucket": "test-ingest-bucket",
+        "prefix": "test-ingest/co-ahrb-aht-008/",
+        "checksums_key": null
+      },
+      "recipe": {
+        "declaration_id": "test-declaration-1",
+        "declaration_version": 1,
+        "capture": {
+          "platen": "v",
+          "background": "dark"
+        },
+        "output_class": "bilevel",
+        "tone_preset": "bilevel-default",
+        "stages": {
+          "preprocess": {
+            "run": true,
+            "params": {
+              "pad": 4,
+              "pad_frac": 0.015,
+              "clahe_clip": 1.2,
+              "autolevel_mode": "uniform",
+              "autolevel_lo": 2.0,
+              "autolevel_hi": 98.0,
+              "interp": "linear",
+              "format": "png",
+              "detect_max_px": 1000,
+              "max_fallback_frac": 1.0
+            }
+          },
+          "render": {
+            "run": true,
+            "params": {
+              "binarise": "none",
+              "trim": "on",
+              "mask": "require",
+              "margin_frac": 0.006,
+              "width_tol": 0.05,
+              "format": "png"
+            }
+          },
+          "ocr": {
+            "run": true,
+            "params": {
+              "engine": "tesseract"
+            }
+          },
+          "tile": {
+            "run": true,
+            "params": {
+              "tile_size": 512,
+              "layout": "iiif3",
+              "thumbnail_widths": [
+                96,
+                200
+              ]
+            }
+          }
+        },
+        "page_overrides": []
+      },
+      "manifest": {
+        "id": "https://iiif.test.example/co-ahrb-aht-008/manifest.json",
+        "label": {
+          "es": [
+            "Test description title"
+          ]
+        },
+        "homepage": [
+          {
+            "id": "https://zasqua.org/co-ahrb-aht-008",
+            "type": "Text",
+            "format": "text/html",
+            "label": {
+              "es": [
+                "Zasqua"
+              ]
+            }
+          }
+        ],
+        "rights": "https://rights.test.example/test-statement",
+        "required_statement": null,
+        "provider": [
+          {
+            "id": "https://provider.test.example",
+            "type": "Agent",
+            "label": {
+              "es": [
+                "Test provider"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

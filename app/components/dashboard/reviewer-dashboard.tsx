@@ -13,10 +13,11 @@
  * top of the page. Like the other dashboard views, this component is
  * pure render; loaders on the parent route handle the database access.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
+import { useFormatters } from "~/lib/use-formatters";
 import {
   VolumeStatusCard,
   daysSince,
@@ -58,6 +59,7 @@ function ReviewGroup({
   volumes: VolumeCardData[];
   showWaiting?: boolean;
 }) {
+  const { now } = useFormatters();
   if (volumes.length === 0) return null;
 
   return (
@@ -71,7 +73,7 @@ function ReviewGroup({
           <div key={v.id} className="relative">
             {showWaiting && (
               <div className="absolute right-2 top-2 z-10">
-                <WaitingBadge days={daysSince(v.updatedAt)} />
+                <WaitingBadge days={daysSince(v.updatedAt, now)} />
               </div>
             )}
             <VolumeStatusCard volume={v} />
@@ -120,3 +122,5 @@ export function ReviewerDashboard({ groups }: ReviewerDashboardProps) {
     </div>
   );
 }
+
+/* @version v0.8.0 */

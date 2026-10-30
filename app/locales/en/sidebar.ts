@@ -7,11 +7,12 @@
  * Places, Repositories, Publish, Promote, Collaborative
  * cataloguing).
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   search: "Search",
   home: "Home",
+  records: "Records",
   handlists: "Handlists",
   my_projects: "My projects",
   descriptions: "Descriptions",
@@ -24,7 +25,7 @@ export default {
   manage_projects: "Manage projects",
   all_projects: "All projects",
   pipeline: "Pipeline",
-  manage_users: "Manage users",
+  manage_users: "Team",
   records_management: "Records management",
   authorities: "Authorities",
   imports: "Imports",
@@ -32,8 +33,13 @@ export default {
   import_and_export: "Import and export",
   possible_duplicates: "Possible duplicates",
   pending_decisions: "Pending decisions",
+  digitization: "Digitization",
+  capture_volumes: "Volumes",
+  capture_qc: "Capture QC",
+  retakes: "Retakes",
+  scanner: "Scanner",
   my_settings: "My settings",
-  system_users: "System users",
+  users: "Users",
   no_users: "No users found.",
   col_name: "Name",
   col_email: "Email",
@@ -52,4 +58,8 @@ export default {
   vocabularies: "Vocabularies",
   collapse: "Collapse sidebar",
   expand: "Expand sidebar",
+  section_show: "Show {{section}}",
+  section_hide: "Hide {{section}}",
 } as const;
+
+// @version v0.8.0

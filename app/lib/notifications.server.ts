@@ -15,7 +15,9 @@
  * it and the answer is the point. A comment reaches the filer and
  * everyone who has already spoken in the thread — a conversation, not
  * a broadcast. A human-filed proposal reaches the people who can
- * actually rule it: the owning tenant's admins, or, for a
+ * actually rule it: the owning tenant's workspace, super and
+ * authorities admins (every pending decision is in the authorities
+ * area), or, for a
  * shared-space question that belongs to no single tenant, the
  * federation's lead-tenant admins together with its stewards. That
  * last set is computed without consulting federation status. A steward
@@ -39,10 +41,10 @@
  * between the two simply loses the notification — accepted, and the
  * reason the enqueue is not folded into the caller's batch.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
-import { and, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   comments,
@@ -113,7 +115,9 @@ export async function enqueueDecisionNotifications(
         if (row.authorId) recipients.add(row.authorId);
       }
     } else {
-      // proposal_filed: the people who can rule it.
+      // proposal_filed: the people who can rule it. Every pending
+      // decision is in the authorities area, so a tenant-owned one
+      // reaches the tenant's workspace, super and authorities admins.
       if (decision.tenantId) {
         const admins = await db
           .select({ id: users.id })
@@ -121,7 +125,11 @@ export async function enqueueDecisionNotifications(
           .where(
             and(
               eq(users.tenantId, decision.tenantId),
-              eq(users.isAdmin, true),
+              or(
+                eq(users.isAdmin, true),
+                eq(users.isSuperAdmin, true),
+                eq(users.isAuthoritiesAdmin, true),
+              ),
             ),
           )
           .all();

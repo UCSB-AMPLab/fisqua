@@ -18,7 +18,7 @@
  *
  * Journal rows within one commit batch share `created_at` and carry
  * random-UUID ids, so there is NO reliable intra-run total order from
- * either column (phase-5 review finding). The reverse walk therefore
+ * either column. The reverse walk therefore
  * derives a deterministic structural order from the row payloads, not
  * from the clock:
  *
@@ -42,7 +42,7 @@
  *           before children) so a re-created subtree lands root-first.
  *        d. CONTAINER RECONCILIATION last: recompute `childCount` for the
  *           affected surviving containers to the actual DB count (the
- *           phase-5 recompute machinery, symmetric), journaled as update
+ *           commit's recompute machinery, symmetric), journaled as update
  *           rows. In the clean case restore already left the count
  *           correct and this no-ops; when a child was kept (skip), it
  *           corrects the divergence honestly.
@@ -85,7 +85,7 @@
  * this compensating path (spec §4 — the ruled exception to the
  * imports-never-delete rule).
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";

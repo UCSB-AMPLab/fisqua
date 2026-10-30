@@ -1,0 +1,85 @@
+{
+  "spec_version": 1,
+  "run_id": "6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10",
+  "tenant_id": "test-tenant",
+  "kind": "review_run",
+  "created_at": "2026-11-02T14:00:00Z",
+  "regenerates_run_id": null,
+  "runner": {
+    "image": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "script_version": "v1.0.0",
+    "arch": "x64"
+  },
+  "callback": {
+    "url_template": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/{volume_id}/callback",
+    "complete_url": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/complete",
+    "token_expires_at": "2026-11-03T02:00:00Z",
+    "token": "fpr_TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+  },
+  "max_review_frac": 0.1,
+  "destination": {
+    "backend": "b2",
+    "endpoint": "https://s3.test-000.backblazeb2.com",
+    "tiles_bucket": "zasqua-iiif-tiles",
+    "tiles_prefix": "",
+    "image_base_url": "https://tiles.test.example",
+    "ocr_bucket": "zasqua-iiif-tiles",
+    "ocr_prefix": "ocr/",
+    "credentials_ref": "fisqua-pipeline-test-tenant"
+  },
+  "working": {
+    "backend": "b2",
+    "endpoint": "https://s3.test-000.backblazeb2.com",
+    "bucket": "test-working-bucket",
+    "prefix": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/"
+  },
+  "jobs": [
+    {
+      "job_index": 0,
+      "volume_ids": [
+        "pv_01"
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "volume_id": "pv_01",
+      "reference_code": "co-ahrb-aht-008",
+      "restricted": false,
+      "expected_count": 3,
+      "review_prefix": "test-tenant/0d6f2b9e-3c1a-4e57-9b80-6a4c2d1e7f35/",
+      "pages": [
+        {
+          "seq": 1,
+          "page_key": "p0001",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0001.tif"
+        },
+        {
+          "seq": 2,
+          "page_key": "p0002",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0002.tif",
+          "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        },
+        {
+          "seq": 3,
+          "page_key": "p0003",
+          "master_key": "test-ingest/co-ahrb-aht-008/p0003.tif",
+          "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        }
+      ],
+      "source": {
+        "backend": "b2",
+        "endpoint": "https://s3.test-000.backblazeb2.com",
+        "bucket": "test-ingest-bucket",
+        "prefix": "test-ingest/co-ahrb-aht-008/",
+        "checksums_key": null
+      }
+    }
+  ],
+  "review": {
+    "backend": "b2",
+    "endpoint": "https://s3.test-000.backblazeb2.com",
+    "bucket": "test-review-tiles",
+    "image_base_url": "https://f000.download.test.example/file/test-review-tiles"
+  }
+}

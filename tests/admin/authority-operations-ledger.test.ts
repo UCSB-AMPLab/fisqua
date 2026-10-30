@@ -3,7 +3,7 @@
  *
  * This suite drives real `FormData` through the authority mutation
  * actions and pins the `authority_operations` ledger contract added in
- * migration 0057. As of phase 3a the canonical entity/place merge and
+ * migration 0057. The canonical entity/place merge and
  * split sites are the full-page workbench routes
  * (`entities.$id.merge`, `entities.$id.split`, and the place
  * counterparts) — the old `$id` intents were removed (review round 1,
@@ -40,7 +40,7 @@
  * user is a lead-tenant admin, i.e. a federation steward, so the
  * requireFederationSteward gate on every mutation passes.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";

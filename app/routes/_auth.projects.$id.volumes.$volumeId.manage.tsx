@@ -14,7 +14,7 @@
  * rejected by the project-role guard before the UI renders, so the page
  * can assume it is always running as a lead.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -182,6 +182,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
@@ -850,3 +855,4 @@ export default function VolumeManagePage({
   );
 }
 
+// @version v0.8.0

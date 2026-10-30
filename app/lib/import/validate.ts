@@ -22,8 +22,8 @@
  * accumulated here and reported, never promoted to rejects.
  *
  * Structural fields the CSV does not carry are the caller's to supply:
- * `repositoryId` is assigned at commit from the run's target repository
- * (phase 5), so a placeholder is injected before validation to reflect
+ * `repositoryId` is assigned at commit from the run's target repository,
+ * so a placeholder is injected before validation to reflect
  * DESCRIBING-field validity rather than rejecting every row on a field no
  * import spreadsheet holds. Source-system identifiers land in `legacyIds`
  * (spec §2), never a typed column per source — several bindings may share
@@ -51,7 +51,7 @@
  * an accepted parent that no longer rejects no longer cascades onto its
  * descendants.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { z } from "zod/v4";

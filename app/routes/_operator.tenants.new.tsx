@@ -58,14 +58,27 @@
  * so the form re-renders with the locale's `tenant_new.errors.slug_taken`
  * message rather than 5xx-ing on a UNIQUE constraint failure.
  *
- * @version v0.6.0
+ * ## Media pipeline
+ *
+ * The media pipeline writes to a tenant's own storage, which the
+ * operator's provisioning command sets up after the tenant exists. A new
+ * tenant has none, so a request with the media pipeline ticked is
+ * refused with a field error saying the storage destination is not set
+ * up; the operator turns it on from the tenant's page once it is.
+ *
+ * @version v0.8.0
  */
 
 import { Form, redirect } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import { useTranslation } from "react-i18next";
-import { tenants, users, federations } from "../db/schema";
+import {
+  tenants,
+  users,
+  federations,
+  DEFAULT_DIGEST_FREQUENCY,
+} from "../db/schema";
 import { PLATFORM_TENANT_ID } from "../lib/tenant";
 import { withAuditLog } from "../lib/audit.server";
 import { CreateTenantSchema } from "../lib/operator-actions.server";
@@ -91,6 +104,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
   if (!parsed.success) {
     return { fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+  // A new tenant has no storage destination yet.
+  if (parsed.data.mediaPipelineEnabled) {
+    return { fieldErrors: { mediaPipelineEnabled: ["destination_unset"] } };
   }
 
   // Pre-flight slug collision check. The DB-level UNIQUE index on
@@ -142,6 +159,8 @@ export async function action({ request, context }: Route.ActionArgs) {
           multi_repository: parsed.data.multiRepositoryEnabled,
           authorities: parsed.data.authoritiesEnabled,
           imports: parsed.data.importsEnabled,
+          media_pipeline: parsed.data.mediaPipelineEnabled,
+          digitization: parsed.data.digitizationEnabled,
         },
         bootstrap_email: parsed.data.bootstrapEmail,
       },
@@ -171,6 +190,8 @@ export async function action({ request, context }: Route.ActionArgs) {
         multiRepositoryEnabled: parsed.data.multiRepositoryEnabled,
         authoritiesEnabled: parsed.data.authoritiesEnabled,
         importsEnabled: parsed.data.importsEnabled,
+        mediaPipelineEnabled: parsed.data.mediaPipelineEnabled,
+        digitizationEnabled: parsed.data.digitizationEnabled,
         quotaStorageBytes: parsed.data.quotaStorageBytes,
         disabledAt: null,
         federationId: null as unknown as string,
@@ -197,6 +218,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         tenantId: newTenantId,
         email: parsed.data.bootstrapEmail,
         name: null,
+        digestFrequency: DEFAULT_DIGEST_FREQUENCY,
         isAdmin: true,
         isSuperAdmin: true,
         isCollabAdmin: false,
@@ -270,6 +292,7 @@ const FIELD_ERROR_KEYS: Record<string, string> = {
   slug_reserved_word: "field_error.slug_reserved_word",
   name_required: "field_error.name_required",
   email_invalid: "field_error.email_invalid",
+  destination_unset: "tenant_detail.capabilities_form.destination_unset",
 };
 
 export default function CreateTenantPage({
@@ -440,7 +463,28 @@ export default function CreateTenantPage({
               />
               <span>{t("tenants_list.capabilities.imports")}</span>
             </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="mediaPipelineEnabled"
+                value="true"
+              />
+              <span>{t("tenants_list.capabilities.media_pipeline")}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="digitizationEnabled"
+                value="true"
+              />
+              <span>{t("tenants_list.capabilities.digitization")}</span>
+            </label>
           </div>
+          {fieldError("mediaPipelineEnabled") ? (
+            <p className="mt-1 font-sans text-xs text-rust">
+              {fieldError("mediaPipelineEnabled")}
+            </p>
+          ) : null}
         </fieldset>
 
         <div>
@@ -497,4 +541,4 @@ export default function CreateTenantPage({
   );
 }
 
-// @version v0.6.0
+// @version v0.8.0

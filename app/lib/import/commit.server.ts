@@ -81,12 +81,42 @@
  * tolerates an empty pathCache (`parent.pathCache || parent.id`) — and
  * the row is counted in the run's `pathCacheCapped` tally, never failed.
  *
- * @version v0.6.0
+ * ## OCR text becomes a page-1 row, outside the journal
+ *
+ * `descriptions` has no OCR column: OCR text lives in `ocr_pages`, one
+ * row per page. ISAD(G) profiles can still bind `ocrText`, and a bound
+ * value is written the way migration 0086 moved the old column into
+ * pages: one row at page 1 holding the whole text, with no source key,
+ * no ALTO key and no run id. The key is taken out of the record before
+ * the description is written, so it never reaches the journal (page text
+ * stays outside the stewardship record), and the page statement goes in
+ * the same `db.batch` as the description's own statements. The insert
+ * and delete triggers on `ocr_pages` keep the external-content full-text
+ * index in step, as they do for every other page write.
+ *
+ * On create the page row is inserted with the new description. On
+ * update, a description with no pages gets one, and a description whose
+ * only page is a page-1 row of that migrated shape has its text replaced
+ * when it differs; equal text writes nothing. Both statements carry
+ * their own guard, so a page that appears between the read and the
+ * batch is left alone. A description that holds any other page (pages a
+ * pipeline run wrote, or a row without a run id in any other shape) is
+ * never touched by an import: `loadCommitConfig` refuses a run that would
+ * write OCR text to one, before anything is written, and each update
+ * batch refuses again before it builds a statement. A blank `ocrText`
+ * cell means keep, as for every other field: the assembled record does
+ * not carry the key, and an existing page row is left as it is.
+ *
+ * The page rows a run writes are counted in `ocrPagesWritten`. A row
+ * whose only change is its OCR text journals nothing and counts as
+ * `unchanged`, since the description itself is not written.
+ *
+ * @version v0.8.0
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { descriptions, importUploads, stewardshipRuns, tenants } from "../../db/schema";
+import { descriptions, importUploads, ocrPages, stewardshipRuns, tenants } from "../../db/schema";
 import type { DescriptionLevel, Standard } from "../standards/types";
 import {
   assertRunMessage,
@@ -121,6 +151,90 @@ export const IMPORT_BATCH_SIZE = 50;
  * input, and the row still lands (with an empty pathCache), never fails.
  */
 export const MAX_PATH_CACHE_LENGTH = 2048;
+
+/** The bind target whose value is written as a page-1 OCR row (module header). */
+const OCR_TARGET = "ocrText";
+
+/** A record's OCR text, or null when it carries none. */
+function ocrTextOf(record: Record<string, unknown>): string | null {
+  const value = record[OCR_TARGET];
+  if (value == null) return null;
+  const text = String(value);
+  return text.trim() === "" ? null : text;
+}
+
+/** The refusal for OCR text aimed at descriptions an import may not touch. */
+function ocrPagesRefusal(codes: readonly string[]): ImportCommitConfigError {
+  const shown = codes.slice(0, 5).join(", ");
+  const more = codes.length > 5 ? ` and ${codes.length - 5} more` : "";
+  return new ImportCommitConfigError(
+    `OCR text cannot be imported for ${codes.length} description(s) whose OCR pages ` +
+      `were not migrated from the old column (${shown}${more}); an import does not ` +
+      `replace them. Clear the ocrText cell for those rows and import again.`,
+  );
+}
+
+/** One OCR page row as the importer reads it; text only for rows without a run id. */
+interface ImportPageRow {
+  id: string;
+  descriptionId: string;
+  pageSeq: number;
+  runId: string | null;
+  sourceKey: string | null;
+  altoKey: string | null;
+  text: string | null;
+}
+
+/** Whether a row has the shape migration 0086 wrote. */
+function isMigratedPage(p: ImportPageRow): boolean {
+  return p.runId === null && p.pageSeq === 1 && p.sourceKey === null && p.altoKey === null;
+}
+
+/**
+ * The tenant's OCR page rows for the given descriptions, grouped by
+ * description. Text is read only for rows without a run id, so a
+ * pipeline volume's pages are never loaded.
+ */
+async function readImportPages(
+  db: DrizzleD1Database<any>,
+  tenantId: string,
+  descriptionIds: readonly string[],
+): Promise<Map<string, ImportPageRow[]>> {
+  const out = new Map<string, ImportPageRow[]>();
+  for (const slice of chunk(descriptionIds, IMPORT_BATCH_SIZE)) {
+    if (slice.length === 0) continue;
+    const rows = (await db
+      .select({
+        id: ocrPages.id,
+        descriptionId: ocrPages.descriptionId,
+        pageSeq: ocrPages.pageSeq,
+        runId: ocrPages.runId,
+        sourceKey: ocrPages.sourceKey,
+        altoKey: ocrPages.altoKey,
+        text: sql<string | null>`CASE WHEN ${ocrPages.runId} IS NULL THEN ${ocrPages.text} END`,
+      })
+      .from(ocrPages)
+      .where(and(eq(ocrPages.tenantId, tenantId), inArray(ocrPages.descriptionId, slice)))
+      .all()) as ImportPageRow[];
+    for (const row of rows) {
+      const list = out.get(row.descriptionId) ?? [];
+      list.push(row);
+      out.set(row.descriptionId, list);
+    }
+  }
+  return out;
+}
+
+/**
+ * The page a description's OCR text may be written to: null when it has
+ * no pages, the migrated page-1 row when that is its only page, and
+ * "refused" for anything else (module header).
+ */
+function writablePage(pages: readonly ImportPageRow[] | undefined): ImportPageRow | null | "refused" {
+  if (!pages || pages.length === 0) return null;
+  if (pages.length === 1 && isMigratedPage(pages[0])) return pages[0];
+  return "refused";
+}
 
 /** The run-author's write payload plus the parent linkage for one code. */
 interface AssembledRecord {
@@ -174,6 +288,8 @@ export interface RunCounts {
   rejected: number;
   /** Created rows whose computed pathCache exceeded the cap and stored "" instead. */
   pathCacheCapped?: number;
+  /** Page-1 OCR rows the run inserted or whose text it replaced (module header). */
+  ocrPagesWritten?: number;
 }
 
 export interface LoadCommitConfigParams {
@@ -341,6 +457,34 @@ export async function loadCommitConfig(
       updateCodes.push(row.referenceCode);
     }
   }
+  // OCR text for an existing description may only land on a migrated
+  // page-1 row or on none (module header): refuse the run, before it is
+  // marked running or anything is written, when any would land elsewhere.
+  const ocrUpdateCodes: string[] = [];
+  for (const v of result.verdicts) {
+    if (v.verdict !== "update" || v.referenceCode == null) continue;
+    if (v.record && ocrTextOf(v.record) !== null) ocrUpdateCodes.push(v.referenceCode);
+  }
+  if (ocrUpdateCodes.length > 0) {
+    const idByCode = new Map<string, string>();
+    for (const slice of chunk(ocrUpdateCodes, IMPORT_BATCH_SIZE)) {
+      const rows = (await db
+        .select({ id: descriptions.id, referenceCode: descriptions.referenceCode })
+        .from(descriptions)
+        .where(
+          and(eq(descriptions.tenantId, run.tenantId), inArray(descriptions.referenceCode, slice)),
+        )
+        .all()) as { id: string; referenceCode: string }[];
+      for (const row of rows) idByCode.set(row.referenceCode, row.id);
+    }
+    const pages = await readImportPages(db, run.tenantId, [...idByCode.values()]);
+    const refusedCodes = ocrUpdateCodes.filter((code) => {
+      const id = idByCode.get(code);
+      return id !== undefined && writablePage(pages.get(id)) === "refused";
+    });
+    if (refusedCodes.length > 0) throw ocrPagesRefusal(refusedCodes);
+  }
+
   let skipped = 0;
   let rejected = 0;
   for (const v of result.verdicts) {
@@ -592,7 +736,8 @@ interface ParentStructural {
  * full-snapshot journal row in ONE `db.batch`, then requery by natural key
  * to confirm the write (never trusting insert return values, spec §5).
  * Codes already present are skipped so a retry double-inserts nothing.
- * Returns the EXECUTED counts — the Workflow sums them into the terminal
+ * A row carrying OCR text gets its page-1 row in the same batch (module
+ * header). Returns the EXECUTED counts — the Workflow sums them into the terminal
  * record_counts (module header).
  */
 export async function processCreateBatch(
@@ -600,11 +745,11 @@ export async function processCreateBatch(
   store: StagingStore,
   config: CommitConfig,
   batchCodes: readonly string[],
-): Promise<{ created: number; pathCacheCapped: number }> {
+): Promise<{ created: number; pathCacheCapped: number; ocrPagesWritten: number }> {
   const records = await assembleRecordsCached(store, config);
   const already = await existingCodeSet(db, config.tenantId, batchCodes);
   const toCreate = batchCodes.filter((c) => !already.has(c));
-  if (toCreate.length === 0) return { created: 0, pathCacheCapped: 0 };
+  if (toCreate.length === 0) return { created: 0, pathCacheCapped: 0, ocrPagesWritten: 0 };
 
   // Resolve parent structural fields: cross-batch parents live in the DB
   // (created by an earlier batch or pre-existing); intra-batch parents are
@@ -645,6 +790,7 @@ export async function processCreateBatch(
   const now = Date.now();
   const statements: unknown[] = [];
   let pathCacheCapped = 0;
+  let ocrPagesWritten = 0;
   for (const code of toCreate) {
     const assembled = records.get(code);
     if (!assembled) continue;
@@ -670,6 +816,9 @@ export async function processCreateBatch(
     delete boundFields.id;
     delete boundFields.repositoryId;
     delete boundFields.descriptionLevel;
+    // OCR text is a page row, not a description field (module header).
+    const ocrText = ocrTextOf(boundFields);
+    delete boundFields[OCR_TARGET];
     const rawLevel = typeof assembled.record.descriptionLevel === "string"
       ? assembled.record.descriptionLevel
       : "";
@@ -708,6 +857,23 @@ export async function processCreateBatch(
       }),
     );
 
+    if (ocrText !== null) {
+      statements.push(
+        db.insert(ocrPages).values({
+          id: crypto.randomUUID(),
+          tenantId: config.tenantId,
+          descriptionId: id,
+          pageSeq: 1,
+          text: ocrText,
+          sourceKey: null,
+          altoKey: null,
+          runId: null,
+          createdAt: now,
+        }),
+      );
+      ocrPagesWritten++;
+    }
+
     // Register in the in-memory parent map so a child later in THIS batch
     // resolves against the row we are about to insert.
     memParents.set(code, { id, depth, rootDescriptionId, pathCache });
@@ -725,7 +891,7 @@ export async function processCreateBatch(
       throw new Error(`create requery mismatch: ${code} not found after insert`);
     }
   }
-  return { created: toCreate.length, pathCacheCapped };
+  return { created: toCreate.length, pathCacheCapped, ocrPagesWritten };
 }
 
 /** The columns a create/update must never touch on the target row. */
@@ -776,7 +942,10 @@ export function mergeLegacyIds(existingJson: unknown, incomingJson: string): str
  * descriptive fields, bump `updated_at`, and journal the ordinary
  * before-image diff in the SAME `db.batch`. An unchanged row yields an
  * empty diff and is left untouched — so the batch is idempotent and a
- * no-op re-import writes and journals nothing. Returns EXECUTED counts:
+ * no-op re-import writes and journals nothing. OCR text is written to
+ * the description's page-1 row, unjournalled, in the same batch, and the
+ * batch refuses before writing anything when a description it would
+ * write OCR text to holds other pages (module header). Returns EXECUTED counts:
  * `updated` = rows with a non-empty diff, `unchanged` = update-verdict
  * rows whose values already matched (module header).
  */
@@ -785,7 +954,7 @@ export async function processUpdateBatch(
   store: StagingStore,
   config: CommitConfig,
   batchCodes: readonly string[],
-): Promise<{ updated: number; unchanged: number }> {
+): Promise<{ updated: number; unchanged: number; ocrPagesWritten: number }> {
   const records = await assembleRecordsCached(store, config);
   const current = (await db
     .select()
@@ -799,19 +968,81 @@ export async function processUpdateBatch(
     .all()) as Record<string, unknown>[];
   const currentByCode = new Map(current.map((r) => [r.referenceCode as string, r]));
 
+  // The pages of every description this batch would write OCR text to,
+  // and the refusal before any statement is built (module header).
+  const ocrIds: string[] = [];
+  for (const code of batchCodes) {
+    const assembled = records.get(code);
+    const existing = currentByCode.get(code);
+    if (assembled && existing && ocrTextOf(assembled.record) !== null) {
+      ocrIds.push(existing.id as string);
+    }
+  }
+  const pagesById = await readImportPages(db, config.tenantId, ocrIds);
+  const refusedCodes = batchCodes.filter((code) => {
+    const existing = currentByCode.get(code);
+    return (
+      existing !== undefined &&
+      ocrIds.includes(existing.id as string) &&
+      writablePage(pagesById.get(existing.id as string)) === "refused"
+    );
+  });
+  if (refusedCodes.length > 0) throw ocrPagesRefusal(refusedCodes);
+
   const now = Date.now();
   const statements: unknown[] = [];
   let updated = 0;
   let unchanged = 0;
+  let ocrPagesWritten = 0;
   for (const code of batchCodes) {
     const assembled = records.get(code);
     const existing = currentByCode.get(code);
     if (!assembled || !existing) continue;
+    const descriptionId = existing.id as string;
 
     const boundFields: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(assembled.record)) {
-      if (NON_EDITABLE_TARGETS.has(key)) continue;
+      if (NON_EDITABLE_TARGETS.has(key) || key === OCR_TARGET) continue;
       boundFields[key] = value;
+    }
+
+    // OCR text goes to the description's page-1 row, written whether or
+    // not the description's own fields change (module header).
+    const ocrText = ocrTextOf(assembled.record);
+    if (ocrText !== null) {
+      const page = writablePage(pagesById.get(descriptionId));
+      if (page === null) {
+        // Inserted only while the description still has no page at all.
+        statements.push(
+          db.insert(ocrPages).select(sql`
+            SELECT ${crypto.randomUUID()}, ${config.tenantId}, ${descriptionId}, 1, ${ocrText},
+                   NULL, NULL, NULL, ${now}
+            WHERE NOT EXISTS (
+              SELECT 1 FROM ocr_pages WHERE description_id = ${descriptionId}
+            )
+          `),
+        );
+        ocrPagesWritten++;
+      } else if (page !== "refused" && page.text !== ocrText) {
+        // Replaced only while the row is still the migrated page 1.
+        statements.push(
+          db
+            .update(ocrPages)
+            .set({ text: ocrText })
+            .where(
+              and(
+                eq(ocrPages.tenantId, config.tenantId),
+                eq(ocrPages.id, page.id),
+                eq(ocrPages.descriptionId, descriptionId),
+                eq(ocrPages.pageSeq, 1),
+                sql`${ocrPages.runId} IS NULL`,
+                sql`${ocrPages.sourceKey} IS NULL`,
+                sql`${ocrPages.altoKey} IS NULL`,
+              ),
+            ),
+        );
+        ocrPagesWritten++;
+      }
     }
     // legacyIds is merge-append, never replace (module header): the
     // journal's before-image is the existing list, the after-image the
@@ -834,13 +1065,13 @@ export async function processUpdateBatch(
         .where(
           and(
             eq(descriptions.tenantId, config.tenantId),
-            eq(descriptions.id, existing.id as string),
+            eq(descriptions.id, descriptionId),
           ),
         ),
     );
     statements.push(
       composeJournalEntry(db, {
-        recordId: existing.id as string,
+        recordId: descriptionId,
         recordType: "description",
         userId: config.userId,
         kind: "update",
@@ -855,7 +1086,7 @@ export async function processUpdateBatch(
   if (statements.length > 0) {
     await db.batch(statements as [any, ...any[]]);
   }
-  return { updated, unchanged };
+  return { updated, unchanged, ocrPagesWritten };
 }
 
 /**

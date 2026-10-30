@@ -1,14 +1,18 @@
 /**
  * No Access Page
  *
- * This page is the terminal surface shown when an authenticated user
- * does not hold any role that would grant access to the app. It
- * explains the state
- * in both English and Spanish and offers the operator a sign-out
- * link. Never rendered through normal navigation — only reached
- * via a redirect from role-aware loaders.
+ * This page is the terminal surface shown when an authenticated member
+ * holds nothing that would grant access to the workspace: no role flag,
+ * no project membership in it and no federation grant into it. It
+ * explains the state in the member's language; the top bar's Log out
+ * stays available. A Reader is not sent here: they hold a role, and
+ * land on `/records`.
  *
- * @version v0.4.2
+ * Members reach it through `confineMemberAccess`, the `_auth` layout's
+ * second middleware, which sends such a member's page requests here
+ * from every other path except their settings.
+ *
+ * @version v0.8.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -17,9 +21,9 @@ import { userContext } from "../context";
 import type { Route } from "./+types/_auth.no-access";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  // Fall-through landing page for authenticated users with no assigned role.
-  // Intentionally no role check — this is where the auth layout sends
-  // placeholder isArchiveUser-only users.
+  // Landing page for members with no role, project membership or grant.
+  // Intentionally no role check: the layout's middleware sends them here,
+  // and a member who has access since gained is not harmed by reading it.
   const user = context.get(userContext);
   return { email: user.email };
 }
@@ -43,3 +47,5 @@ export default function NoAccessPage() {
     </div>
   );
 }
+
+// @version v0.8.0

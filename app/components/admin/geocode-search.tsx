@@ -1,11 +1,12 @@
 /**
- * Admin — geocoding search for the coordinate editor (Juan's ruling,
- * 2026-07-11 addendum to the detail-page redesign)
+ * Admin — geocoding search for the coordinate editor (a 2026-07-11
+ * addendum to the detail-page redesign)
  *
- * A search box inside the Geography card's edit mode: type a modern
- * place name, pick a result, and the coordinate editor flies there and
- * sets the pin — which stays draggable, with the synced lat/lon inputs
- * updating as they already do. Picking a result never auto-saves; the
+ * This component is a search box inside the Geography card's edit mode:
+ * the user types a modern place name and picks a result, and the
+ * coordinate editor flies there and sets the pin — which stays
+ * draggable, with the synced lat/lon inputs updating as they already
+ * do. Picking a result never saves on its own; the
  * existing save flow (and its needs-geocoding clearing) is untouched.
  *
  * Hand-rolled fetch + dropdown rather than a maplibre geocoder plugin:
@@ -18,7 +19,7 @@
  * supersession. Failures degrade silently to the manual editor: a quiet
  * inline notice, no thrown errors, the map keeps working.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useRef } from "react";

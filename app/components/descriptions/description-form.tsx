@@ -23,7 +23,11 @@
  * overrides in the locale files (`app/locales/{en,es}/descriptions.ts`)
  * and are picked up automatically.
  *
- * @version v0.4.0
+ * `hiddenColumns` leaves named fields out altogether, and a section
+ * whose fields are all hidden is left out with them. The Reader record
+ * page uses it for the columns that never leave the admin surface.
+ *
+ * @version v0.8.0
  */
 
 import type { ReactNode } from "react";
@@ -87,6 +91,12 @@ interface DescriptionFormProps {
    * plain-text creator/place display fields instead.
    */
   authoritiesEnabled?: boolean;
+  /**
+   * Columns left out of the form entirely. The Reader record page
+   * passes the columns that never leave the admin surface, so they are
+   * not shown even as empty fields.
+   */
+  hiddenColumns?: string[];
 }
 
 export function DescriptionForm({
@@ -99,6 +109,7 @@ export function DescriptionForm({
   placeLinks = [],
   standard,
   authoritiesEnabled = true,
+  hiddenColumns = [],
 }: DescriptionFormProps) {
   const { t } = useTranslation("descriptions_admin");
   const config = getStandardConfig(standard);
@@ -107,7 +118,15 @@ export function DescriptionForm({
 
   return (
     <div className="rounded-lg border border-stone-200 bg-white p-6">
-      {config.sections.map((section) => (
+      {config.sections
+        .map((section) => ({
+          ...section,
+          fields: section.fields.filter(
+            (field) => !hiddenColumns.includes(field.column),
+          ),
+        }))
+        .filter((section) => section.fields.length > 0)
+        .map((section) => (
         <CollapsibleSection
           key={section.id}
           title={tStd(t, `sections.${section.id}`, standard)}
@@ -262,7 +281,6 @@ function FieldRenderer({
           value={typeof value === "string" ? value : null}
           isEditing={isEditing}
           rows={field.hints?.rows ?? 3}
-          className={field.column === "ocrText" ? "font-mono" : ""}
         />
       );
     }
@@ -626,4 +644,4 @@ function ReadOnlyOrTextarea({
   );
 }
 
-/* @version v0.4.0 */
+/* @version v0.8.0 */

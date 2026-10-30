@@ -5,8 +5,8 @@
  * reviewed crowdsourcing volume entry into a published archival
  * description. It loads the entry, validates its reference code and
  * field payload, copies the mapped fields onto a fresh `descriptions`
- * row, writes the promotion manifest to R2, and records the audit
- * trail. Batch size is capped so a single superadmin click cannot fan
+ * row, writes the promotion manifest to the tenant's manifest bucket,
+ * and records the audit trail. Batch size is capped so a single superadmin click cannot fan
  * out into an unbounded workload.
  *
  * `PromotionArgs` carries an explicit `tenantId` so the
@@ -25,7 +25,14 @@
  * validator factory is the same one the admin form save action
  * consumes.
  *
- * @version v0.7.0
+ * Each tenant's manifests go to its part of its federation's storage.
+ * The caller resolves the tenant's storage destination and passes its
+ * manifest bucket as `manifestsBucket` (anything with an R2 binding's
+ * `put`, writing under the tenant's slug) and the tenant's manifest
+ * address (`{manifest_base_url}/{slug}`) as `manifestBaseUrl`, which
+ * every promoted description's `iiif_manifest_url` is built under.
+ *
+ * @version v0.8.0
  */
 import { eq, and, isNull, inArray, sql, desc } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -42,6 +49,7 @@ import { parseManifest } from "../iiif.server";
 import { descriptionValidatorFor } from "../standards/validator-factory";
 import type { Standard } from "../standards/types";
 import type { VolumePage } from "./types";
+import type { ManifestWriter } from "../pipeline/canonical.server";
 
 /** D1 batch limit per established pattern in entries.server.ts */
 const CHUNK_SIZE = 89;
@@ -80,7 +88,8 @@ export class PromotionError extends Error {
 
 export interface PromotionArgs {
   db: DrizzleD1Database<any>;
-  manifestsBucket: R2Bucket;
+  /** The tenant's manifest bucket. */
+  manifestsBucket: ManifestWriter;
   entries: Array<{ entryId: string; referenceCode: string }>;
   volumeId: string;
   userId: string;
@@ -92,6 +101,7 @@ export interface PromotionArgs {
    * `descriptionValidatorFor(standard, "item")`.
    */
   standard: Standard;
+  /** The tenant's `manifest_base_url`, without a trailing slash. */
   manifestBaseUrl: string;
 }
 
@@ -224,7 +234,7 @@ export async function getPromotableEntries(
  * d. Map entries to descriptions (pure)
  * e. Build IIIF manifests (pure)
  * f. Insert descriptions into D1 (batched)
- * g. Upload manifests to R2
+ * g. Upload manifests to the tenant's manifest bucket
  * h. Update entries (batched)
  * i. Update parent denorm cache
  * j. Return results
@@ -527,7 +537,7 @@ export async function promoteEntries(
     await db.batch(chunk as any);
   }
 
-  // ---- (g) Upload manifests to R2 ----
+  // ---- (g) Upload manifests to the tenant's manifest bucket ----
 
   for (const m of mappings) {
     await manifestsBucket.put(

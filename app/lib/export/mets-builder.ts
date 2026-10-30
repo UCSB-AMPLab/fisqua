@@ -14,7 +14,7 @@
  * source of truth for XML escaping and single-element emission. The
  * existing `tests/export/mets-builder.test.ts` is the regression net.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { escapeXml, el } from "./xml/escape";
@@ -85,8 +85,8 @@ export interface MetsRepository {
 // Re-exports (back-compat)
 // ---------------------------------------------------------------------------
 
-// Pre-Phase-37-02 callers imported `escapeXml` from this module. The helper
-// now lives in `./xml/escape.ts` (T-37-02 single source of truth across the
+// Earlier callers imported `escapeXml` from this module. The helper
+// now lives in `./xml/escape.ts` (the single source of truth across the
 // METS, EAD3, and Dublin Core builders); re-export keeps existing imports
 // working without a wider sweep.
 export { escapeXml };

@@ -11,13 +11,15 @@
  * Keep this config narrow — only `tests/import/**` should be included.
  * Anything that exercises the live Worker belongs with `vitest.config.ts`.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // The development machine is shared; cap the worker pool.
+    maxWorkers: 2,
     include: ["tests/import/**/*.test.ts"],
   },
 });

@@ -6,23 +6,18 @@
  * project sections, and the all/archived project pickers the admin
  * landing page uses.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   heading: {
     admin: "Administración",
     users: "Usuarios",
     projects: "Proyectos",
-    all_users: "Todos los usuarios",
-    create_user: "Crear usuario",
     all_projects: "Todos los proyectos",
     archived_projects: "Proyectos archivados",
   },
   cataloguing_projects: {
     title: "Proyectos de catalogación",
-  },
-  cataloguing_users: {
-    title: "Usuarios de catalogación",
   },
   tab: {
     users: "Usuarios",
@@ -34,13 +29,10 @@ export default {
     name: "Nombre",
     email: "Correo electrónico",
     role: "Rol",
-    admin: "Administrador",
-    collab_admin: "Admin de colaboración",
     admin_status: "Admin",
     user: "Usuario",
     last_active: "Última actividad",
     projects: "Proyectos",
-    created: "Creado",
     archived: "Archivado",
     lead: "Coordinador(es)",
     members: "Miembros",
@@ -51,7 +43,6 @@ export default {
   },
   action: {
     add_user: "Agregar usuario",
-    create_user: "Crear usuario",
     new_user: "Nuevo usuario",
     edit_user: "Editar usuario",
     edit: "Editar",
@@ -74,7 +65,6 @@ export default {
     no_archived: "No hay proyectos archivados.",
   },
   error: {
-    self_admin: "No puedes cambiar tu propio estado de administrador.",
     user_not_found: "Usuario no encontrado.",
     invalid_email: "Ingresa una dirección de correo válida.",
     invalid_role: "Ese rol no se puede asignar al momento de invitar.",
@@ -83,8 +73,8 @@ export default {
     user_created: "Usuario {{email}} creado.",
     user_invited: "Invitación enviada a {{email}}.",
     invite_email_failed: "No se pudo enviar el correo de invitación. Inténtalo de nuevo.",
-    admin_toggled_on: "{{email}} ahora es administrador.",
-    admin_toggled_off: "{{email}} ya no es administrador.",
+    error_invite_role_not_granted:
+      "Se envió la invitación, pero no se pudo otorgar el rol. Otórgalo desde la página de la persona invitada.",
     missing_project_id: "Falta el ID del proyecto.",
     project_archived: "Proyecto archivado.",
     project_restored: "Proyecto restaurado.",
@@ -117,3 +107,5 @@ export default {
     no_users_available: "Todos los usuarios ya fueron agregados",
   },
 } as const;
+
+// @version v0.8.0

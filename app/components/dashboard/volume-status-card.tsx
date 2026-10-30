@@ -6,7 +6,7 @@
  * reviewer avatars. Clicking the card opens the viewer in the caller's
  * default mode.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -88,9 +88,14 @@ export function VolumeStatusCard({ volume }: VolumeStatusCardProps) {
 }
 
 /**
- * Calculate how many days since a timestamp.
+ * Calculate how many days since a timestamp, measured from `now` (the
+ * clock when omitted). Render paths pass the root loader's `now`
+ * (`useFormatters().now`) so the server render and hydration agree on
+ * the day count and on the badge styling that depends on it.
  */
-export function daysSince(timestamp: number): number {
-  const diff = Date.now() - timestamp;
+export function daysSince(timestamp: number, now: number = Date.now()): number {
+  const diff = now - timestamp;
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
+
+/* @version v0.8.0 */

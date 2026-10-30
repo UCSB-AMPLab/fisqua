@@ -14,7 +14,7 @@
  * from the immutable ledger row the merge/split action wrote in the
  * same batch as the mutation.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -113,11 +113,6 @@ export async function getSplitTargets(
     .all();
 
   return rows.map((r) => r.targetId).filter((id): id is string => id != null);
-}
-
-/** Format an epoch-ms timestamp as an ISO calendar date (YYYY-MM-DD). */
-export function bandDate(createdAt: number): string {
-  return new Date(createdAt).toISOString().slice(0, 10);
 }
 
 export interface OperationHistoryRow {
@@ -222,3 +217,5 @@ export async function getOperationHistory(
   });
   return { rows: mapped, total };
 }
+
+/* @version v0.8.0 */

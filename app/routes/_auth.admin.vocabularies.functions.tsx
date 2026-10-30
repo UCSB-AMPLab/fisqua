@@ -10,7 +10,7 @@
  * merge-dialog search, and the add/rename/deprecate mutations are all
  * scoped to `tenant.federationId`.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -18,6 +18,7 @@ import { Link, useSearchParams, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Search, Plus, MoreVertical } from "lucide-react";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { FUNCTION_CATEGORIES } from "~/lib/validation/enums";
 import { CategoryFilterChips } from "~/components/admin/category-filter-chips";
 import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
@@ -42,7 +43,7 @@ interface VocabTerm {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, isNull, asc, desc, sql } = await import(
     "drizzle-orm"
@@ -50,8 +51,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { vocabularyTerms } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
+  // Checked here as well as in the layout: a data request for this
+  // route alone runs this loader or action without the layout's.
+  requireCapability(tenant, "vocabulary_hub");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -153,7 +157,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, changelog } = await import("~/db/schema");
@@ -162,8 +166,11 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
+  // Checked here as well as in the layout: a data request for this
+  // route alone runs this loader or action without the layout's.
+  requireCapability(tenant, "vocabulary_hub");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

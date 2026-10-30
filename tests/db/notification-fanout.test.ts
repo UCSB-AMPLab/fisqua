@@ -1,11 +1,11 @@
 /**
  * Tests — notification fan-out
  *
- * Covers `app/lib/notifications.server.ts` and the four call sites that
- * feed it: ruling a proposal, ruling a pair (kept_both and merged),
- * commenting on a decision thread, and filing proposals on a person's
- * behalf. What is under test is the recipient set — who gets an outbox
- * row for a given event, and who deliberately does not.
+ * This suite covers `app/lib/notifications.server.ts` and the four call
+ * sites that feed it: ruling a proposal, ruling a pair (kept_both and
+ * merged), commenting on a decision thread, and filing proposals on a
+ * person's behalf. What is under test is the recipient set — who gets
+ * an outbox row for a given event, and who deliberately does not.
  *
  * FIXTURES are the pending-decisions suite's, extended where the
  * recipient rules need distinctions that surface has no use for: two
@@ -19,7 +19,7 @@
  * suite does it, so a plain tenant admin can rule a pair of
  * tenant-owned records without a steward fixture in every test.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -66,6 +66,10 @@ function makeUser(
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -555,6 +559,42 @@ describe("notification fan-out", () => {
       // The tenant's non-admin and the sibling tenant's admin are out.
       expect(ids).not.toContain(ALPHA_STAFF_ID);
       expect(ids).not.toContain(BETA_ADMIN_ID);
+    });
+
+    it("a tenant-stamped question also reaches that tenant's super and authorities admins, and no other area admin", async () => {
+      const db = drizzle(env.DB, { schema });
+      await env.DB.prepare("UPDATE users SET is_authorities_admin = 1 WHERE id = ?")
+        .bind(ALPHA_STAFF_ID)
+        .run();
+      // A super admin of the tenant, who passes every area.
+      const superAdmin = "1b000000-0000-4000-8000-0000000000bb";
+      await env.DB.prepare(
+        "INSERT INTO users (id, tenant_id, email, is_super_admin, digest_frequency, created_at, updated_at) " +
+          "VALUES (?,?,?,1,'hourly',?,?)",
+      )
+        .bind(superAdmin, ALPHA_TENANT_ID, `${superAdmin}@test.local`, 1, 1)
+        .run();
+      // A member holding the three other area flags, with digests on.
+      const otherAreas = "1b000000-0000-4000-8000-0000000000aa";
+      await env.DB.prepare(
+        "INSERT INTO users (id, tenant_id, email, is_records_admin, is_imports_admin, is_digitization_admin, " +
+          "digest_frequency, created_at, updated_at) VALUES (?,?,?,1,1,1,'hourly',?,?)",
+      )
+        .bind(otherAreas, ALPHA_TENANT_ID, `${otherAreas}@test.local`, 1, 1)
+        .run();
+      const id = crypto.randomUUID();
+      await seedProposal({ id, tenantId: ALPHA_TENANT_ID });
+
+      const written = await enqueueDecisionNotifications(db, {
+        kind: "proposal_filed",
+        decisionId: id,
+        actorUserId: null,
+        now: 3_000,
+      });
+      expect(written).toBe(4);
+      expect(await recipientIds()).toEqual(
+        [ALPHA_ADMIN_ID, ALPHA_ADMIN2_ID, ALPHA_STAFF_ID, "1b000000-0000-4000-8000-0000000000bb"].sort(),
+      );
     });
 
     it("a shared-space question reaches the lead tenant's admins and the federation's stewards", async () => {

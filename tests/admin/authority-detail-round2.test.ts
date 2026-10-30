@@ -1,7 +1,8 @@
 /**
  * Tests — authority detail round 2 (notes, unfold card, IDOR)
  *
- * Pins the data contracts behind the second detail-page round:
+ * This suite pins the data contracts behind the second detail-page
+ * round:
  *   - the click-to-unfold context card loader branch (`?card=<junctionId>`)
  *     on both detail routes, INCLUDING its ownership check — a junction
  *     id belonging to another record must resolve to `card: null`, never
@@ -10,7 +11,7 @@
  *   - the guarantee that internal_notes never appears in export output
  *     (the export formatters have no such column).
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -314,6 +315,7 @@ describe("internal notes are never exported", () => {
   it("the place export shape carries neither notes nor internal_notes", async () => {
     const { formatPlace } = await import("../../app/lib/export/places.server");
     const out: any = formatPlace({
+      id: "place-exp001",
       placeCode: "nl-exp001",
       label: "Exported",
       displayName: "Exported Place",

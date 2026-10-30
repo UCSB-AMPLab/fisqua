@@ -6,23 +6,18 @@
  * project sections, and the all/archived project pickers the admin
  * landing page uses.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   heading: {
     admin: "Admin",
     users: "Users",
     projects: "Projects",
-    all_users: "All users",
-    create_user: "Create user",
     all_projects: "All projects",
     archived_projects: "Archived projects",
   },
   cataloguing_projects: {
     title: "Cataloguing projects",
-  },
-  cataloguing_users: {
-    title: "Cataloguing users",
   },
   tab: {
     users: "Users",
@@ -34,13 +29,10 @@ export default {
     name: "Name",
     email: "Email",
     role: "Role",
-    admin: "Admin",
-    collab_admin: "Collab admin",
     admin_status: "Admin",
     user: "User",
     last_active: "Last active",
     projects: "Projects",
-    created: "Created",
     archived: "Archived",
     lead: "Lead(s)",
     members: "Members",
@@ -51,7 +43,6 @@ export default {
   },
   action: {
     add_user: "Add user",
-    create_user: "Create user",
     new_user: "New user",
     edit_user: "Edit user",
     edit: "Edit",
@@ -74,7 +65,6 @@ export default {
     no_archived: "No archived projects.",
   },
   error: {
-    self_admin: "You cannot change your own admin status.",
     user_not_found: "User not found.",
     invalid_email: "Please enter a valid email address.",
     invalid_role: "That is not a role that can be given at invite time.",
@@ -83,8 +73,8 @@ export default {
     user_created: "User {{email}} created.",
     user_invited: "Invite sent to {{email}}.",
     invite_email_failed: "Failed to send invite email. Please try again.",
-    admin_toggled_on: "{{email}} is now an admin.",
-    admin_toggled_off: "{{email}} is no longer an admin.",
+    error_invite_role_not_granted:
+      "The invitation was sent, but the role could not be granted. Grant it on the new user's page.",
     missing_project_id: "Missing project ID.",
     project_archived: "Project archived.",
     project_restored: "Project restored.",
@@ -117,3 +107,5 @@ export default {
     no_users_available: "All users already added",
   },
 } as const;
+
+// @version v0.8.0

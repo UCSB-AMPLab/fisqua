@@ -23,11 +23,19 @@
  *     machinery instead) but that are still legal to bind directly, for
  *     a migration that arrives already carrying the value.
  *
+ * One more target is held per standard: ISAD(G) keeps `ocrText` as a
+ * bind target, in the place its form field used to occupy (directly
+ * after `arrangement`), although the profile no longer declares it as a
+ * form field. Existing ISAD(G) profiles that bind it stay valid, and the
+ * canonical template's header list and version do not move. `ocrText`
+ * names no column on `descriptions`: the import commit writes a bound
+ * value as the description's page-1 row in `ocr_pages`.
+ *
  * `referenceCode` is always present (it is a standard identity field),
  * which is what makes the profile-schema's "referenceCode binding
  * required" rule satisfiable for every standard.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { getStandardConfig } from "../standards/registry";
@@ -50,6 +58,18 @@ export const STRUCTURAL_TARGETS = ["parent", "legacyIds"] as const;
  */
 export const SUPPLEMENTARY_TARGETS = ["dateCertainty"] as const;
 
+/**
+ * Targets held for one standard at a fixed place in its list: each entry
+ * is inserted directly after the section field it names. `ocrText` left
+ * the ISAD(G) form but stays a legal ISAD(G) bind target, after
+ * `arrangement`, which the commit writes as a page-1 OCR row.
+ * Not in `SUPPLEMENTARY_TARGETS`, which applies to every standard and
+ * appends at the end.
+ */
+export const HELD_TARGETS: Partial<Record<Standard, ReadonlyArray<{ after: string; column: string }>>> = {
+  isadg: [{ after: "arrangement", column: "ocrText" }],
+};
+
 /** The identity target every profile must bind (spec §2, §3). */
 export const REQUIRED_TARGET = "referenceCode" as const;
 
@@ -68,6 +88,7 @@ const EXCLUDED_COLUMNS = new Set(["entities", "places"]);
  */
 export function allowedTargetFields(standard: Standard): string[] {
   const config = getStandardConfig(standard);
+  const held = HELD_TARGETS[standard] ?? [];
   const seen = new Set<string>();
   const targets: string[] = [];
   for (const section of config.sections) {
@@ -76,6 +97,12 @@ export function allowedTargetFields(standard: Standard): string[] {
       if (seen.has(field.column)) continue;
       seen.add(field.column);
       targets.push(field.column);
+      for (const entry of held) {
+        if (entry.after === field.column && !seen.has(entry.column)) {
+          seen.add(entry.column);
+          targets.push(entry.column);
+        }
+      }
     }
   }
   for (const structural of STRUCTURAL_TARGETS) {
@@ -97,3 +124,5 @@ export function allowedTargetFields(standard: Standard): string[] {
 export function isValidTarget(standard: Standard, target: string): boolean {
   return allowedTargetFields(standard).includes(target);
 }
+
+/* @version v0.8.0 */

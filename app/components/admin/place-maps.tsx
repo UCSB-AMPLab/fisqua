@@ -1,8 +1,8 @@
 /**
  * Admin — Place map surfaces (client-only MapLibre)
  *
- * The three map surfaces of the places module (spec §5, design handoff
- * surfaces 8–10): the clustered map explorer, the detail-page map
+ * This module holds the three map surfaces of the places module (spec
+ * §5, design handoff surfaces 8–10): the clustered map explorer, the detail-page map
  * preview, and the interactive coordinate editor. All three share
  * `useMapLibre`, which LAZY-LOADS `maplibre-gl` (and its stylesheet)
  * inside a client effect — React Router v7 renders these routes on the
@@ -32,7 +32,7 @@
  * view. The selected point renders a distinct verdigris highlight layer
  * above the madder cluster/point layers.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -114,8 +114,7 @@ export interface MapReadyTarget {
  * fragile: if `loaded()` is already true by the time the caller can
  * attach (fast-cache style loads), or the firing frame is missed or
  * never scheduled, a sole `once("load")` never runs and the map wedges
- * silently — layers never added, no error, no tiles (the phase-4 UAT
- * defect). Three guards, first one wins, `cb` runs once:
+ * silently — layers never added, no error, no tiles. Three guards, first one wins, `cb` runs once:
  *
  *   1. `loaded()` already true → run synchronously;
  *   2. `once("load")` — the normal path;
@@ -683,7 +682,7 @@ export function CoordinateMapEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Geocode-pick fly-to (Juan's 2026-07-11 ruling): keyed on the token
+  // Geocode-pick fly-to: keyed on the token
   // so ordinary coordinate syncs never move the camera.
   useEffect(() => {
     const map = mapRef.current;

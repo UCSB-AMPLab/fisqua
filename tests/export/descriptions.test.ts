@@ -15,7 +15,7 @@
  * empty strings to `null` so the frontend's JSON consumers don't
  * have to discriminate "" vs missing.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -205,7 +205,7 @@ describe("formatDescription", () => {
   it("maps a complete D1 row to ExportDescription with all fields", () => {
     const row = makeDescriptionRow();
     const repo = makeRepoRow();
-    const result = formatDescription(row, repo, null, []);
+    const result = formatDescription(row, repo, null, [], "https://manifests.zasqua.org/mets");
 
     expect(result.id).toBe("desc-001");
     expect(result.repository_code).toBe("co-ahr");
@@ -223,7 +223,7 @@ describe("formatDescription", () => {
     expect(result.children_level).toBe("item"); // -car\d+ match
     expect(result.has_digital).toBe(true);
     expect(result.mets_url).toBe(
-      "https://mets.zasqua.org/co-ahr-gob-caj001-car001.xml"
+      "https://manifests.zasqua.org/mets/co-ahr-gob-caj001-car001.xml"
     );
     expect(result.scope_content).toBe("Test scope");
     expect(result.ocr_text).toBe("Test OCR");
@@ -246,11 +246,21 @@ describe("formatDescription", () => {
     expect(result.language).toBe("Latin");
   });
 
-  it("constructs mets_url from reference code stripping ? and #", () => {
+  it("constructs mets_url from the tenant's base, stripping ? and # from the code", () => {
     const row = makeDescriptionRow({ referenceCode: "co-ahr-gob?#test" });
     const repo = makeRepoRow();
-    const result = formatDescription(row, repo, null, []);
-    expect(result.mets_url).toBe("https://mets.zasqua.org/co-ahr-gobtest.xml");
+    const result = formatDescription(row, repo, null, [], "https://manifests.zasqua.org/mets/");
+    expect(result.mets_url).toBe("https://manifests.zasqua.org/mets/co-ahr-gobtest.xml");
+  });
+
+  it("exports no mets_url when the tenant has no METS base", () => {
+    const row = makeDescriptionRow();
+    const repo = makeRepoRow();
+    for (const base of [null, "", "  "]) {
+      const result = formatDescription(row, repo, null, [], base);
+      expect(result).not.toHaveProperty("mets_url");
+    }
+    expect(formatDescription(row, repo, null, [])).not.toHaveProperty("mets_url");
   });
 
   it("sets parent_reference_code when provided", () => {
@@ -320,7 +330,7 @@ describe("formatRepositories", () => {
       children_level: "caja",
       has_digital: false,
       iiif_manifest_url: "",
-      mets_url: "https://mets.zasqua.org/co-ahr-gob.xml",
+      mets_url: "https://manifests.zasqua.org/mets/co-ahr-gob.xml",
       scope_content: null,
       ocr_text: "some text",
       extent: null,

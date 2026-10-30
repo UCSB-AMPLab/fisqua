@@ -13,7 +13,10 @@
  * `getAllowedManifestHosts` reads the comma-separated
  * `ALLOWED_MANIFEST_HOSTS` env var (falling back to
  * `manifests.zasqua.org`) so the host allowlist is configurable per
- * deployment without recompiling. `parseManifest` and the URL
+ * deployment without recompiling, and adds any hosts the caller passes:
+ * the manifest hosts of the tenants' storage destinations, which the
+ * route reads from D1, so a tenant's own manifests can be fetched
+ * without a deploy. `parseManifest` and the URL
  * validation helpers around it pin the shape we expect from
  * Zasqua-style manifests — a Spanish-locale label, a homepage that
  * carries the reference code in the URL, and canvases whose first
@@ -27,7 +30,12 @@
  * `parseManifest` throws `ManifestError` tokens, so the consuming
  * route translates at the render boundary.
  *
- * @version v0.7.0
+ * The parse is also used on manifests read from storage rather than
+ * fetched: `parseManifestDocument` takes the JSON already in hand, and
+ * `parseManifestPages` reads only its canvases. A malformed document
+ * throws a token there too, never a `TypeError`.
+ *
+ * @version v0.8.0
  */
 
 export interface ParsedManifest {
@@ -50,12 +58,15 @@ const DEFAULT_MANIFEST_HOSTS = ["manifests.zasqua.org"];
  * Returns the list of allowed IIIF manifest hosts from the env var,
  * falling back to the default host if not set.
  */
-export function getAllowedManifestHosts(env: {
-  ALLOWED_MANIFEST_HOSTS?: string;
-}): string[] {
+export function getAllowedManifestHosts(
+  env: { ALLOWED_MANIFEST_HOSTS?: string },
+  extraHosts: readonly string[] = [],
+): string[] {
   const raw = env.ALLOWED_MANIFEST_HOSTS?.trim();
-  if (!raw) return DEFAULT_MANIFEST_HOSTS;
-  return raw.split(",").map((h) => h.trim()).filter((h) => h.length > 0);
+  const configured = raw
+    ? raw.split(",").map((h) => h.trim()).filter((h) => h.length > 0)
+    : DEFAULT_MANIFEST_HOSTS;
+  return [...new Set([...configured, ...extraHosts])];
 }
 
 /**
@@ -86,7 +97,8 @@ export class ManifestError extends Error {
  */
 export function validateManifestUrl(
   url: string,
-  env: { ALLOWED_MANIFEST_HOSTS?: string }
+  env: { ALLOWED_MANIFEST_HOSTS?: string },
+  extraHosts: readonly string[] = [],
 ): {
   valid: boolean;
   error?: string;
@@ -97,7 +109,7 @@ export function validateManifestUrl(
     if (parsed.protocol !== "https:") {
       return { valid: false, error: "manifest_https" };
     }
-    const allowedHosts = getAllowedManifestHosts(env);
+    const allowedHosts = getAllowedManifestHosts(env, extraHosts);
     if (!allowedHosts.includes(parsed.hostname)) {
       return {
         valid: false,
@@ -116,11 +128,7 @@ export function validateManifestUrl(
 
 /**
  * Fetches and parses a IIIF v3 manifest, extracting volume and page data.
- *
- * Extracts:
- * - name from label language map (tries es, none, en in order)
- * - referenceCode from homepage[0].id URL
- * - pages from canvases with position, dimensions, and image service URL
+ * The parse itself is `parseManifestDocument`; this adds the fetch.
  *
  * Throws if the manifest is unreachable or missing required fields.
  */
@@ -131,8 +139,32 @@ export async function parseManifest(
   if (!response.ok) {
     throw new ManifestError("manifest_fetch_failed", response.status);
   }
+  return parseManifestDocument(await response.json(), manifestUrl);
+}
 
-  const manifest = (await response.json()) as any;
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parses a IIIF v3 manifest that is already in hand as JSON.
+ *
+ * Extracts:
+ * - name from label language map (tries es, none, en in order)
+ * - referenceCode from homepage[0].id URL
+ * - pages from canvases, through `parseManifestPages`
+ *
+ * A document that is not an object, or whose homepage id is missing,
+ * not a string or not a `zasqua.org/<reference_code>` URL, throws
+ * `manifest_ref_code`.
+ */
+export function parseManifestDocument(
+  manifest: unknown,
+  manifestUrl: string
+): ParsedManifest {
+  if (!isPlainObject(manifest)) {
+    throw new ManifestError("manifest_ref_code");
+  }
 
   // Extract label from v3 language map
   const label = manifest.label;
@@ -141,7 +173,7 @@ export async function parseManifest(
 
   // Extract reference code from homepage URL
   const homepageUrl = manifest.homepage?.[0]?.id;
-  if (!homepageUrl) {
+  if (typeof homepageUrl !== "string" || !homepageUrl) {
     throw new ManifestError("manifest_ref_code");
   }
 
@@ -151,9 +183,28 @@ export async function parseManifest(
   }
   const referenceCode = refMatch[1];
 
-  // Extract pages from canvases
-  const canvases = manifest.items || [];
-  const pages = canvases.map((canvas: any, index: number) => {
+  const pages = parseManifestPages(manifest);
+  return { name, referenceCode, manifestUrl, pageCount: pages.length, pages };
+}
+
+/**
+ * Reads a manifest's canvases into pages: position, dimensions, the
+ * image service URL of the first painting body, and a label. `items`
+ * that is present but not an array, or a canvas that is not an object,
+ * throws `manifest_items`.
+ */
+export function parseManifestPages(manifest: unknown): ParsedManifest["pages"] {
+  if (!isPlainObject(manifest)) {
+    throw new ManifestError("manifest_items");
+  }
+  const canvases: unknown = manifest.items ?? [];
+  if (!Array.isArray(canvases)) {
+    throw new ManifestError("manifest_items");
+  }
+  return canvases.map((canvas: unknown, index: number) => {
+    if (!isPlainObject(canvas)) {
+      throw new ManifestError("manifest_items");
+    }
     const annoPage = canvas.items?.[0];
     const annotation = annoPage?.items?.[0];
     const body = annotation?.body;
@@ -178,6 +229,4 @@ export async function parseManifest(
       label: pageLabel,
     };
   });
-
-  return { name, referenceCode, manifestUrl, pageCount: pages.length, pages };
 }

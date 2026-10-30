@@ -1,13 +1,13 @@
 /**
  * English translations — handlists namespace
  *
- * Strings for handlists: the working sets a person keeps. A handlist
- * is an ordered, named, persistent set of REFERENCES to records,
- * entities or places — one kind per handlist, fixed by its first
- * member — so most of the copy here is about the two things that
- * follow from that. It references rather than contains, which is why
- * the delete and remove copy states plainly that no record is
- * affected; and it is a snapshot of a moment, which is why the drift
+ * This file holds the English strings for handlists: the working sets a
+ * person keeps. A handlist is an ordered, named, persistent set of
+ * REFERENCES to records, entities or places — one kind per handlist,
+ * fixed by its first member — so most of the copy here is about the two
+ * things that follow from that. It references rather than contains,
+ * which is why the delete and remove copy states plainly that no record
+ * is affected; and it is a snapshot of a moment, which is why the drift
  * notes exist at all.
  *
  * COUNT LINES ARE COMPOSED, NEVER ASSEMBLED. Every sentence that
@@ -30,7 +30,7 @@
  * (export tier is per-user role as of the 2026-08-15 ruling), and the
  * share aside names the editor role, which now ships.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   // ── The surface ──────────────────────────────────────────────────
@@ -67,7 +67,7 @@ export default {
   // opens it. Shown with its reason, never silently absent.
   lockedLabel: "Cannot open",
   reasonAuthoritiesAdminOnly:
-    "Only workspace administrators can open a handlist of authority records.",
+    "Only workspace, super and authorities administrators can open a handlist of authority records.",
 
   // ── Empty states ─────────────────────────────────────────────────
   emptyMineHeading: "No handlists yet",

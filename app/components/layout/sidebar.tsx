@@ -9,11 +9,24 @@
  * of inline role checks. Supports both a desktop collapsed state and a
  * mobile drawer.
  *
+ * The item column (sections, spacer, and the bottom items My settings
+ * and Users) is the one element that scrolls: `min-h-0` lets it
+ * shrink below its content inside the full-height nav, and
+ * `overflow-y-auto` scrolls it. A tenant with many capabilities has
+ * sections taller than the window, and without this the bottom items
+ * were clipped by the layout's `overflow-hidden` row. The spacer keeps
+ * the bottom items at the foot of the rail when everything fits; when
+ * it does not, they come last in the scroll. The collapse toggle sits
+ * outside the scrolling column and stays pinned. The same markup serves
+ * the collapsed and expanded rail, and the focused-surface overlay in
+ * `_auth.tsx`, whose absolute layer gives the nav its height.
+ *
  * `getSidebarSections(user, tenant)` takes a second argument carrying
- * the request tenant's five capability booleans
+ * the request tenant's capability booleans
  * (`crowdsourcingEnabled`, `vocabularyHubEnabled`,
  * `publishPipelineEnabled`, `multiRepositoryEnabled`,
- * `authoritiesEnabled`). When a
+ * `authoritiesEnabled`, `importsEnabled`, `digitizationEnabled`).
+ * When a
  * capability is off, the corresponding nav surface is omitted
  * entirely — no greyed-out, no "coming soon", no tooltip — matching
  * the platform's immutable-capability posture.
@@ -21,23 +34,45 @@
  * The first, unlabelled section carries Home, Handlists and global
  * search, all of which sit above the module sections because they
  * read across all of them, and none of which carries a gate here.
- * Search is member-level (ruled 2026-08-16) with the admin gate kept
- * only on its authority reach, inside the surface; a handlist belongs
- * to a person rather than to a module, and the admin gate that guards
- * an authority-typed one is enforced on the handlist itself.
+ * Search is member-level (ruled 2026-08-16) with the authorities area
+ * gate kept only on its authority reach, inside the surface; a handlist
+ * belongs to a person rather than to a module, and the area gate that
+ * guards an authority-typed one is enforced on the handlist itself.
  *
- * The gate map is:
+ * The module sections are gated by area as well as by capability. A
+ * workspace admin (`isAdmin`) and a super admin pass every area; an
+ * area admin passes their own: Records management needs the records
+ * area, Authorities the authorities area, Imports the imports area,
+ * and Digitization follows `isCaptureManager`, which the layout loader
+ * computes from the digitization area and federation stewardship. The
+ * rule is the one `canAdministerArea` (`user-access.server.ts`) holds,
+ * restated here because this module renders in the browser.
+ * Pending decisions belongs to Authorities; someone who can open only
+ * its vocabulary tab (the records area, without the authority tabs)
+ * finds it in Records management instead, leading to that tab.
+ *
+ * A Reader with no other role (`user.access === "reader"`) gets one
+ * section holding Records (`/records`) and nothing else; a member with
+ * no access (`"none"`) gets no sections. Both keep the bottom item My
+ * settings. A Reader who also holds a staff role keeps every section
+ * and has Records in the first one, after Search.
+ *
+ * The capability gate map is:
  *
  *   - `crowdsourcingEnabled` → entire `Collaborative Cataloguing`
- *     section (My projects, All projects, Manage users, Promote)
+ *     section (My projects, All projects, Team, Promote)
  *   - `vocabularyHubEnabled` → `/admin/vocabularies`
- *   - `publishPipelineEnabled` → `/admin/publish` and
- *     `/admin/cataloguing/promote`
+ *   - `publishPipelineEnabled` → `/admin/publish`
  *   - `multiRepositoryEnabled` → `/admin/repositories`
  *   - `authoritiesEnabled` → the entire `Authorities` section
  *     (`/admin/entities`, `/admin/places`, and `/admin/decisions`),
  *     its own grouped section as of the 2026-07-10 module-section
  *     ruling
+ *   - `digitizationEnabled` → the `Digitization` section (Volumes,
+ *     Capture QC, Retakes, Scanner), placed after Authorities; within it
+ *     Volumes and Scanner need `isCaptureManager`, and Capture QC and
+ *     Retakes `isCaptureManager` or `isCaptureReviewer`, both computed
+ *     by the layout loader
  *   - `importsEnabled` → the `Imports` ITEM inside the
  *     `Import and export` group (`/admin/imports`). The group itself
  *     is ungated: its other entry, Exports, carries no capability and
@@ -50,10 +85,26 @@
  * flag. The `<Sidebar>` component grew a matching `tenant` prop
  * which the `_auth` layout populates from `tenantContext`.
  *
- * @version v0.7.0
+ * Each labelled section heading is a button that folds and unfolds
+ * that section's items, with a chevron and an accessible name from
+ * `sidebar:section_show` / `sidebar:section_hide`. The unlabelled first
+ * section and the bottom items never fold, and the collapsed rail shows
+ * every item because it has no headings. Every section starts open. A
+ * person's folded sections are kept in `localStorage`
+ * (`fisqua:sidebar:folded`, a JSON array of section label keys); every
+ * read and write is wrapped in try/catch so the sidebar renders
+ * without storage. `Sidebar` renders everything open on the server and
+ * on the first client render, and applies the stored folds in an
+ * effect after mount, so hydration matches. The section that holds the
+ * current page is always open, whatever was stored. `SidebarView` is
+ * the stateless rail; `readFoldedSections`, `writeFoldedSections` and
+ * `sectionHoldsPath` are exported for testing.
+ *
+ * @version v0.8.0
  */
 
-import { NavLink } from "react-router";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
@@ -69,11 +120,16 @@ import {
   Download,
   ArrowUpFromLine,
   BookOpen,
+  ClipboardCheck,
+  Repeat,
+  Camera,
   GitCompare,
   Kanban,
   List,
   Search,
+  Library,
   Settings,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -100,7 +156,24 @@ export interface SidebarUser {
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  isRecordsAdmin: boolean;
+  isAuthoritiesAdmin: boolean;
+  isImportsAdmin: boolean;
   hasAnyProjectMembership: boolean;
+  /**
+   * Manages capture work on this tenant: a workspace admin, a super
+   * admin, the digitization admin, or a steward of its federation. Computed by the layout loader only on a tenant with
+   * the digitization capability; false elsewhere.
+   */
+  isCaptureManager: boolean;
+  /** Is the assigned capture QC reviewer of at least one of the tenant's volumes. */
+  isCaptureReviewer: boolean;
+  /**
+   * What kind of member this is (`memberAccessFrom` in
+   * `reader.server`): a Reader with no other role sees only Records, a
+   * member with no access sees no sections. Omitted means staff.
+   */
+  access?: "staff" | "reader" | "none";
 }
 
 /**
@@ -117,6 +190,7 @@ export interface SidebarTenant {
   multiRepositoryEnabled: boolean;
   authoritiesEnabled: boolean;
   importsEnabled: boolean;
+  digitizationEnabled: boolean;
 }
 
 /**
@@ -131,6 +205,19 @@ export function getSidebarSections(
   tenant: SidebarTenant,
   counts?: { duplicates?: number },
 ): NavSection[] {
+  // A Reader with no other role is kept to the records pages, so Records
+  // is all they are shown; a member with no access is shown nothing.
+  // Home, Handlists, Search and Exports are member-level surfaces that
+  // would show either of them unpublished records, and the layout's
+  // middleware keeps both away from them.
+  const recordsItem: NavItem = {
+    path: "/records",
+    icon: Library,
+    labelKey: "sidebar:records",
+  };
+  if (user.access === "reader") return [{ items: [recordsItem] }];
+  if (user.access === "none") return [];
+
   const sections: NavSection[] = [
     {
       items: [
@@ -163,6 +250,12 @@ export function getSidebarSections(
     labelKey: "sidebar:search",
   });
 
+  // A Reader who also holds a staff role keeps everything above and has
+  // Records beside it.
+  if (user.isArchiveUser) {
+    sections[0].items.push(recordsItem);
+  }
+
   // Collaborative cataloguing — visible if member OR any collab/admin
   // flag, AND the tenant has crowdsourcing enabled. When
   // `crowdsourcingEnabled` is false the entire section (including
@@ -182,7 +275,8 @@ export function getSidebarSections(
     const collabItems: NavItem[] = [
       { path: "/proyectos", icon: FolderOpen, labelKey: "sidebar:my_projects" },
     ];
-    if (user.isCollabAdmin || user.isSuperAdmin) {
+    // Same rule as `requireCollabAdmin`, which gates both pages.
+    if (user.isCollabAdmin || user.isSuperAdmin || user.isAdmin) {
       collabItems.push(
         {
           path: "/admin/cataloguing/projects",
@@ -196,12 +290,10 @@ export function getSidebarSections(
         },
       );
     }
-    // Promote sits under the cataloguing section but is gated on
-    // BOTH the cataloguing capability (crowdsourcing) and the
-    // publish pipeline — promotion is the bridge between the two.
-    // The outer crowdsourcing branch already passed; check publish
-    // here for the per-item gate.
-    if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
+    // Promote is a cataloguing feature: the outer crowdsourcing branch
+    // is its capability gate, and the page itself is super-admin-only.
+    // The publish pipeline has no part in it.
+    if (user.isSuperAdmin) {
       collabItems.push(
         {
           path: "/admin/cataloguing/promote",
@@ -216,12 +308,21 @@ export function getSidebarSections(
     });
   }
 
-  // Records management — archive admin side. Per-item gating for
-  // the capability-bound entries (repositories, vocabularies,
-  // publish); descriptions is always available when the user has the
-  // role. Entities and places moved to their own Authorities section
+  // Who passes each area (see the file header).
+  const anyArea = user.isAdmin || user.isSuperAdmin;
+  const recordsArea = anyArea || user.isRecordsAdmin;
+  const authoritiesArea = anyArea || user.isAuthoritiesAdmin;
+  const importsArea = anyArea || user.isImportsAdmin;
+  const authorityDecisions = authoritiesArea && tenant.authoritiesEnabled;
+  const vocabularyDecisionsOnly =
+    recordsArea && tenant.vocabularyHubEnabled && !authorityDecisions;
+
+  // Records management — archive admin side, for the records area.
+  // Per-item gating for the capability-bound entries (repositories,
+  // vocabularies, publish); descriptions is always available in the
+  // area. Entities and places have their own Authorities section
   // (ruled 2026-07-10) — each module gets its own sidebar section.
-  if (user.isAdmin || user.isSuperAdmin) {
+  if (recordsArea) {
     const items: NavItem[] = [
       { path: "/admin/descriptions", icon: FileText, labelKey: "sidebar:descriptions" },
     ];
@@ -241,6 +342,16 @@ export function getSidebarSections(
         labelKey: "sidebar:vocabularies",
       });
     }
+    // Pending decisions sits with Authorities. When this person can open
+    // only its vocabulary tab (the records area without the authority
+    // tabs), the entry sits here instead and leads straight to that tab.
+    if (vocabularyDecisionsOnly) {
+      items.push({
+        path: "/admin/decisions/vocabulary",
+        icon: GitCompare,
+        labelKey: "sidebar:pending_decisions",
+      });
+    }
     if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
       items.push({
         path: "/admin/publish",
@@ -249,30 +360,69 @@ export function getSidebarSections(
       });
     }
     sections.push({ labelKey: "sidebar:records_management", items });
+  }
 
-    // Authorities — the module's own section, gated on the
-    // authorities capability. When off the whole section is omitted
-    // (the route-level gate 404s any direct hit). The Pending
-    // decisions entry replaced the standalone Possible duplicates
-    // link when the worklist became one tab of that surface; it keeps
-    // the candidate-count badge computed by the layout loader, which
-    // still counts duplicate candidates only.
-    if (tenant.authoritiesEnabled) {
-      sections.push({
-        labelKey: "sidebar:authorities",
-        items: [
-          { path: "/admin/entities", icon: Users, labelKey: "sidebar:entities" },
-          { path: "/admin/places", icon: MapPin, labelKey: "sidebar:places" },
-          {
-            path: "/admin/decisions",
-            icon: GitCompare,
-            labelKey: "sidebar:pending_decisions",
-            badge: counts?.duplicates,
-          },
-        ],
+  // Authorities — the module's own section, for the authorities area
+  // and gated on the authorities capability. When off the whole
+  // section is omitted (the route-level gate 404s any direct hit). The
+  // Pending decisions entry replaced the standalone Possible duplicates
+  // link when the worklist became one tab of that surface; it keeps the
+  // candidate-count badge computed by the layout loader.
+  if (authorityDecisions) {
+    sections.push({
+      labelKey: "sidebar:authorities",
+      items: [
+        { path: "/admin/entities", icon: Users, labelKey: "sidebar:entities" },
+        { path: "/admin/places", icon: MapPin, labelKey: "sidebar:places" },
+        {
+          path: "/admin/decisions",
+          icon: GitCompare,
+          labelKey: "sidebar:pending_decisions",
+          badge: counts?.duplicates,
+        },
+      ],
+    });
+  }
+
+  // Digitization — the Captua module's section, gated on the
+  // digitization capability and then by role. Volumes is for those who
+  // manage capture work (the digitization area and federation stewards); Capture
+  // QC and Retakes also for anyone assigned to review one of the
+  // tenant's volumes, who sees only their own volumes there. The section
+  // is omitted when no item remains.
+  //
+  // Scanner (`Camera`) is the section's last item, for managers only.
+  if (tenant.digitizationEnabled) {
+    const digitizationItems: NavItem[] = [];
+    if (user.isCaptureManager) {
+      digitizationItems.push({
+        path: "/admin/capture/volumes",
+        icon: BookOpen,
+        labelKey: "sidebar:capture_volumes",
       });
     }
-
+    if (user.isCaptureManager || user.isCaptureReviewer) {
+      digitizationItems.push({
+        path: "/admin/capture/qc",
+        icon: ClipboardCheck,
+        labelKey: "sidebar:capture_qc",
+      });
+      digitizationItems.push({
+        path: "/admin/capture/retakes",
+        icon: Repeat,
+        labelKey: "sidebar:retakes",
+      });
+    }
+    if (user.isCaptureManager) {
+      digitizationItems.push({
+        path: "/admin/capture/scanner",
+        icon: Camera,
+        labelKey: "sidebar:scanner",
+      });
+    }
+    if (digitizationItems.length > 0) {
+      sections.push({ labelKey: "sidebar:digitization", items: digitizationItems });
+    }
   }
 
   // Import and export — the mirror operations, in one group (ruled
@@ -282,8 +432,8 @@ export function getSidebarSections(
   // on a module.
   //
   // THE TWO ENTRIES CARRY DIFFERENT GATES, and the group carries
-  // neither. Imports keeps the admin role plus the `imports`
-  // capability it has always had. Exports carries no gate at all:
+  // neither. Imports needs the imports area plus the `imports`
+  // capability. Exports carries no gate at all:
   // portability is not a product tier (ruling 2, re-ruled), so no
   // capability can take it away, and it is member-level because the
   // TIER decides what a person is offered on the page rather than
@@ -292,7 +442,7 @@ export function getSidebarSections(
   // whenever either entry does, which — since Exports always does — is
   // always, on the same footing as Handlists and Search above.
   const importExportItems: NavItem[] = [];
-  if ((user.isAdmin || user.isSuperAdmin) && tenant.importsEnabled) {
+  if (importsArea && tenant.importsEnabled) {
     importExportItems.push({
       path: "/admin/imports",
       icon: Import,
@@ -325,14 +475,106 @@ interface SidebarProps {
   duplicateCount?: number;
 }
 
-export function Sidebar({
+const FOLDED_KEY = "fisqua:sidebar:folded";
+
+/** Folded section label keys from storage; empty on any failure. */
+export function readFoldedSections(storage?: Pick<Storage, "getItem">): string[] {
+  try {
+    const raw = (storage ?? window.localStorage).getItem(FOLDED_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Persists the folded section label keys; silent when storage fails. */
+export function writeFoldedSections(
+  folded: string[],
+  storage?: Pick<Storage, "setItem">,
+): void {
+  try {
+    (storage ?? window.localStorage).setItem(FOLDED_KEY, JSON.stringify(folded));
+  } catch {
+    // Storage unavailable: the fold lasts for this page view only.
+  }
+}
+
+/**
+ * Route families a section owns beyond its own links. A page inside a
+ * family keeps its section open: project pages live under `/projects/`
+ * while the section links to `/proyectos`, and the capture volume and
+ * media routes sit under paths no nav item points at. Items can also
+ * be absent for a given role, so the families name the whole area.
+ */
+const SECTION_ROUTE_FAMILIES: Record<string, string[]> = {
+  "sidebar:collaborative_cataloguing": ["/proyectos", "/projects", "/admin/cataloguing"],
+  "sidebar:records_management": [
+    "/admin/descriptions",
+    "/admin/repositories",
+    "/admin/vocabularies",
+    "/admin/publish",
+  ],
+  "sidebar:authorities": ["/admin/entities", "/admin/places", "/admin/decisions"],
+  "sidebar:digitization": ["/admin/capture", "/admin/media"],
+  "sidebar:import_and_export": ["/admin/imports", "/admin/exports"],
+};
+
+function underPath(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+/** True when the current page is one of the section's items or in its route families. */
+export function sectionHoldsPath(section: NavSection, pathname: string): boolean {
+  const families = section.labelKey ? SECTION_ROUTE_FAMILIES[section.labelKey] ?? [] : [];
+  return (
+    section.items.some((item) =>
+      item.end ? pathname === item.path : underPath(pathname, item.path),
+    ) || families.some((base) => underPath(pathname, base))
+  );
+}
+
+export function Sidebar(props: SidebarProps) {
+  // Everything starts open so the server and the first client render
+  // agree; the stored folds are applied after mount.
+  const [folded, setFolded] = useState<string[]>([]);
+
+  useEffect(() => {
+    setFolded(readFoldedSections());
+  }, []);
+
+  function toggleSection(labelKey: string) {
+    setFolded((current) => {
+      const next = current.includes(labelKey)
+        ? current.filter((k) => k !== labelKey)
+        : [...current, labelKey];
+      writeFoldedSections(next);
+      return next;
+    });
+  }
+
+  return (
+    <SidebarView {...props} folded={folded} onToggleSection={toggleSection} />
+  );
+}
+
+export function SidebarView({
   user,
   tenant,
   collapsed,
   onToggle,
   duplicateCount,
-}: SidebarProps) {
+  folded,
+  onToggleSection,
+}: SidebarProps & {
+  folded: string[];
+  onToggleSection: (labelKey: string) => void;
+}) {
   const { t } = useTranslation("sidebar");
+  const { pathname } = useLocation();
 
   const sections = getSidebarSections(user, tenant, {
     duplicates: duplicateCount,
@@ -345,25 +587,59 @@ export function Sidebar({
         collapsed ? "w-16" : "w-60"
       }`}
     >
-      <div className="flex flex-1 flex-col gap-1 py-4">
-        {sections.map((section, si) => (
-          <div key={section.labelKey ?? si}>
-            {si > 0 && <div className="mx-4 my-2 border-t border-stone-200" />}
-            {section.labelKey && !collapsed && (
-              <p className="mx-6 mb-1 font-sans text-11 font-semibold uppercase tracking-[0.1em] text-stone-400">
-                {t(section.labelKey.replace("sidebar:", ""))}
-              </p>
-            )}
-            {section.items.map((item) => (
-              <SidebarNavItem
-                key={item.path}
-                item={item}
-                collapsed={collapsed}
-                t={t}
-              />
-            ))}
-          </div>
-        ))}
+      <div
+        data-testid="sidebar-items"
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-4"
+      >
+        {sections.map((section, si) => {
+          const label = section.labelKey
+            ? t(section.labelKey.replace("sidebar:", ""))
+            : undefined;
+          // Headings (and so folding) exist only on the expanded rail.
+          const foldable = !collapsed && section.labelKey !== undefined;
+          const open =
+            !foldable ||
+            !folded.includes(section.labelKey!) ||
+            sectionHoldsPath(section, pathname);
+          const panelId = section.labelKey
+            ? `sidebar-section-${section.labelKey.replace(/\W+/g, "-")}`
+            : undefined;
+          return (
+            <div key={section.labelKey ?? si}>
+              {si > 0 && <div className="mx-4 my-2 border-t border-stone-200" />}
+              {foldable && (
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  aria-label={t(open ? "section_hide" : "section_show", {
+                    section: label,
+                  })}
+                  onClick={() => onToggleSection(section.labelKey!)}
+                  className="mx-6 mb-1 flex w-[calc(100%-3rem)] items-center justify-between text-left font-sans text-11 font-semibold uppercase tracking-[0.1em] text-stone-400 hover:text-stone-600"
+                >
+                  <span>{label}</span>
+                  {open ? (
+                    <ChevronDown className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              )}
+              <div id={panelId}>
+                {open &&
+                  section.items.map((item) => (
+                    <SidebarNavItem
+                      key={item.path}
+                      item={item}
+                      collapsed={collapsed}
+                      t={t}
+                    />
+                  ))}
+              </div>
+            </div>
+          );
+        })}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -378,9 +654,10 @@ export function Sidebar({
             t={t}
           />
         ))}
-        {(user.isSuperAdmin || user.isUserManager) && (
+        {/* Same rule as `canManageTenantUsers`, which gates the page. */}
+        {(user.isSuperAdmin || user.isUserManager || user.isAdmin) && (
           <SidebarNavItem
-            item={{ path: "/admin/users", icon: Users, labelKey: "sidebar:system_users" }}
+            item={{ path: "/admin/users", icon: Users, labelKey: "sidebar:users" }}
             collapsed={collapsed}
             t={t}
           />
@@ -451,3 +728,5 @@ function SidebarNavItem({
     </NavLink>
   );
 }
+
+// @version v0.8.0

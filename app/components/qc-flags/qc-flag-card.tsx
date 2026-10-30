@@ -7,11 +7,11 @@
  * so the component can render anywhere an open QC flag needs to surface
  * (viewer sidebar, outline, manage page).
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { useTranslation } from "react-i18next";
 import { CheckCircle } from "lucide-react";
-import { formatIsoDateTime } from "../../lib/format-date";
+import { useFormatters } from "../../lib/use-formatters";
 
 export type QcProblemType =
   | "damaged"
@@ -76,6 +76,7 @@ const STATUS_CLASSES: Record<QcStatus, string> = {
 
 export function QcFlagCard({ flag, onResolveClick }: QcFlagCardProps) {
   const { t } = useTranslation(["qc_flags"]);
+  const { formatIsoDateTime } = useFormatters();
 
   const problemTypeLabel = t(`qc_flags:card.problem_type.${flag.problemType}`);
   const statusLabel = t(`qc_flags:card.status.${flag.status}`);
@@ -153,3 +154,4 @@ export function QcFlagCard({ flag, onResolveClick }: QcFlagCardProps) {
   );
 }
 
+/* @version v0.8.0 */

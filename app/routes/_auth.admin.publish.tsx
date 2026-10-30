@@ -32,7 +32,7 @@
  * configuration 404s for everyone, never falling through to the
  * "superadmin required" page.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -350,6 +350,7 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
     activeExport?.id ?? null
   );
   const [isExporting, setIsExporting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // Rough total: sum of all per-fonds description added/modified, plus the
   // repo/entity/place modified counts. Used to estimate the publish duration
@@ -378,6 +379,7 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
     selectedTypes: string[]
   ) {
     setIsExporting(true);
+    setStartError(null);
     try {
       const response = await fetch("/api/publish", {
         method: "POST",
@@ -387,7 +389,13 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
       if (response.ok) {
         const data = (await response.json()) as { exportId: string };
         setActiveExportId(data.exportId);
+      } else {
+        setStartError(
+          response.status === 409 ? t("publish_in_progress") : t("publish_start_failed")
+        );
       }
+    } catch {
+      setStartError(t("publish_start_failed"));
     } finally {
       setIsExporting(false);
     }
@@ -415,7 +423,13 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
         onExport={handleExport}
       />
 
-      {activeExportId && <ExportProgress exportId={activeExportId} />}
+      {startError && (
+        <p role="alert" className="font-sans text-sm text-madder-deep">
+          {startError}
+        </p>
+      )}
+
+            {activeExportId && <ExportProgress exportId={activeExportId} />}
 
       <ExportHistory history={history} />
     </div>

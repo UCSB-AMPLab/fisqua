@@ -9,14 +9,13 @@
  * by `workflowInstanceId`. Used to diagnose runs that stalled or
  * failed.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { tenantContext, userContext } from "../context";
-import { formatIsoDateTime } from "~/lib/format-date";
 import { useFormatters } from "~/lib/use-formatters";
 import type { Route } from "./+types/_auth.admin.publish.runs.$exportId";
 
@@ -172,7 +171,7 @@ export default function PublishRunDetail({
   loaderData,
 }: Route.ComponentProps) {
   const { t } = useTranslation("publish");
-  const { formatNumber, formatDuration } = useFormatters();
+  const { formatNumber, formatDuration, formatIsoDateTime } = useFormatters();
   const { authorized, run } = loaderData;
 
   if (!authorized) {
@@ -407,3 +406,5 @@ export default function PublishRunDetail({
     </div>
   );
 }
+
+/* @version v0.8.0 */

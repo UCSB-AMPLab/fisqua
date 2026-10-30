@@ -29,7 +29,19 @@
  * `slug` is the publish slug; per-type steps receive the publish tenant
  * plus the full member-tenant id list to aggregate their reads across.
  *
- * @version v0.4.2
+ * The link files (`entity_links.json`, `place_links.json`) are the one
+ * artefact written across several steps: each is a multipart upload
+ * that a step carries forward a bounded number of rows and hands on as
+ * a small JSON state (`entity_links:0`, `entity_links:1`, ...) until
+ * the file is complete. They run under the same authorities gate and
+ * the same selected types as entities.json and places.json, because
+ * they export the same authority junctions. The workflow keeps the
+ * last state each link-file step returned; when the run fails, the
+ * error handler passes those states to `abandonLinkExports`, which
+ * deletes the staging objects and aborts the multipart upload of any
+ * file left unfinished.
+ *
+ * @version v0.8.0
  */
 
 import {
@@ -52,6 +64,12 @@ import {
   recordStepStart,
   recordStepEnd,
 } from "../lib/export/pipeline.server";
+import {
+  exportEntityLinks,
+  exportPlaceLinks,
+  abandonLinkExports,
+  type LinkExportState,
+} from "../lib/export/link-files.server";
 import {
   writeDescriptionsIndex,
   FondsBodyTooLargeError,
@@ -91,6 +109,10 @@ export class PublishExportWorkflow extends WorkflowEntrypoint<
     const { exportId } = event.payload;
     const db = drizzle(this.env.DB);
     const storage = new ExportStorage(this.env.EXPORT_BUCKET);
+    // The last state each link file's steps returned, kept here so the
+    // failure path can clean up an unfinished upload. A replayed run
+    // rebuilds it from the cached step results.
+    const linkStates: Record<string, LinkExportState> = {};
 
     try {
       // Step 1: load run config and mark running.
@@ -198,7 +220,13 @@ export class PublishExportWorkflow extends WorkflowEntrypoint<
         for (const fonds of config.selectedFonds) {
           const result = await step.do(`descriptions:${fonds}`, async () => {
             await recordStepStart(db, exportId, `descriptions:${fonds}`);
-            const r = await exportFondsDescriptions(db, storage, fonds, config.fondsTenants[fonds]);
+            const r = await exportFondsDescriptions(
+              db,
+              storage,
+              fonds,
+              config.fondsTenants[fonds],
+              config.memberTenantIds
+            );
             counts[`descriptions:${fonds}`] = r.recordCount;
             await recordStepEnd(db, exportId, `descriptions:${fonds}`, counts);
             return r;
@@ -307,6 +335,42 @@ export class PublishExportWorkflow extends WorkflowEntrypoint<
         });
       }
 
+      // Link files: one multipart upload each, carried across as many
+      // steps as the rows need. Each step's name is its index, and its
+      // input is the state the previous step returned, so a replayed
+      // workflow re-enters at the same point.
+      const linkFiles = [
+        { type: "entities", name: "entity_links", run: exportEntityLinks },
+        { type: "places", name: "place_links", run: exportPlaceLinks },
+      ] as const;
+      for (const file of linkFiles) {
+        if (!config.authoritiesEnabled || !config.selectedTypes.includes(file.type)) continue;
+        let state: LinkExportState | undefined;
+        for (let i = 0; !state?.done; i++) {
+          const stepName = `${file.name}:${i}`;
+          const prior = state;
+          state = await step.do(stepName, async () => {
+            await recordStepStart(db, exportId, stepName);
+            const r = await file.run(
+              db,
+              storage,
+              config.publishTenant,
+              config.memberTenantIds,
+              { state: prior }
+            );
+            // Only the step that completes the file counts as a
+            // completed step; api.publish counts one per link file.
+            if (r.done) {
+              counts[file.name] = r.count;
+              await recordStepEnd(db, exportId, stepName, counts);
+            }
+            return r;
+          });
+          linkStates[file.name] = state;
+          counts[file.name] = state.count;
+        }
+      }
+
       await step.do("finalize", async () => {
         await db
           .update(exportRuns)
@@ -333,6 +397,18 @@ export class PublishExportWorkflow extends WorkflowEntrypoint<
           completedAt: Date.now(),
         })
         .where(eq(exportRuns.id, exportId));
+
+      // Remove the staging objects and open multipart upload of any link
+      // file left unfinished; the next publish uses a new token and would
+      // never reuse them. Cleanup is best-effort and must not replace the
+      // error that ended the run.
+      try {
+        await step.do("cleanup-link-files", async () => {
+          await abandonLinkExports(storage, Object.values(linkStates));
+        });
+      } catch (cleanupErr) {
+        console.warn("Link-file cleanup after a failed publish did not complete:", cleanupErr);
+      }
 
       // Re-throw so the Workflows runtime sees the failure and the dashboard
       // shows the run as errored too. Without re-throwing, Workflows would

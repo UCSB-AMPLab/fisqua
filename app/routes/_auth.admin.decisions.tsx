@@ -15,15 +15,15 @@
  *                      moved here from the vocabularies hub. Its own
  *                      status machine is untouched by the move.
  *
- * Gating. The layout carries the admin guard the sibling admin routes
- * carry and nothing else, because the three tabs are gated on DIFFERENT
- * capabilities: proposals and duplicates on `authorities`, vocabulary
- * on `vocabulary_hub`. Each child loader keeps its own
- * `requireCapability` call — the gate that was already protecting the
- * page before it moved — and the tab bar simply omits a tab whose
- * capability is off, so a tenant never sees a tab that would 404.
+ * Gating. The tabs belong to two areas: proposals and duplicates to
+ * authorities, vocabulary to records. The layout admits a user who
+ * administers either area and refuses everyone else with a 403. Each
+ * child loader carries its own area guard and its own
+ * `requireCapability` call, and the tab bar shows a tab only when the
+ * tenant has its capability and the user administers its area, so no
+ * one sees a tab that would 404 or 403.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Outlet, NavLink } from "react-router";
@@ -33,17 +33,22 @@ import { hasCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.decisions";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("../lib/permissions.server");
+  const { canAdministerArea } = await import("../lib/user-access.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  const authoritiesAdmin = canAdministerArea(user, "authorities");
+  const recordsAdmin = canAdministerArea(user, "records");
+  if (!authoritiesAdmin && !recordsAdmin) {
+    throw new Response("Forbidden", { status: 403 });
+  }
   const tenant = context.get(tenantContext);
 
-  // Which tabs this tenant may reach at all. Computed here rather than
-  // in each child so the bar never renders a link into a 404.
+  // Which tabs this user may reach on this tenant. Computed here rather
+  // than in each child so the bar never renders a link into a 404 or
+  // a 403.
   return {
-    authorities: hasCapability(tenant, "authorities"),
-    vocabulary: hasCapability(tenant, "vocabulary_hub"),
+    authorities: authoritiesAdmin && hasCapability(tenant, "authorities"),
+    vocabulary: recordsAdmin && hasCapability(tenant, "vocabulary_hub"),
   };
 }
 

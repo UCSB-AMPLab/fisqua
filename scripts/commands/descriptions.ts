@@ -33,12 +33,21 @@
  *     `(` / `)` typos are stripped and NFC normalisation runs before
  *     the shape check. The pattern mirrors
  *     `app/lib/promote/promote.server.ts:REFERENCE_CODE_PATTERN`.
- *   - ocr_text is truncated at OCR_MAX_BYTES (90 KB UTF-8) at the
- *     UTF-8/word boundary so the emitted INSERT stays under D1's
- *     100 KB per-statement cap. Truncated rows are tagged in
- *     legacy_ids as `{provider: "ocr-truncated", id: <originalBytes>}`
- *     and listed in `.import/ocr-truncations.json` for the operator.
- *     Structural fix is the v0.5 OCR-to-R2 migration.
+ *   - ocr_text becomes an `ocr_pages` row, since `descriptions` has no
+ *     OCR column. Each imported record whose `ocr_text` is not null and
+ *     not empty gets one row at page 1 holding the whole text, with
+ *     `source_key`, `alto_key` and `run_id` null: the shape migration
+ *     0086 gave the text it moved out of the old column. The rows go to
+ *     their own `ocr_pages-NNN.sql` files, applied after the
+ *     descriptions files, and the insert trigger on `ocr_pages` indexes
+ *     each one as it lands. Text over OCR_MAX_BYTES (90 KB UTF-8) is cut
+ *     at a UTF-8/word boundary with the same marker as before, its
+ *     original byte length is recorded in legacy_ids as
+ *     `{provider: "ocr-truncated", id: <originalBytes>}`, and it is
+ *     listed in `ocr-truncations.json`, so a reimport of the same dump
+ *     writes the same text and identifiers the backfilled rows hold.
+ *     The cut is still needed because each page row is one INSERT
+ *     statement under D1's 100 KB statement limit.
  *   - batchSize is forced to 50 for the descriptions table:
  *     description rows are the largest in the import and 100 rows per
  *     statement risks blowing the D1 100KB-per-statement limit
@@ -48,7 +57,7 @@
  * downstream waves consume to translate pre-existing CA cross-refs
  * back to Fisqua UUIDs.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -87,7 +96,7 @@ const COLUMNS = [
   "imprint", "edition_statement", "series_statement",
   "volume_number", "issue_number", "pages",
   "publication_title",
-  "provenance", "scope_content", "ocr_text", "arrangement",
+  "provenance", "scope_content", "arrangement",
   "access_conditions", "reproduction_conditions", "language",
   "location_of_originals", "location_of_copies",
   "finding_aids", "section_title",
@@ -122,21 +131,15 @@ const REFERENCE_CODE_PATTERN = /^[\p{L}\p{N}-]{1,50}$/u;
 
 /**
  * D1 enforces a hard ~100 KB per-statement size limit on both `--remote`
- * and the local miniflare emulator (verified empirically against
- * fisqua-staging-db on 2026-05-03: 99 KB SELECTs pass, 100 KB rejects
- * with `SQLITE_TOOBIG`). The descriptions table carries `ocr_text` —
- * full historical-document OCR — and 11 rows in the Neogranadina v0.4
- * dump exceed 100 KB single-row (12 KB to 181 KB), all from the BNP
- * `pe-bn-cdip-*` collection.
- *
- * Mitigation: truncate `ocr_text` at the import boundary to 90 KB
- * UTF-8 bytes (back off to a word boundary), append a human-readable
- * marker, and record the original byte length in `legacy_ids` as
- * `{provider: "ocr-truncated", id: N}` so the structural fix can find
- * these rows.
- *
- * Structural fix is deferred to a v0.5 milestone that moves OCR to R2
- * with a small `ocr_extract` searchable surface in D1.
+ * and the local miniflare emulator (verified against fisqua-staging-db on
+ * 2026-05-03: 99 KB SELECTs pass, 100 KB rejects with `SQLITE_TOOBIG`).
+ * Some transcripts in the Neogranadina dump exceed it on their own (11
+ * rows of 12 KB to 181 KB in the v0.4 dump, all from the BNP
+ * `pe-bn-cdip-*` collection), and each page row is written as one
+ * INSERT, so the text is cut to 90 KB UTF-8 bytes (backed off to a word
+ * boundary) and a marker is appended. The marker text is the one the
+ * importer has always written, so reimported rows match the rows
+ * migration 0086 backfilled from the old column.
  */
 const OCR_MAX_BYTES = 90_000;
 
@@ -169,6 +172,31 @@ function truncateOcrAtBoundary(
   return { value: truncated, originalBytes, truncated: true };
 }
 
+/** The `ocr_pages` columns a page-1 row is written with, in table order. */
+const PAGE_ROW_COLUMNS = [
+  "id", "tenant_id", "description_id", "page_seq", "text",
+  "source_key", "alto_key", "run_id", "created_at",
+];
+
+/** Whether a record carries OCR text: not null and not empty, as 0086 tested. */
+function hasOcrText(value: unknown): value is string {
+  return value !== null && value !== undefined && String(value) !== "";
+}
+
+/**
+ * Remove `ocr_pages-NNN.sql` files an earlier run left in the output
+ * directory. The orchestrator applies every such file it finds, and one
+ * from an earlier run names descriptions this run does not create.
+ */
+async function removeStalePageFiles(outputDir: string): Promise<void> {
+  const names = await fs.readdir(outputDir).catch(() => [] as string[]);
+  for (const name of names) {
+    if (name.startsWith("ocr_pages-") && name.endsWith(".sql")) {
+      await fs.rm(path.join(outputDir, name), { force: true });
+    }
+  }
+}
+
 interface HierarchyInfo {
   depth: number;
   position: number;
@@ -186,6 +214,10 @@ interface HierarchyInfo {
  * validates reference_code shape, builds legacy_ids JSON, rewrites manifest
  * URLs, and produces chunked SQL INSERT files (batchSize=50 for D1 100KB
  * statement-size headroom).
+ *
+ * Writes each imported record's OCR text as a page-1 `ocr_pages` row in
+ * separate `ocr_pages-NNN.sql` files, returned after the descriptions
+ * files (module header).
  *
  * All output — SQL files, the pk-uuid-mapping.json sidecar, and the
  * ocr-truncations.json sidecar — is written under `outputDir` (default
@@ -298,6 +330,8 @@ export async function importDescriptions(
 
   // Pass 3: Transform and generate SQL
   const rows: string[][] = [];
+  const pageRows: string[][] = [];
+  const pageCreatedAt = Date.now();
 
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
@@ -376,13 +410,13 @@ export async function importDescriptions(
       continue;
     }
 
-    // OCR truncation: D1 enforces 100 KB per statement. Rows exceeding
-    // OCR_MAX_BYTES (90 KB) are truncated at a UTF-8/word boundary and
-    // marked in legacy_ids so the v0.5 OCR-to-R2 migration can find
-    // them. The truncated value flows into the SQL emit at line ~395.
-    const rawOcr = (record.ocr_text as string | null | undefined) ?? "";
-    const ocr = truncateOcrAtBoundary(rawOcr);
-    if (ocr.truncated) {
+    // OCR truncation: each page row is one INSERT under D1's 100 KB
+    // statement limit (see OCR_MAX_BYTES). A cut row is marked in
+    // legacy_ids and listed in the sidecar.
+    const ocr = hasOcrText(record.ocr_text)
+      ? truncateOcrAtBoundary(String(record.ocr_text))
+      : null;
+    if (ocr?.truncated) {
       ocrTruncations.push({
         djangoPk: oldId,
         referenceCode,
@@ -406,7 +440,7 @@ export async function importDescriptions(
       // If legacy_ids_seed is present, treat it as the canonical input
       // by parsing it directly; otherwise build from the standard
       // django-zasqua + ca-object + ca-collection providers, plus an
-      // ocr-truncated marker if the OCR was clipped.
+      // ocr-truncated marker if the OCR text was cut.
       if (recordForLegacy.legacy_ids_seed !== undefined &&
           recordForLegacy.legacy_ids_seed !== null) {
         const { LegacyIdsSchema } = await import("../../app/lib/validation/legacy-ids");
@@ -414,7 +448,7 @@ export async function importDescriptions(
           LegacyIdsSchema.parse(recordForLegacy.legacy_ids_seed),
         );
       } else {
-        const ocrExtras = ocr.truncated
+        const ocrExtras = ocr?.truncated
           ? [{ provider: "ocr-truncated", id: ocr.originalBytes }]
           : undefined;
         legacyIdsJson = buildLegacyIdsForDescription(record, ocrExtras);
@@ -467,7 +501,6 @@ export async function importDescriptions(
       escapeSql((record.publication_title as string | null) ?? null),
       escapeSql(record.provenance ?? null),
       escapeSql(record.scope_content ?? null),
-      escapeSql(ocr.value),
       escapeSql(record.arrangement ?? null),
       escapeSql(record.access_conditions ?? null),
       escapeSql(record.reproduction_conditions ?? null),
@@ -497,13 +530,34 @@ export async function importDescriptions(
       escapeSql(createdAt),
       escapeSql(updatedAt),
     ]);
+
+    if (ocr !== null) {
+      pageRows.push([
+        escapeSql(crypto.randomUUID()),
+        escapeSql(NEOGRANADINA_TENANT_ID),
+        escapeSql(newId),
+        escapeSql(1),
+        escapeSql(ocr.value),
+        escapeSql(null), // source_key: no object stands behind this text
+        escapeSql(null), // alto_key
+        escapeSql(null), // run_id: no pipeline run wrote it
+        escapeSql(pageCreatedAt),
+      ]);
+    }
   }
 
   // batchSize=50: descriptions are the largest rows in the import;
   // 100/statement risks blowing D1's 100KB-per-statement limit when
-  // scope_content + ocr_text are populated.
+  // scope_content and the other long text fields are populated.
   const statements = generateInserts("descriptions", COLUMNS, rows, 50);
-  const sqlFiles = await writeSqlFiles("descriptions", statements, 50, outputDir);
+  const descriptionFiles = await writeSqlFiles("descriptions", statements, 50, outputDir);
+
+  // Page rows: one row of up to ~90 KB per statement at most, which the
+  // byte budget in generateInserts enforces; smaller rows share one.
+  await removeStalePageFiles(outputDir);
+  const pageStatements = generateInserts("ocr_pages", PAGE_ROW_COLUMNS, pageRows, 50);
+  const pageFiles = await writeSqlFiles("ocr_pages", pageStatements, 50, outputDir);
+  const sqlFiles = [...descriptionFiles, ...pageFiles];
 
   // Write PK-to-UUID mapping for downstream consumers
   const mapping: Record<string, string> = {};
@@ -518,8 +572,7 @@ export async function importDescriptions(
     "utf8"
   );
 
-  // OCR truncation sidecar (mitigation; full text deferred to v0.5
-  // OCR-to-R2 migration).
+  // OCR truncation sidecar for the operator.
   if (ocrTruncations.length > 0) {
     const truncationsPath = path.join(mappingDir, "ocr-truncations.json");
     await fs.writeFile(
@@ -546,4 +599,4 @@ export async function importDescriptions(
   };
 }
 
-// Version: v0.4.1
+// Version: v0.8.0

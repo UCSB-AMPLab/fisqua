@@ -1,11 +1,11 @@
 /**
  * Tests — pair merge (the decisions surface's "same record" ruling)
  *
- * Covers `app/lib/pair-merge.server.ts`: the unselective merge the
- * duplicates worklist performs when a pair is judged one record. What
- * is pinned here is everything the workbench leaves to the cataloguer
- * and this surface decides on its own — every link travels, names
- * always fold — plus the two 409s that are this surface's whole
+ * This suite covers `app/lib/pair-merge.server.ts`: the unselective
+ * merge the duplicates worklist performs when a pair is judged one
+ * record. What is pinned here is everything the workbench leaves to the
+ * cataloguer and this surface decides on its own — every link travels,
+ * names always fold — plus the two 409s that are this surface's whole
  * concurrency story (a record already merged away, a pair already
  * ruled), the ledger row's detail shape, and the decision row the
  * ruling lands on, whether it was filed by this call or already open.
@@ -18,7 +18,7 @@
  * Alpha is the request tenant throughout; Beta owns the records Alpha
  * must never touch.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -59,6 +59,10 @@ function makeUser(
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -440,6 +444,8 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     const collidingLink = await linkEntity(descId, loserId, "scribe");
     const movingLink = await linkEntity(descId, loserId, "witness");
 
+    // Midnight UTC is still 12 August for a member in Bogotá, and the
+    // provenance line carries the ruling member's day.
     const now = Date.parse("2026-08-13T00:00:00Z");
     await rulePairMerge(
       db(),
@@ -450,6 +456,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       loserId,
       "One hand, two spellings",
       now,
+      "America/Bogota",
     );
 
     const journal = await journalRows();
@@ -472,7 +479,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       mergedInto: { old: null, new: survivorId },
       sources: {
         old: "AGN, Notaría 1, f. 12r",
-        new: `AGN, Notaría 1, f. 12r\nMerged into Juana de Padilla (ne-${survivorId.slice(-8)}) on 2026-08-13`,
+        new: `AGN, Notaría 1, f. 12r\nMerged into Juana de Padilla (ne-${survivorId.slice(-8)}) on 2026-08-12`,
       },
     });
 
@@ -794,3 +801,5 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     expect(JSON.parse(rows[0].payload).recordType).toBe("place");
   });
 });
+
+/* @version v0.8.0 */

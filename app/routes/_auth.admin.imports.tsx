@@ -28,7 +28,7 @@
  * Profile management and the starter/template sections stay below the
  * pipeline — workshop tooling, not chain steps.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -36,7 +36,6 @@ import { Form, Link, useActionData, useNavigation } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { formatIsoDateTime } from "../lib/format-date";
 import { useFormatters } from "../lib/use-formatters";
 import { StepRail, MiniRail, type RailStep, type RailStepState } from "../components/imports/step-rail";
 import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit";
@@ -66,7 +65,7 @@ interface FinishedRowData {
 }
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { listUploads } = await import("~/lib/import/uploads.server");
   const { cachedCheckSummary } = await import("~/lib/import/check.server");
@@ -80,7 +79,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -169,11 +168,11 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -401,7 +400,7 @@ function DeleteControl({
 
 export default function AdminImportsPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("imports");
-  const { formatBytes } = useFormatters();
+  const { formatBytes, formatIsoDateTime } = useFormatters();
   const actionData = useActionData<typeof action>();
   const { inProgress, finished, ownProfiles, sharedProfiles, starters } = loaderData;
   // Busy while the file upload is in flight — a large CSV takes a visible
@@ -818,3 +817,5 @@ export default function AdminImportsPage({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+
+/* @version v0.8.0 */

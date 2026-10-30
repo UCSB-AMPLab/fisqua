@@ -1,13 +1,13 @@
 /**
  * Pending Decisions — Vocabulary tab
  *
- * The reviewer-only backlog of draft vocabulary terms awaiting
- * approval, moved here from `/admin/vocabularies/review` (which now
- * redirects) so that every question a workspace has to answer lives on
- * one surface. It shows each draft with its proposed label, any linked
- * descriptions, and inline approve / reject actions. Rejections
- * surface the inline panel so the reviewer can capture a reason
- * without leaving the queue.
+ * This route holds the reviewer-only backlog of draft vocabulary terms
+ * awaiting approval, moved here from `/admin/vocabularies/review`
+ * (which now redirects) so that every question a workspace has to
+ * answer lives on one surface. It shows each draft with its proposed
+ * label, any linked descriptions, and inline approve / reject actions.
+ * Rejections surface the inline panel so the reviewer can capture a
+ * reason without leaving the queue.
  *
  * The move is a move, not a rewrite. The loader, the action, and the
  * `vocabulary_terms` status machine they drive — proposed → approved,
@@ -44,7 +44,7 @@
  * unapproved — and so a given reason rides along in the ledger row's
  * detail).
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useEffect, useState } from "react";
@@ -90,7 +90,7 @@ type VocabActionResult =
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, isNull, desc, sql } = await import("drizzle-orm");
   const { vocabularyTerms, users } = await import("~/db/schema");
@@ -99,7 +99,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
   // Stated here because the route no longer nests inside the
   // vocabularies hub layout, which used to supply this gate.
@@ -229,7 +229,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities, changelog } = await import(
@@ -237,7 +237,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
   // Stated here because the route no longer nests inside the
   // vocabularies hub layout, which used to supply this gate.
@@ -547,7 +547,7 @@ export default function ReviewQueuePage({
   // Vocabulary near-match cards read from the shared `decisions`
   // namespace — the plain table above keeps `vocabularies`.
   const { t: td } = useTranslation("decisions");
-  const { formatNumber } = useFormatters();
+  const { formatNumber, formatIsoDateTime } = useFormatters();
   const [rejectingTermId, setRejectingTermId] = useState<string | null>(null);
   const approveFetcher = useFetcher();
 
@@ -595,10 +595,7 @@ export default function ReviewQueuePage({
     );
   }
 
-  const formatDate = (ts: number) => {
-    const d = new Date(ts);
-    return d.toISOString().slice(0, 10);
-  };
+  const formatDate = (ts: number) => formatIsoDateTime(ts).slice(0, 10);
 
   return (
     <div>
@@ -842,3 +839,5 @@ export default function ReviewQueuePage({
     </div>
   );
 }
+
+/* @version v0.8.0 */

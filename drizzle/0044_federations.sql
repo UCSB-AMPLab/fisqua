@@ -42,13 +42,13 @@
 -- --------------------------
 -- The `ampl` tenant (UUID 8d235621-..., "Archives, Memory, and
 -- Preservation Lab") was inserted into PRODUCTION D1 by hand via
--- `wrangler d1 execute --remote` during phase 32 and was never captured
+-- `wrangler d1 execute --remote` and was never captured
 -- in a migration or seed, so it is absent from local/CI D1. The AMPL
 -- federation's lead_tenant_id FK needs it to exist, and on production
 -- the ampl tenant must also receive a federation_id (else it violates
 -- "every tenant has a federation"). The `INSERT OR IGNORE` below
 -- reconciles the gap: a no-op on production (row already present, by
--- PK/slug), and the missing seed on local/CI. Shape mirrors the phase-32
+-- PK/slug), and the missing seed on local/CI. Shape mirrors the
 -- production insert byte-for-byte (slug 'ampl', all four capabilities
 -- ON, descriptive_standard 'isadg', status 'active').
 --
@@ -65,7 +65,7 @@
 -- (NEOGRANADINA_FEDERATION_ID / AMPL_FEDERATION_ID / PLATFORM_FEDERATION_ID)
 -- byte-for-byte; the tenant UUIDs match the 0034 seed literals.
 --
--- Version: v0.4.2
+-- Version: v0.8.0
 
 CREATE TABLE federations (
   id TEXT PRIMARY KEY NOT NULL,

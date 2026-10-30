@@ -17,15 +17,25 @@
  * middleware running as a request pipeline. Adopting them early keeps the
  * eventual upgrade small.
  *
- * @version v0.2.0
+ * `allowedActionOrigins` is the list of other origins React Router would
+ * accept a form submission from. It is empty on purpose: every action
+ * is posted from a page of the host it runs on. React Router compares
+ * the `Origin` against the `X-Forwarded-Host` header when one is sent,
+ * and has no setting to stop that, so the Worker's own check in
+ * `workers/app.ts` is the one that holds.
+ *
+ * @version v0.8.0
  */
 
 import type { Config } from "@react-router/dev/config";
 
 export default {
   ssr: true,
+  allowedActionOrigins: [],
   future: {
     v8_viteEnvironmentApi: true,
     v8_middleware: true,
   },
 } satisfies Config;
+
+// @version v0.8.0

@@ -20,7 +20,14 @@
  * Canvas labels follow the same fallback chain, with a final fallback
  * to a sequential page number if no label is present.
  *
- * @version v0.3.0
+ * The parse also runs on manifests read from storage rather than
+ * fetched, through `parseManifestDocument` and its canvas reader
+ * `parseManifestPages`. The last block pins that they return what
+ * `parseManifest` returns for the same document, and that a malformed
+ * document — no homepage, a non-object, `items` that is not an array of
+ * objects — throws a `ManifestError` token, never a `TypeError`.
+ *
+ * @version v0.8.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { sampleManifest, sampleManifestUrl } from "../helpers/manifests";
@@ -29,7 +36,10 @@ import { sampleManifest, sampleManifestUrl } from "../helpers/manifests";
 import {
   validateManifestUrl,
   parseManifest,
+  parseManifestDocument,
+  parseManifestPages,
   getAllowedManifestHosts,
+  ManifestError,
 } from "../../app/lib/iiif.server";
 
 const defaultEnv = { ALLOWED_MANIFEST_HOSTS: "manifests.zasqua.org" };
@@ -292,6 +302,57 @@ describe("IIIF manifest parser", () => {
 
       const result = await parseManifest(sampleManifestUrl);
       expect(result.manifestUrl).toBe(sampleManifestUrl);
+    });
+  });
+
+  describe("parsing a document without fetching it", () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function expectToken(fn: () => unknown, token: string) {
+      let caught: unknown;
+      try {
+        fn();
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(ManifestError);
+      expect((caught as Error).message).toBe(token);
+    }
+
+    it("returns what parseManifest returns for the same document", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify(sampleManifest), { status: 200 })
+        )
+      );
+      const fetched = await parseManifest(sampleManifestUrl);
+      expect(parseManifestDocument(sampleManifest, sampleManifestUrl)).toEqual(fetched);
+      expect(parseManifestPages(sampleManifest)).toEqual(fetched.pages);
+    });
+
+    it("throws manifest_ref_code for a missing homepage, a non-object or a non-string homepage id", () => {
+      const { homepage: _h, ...noHomepage } = sampleManifest as Record<string, unknown>;
+      expectToken(() => parseManifestDocument(noHomepage, sampleManifestUrl), "manifest_ref_code");
+      expectToken(() => parseManifestDocument(null, sampleManifestUrl), "manifest_ref_code");
+      expectToken(() => parseManifestDocument("manifest", sampleManifestUrl), "manifest_ref_code");
+      expectToken(
+        () => parseManifestDocument({ ...sampleManifest, homepage: [{ id: 42 }] }, sampleManifestUrl),
+        "manifest_ref_code",
+      );
+    });
+
+    it.each([
+      ["an object", {}],
+      ["a string", "x"],
+      ["an array holding null", [null]],
+      ["an array holding a number", [3]],
+    ])("throws manifest_items when items is %s", (_label, items) => {
+      const doc = { ...sampleManifest, items };
+      expectToken(() => parseManifestPages(doc), "manifest_items");
+      expectToken(() => parseManifestDocument(doc, sampleManifestUrl), "manifest_items");
     });
   });
 });

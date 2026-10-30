@@ -30,7 +30,7 @@
  * `deferred-fingerprint/` as JSON (never SQL) with the hand-review
  * evidence file — clearly marked NOT for apply.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import * as fs from "node:fs/promises";
@@ -220,7 +220,7 @@ export async function writeArtefacts(
     const header =
       `-- Provenance backfill (authorities spec §10) — generated, do NOT hand-edit.\n` +
       `-- Idempotent (INSERT OR IGNORE on deterministic PKs); no-op if\n` +
-      `-- ${BACKFILL_USER_EMAIL} is absent. created_at = Phase-13 constant ` +
+      `-- ${BACKFILL_USER_EMAIL} is absent. created_at = import-date constant ` +
       `${PHASE_13_CREATED_AT_MS} (2026-04-16Z), never the run date.\n` +
       `-- detail.origin = "${BACKFILL_ORIGIN}".\n\n` +
       `PRAGMA defer_foreign_keys = true;\n\n`;
@@ -395,4 +395,4 @@ export async function writeArtefacts(
   return report;
 }
 
-// Version: v0.4.2
+// Version: v0.8.0

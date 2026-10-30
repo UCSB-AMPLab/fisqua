@@ -1,15 +1,15 @@
 /**
  * Tests — carried scopes
  *
- * Covers `app/lib/carried-scopes.server.ts`, the stash that hands a
- * search selection forward to the export surface. What is pinned here
- * is everything the two calling surfaces cannot check for themselves:
- * that what a person ticked is what gets stored, that "all matching"
- * means the FACETED set and not the tab's number, that the tenant
- * boundary survives being crossed twice (once when the set is
- * materialised, once when it is read back), that the cap refuses
- * rather than truncates, and that a stashed scope is invisible to
- * everyone but the person who made it.
+ * This suite covers `app/lib/carried-scopes.server.ts`, the stash that
+ * hands a search selection forward to the export surface. What is
+ * pinned here is everything the two calling surfaces cannot check for
+ * themselves: that what a person ticked is what gets stored, that "all
+ * matching" means the FACETED set and not the tab's number, that the
+ * tenant boundary survives being crossed twice (once when the set is
+ * materialised, once when it is read back), that the cap refuses rather
+ * than truncates, and that a stashed scope is invisible to everyone but
+ * the person who made it.
  *
  * THE TWO MODES ARE TESTED AGAINST DIFFERENT RISKS. `ids` mode is
  * trusted arithmetic — the list is taken as given, so the pins are
@@ -27,6 +27,15 @@
  * from the code alone would reasonably file it as a bug. The contract
  * it implies belongs to the consuming surface, and is stated there.
  *
+ * TWO INDEXES BEHIND ONE RECORD TYPE. A record can be found by its
+ * description or by its OCR pages, and both tabs carry the `records`
+ * type. An `all` carry names which index it came from, and the pins
+ * here check that a carry from the transcripts tab stores the records
+ * found by their pages, that one without a category still reads the
+ * record index, and that the transcripts category is refused on any
+ * other record type. `carryCategory` is the choice the search page's
+ * action makes from the posted tab.
+ *
  * FIXTURES. The request tenant (Neogranadina), a SIBLING tenant inside
  * the same federation — the neighbour whose records and authorities
  * must never materialise — and the second test tenant in a second
@@ -39,7 +48,7 @@
  * the carried_scopes rows the tests write are measured against a
  * before-and-after read rather than a wipe between tests.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
@@ -60,6 +69,7 @@ import { parseSearch } from "../../app/lib/search-query";
 import {
   stashCarriedScope,
   getCarriedScope,
+  carryCategory,
   CARRIED_SCOPE_MAX_MEMBERS,
 } from "../../app/lib/carried-scopes.server";
 import type { StashCarriedScopeInput } from "../../app/lib/carried-scopes.server";
@@ -110,6 +120,14 @@ const P_OWN = "7e000000-0000-4000-8000-000000000002";
 const P_SIBLING = "7e000000-0000-4000-8000-000000000003";
 const P_MERGED = "7e000000-0000-4000-8000-000000000004";
 
+/**
+ * The transcripts pair, on the marker word `zipacon`: one record whose
+ * only occurrence is on page 4 of its OCR, and one whose title (not its
+ * pages) holds the word. Seeded inside the tests that read them.
+ */
+const D_BY_PAGE = "7c000000-0000-4000-8000-000000000008";
+const D_BY_TITLE = "7c000000-0000-4000-8000-000000000009";
+
 /** The person who makes every carry, and a colleague beside them. */
 const OWNER_ID = "7f000000-0000-4000-8000-000000000001";
 const COLLEAGUE_ID = "7f000000-0000-4000-8000-000000000002";
@@ -130,6 +148,10 @@ function makeUser(
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -377,6 +399,36 @@ async function seedFixtures(): Promise<void> {
     displayName: "Cachipay Viejo",
     mergedInto: P_OWN,
   });
+}
+
+/** The transcripts pair: one found by its pages, one by its title. */
+async function seedTranscriptPair(): Promise<void> {
+  await seedDescription({
+    id: D_BY_PAGE,
+    tenantId: TENANT_A,
+    repositoryId: REPO_MAIN,
+    referenceCode: "CS-O01",
+    title: "Libro de bautismos",
+  });
+  await seedDescription({
+    id: D_BY_TITLE,
+    tenantId: TENANT_A,
+    repositoryId: REPO_MAIN,
+    referenceCode: "CS-O02",
+    title: "Zipacon, padrón de indios",
+  });
+  const now = Date.now();
+  for (const [descriptionId, seq, text] of [
+    [D_BY_PAGE, 1, "folio primero sin novedad"],
+    [D_BY_PAGE, 4, "bautizado en zipacon el dia once"],
+    [D_BY_TITLE, 1, "padron de los indios del pueblo"],
+  ] as const) {
+    await env.DB.prepare(
+      "INSERT INTO ocr_pages (id, tenant_id, description_id, page_seq, text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+      .bind(crypto.randomUUID(), TENANT_A, descriptionId, seq, text, now)
+      .run();
+  }
 }
 
 /** Every stored scope, so a test can prove a refusal wrote nothing. */
@@ -640,6 +692,66 @@ describe("carried scopes", () => {
       expect(stored.memberIds).not.toContain(P_SIBLING);
       expect(stored.memberIds).not.toContain(P_MERGED);
     });
+
+    it("an all-mode carry from the transcripts tab stores the records found by their pages", async () => {
+      await seedTranscriptPair();
+      const id = await stashCarriedScope(
+        db(),
+        owner,
+        tenantA,
+        allOf("records", {
+          input: parseSearch(["zipacon"]),
+          facets: {},
+          category: "transcripts",
+        }),
+      );
+
+      const stored = await getCarriedScope(db(), tenantA, owner, id);
+      expect(stored.recordType).toBe("records");
+      expect(stored.memberIds).toEqual([D_BY_PAGE]);
+      expect(stored.total).toBe(1);
+    });
+
+    it("an all-mode records carry without a category still reads the record index", async () => {
+      await seedTranscriptPair();
+      const id = await stashCarriedScope(
+        db(),
+        owner,
+        tenantA,
+        allOf("records", { input: parseSearch(["zipacon"]), facets: {} }),
+      );
+
+      const stored = await getCarriedScope(db(), tenantA, owner, id);
+      expect(stored.memberIds).toEqual([D_BY_TITLE]);
+      expect(stored.total).toBe(1);
+    });
+
+    it("refuses the transcripts category on any record type but records", async () => {
+      const before = (await scopeRows()).length;
+      const refusal = await stashCarriedScope(
+        db(),
+        owner,
+        tenantA,
+        allOf("entities", {
+          input: parseSearch(["suamox"]),
+          facets: {},
+          category: "transcripts",
+        }),
+      ).catch((e) => e);
+      expect(refusal).toBeInstanceOf(Response);
+      expect(refusal.status).toBe(400);
+      expect((await scopeRows()).length).toBe(before);
+    });
+  });
+
+  describe("the category a carry re-runs", () => {
+    it("takes the transcripts index only for records asked from the transcripts tab", () => {
+      expect(carryCategory("records", "transcripts")).toBe("transcripts");
+      expect(carryCategory("records", "descriptions")).toBe("descriptions");
+      expect(carryCategory("records", null)).toBe("descriptions");
+      expect(carryCategory("entities", "transcripts")).toBe("entities");
+      expect(carryCategory("places", "transcripts")).toBe("places");
+    });
   });
 
   describe("the cap on membership", () => {
@@ -718,7 +830,7 @@ describe("carried scopes", () => {
         total: 2,
         // An all-mode stash prunes nothing, so the faceted found count
         // equals the materialised total (the field arrived with the
-        // export surface's pruned-arithmetic contract, phase 4c).
+        // export surface's pruned-arithmetic contract).
         found: 2,
         // A carry made from a search has no browse surface to name.
         origin: null,

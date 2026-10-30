@@ -17,7 +17,7 @@
  * and the per-member stats — so the table never waterfalls when the
  * lead opens it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -357,6 +357,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const db = drizzle(context.cloudflare.env.DB);
 
   // Lead-only access
@@ -590,3 +595,5 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
     </div>
   );
 }
+
+// @version v0.8.0

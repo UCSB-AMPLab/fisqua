@@ -11,6 +11,9 @@
  *   - `getTenantFromRequest` -- maps the request `Host` header to a
  *     seeded tenant row via a legacy-host map and a subdomain
  *     suffix list, throws a bare 404 `Response` on unknown hosts.
+ *     Staging tenant hosts (`<slug>.staging.fisqua.org`) resolve
+ *     through their own suffix, while the staging apex stays
+ *     reserved.
  *   - `hasCapability` / `requireCapability` -- read the four
  *     capability flags on a `Tenant`; the `require` form 404s when
  *     the flag is off so route loaders can fail-loud server-side.
@@ -24,7 +27,7 @@
  * `applyMigrations()` + `cleanDatabase()` (which also re-seeds the
  * three tenant rows). Pure-function tests skip the D1 setup.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -45,7 +48,34 @@ import {
   OPERATOR_ROUTE_PREFIXES,
   PLATFORM_TENANT_ID,
   NEOGRANADINA_TENANT_ID,
+  NEOGRANADINA_FEDERATION_ID,
+  AHR_TENANT_ID,
 } from "../../app/lib/tenant";
+
+/** Seed the AHR tenant, which the default fixtures do not carry. */
+async function seedAhrTenant(): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT OR IGNORE INTO tenants (id, slug, name, kind, descriptive_standard, status, " +
+      "crowdsourcing_enabled, vocabulary_hub_enabled, publish_pipeline_enabled, multi_repository_enabled, " +
+      "quota_storage_bytes, federation_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+  )
+    .bind(
+      AHR_TENANT_ID, "ahr", "Archivo Histórico de Rionegro", "tenant", "isadg", "active",
+      0, 1, 0, 0, null, NEOGRANADINA_FEDERATION_ID, now, now,
+    )
+    .run();
+}
+
+async function expectBare404(promise: Promise<unknown>): Promise<void> {
+  try {
+    await promise;
+    expect.fail("Should have thrown");
+  } catch (e) {
+    expect(e).toBeInstanceOf(Response);
+    expect((e as Response).status).toBe(404);
+  }
+}
 
 describe("SlugSchema", () => {
   describe("rejects reserved slugs", () => {
@@ -160,6 +190,41 @@ describe("getTenantFromRequest", () => {
       expect(e).toBeInstanceOf(Response);
       expect((e as Response).status).toBe(404);
     }
+  });
+
+  it("resolves a staging tenant host (ahr.staging.fisqua.org) to ahr", async () => {
+    await seedAhrTenant();
+    const db = drizzle(env.DB);
+    const request = new Request("https://ahr.staging.fisqua.org/anywhere");
+    const tenant = await getTenantFromRequest(db, request);
+    expect(tenant.slug).toBe("ahr");
+    expect(tenant.id).toBe(AHR_TENANT_ID);
+  });
+
+  it("keeps the staging apex (staging.fisqua.org) reserved: bare 404, no tenant", async () => {
+    await seedAhrTenant();
+    const db = drizzle(env.DB);
+    await expectBare404(
+      getTenantFromRequest(db, new Request("https://staging.fisqua.org/anywhere")),
+    );
+  });
+
+  it("leaves production tenant hosts unchanged (ahr.fisqua.org)", async () => {
+    await seedAhrTenant();
+    const db = drizzle(env.DB);
+    const tenant = await getTenantFromRequest(
+      db,
+      new Request("https://ahr.fisqua.org/anywhere"),
+    );
+    expect(tenant.slug).toBe("ahr");
+  });
+
+  it("rejects a nested staging host (x.ahr.staging.fisqua.org) like any nested host", async () => {
+    await seedAhrTenant();
+    const db = drizzle(env.DB);
+    await expectBare404(
+      getTenantFromRequest(db, new Request("https://x.ahr.staging.fisqua.org/anywhere")),
+    );
   });
 
   it("404s on unknown subdomain (slug not in tenants)", async () => {
@@ -444,6 +509,13 @@ describe("buildTenantOriginUrl", () => {
     );
   });
 
+  it("builds a .staging.fisqua.org origin from a staging tenant request", () => {
+    const req = new URL("https://ahr.staging.fisqua.org/dashboard");
+    expect(buildTenantOriginUrl(req, "neogranadina")).toBe(
+      "https://neogranadina.staging.fisqua.org",
+    );
+  });
+
   it("returns null on legacy host (catalogacion.zasqua.org)", () => {
     const req = new URL("https://catalogacion.zasqua.org/path");
     expect(buildTenantOriginUrl(req, "neogranadina")).toBeNull();
@@ -464,3 +536,5 @@ describe("buildTenantOriginUrl", () => {
     expect(buildTenantOriginUrl(req, "neogranadina")?.startsWith("http://")).toBe(true);
   });
 });
+
+// @version v0.8.0
