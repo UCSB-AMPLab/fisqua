@@ -18,7 +18,8 @@
  *
  * The admin surfaces live alongside the project routes but under their
  * own URL prefixes: `/admin/cataloguing/*` groups collaborative
- * cataloguing management (projects, team, promote, users), while
+ * cataloguing management (projects, team, promote; its old `users`
+ * address redirects to `/admin/users`), while
  * `/admin/descriptions`, `/admin/entities`, `/admin/places`,
  * `/admin/repositories`, and `/admin/vocabularies` host the archival
  * records admin. `/admin/publish` and `/admin/promote` are superadmin
@@ -42,6 +43,13 @@
  * surfaces it points at. `/handlists/add` under the same prefix is an
  * action-only resource route with no UI of its own.
  *
+ * `/records` and `/records/:id` are the Reader's pages: the published
+ * records and one published record, read-only, gated in their loaders.
+ * A Reader with no other role, and a member with no role at all, are
+ * kept to their own pages (`/records` or `/no-access`, plus their
+ * settings) by `confineMemberAccess`, the second middleware on the
+ * `_auth` layout, so no member-level surface below reaches them.
+ *
  * `/admin/exports` is the third path that breaks the admin-prefix
  * pattern, and it breaks it deliberately. Getting your own records out
  * is not a privilege the platform grants, so the surface carries no
@@ -51,10 +59,33 @@
  * `/admin/` prefix because it sits beside Imports in the sidebar and
  * acts on the workspace as a whole, not because it is admin-gated.
  *
- * API endpoints live under `/api/*` and are also mounted inside the
- * auth layout so they inherit the same authentication and context. The
- * viewer and description editor routes break out of the chrome via a
- * path check in `_auth.tsx`.
+ * API endpoints live under `/api/*` and are mounted inside the auth
+ * layout so they inherit the same authentication and context, with one
+ * exception: the media pipeline's machine routes under `/api/pipeline/`
+ * sit at the top level, beside the public routes, because their caller
+ * is the pipeline runner rather than a signed-in person. They run no
+ * session middleware, answer only on the configured callback origin,
+ * authenticate with a run's bearer token and take their tenant from the
+ * run row. The capture link's three machine routes under
+ * `/api/capture/v1/` sit there too: their caller is a Captua unit,
+ * which authenticates with its scanner token on its tenant's own host,
+ * and the tenant is the host's. `/admin/media/runs/start` is an action-only resource route
+ * under the auth layout that starts a pipeline run, and
+ * `/admin/media/volumes/:volumeId/publish` another that publishes one
+ * ready pipeline volume; neither has a page, and both are gated in
+ * their action. `/admin/capture/volumes/:volumeId/decisions`,
+ * `/reviewer` and `/review-run` are action-only too: they record capture QC decisions on
+ * a volume's openings, assign its reviewer and start its review run,
+ * each gated in its action.
+ * `/admin/capture/volumes/:volumeId/review-access` is loader-only: it
+ * hands the capture QC viewer download tokens for the volume's review
+ * tiles, gated in its loader. `/admin/capture/volumes`, `/admin/capture/qc` and
+ * `/admin/capture/retakes` and `/admin/capture/scanner` are the
+ * Digitization section's pages, gated in their loaders (and the
+ * scanner's in its action), with `/admin/capture/qc/:volumeId`, the
+ * capture QC viewer, gated in its loader. The viewers and the
+ * description editor break out of the chrome via a path check in
+ * `_auth.tsx`.
  *
  * The `_operator` layout is a SIBLING of `_auth`, not a child: the
  * operator surface runs on the platform host with its own gate
@@ -67,7 +98,7 @@
  * tenant subdomain falls through to React Router's no-match 404
  * because no `/operator/*` route is registered on `_auth`.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import {
@@ -104,6 +135,21 @@ export default [
   route("end-impersonation", "routes/end-impersonation.tsx"),
   route("invite/accept", "routes/invite.accept.tsx"),
 
+  // Machine-to-machine callback from the media pipeline runner. Top-level
+  // so it runs no session middleware: it answers only on the configured
+  // callback origin, authenticates with the run's bearer token, and takes
+  // its tenant from the run row, never from the host.
+  route(
+    "api/pipeline/runs/:runId/volumes/:volumeId/callback",
+    "routes/api.pipeline.runs.$runId.volumes.$volumeId.callback.tsx"
+  ),
+  // The chunk-complete report from the same runner, under the same
+  // rules: a chunk's completion job posts it once its jobs have ended.
+  route("api/pipeline/runs/:runId/complete", "routes/api.pipeline.runs.$runId.complete.tsx"),
+  route("api/capture/v1/manifests", "routes/api.capture.v1.manifests.tsx"),
+  route("api/capture/v1/volumes/status", "routes/api.capture.v1.volumes.status.tsx"),
+  route("api/capture/v1/volumes/:ref/decisions", "routes/api.capture.v1.volumes.$ref.decisions.tsx"),
+
   // Authenticated routes
   layout("routes/_auth.tsx", [
     route("dashboard", "routes/_auth.dashboard.tsx"),
@@ -129,6 +175,13 @@ export default [
     route("handlists/add", "routes/_auth.handlists.add.tsx"),
     route("handlists/:id", "routes/_auth.handlists.$id.tsx"),
     route("proyectos", "routes/_auth.proyectos.tsx"),
+    // The Reader's pages: the published records list and one published
+    // record, read-only. Gated in their loaders (Readers, workspace
+    // admins, super admins), and published records only for everyone.
+    route("records", "routes/_auth.records._index.tsx"),
+    route("records/:id", "routes/_auth.records.$id.tsx"),
+    // Where a member with no role, project membership or grant is sent
+    // by the `_auth` layout's second middleware.
     route("no-access", "routes/_auth.no-access.tsx"),
     route("configuracion", "routes/_auth.configuracion.tsx"),
     route("projects/new", "routes/_auth.projects.new.tsx"),
@@ -179,15 +232,19 @@ export default [
       route("admin/cataloguing/projects", "routes/_auth.admin.cataloguing.projects.tsx"),
       route("admin/cataloguing/team", "routes/_auth.admin.cataloguing.team.tsx"),
       route("admin/cataloguing/promote", "routes/_auth.admin.cataloguing.promote.tsx"),
-      route("admin/cataloguing/users", "routes/_auth.admin.cataloguing.users.tsx"),
     ]),
+    // The old cataloguing users address, kept as a redirect to
+    // /admin/users. Outside the layout so the layout's gates do not
+    // refuse a user manager before the redirect runs.
+    route("admin/cataloguing/users", "routes/_auth.admin.cataloguing.users.tsx"),
 
-    // System users (superadmin only, outside cataloguing layout)
+    // Users (gated on `canManageTenantUsers`, outside cataloguing layout)
     route("admin/users", "routes/_auth.admin.users.tsx"),
     route("admin/users/:id", "routes/_auth.admin.users.$id.tsx"),
     route("admin/descriptions", "routes/_auth.admin.descriptions.tsx"),
     route("admin/descriptions/new", "routes/_auth.admin.descriptions.new.tsx"),
     route("admin/descriptions/:id", "routes/_auth.admin.descriptions.$id.tsx"),
+    route("admin/descriptions/:id/transcript", "routes/_auth.admin.descriptions.$id.transcript.tsx"),
     route("admin/descriptions/api/children/:parentId", "routes/_auth.admin.descriptions.api.children.$parentId.tsx"),
     route("admin/entities", "routes/_auth.admin.entities.tsx"),
     route("admin/entities/new", "routes/_auth.admin.entities.new.tsx"),
@@ -268,6 +325,49 @@ export default [
     // the ids it holds and lands on the same carried tile the search
     // page's own carry lands on. Action-only.
     route("admin/exports/carry", "routes/_auth.admin.exports.carry.tsx"),
+    // Starts a media pipeline run: action-only, gated in the action by
+    // the media pipeline capability and the federation-lead check.
+    route("admin/media/runs/start", "routes/_auth.admin.media.runs.start.tsx"),
+    // Publishes one ready pipeline volume: action-only, behind the same
+    // gate as the start route.
+    route(
+      "admin/media/volumes/:volumeId/publish",
+      "routes/_auth.admin.media.volumes.$volumeId.publish.tsx",
+    ),
+    // Digitization: the volumes a Captua scanner handed over, the
+    // capture QC queue and the retakes. Each gated in the loader by the
+    // digitization capability and by role.
+    route("admin/capture/volumes", "routes/_auth.admin.capture.volumes.tsx"),
+    route("admin/capture/qc", "routes/_auth.admin.capture.qc.tsx"),
+    // The capture QC viewer for one volume. Gated in the loader by the
+    // digitization capability, and by role and assignment.
+    route("admin/capture/qc/:volumeId", "routes/_auth.admin.capture.qc.$volumeId.tsx"),
+    route("admin/capture/retakes", "routes/_auth.admin.capture.retakes.tsx"),
+    // The tenant's Captua scanner and its link token; the page's action
+    // makes, replaces and revokes the token. Gated in the loader and the
+    // action.
+    route("admin/capture/scanner", "routes/_auth.admin.capture.scanner.tsx"),
+    // Capture QC: records decisions on a volume's openings, assigns its
+    // reviewer and starts its review run. All action-only, gated in the
+    // action.
+    route(
+      "admin/capture/volumes/:volumeId/decisions",
+      "routes/_auth.admin.capture.volumes.$volumeId.decisions.tsx",
+    ),
+    route(
+      "admin/capture/volumes/:volumeId/reviewer",
+      "routes/_auth.admin.capture.volumes.$volumeId.reviewer.tsx",
+    ),
+    route(
+      "admin/capture/volumes/:volumeId/review-run",
+      "routes/_auth.admin.capture.volumes.$volumeId.review-run.tsx",
+    ),
+    // Capture QC: download authorisation for a volume's review tiles.
+    // Loader-only, gated in the loader.
+    route(
+      "admin/capture/volumes/:volumeId/review-access",
+      "routes/_auth.admin.capture.volumes.$volumeId.review-access.tsx",
+    ),
 
     // Pending decisions — the questions the workspace has not
     // answered yet, gathered from three modules into one surface:
@@ -317,3 +417,5 @@ export default [
     { path: "operator/tenants/:slug/login-as", file: "routes/_operator.tenants.$slug.login-as.tsx" },
   ]),
 ] satisfies RouteConfig;
+
+// @version v0.8.0
