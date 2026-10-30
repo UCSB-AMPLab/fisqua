@@ -7,7 +7,7 @@
  * institutional anchors the description tree hangs off, so the
  * labels follow ISAAR(CPF)'s phrasing for archival institutions.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 export default {
   title: "Repositorios",
@@ -77,6 +77,9 @@ export default {
   "field.website": "Sitio web",
   "field.notes": "Notas",
   "field.rightsText": "Texto de derechos (METS)",
+  "field.manifestRights": "URI de derechos (manifiesto IIIF)",
+  "field.attributionEn": "Atribución en inglés (manifiesto IIIF)",
+  "field.attributionEs": "Atribución en español (manifiesto IIIF)",
   "field.enabled": "Estado",
 
   // Linked descriptions
@@ -106,3 +109,5 @@ export default {
   overwrite_button: "Sobreescribir",
   overwrite_cancel: "Cancelar",
 } as const;
+
+// @version v0.8.0
