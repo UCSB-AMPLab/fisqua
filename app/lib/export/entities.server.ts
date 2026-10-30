@@ -6,7 +6,7 @@
  * descriptions that reference it and are themselves publishable, so
  * unpublished work never leaks through the entity index.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import type { ExportEntity } from "./types";
@@ -22,6 +22,10 @@ import type { ExportEntity } from "./types";
  * `legal_status` was dropped from the entities table (0% populated in
  * production). Preserved as `null` in the export shape for snapshot
  * continuity.
+ *
+ * `formerCodes` are the codes zasqua.org published the entity under
+ * before (`former-codes.server.ts`); `former_codes` is omitted when
+ * there are none.
  */
 export function formatEntity(row: {
   entityCode: string | null;
@@ -42,7 +46,7 @@ export function formatEntity(row: {
   sources: string | null;
   wikidataId: string | null;
   viafId: string | null;
-}): ExportEntity {
+}, formerCodes: string[] = []): ExportEntity {
   return {
     entity_code: row.entityCode,
     display_name: row.displayName,
@@ -62,11 +66,36 @@ export function formatEntity(row: {
     history: row.history,
     // Dropped in 0036 (0% populated); preserved as null in export shape.
     legal_status: null,
-    functions: row.functions,
+    ...functionsField(row.functions),
     sources: row.sources,
     wikidata_id: row.wikidataId,
     viaf_id: row.viafId,
+    ...(formerCodes.length > 0 ? { former_codes: formerCodes } : {}),
   };
+}
+
+/**
+ * `functions` in the shape the engine's contract gives it: an array of
+ * `{function, count}` objects, which the EAC-CPF step requires. The
+ * column holds text: a JSON array is passed through, other non-empty
+ * text becomes one `{function}` entry, and an empty or null column
+ * leaves the field out, as the export does with other empty fields.
+ * (In production every entity's column is empty or null.)
+ */
+export function functionsField(
+  text: string | null
+): { functions?: Array<Record<string, unknown>> } {
+  const value = text?.trim();
+  if (!value) return {};
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.length > 0 ? { functions: parsed } : {};
+    } catch {
+      // Not JSON: kept as text below.
+    }
+  }
+  return { functions: [{ function: value }] };
 }
 
 /**

@@ -4,8 +4,9 @@
  * This API endpoint is the superadmin-only POST that starts a new
  * publish run. The payload is validated against a dynamic schema that
  * only accepts
- * fonds the database actually knows about, then a fresh row is
- * inserted into `export_runs` and the `PublishExportWorkflow` is
+ * fonds the database actually knows about, then, unless another
+ * publish of the tenant is in flight, a fresh row is inserted into
+ * `export_runs` and the `PublishExportWorkflow` is
  * instantiated with that row id. The response carries the new run id
  * so the dashboard can navigate into the progress panel.
  *
@@ -17,7 +18,22 @@
  * this route's tenant context comes from the auth middleware that
  * resolved the request host.
  *
- * @version v0.4.2
+ * The run's `total_steps` counts what the workflow will mark complete
+ * (see `publish-steps.ts`): five steps per fonds and the index when
+ * descriptions are selected, one per other type, and one more each for
+ * the link files that entities and places bring with them. Entities,
+ * places and their link files count only when the tenant has the
+ * authorities capability, as the workflow runs them only then.
+ *
+ * A tenant has at most one publish in flight. Two publishes of one
+ * tenant write the same R2 keys, so the action refuses with 409 while
+ * another run of the tenant is pending or running and has written a
+ * heartbeat within `PUBLISH_STALE_AFTER_MS`. The check and the insert
+ * of the new row are a single conditional INSERT, so concurrent
+ * requests cannot both pass it. A run silent for longer than the
+ * window no longer blocks; it is presumed dead.
+ *
+ * @version v0.8.0
  */
 
 import { z } from "zod";
@@ -25,9 +41,21 @@ import { tenantContext, userContext } from "../context";
 import { requireSuperAdmin } from "../lib/superadmin.server";
 import { getScopedFondsList } from "../lib/export/fonds-list.server";
 import { resolveExportScope } from "../lib/export/federation-scope.server";
+import { countPublishSteps } from "../lib/export/publish-steps";
 import type { Route } from "./+types/api.publish";
 
 const VALID_TYPES = ["descriptions", "repositories", "entities", "places"] as const;
+
+/**
+ * How long an unfinished run blocks a new publish of the same tenant,
+ * counted from its last heartbeat (or its start, or its creation, when
+ * it has not yet written one). The workflow sets no step timeouts of
+ * its own, and every step writes a heartbeat, so a pending or running
+ * row that has been silent this long is presumed dead: a run killed
+ * without reaching its error handler would otherwise block publishing
+ * for good.
+ */
+export const PUBLISH_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /**
  * POST /api/publish — Trigger a new export run.
@@ -45,7 +73,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   requireSuperAdmin(user);
 
   const { drizzle } = await import("drizzle-orm/d1");
-  const { exportRuns } = await import("../db/schema");
 
   const db = drizzle(context.cloudflare.env.DB);
 
@@ -110,47 +137,65 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const { selectedFonds, selectedTypes } = parsed.data;
 
-  // Compute total steps — counts only heartbeat-emitting steps that advance
-  // stepsCompleted via recordStepEnd in PublishExportWorkflow. When
-  // 'descriptions' is in selectedTypes the per-fonds run emits five steps
-  // per fonds (descriptions, children, mets, ead, dc) plus one
-  // descriptions:index step. Plus one each for repositories, entities,
-  // places when in selectedTypes. The workflow's load-config and finalize
-  // steps intentionally do not emit heartbeats, so they are excluded.
-  //
-  // An earlier formula was `selectedFonds.length * 2 + 1`, which
-  // counted only descriptions + children + index per fonds and
-  // silently undercounted by N — every mets:{fonds} step emitted a
-  // heartbeat the formula never accounted for, so the progress UI
-  // consistently overshot 100% on every publish run that included
-  // digitised items. The current formula matches what the workflow
-  // actually emits.
-  const hasDescriptions = selectedTypes.includes("descriptions");
-  const nonDescTypes = selectedTypes.filter((t) => t !== "descriptions");
-  const PER_FONDS_STEP_COUNT = 5; // descriptions + children + mets + ead + dc
-  const INDEX_STEPS = 1; // descriptions:index
-  const totalSteps =
-    (hasDescriptions
-      ? selectedFonds.length * PER_FONDS_STEP_COUNT + INDEX_STEPS
-      : 0) + nonDescTypes.length;
+  // Count only the steps the workflow marks complete. Entities, places
+  // and their link files are left out when the tenant lacks the
+  // authorities capability, as the workflow skips them on the same flag.
+  const totalSteps = countPublishSteps({
+    selectedFonds,
+    selectedTypes,
+    authoritiesEnabled: scope.authoritiesEnabled,
+  });
 
   const exportId = crypto.randomUUID();
   const now = Date.now();
 
-  await db.insert(exportRuns).values({
-    id: exportId,
-    triggeredBy: user.id,
-    status: "pending",
-    selectedFonds: JSON.stringify(selectedFonds),
-    selectedTypes: JSON.stringify(selectedTypes),
-    // Federation this run publishes (migration 0055). Recorded at insert
-    // so the run history is federation-attributed even before the
-    // workflow's load-config runs.
-    federationId: scope.federationId,
-    stepsCompleted: 0,
-    totalSteps,
-    createdAt: now,
-  });
+  // Insert the run only when no other publish of this tenant is in
+  // flight. The check and the insert are one statement, so two requests
+  // that arrive together cannot both pass the check: D1 runs each
+  // statement atomically, and the second one sees the first one's row.
+  // export_runs has no tenant column, so the tenant comes from the
+  // triggering user, as in the loader below and the workflow's
+  // load-config. A federation publish runs on the lead host and writes
+  // under the lead's slug, so the lead tenant is the one checked.
+  const inserted = await context.cloudflare.env.DB.prepare(
+    `INSERT INTO export_runs (
+       id, triggered_by, status, selected_fonds, selected_types,
+       federation_id, steps_completed, total_steps, created_at
+     )
+     SELECT ?1, ?2, 'pending', ?3, ?4, ?5, 0, ?6, ?7
+     WHERE NOT EXISTS (
+       SELECT 1 FROM export_runs r
+       INNER JOIN users u ON u.id = r.triggered_by
+       WHERE u.tenant_id = ?8
+         AND r.status IN ('pending', 'running')
+         AND COALESCE(r.last_heartbeat_at, r.started_at, r.created_at) > ?9
+     )`
+  )
+    .bind(
+      exportId,
+      user.id,
+      JSON.stringify(selectedFonds),
+      JSON.stringify(selectedTypes),
+      // Federation this run publishes (migration 0055). Recorded at
+      // insert so the run history is federation-attributed even before
+      // the workflow's load-config runs.
+      scope.federationId ?? null,
+      totalSteps,
+      now,
+      tenant.id,
+      now - PUBLISH_STALE_AFTER_MS
+    )
+    .run();
+
+  if (inserted.meta.changes === 0) {
+    return Response.json(
+      {
+        error:
+          "Another publish for this tenant is still in progress. Wait for it to finish before starting a new one.",
+      },
+      { status: 409 }
+    );
+  }
 
   // Trigger the publish-export workflow. Each step runs in its own Worker
   // invocation, so the 212k-record dataset no longer needs to fit inside one

@@ -13,7 +13,7 @@
  * promise — and EAD/DC publishing on top of it — depended on
  * closing that gap.
  *
- * The four `it()` blocks below cover:
+ * The first five `it()` blocks below cover:
  *
  *   1. Description body isolation -- Neogranadina's emitted
  *      `descriptions-<ref>.json` body MUST contain only Neogranadina
@@ -26,14 +26,18 @@
  *   3. `getFondsList` tenant filter -- a tenant with no published
  *      descriptions returns `[]`, not the second tenant's fonds.
  *
- *   4. Silent-pass guard -- every recorded R2 key starts with
+ *   4. METS links -- each description's `mets_url` is built from
+ *      its own tenant's `mets_base_url`, in a single-tenant fonds
+ *      export and in a federation repositories export.
+ *
+ *   5. Silent-pass guard -- every recorded R2 key starts with
  *      `${tenant.slug}/`. A bare `descriptions-<ref>.json` write
  *      (the pre-plan flat-key shape) fails the assertion. This guard
  *      ensures a future regression that drops the slug prefix is
  *      caught even if the data-leak assertions pass for a different
  *      reason.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
@@ -255,6 +259,42 @@ describe("Cross-tenant export isolation", () => {
         `key must not be written under second tenant prefix: ${put.key}`,
       ).toBe(false);
     }
+  });
+
+  it("builds each description's mets_url from its own tenant's METS base", async () => {
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(schema.tenants)
+      .set({ metsBaseUrl: "https://manifests.example.org/mets/" })
+      .where(eq(schema.tenants.id, DEFAULT_TEST_TENANT_ID));
+
+    await exportFondsDescriptions(db, storage as unknown as ExportStorage, "co-neo-fonds", NEOGRANADINA_TENANT);
+    const fonds = JSON.parse(
+      storage.puts.find((p) => p.key.endsWith("descriptions-co-neo-fonds.json"))!.body,
+    );
+    expect(fonds[0].mets_url).toBe("https://manifests.example.org/mets/co-neo-fonds.xml");
+
+    // A federation publish reads both tenants; the second has no base,
+    // so its root carries no mets_url, and the old host appears nowhere.
+    await exportRepositories(db, storage as unknown as ExportStorage, NEOGRANADINA_TENANT, [
+      DEFAULT_TEST_TENANT_ID,
+      SECOND_TEST_TENANT_ID,
+    ]);
+    let repos = storage.puts.filter((p) => p.key.endsWith("repositories.json")).at(-1)!.body;
+    expect(repos).toContain("https://manifests.example.org/mets/co-neo-fonds.xml");
+    expect(repos).not.toContain("mx-second-fonds.xml");
+    expect(repos).not.toContain("mets.zasqua.org");
+
+    await db
+      .update(schema.tenants)
+      .set({ metsBaseUrl: "https://other.example.org/mets" })
+      .where(eq(schema.tenants.id, SECOND_TEST_TENANT_ID));
+    await exportRepositories(db, storage as unknown as ExportStorage, NEOGRANADINA_TENANT, [
+      DEFAULT_TEST_TENANT_ID,
+      SECOND_TEST_TENANT_ID,
+    ]);
+    repos = storage.puts.filter((p) => p.key.endsWith("repositories.json")).at(-1)!.body;
+    expect(repos).toContain("https://other.example.org/mets/mx-second-fonds.xml");
   });
 
   it("getFondsList scoped to a tenant with no fonds returns []", async () => {

@@ -10,7 +10,7 @@
  * (`descriptions:`, `children:`, `mets:`, `ead:`, `dc:`) con etiquetas
  * localizadas en español colombiano (sin voseo: tú, prefieres, sabes).
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   title: "Publicar",
@@ -44,7 +44,7 @@ export default {
   },
   warning: {
     title: "Confirmar publicación",
-    body: "La publicación regenera todos los archivos de exportación para los fondos y tipos de datos seleccionados. Para conjuntos de datos grandes esto puede tardar varios minutos. El panel mostrará el progreso en vivo — por favor déjelo abierto hasta que termine.",
+    body: "La publicación regenera todos los archivos de exportación para los fondos y tipos de datos seleccionados. Con conjuntos de datos grandes, esto puede tardar varios minutos. El panel mostrará el progreso en vivo; déjalo abierto hasta que termine.",
     estimate: "Tiempo estimado: alrededor de {{minutes}} minuto(s)",
     confirm: "Sí, iniciar publicación",
     cancel: "Cancelar",
@@ -64,7 +64,7 @@ export default {
     totalElapsed: "Tiempo total: {{minutes}}m {{seconds}}s",
     lastUpdate: "Última actualización: {{timestamp}}",
     reassurance: {
-      children: "Escribiendo los archivos de hijos por cada elemento padre — es el paso más largo para los fondos grandes. Puede dejar la página abierta sin problema.",
+      children: "Escribiendo los archivos de hijos por cada elemento padre — es el paso más largo en los fondos grandes. Puedes dejar la página abierta sin problema.",
       index: "Escribiendo el índice de descripciones — casi terminado.",
     },
     stepLabels: {
@@ -136,7 +136,9 @@ export default {
   },
   rebuild: {
     title: "Siguiente paso: reconstruir el sitio",
-    message: "La exportación ha finalizado. Para publicar los cambios, active la reconstrucción del sitio en GitHub Actions.",
+    message: "La exportación ha finalizado. Para publicar los cambios, inicia la reconstrucción del sitio en GitHub Actions.",
     link: "Ir a GitHub Actions",
   },
+  publish_in_progress: "Ya hay una publicación en curso. Espera a que termine para iniciar otra.",
+  publish_start_failed: "No se pudo iniciar la publicación. Intenta de nuevo.",
 } as const;

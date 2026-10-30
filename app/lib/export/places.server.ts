@@ -15,7 +15,10 @@
  * sourced from the new `places.fclass` column (5-value GeoNames
  * feature class) rather than aliased from `place_type`.
  *
- * @version v0.4.0
+ * Each place carries its `id`, the stable string id it keeps across
+ * publishes, which the engine's place explorer matches map features on.
+ *
+ * @version v0.8.0
  */
 
 import type { ExportPlace } from "./types";
@@ -24,8 +27,11 @@ import type { ExportPlace } from "./types";
  * Map a D1 place row to ExportPlace.
  * Key mapping: placeType -> place_type. fclass now reads from the
  * dedicated 0036 `fclass` column (5-value GeoNames feature class).
+ * `formerCodes` are the codes zasqua.org published the place under
+ * before; `former_codes` is omitted when there are none.
  */
 export function formatPlace(row: {
+  id: string;
   placeCode: string | null;
   label: string;
   displayName: string;
@@ -38,8 +44,9 @@ export function formatPlace(row: {
   tgnId: string | null;
   hgisId: string | null;
   whgId: string | null;
-}): ExportPlace {
+}, formerCodes: string[] = []): ExportPlace {
   return {
+    id: row.id,
     label: row.label,
     place_code: row.placeCode,
     display_name: row.displayName,
@@ -63,6 +70,7 @@ export function formatPlace(row: {
     // wikidata_id dropped on places in 0036 (0% populated); kept
     // as null in export shape for snapshot continuity.
     wikidata_id: null,
+    ...(formerCodes.length > 0 ? { former_codes: formerCodes } : {}),
   };
 }
 

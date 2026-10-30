@@ -15,7 +15,7 @@
  * from the description set's link rows and intersects against the
  * authority set; only authorities inside the closure survive.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -133,6 +133,22 @@ describe("formatEntity", () => {
     expect(result.viaf_id).toBe("67890");
   });
 
+  it("leaves functions out when the column is empty or null", () => {
+    expect(formatEntity(makeEntityRow({ functions: null }))).not.toHaveProperty("functions");
+    expect(formatEntity(makeEntityRow({ functions: "" }))).not.toHaveProperty("functions");
+    expect(formatEntity(makeEntityRow({ functions: "[]" }))).not.toHaveProperty("functions");
+  });
+
+  it("writes functions as an array: a JSON array as stored, other text as one entry", () => {
+    const stored = '[{"function":"escribano","count":3}]';
+    expect(formatEntity(makeEntityRow({ functions: stored })).functions).toEqual([
+      { function: "escribano", count: 3 },
+    ]);
+    expect(formatEntity(makeEntityRow({ functions: "escribano" })).functions).toEqual([
+      { function: "escribano" },
+    ]);
+  });
+
   it("handles empty nameVariants gracefully", () => {
     const result = formatEntity(makeEntityRow({ nameVariants: null }));
     expect(result.name_variants).toEqual([]);
@@ -215,6 +231,10 @@ describe("filterLinkedEntities", () => {
 // ---------------------------------------------------------------------------
 
 describe("formatPlace", () => {
+  it("writes the place's stable id", () => {
+    expect(formatPlace(makePlaceRow({ id: "place-777" })).id).toBe("place-777");
+  });
+
   it("maps label to label", () => {
     const result = formatPlace(makePlaceRow());
     expect(result.label).toBe("Rionegro");
