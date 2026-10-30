@@ -6,7 +6,7 @@
  * tenant subdomains; on the apex (fisqua.test / fisqua.org) and on
  * the platform host (platform.fisqua.test) it 404s. The successful
  * path consumes the row atomically, performs a defence-in-depth
- * tenant slug recheck (T-33-05-02), looks up the operator user,
+ * tenant slug recheck, looks up the operator user,
  * applies `requireTenantUser({ allowImpersonation: true })`, mints
  * an impersonating session via `createSessionStorage`, and 302s to
  * `/dashboard`.
@@ -30,7 +30,7 @@
  *      (host-only invariant preserved).
  *   8. Apex check: GET on fisqua.test → 404.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -243,4 +243,4 @@ describe("impersonation handoff route", () => {
   });
 });
 
-// @version v0.4.0
+// @version v0.8.0

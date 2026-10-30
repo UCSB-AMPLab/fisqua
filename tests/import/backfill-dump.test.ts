@@ -5,11 +5,11 @@
  * null), the extra-field disambiguation of content-ambiguous entities
  * (unique top scorer with ≥1 agreeing field; ties and zero-signal stay
  * ambiguous), and the redirect merge rows: production UUIDs on BOTH
- * sides via the pk → UUID map, `origin: "django-manual"`, the Phase-13
+ * sides via the pk → UUID map, `origin: "django-manual"`, the import-date
  * created_at constant, unresolvable pks reported not guessed, and the
  * place merges counted but never built.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -124,4 +124,4 @@ describe("backfill/dump redirect merges", () => {
   });
 });
 
-// Version: v0.4.2
+// Version: v0.8.0

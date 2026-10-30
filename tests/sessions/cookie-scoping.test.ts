@@ -14,10 +14,10 @@
  * enforcement that follows from the absence of `Domain` is a
  * runtime guarantee in production; the test pool's miniflare HTTP
  * layer does not enforce browser-side cookie scoping rules across
- * synthetic hosts (RESEARCH §"Test infrastructure" caveat), so
+ * synthetic hosts, so
  * this is the right place to assert the structural property.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { createSessionStorage } from "../../app/sessions.server";

@@ -20,13 +20,13 @@
  * decisions), so a pipeline pass date is unrecoverable — see the module
  * header of `rows.ts`. `PHASE_13_CREATED_AT_MS` is therefore the single
  * documented constant §10 permits: 2026-04-16T00:00:00Z, the earliest
- * `entities.created_at` observed in the Phase-13 production import
+ * `entities.created_at` observed in the production import
  * (measured range 2026-04-16 … 2026-04-22). Every backfilled row carries
  * it, distinguishing these rows from live steward operations (whose
  * `created_at` is the wall clock at the write site) as clearly as the
  * `detail.origin` marker does.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { createHash } from "node:crypto";
@@ -40,7 +40,7 @@ import { createHash } from "node:crypto";
 export const BACKFILL_NAMESPACE = "1b671a64-40d5-491e-99b0-da01ff1f3341";
 
 /**
- * The single documented Phase-13-era timestamp (epoch ms) stamped on
+ * The single documented import-date timestamp (epoch ms) stamped on
  * every backfilled row. 2026-04-16T00:00:00Z — the earliest
  * `entities.created_at` in the production import. NEVER the backfill run
  * date. `authority_operations.created_at` is epoch ms (spec §3), unlike
@@ -87,4 +87,4 @@ export function uuidv5(name: string, namespace: string = BACKFILL_NAMESPACE): st
   return bytesToUuid(bytes);
 }
 
-// Version: v0.4.2
+// Version: v0.8.0

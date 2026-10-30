@@ -113,14 +113,14 @@
  *
  * ## Threat surface
  *
- *   - T-34-06-01: a future locale, component, or route pastes
+ *   - A future locale, component, or route pastes
  *     `"isadg"` outside the substrate. Caught by pass 1.
- *   - T-34-06-02: a heading "Editar descripción ISAD(G)" lands in a
- *     route file. Caught by pass 2 (W2).
- *   - T-34-06-03: a fourth standard ships without an allowlist audit.
+ *   - A heading "Editar descripción ISAD(G)" lands in a
+ *     route file. Caught by pass 2.
+ *   - A fourth standard ships without an allowlist audit.
  *     Caught by the locked-set guard.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -200,7 +200,7 @@ const ALLOWLIST_FILES: ReadonlyArray<string> = [
 const STANDARD_LITERALS = /['"](isadg|dacs|rad)['"]/g;
 
 /**
- * Pass 2 (W2): user-facing standard NAMES in JSX text content or
+ * Pass 2: user-facing standard NAMES in JSX text content or
  * string / template literals. Three sub-patterns OR'd, all
  * case-insensitive via the `i` flag:
  *
@@ -426,4 +426,4 @@ describe("no hardcoded standards in description CRUD surface", () => {
   });
 });
 
-/* @version v0.4.0 */
+/* @version v0.8.0 */

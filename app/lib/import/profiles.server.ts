@@ -20,7 +20,7 @@
  * by design (the run's journal, not the profile, is the record of what
  * an import did).
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { and, desc, eq } from "drizzle-orm";
@@ -140,7 +140,7 @@ export interface SaveProfileInput {
   sharedWithFederation: boolean;
   userId: string;
   /**
-   * Stamped on the row when a starter profile is minted (phase 7); absent
+   * Stamped on the row when a starter profile is minted; absent
    * for a hand-built profile, which stores `null`. Definition updates never
    * reach a minted row, so this is a provenance tag, not a live link.
    */

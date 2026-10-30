@@ -14,9 +14,9 @@
  *      're_enable_tenant' (repurposes set_capability to avoid
  *      amending the audit_log enum).
  *   4. POST soft_disable on platform tenant → 400 (operator does not
- *      lock themselves out — T-33-04-05).
+ *      lock themselves out).
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -248,4 +248,4 @@ describe("/operator/tenants/:slug — soft_disable + re_enable", () => {
   });
 });
 
-// @version v0.4.0
+// @version v0.8.0

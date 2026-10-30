@@ -10,7 +10,7 @@
  * Django before the dump) still matches by that description set.
  *
  * MEASURED FACT the rules encode (2026-07-10 integrator pass): the
- * Phase-13 Django ingest CONSOLIDATED same-institution pipeline entities
+ * production Django ingest CONSOLIDATED same-institution pipeline entities
  * across repos (e.g. acc "Real Hacienda" + its ahr sibling fold into one
  * Django row whose description set is the union). The fingerprint is
  * therefore deliberately many-to-one: several pipeline ids may resolve
@@ -40,7 +40,7 @@
  * ≥ 90% of P required, ties narrowed by evidence filters, anything
  * unresolved returned as tied/weak/rejected — never guessed.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { DatabaseSync } from "node:sqlite";
@@ -403,4 +403,4 @@ export function nameCorroboration(
   return bestScore;
 }
 
-// Version: v0.4.2
+// Version: v0.8.0

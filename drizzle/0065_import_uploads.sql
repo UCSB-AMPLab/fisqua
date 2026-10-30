@@ -1,6 +1,5 @@
 -- import_uploads: the metadata row behind every staged CSV upload
--- (imports spec §§1, 4; build plan phase 3 "staged object + metadata
--- row").
+-- (imports spec §§1, 4).
 --
 -- The staged FILE lives in the staging store (B2 staging bucket in
 -- production, the local R2 binding in dev/tests — spec §7.4);
@@ -29,7 +28,7 @@
 -- Purely additive: CREATE TABLE + CREATE INDEX only, IF NOT EXISTS
 -- throughout; nothing backfills.
 --
--- Version: v0.6.0
+-- Version: v0.8.0
 
 CREATE TABLE IF NOT EXISTS import_uploads (
   id TEXT PRIMARY KEY NOT NULL,

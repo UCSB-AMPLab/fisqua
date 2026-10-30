@@ -1,5 +1,5 @@
 /**
- * Tests — starter profiles + the generated canonical template (phase 7)
+ * Tests — starter profiles + the generated canonical template
  *
  * Two concerns, both pure (no D1): the four external-format starters
  * (AtoM ISAD(G) CSV, AGN FUID, EAP, MEAP) and the generated canonical
@@ -18,7 +18,7 @@
  * direct-copy projection, and a fully symmetric dry-run (zero unbound, zero
  * unrecognised).
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import { parseCsv } from "../../app/lib/import/csv";

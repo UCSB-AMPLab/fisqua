@@ -33,7 +33,7 @@
  * neither can change without changing the crosswalk, which is the
  * point of moving it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { escapeXml, el } from "../xml/escape";
@@ -127,14 +127,13 @@ export function buildDcBulk(
 
 /**
  * Emit one `<record>` block for one published description row. Element
- * ordering inside `<oai_dc:dc>` is OAI-DC spec order (RESEARCH Open
- * Question 4 lock): title, creator, subject, description, publisher,
+ * ordering inside `<oai_dc:dc>` is OAI-DC spec order: title, creator, subject, description, publisher,
  * contributor, date, type, format, identifier, source, language,
  * relation, coverage, rights.
  *
  * `dc:contributor` is intentionally omitted in v0.4 — entity-level
- * contributors are OAI-PMH-endpoint scope, not bulk-export scope
- * (RESEARCH §Pattern 3). The slot stays in the documented ordering so
+ * contributors are OAI-PMH-endpoint scope, not bulk-export scope.
+ * The slot stays in the documented ordering so
  * the future v0.5+ insertion lands without renumbering the rest; the
  * crosswalk holds it as a permanently-null element for the same reason.
  *
@@ -185,7 +184,7 @@ function renderRecord(
  * → `<oai_dc:dc>` → `<dc:*>`), so we re-indent to 8 spaces.
  *
  * Returns "" for null/empty input — the el() helper's null-safety
- * propagates here unchanged (RESEARCH Pitfall 4).
+ * propagates here unchanged.
  */
 function elIndented(tag: string, text: string | null | undefined): string {
   const out = el(tag, text);
@@ -193,4 +192,4 @@ function elIndented(tag: string, text: string | null | undefined): string {
   return out.replace(/^    /, "        ");
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

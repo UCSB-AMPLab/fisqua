@@ -27,12 +27,12 @@
  * an ambiguous identifier is unresolvable, full stop — spec §3's
  * never-guess posture. This DIVERGES from the approved UX mockup's step-4
  * arithmetic (24 rows / 21 resolvable / 3 rejects assumes the first
- * duplicate survives); the divergence is deliberate and awaits Juan's
- * ratification. A row whose in-file parent is itself rejected cascades to
- * an unresolvable-parent reject, because a child cannot attach to a
- * container that will never be created.
+ * duplicate survives); the divergence is deliberate. A row whose
+ * in-file parent is itself rejected cascades to an unresolvable-parent
+ * reject, because a child cannot attach to a container that will never
+ * be created.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { DESCRIPTION_LEVELS } from "../validation/enums";

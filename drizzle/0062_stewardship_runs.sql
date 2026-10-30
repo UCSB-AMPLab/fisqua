@@ -1,5 +1,5 @@
 -- stewardship_runs: the commit envelope for bulk operations
--- (stewardship record spec §2; imports build plan phase 2).
+-- (stewardship record spec §2).
 --
 -- One row per bulk operation — an import run or a revert run. The
 -- envelope carries the REQUIRED operator message (the commit-message
@@ -26,7 +26,7 @@
 -- import_profiles table lands in a later phase, and a run must remain
 -- readable even if its profile is later deleted.
 --
--- Version: v0.6.0
+-- Version: v0.8.0
 
 CREATE TABLE IF NOT EXISTS stewardship_runs (
   id TEXT PRIMARY KEY NOT NULL,

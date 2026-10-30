@@ -24,7 +24,7 @@
  *     already exist") and accept the payloads the editors already
  *     send; sendBeacon's session cookie travels automatically.
  *
- * Beacon size guard (RESEARCH §2 + MDN):
+ * Beacon size guard (per MDN):
  *
  *   `navigator.sendBeacon` silently drops payloads above 64 KiB. We
  *   apply a 60 KiB ceiling to leave one symbolic byte of headroom
@@ -32,7 +32,7 @@
  *   guard is strict less-than: at exactly `BEACON_MAX_BYTES`,
  *   `shouldSendBeacon` returns `false`. Plan-checker LOW-02.
  *
- * @version v0.4.1
+ * @version v0.8.0
  */
 
 /**
@@ -83,4 +83,4 @@ export function buildEntriesBeaconBody(
   return fd;
 }
 
-/* @version v0.4.1 */
+/* @version v0.8.0 */

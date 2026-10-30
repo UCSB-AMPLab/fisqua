@@ -20,9 +20,9 @@
  *   2. Atomicity: a CHECK violation on the handoff insert (target_role
  *      not in the enum, smuggled past Zod via `as any`) rolls BOTH the
  *      handoff insert AND the audit insert back. Zero rows in each
- *      table. T-33-05's batch-rollback proof for SC5.
- *   3. Platform-tenant target rejected with 400; no DB writes (T-33-05-03
- *      defence-in-depth — operator does not impersonate INTO themselves).
+ *      table.
+ *   3. Platform-tenant target rejected with 400; no DB writes (defence in
+ *      depth — operator does not impersonate INTO themselves).
  *   4. Invalid role value → 422 (Zod fieldErrors); no DB writes.
  *   5. Unknown slug → 404; no DB writes.
  *
@@ -31,7 +31,7 @@
  * tenant). Tests invoke the action function directly with a hand-built
  * RouterContextProvider — same shape `tenant-detail.test.ts` uses.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -270,4 +270,4 @@ describe("/operator/tenants/:slug/login-as — POST action", () => {
   });
 });
 
-// @version v0.4.0
+// @version v0.8.0

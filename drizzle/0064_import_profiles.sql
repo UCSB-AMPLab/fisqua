@@ -1,5 +1,5 @@
 -- import_profiles: named, per-tenant, versioned mapping profiles
--- (imports spec §2; build plan phase 3).
+-- (imports spec §2).
 --
 -- One row per profile. `bindings` is the JSON mapping — CSV HEADER
 -- NAMES (never positional indices; the N2-TSV column-shift incident,
@@ -19,8 +19,7 @@
 -- meaningful on profiles owned by a federation-lead tenant; enforced
 -- at the app layer, not here.
 --
--- `starter_key` marks seeded starter profiles (build plan phase 7:
--- AtoM ISAD(G), AGN FUID, EAP, MEAP, and the generated Fisqua
+-- `starter_key` marks seeded starter profiles (AtoM ISAD(G), AGN FUID, EAP, MEAP, and the generated Fisqua
 -- canonical template) so seeding is idempotent and upgradable;
 -- NULL = operator-authored.
 --
@@ -33,7 +32,7 @@
 -- Purely additive: CREATE TABLE + CREATE INDEX only, IF NOT EXISTS
 -- throughout; nothing backfills.
 --
--- Version: v0.6.0
+-- Version: v0.8.0
 
 CREATE TABLE IF NOT EXISTS import_profiles (
   id TEXT PRIMARY KEY NOT NULL,

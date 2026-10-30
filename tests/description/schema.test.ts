@@ -14,7 +14,7 @@
  * wrong table. Both have happened in earlier iterations of the
  * description pipeline; this file is the structural backstop.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, test, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -587,7 +587,7 @@ describe("schema (qc_flag target + image regions)", () => {
 // cleanup 2026-04-18: the "Vincular a región" follow-up
 // describe block previously pinned the `qc_flags.region_comment_id`
 // column shape, the supporting index, and NULL + FK-linked insert paths.
-// The feature was reverted after Wave 2 browser UAT -- QC flags are
+// The feature was reverted after browser testing -- QC flags are
 // image-level, not region-level -- so those assertions have been
 // dropped. The DB column still exists (migration 0031 was NOT rolled
 // back per cleanup policy) but is deprecated and no application code

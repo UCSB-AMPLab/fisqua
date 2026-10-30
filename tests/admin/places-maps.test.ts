@@ -1,5 +1,5 @@
 /**
- * Tests — places maps + coordinates (phase 4)
+ * Tests — places maps + coordinates
  *
  * Covers the places list loader's map-view points branch (federation
  * scoping, located-only, minimal fields, link counts, MapTiler key
@@ -20,7 +20,7 @@
  * to the plain route with a redirect, and the missing-coordinates chip
  * empties the points so the map dims.
  *
- * @version v0.4.3
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";

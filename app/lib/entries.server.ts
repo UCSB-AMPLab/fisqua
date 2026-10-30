@@ -7,7 +7,7 @@
  * returns every entry for a volume in `position` order, falling back
  * to a synthetic auto-entry pinned to page one when the volume has
  * never been segmented; that fallback matches the initial-state
- * contract documented in `CONTEXT.md` so the viewer always has a
+ * contract (auto-boundary on page 1, type unset) so the viewer always has a
  * starting boundary to render.
  *
  * `saveEntries` implements the additive-diff save the viewer drives
@@ -22,7 +22,7 @@
  * so a malformed payload fails fast with a useful message rather than
  * surfacing as a CHECK violation deep in the batch.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -33,7 +33,7 @@ import { ENTRY_TYPES } from "./validation/enums";
 /**
  * Load all entries for a volume, ordered by position.
  * If no entries exist, returns a single auto-entry at page 1
- * (initial state per CONTEXT.md -- auto-boundary on page 1, type unset).
+ * (the initial state: auto-boundary on page 1, type unset).
  */
 export async function loadEntries(
   db: DrizzleD1Database<any>,

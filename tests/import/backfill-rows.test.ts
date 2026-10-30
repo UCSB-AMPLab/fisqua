@@ -4,7 +4,7 @@
  * Pins the §10 endpoint semantics for all four layers, plus the two
  * measured shape facts the design has to bend to:
  *   - `resolve` rows are self-referential (source = production UUID,
- *     target = NULL) and stamped with the Phase-13 constant.
+ *     target = NULL) and stamped with the import-date constant.
  *   - `merge` source_id is the ABSORBED PIPELINE id (never a production
  *     UUID), target_id the surviving head's production UUID, reasoning in
  *     detail — the acc-08032 → acc-00548 spot-check.
@@ -12,7 +12,7 @@
  *   - SEPARATE with no entity endpoints produces NO row and is reported
  *     as blocked, not invented.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 import { buildRows, splitParentId } from "../../scripts/backfill/rows";
@@ -109,4 +109,4 @@ describe("backfill/rows buildRows", () => {
   });
 });
 
-// Version: v0.4.2
+// Version: v0.8.0

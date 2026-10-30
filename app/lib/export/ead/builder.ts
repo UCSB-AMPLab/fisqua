@@ -12,8 +12,8 @@
  *
  * Template literals plus the shared `escapeXml`/`el` helpers from
  * `app/lib/export/xml/escape.ts` keep the Worker bundle small — same
- * pattern as `app/lib/export/mets-builder.ts`. T-37-02 mitigation
- * (XML injection through interpolated description content) is
+ * pattern as `app/lib/export/mets-builder.ts`. Mitigation of XML
+ * injection through interpolated description content is
  * structural: every interpolated value flows through `escapeXml`,
  * including legacyId provider/value pairs at every `<unitid type="...">`
  * call site.
@@ -61,7 +61,7 @@
  * `level="collection"` would assert an archival relationship between
  * fonds that does not exist.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { escapeXml, el, sanitiseRefForKey } from "../xml/escape";
@@ -452,7 +452,7 @@ function renderDid(
 
   // Primary <unitid> from referenceCode (no @localtype); one secondary
   // <unitid localtype="<provider>"> per legacyId. Both flow through
-  // escapeXml to mitigate T-37-02 at the provider/value attribute
+  // escapeXml to block XML injection at the provider/value attribute
   // boundary. EAD3 uses `localtype` (not EAD2002's `type`) — the RNG
   // grammar (`a.localtype` define at ead3.rng:3328) explicitly enforces
   // this. RNG validation rejects EAD2002's bare `type` here.
@@ -515,8 +515,6 @@ function renderDid(
  * structures; flat keeps the builder simple and matches what
  * downstream aggregators (ArchivesGrid, DPLA) expect from per-fonds
  * finding aids without an explicit hierarchical reconstruction step.
- *
- * (Documented in 37-03-SUMMARY.md "Structural decisions" section.)
  */
 function renderC(row: EadInput, repo: EadRepository | undefined): string {
   let c = `      <c level="${escapeXml(row.descriptionLevel)}">\n`;
@@ -537,4 +535,4 @@ function renderC(row: EadInput, repo: EadRepository | undefined): string {
 // hand without re-import churn.
 void el;
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

@@ -20,12 +20,10 @@
  * `PLACE_ROLES`) gate the only values that can appear in junction
  * rows.
  *
- * @version v0.3.0
+ * @version v0.8.0
  */
 import { describe, it, expect } from "vitest";
 
-// These imports require the validation files to exist.
-// That is expected -- these are RED tests for Wave 0.
 import {
   descriptionSchema,
   createDescriptionSchema,

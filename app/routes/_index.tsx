@@ -7,7 +7,7 @@
  *   1. The loader branches on host. On a tenant subdomain
  *      (`<slug>.fisqua.org`, `<slug>.localhost`, `<slug>.fisqua.test`,
  *      or the legacy `catalogacion.zasqua.org` host), it throws
- *      `redirect("/dashboard")` -- preserving the pre-Phase-32
+ *      `redirect("/dashboard")` -- preserving the earlier
  *      behaviour where hitting `/` on a tenant subdomain takes
  *      authenticated users into the staff app (and `/dashboard`
  *      itself bounces unauthenticated callers to `/login`). On the
@@ -18,8 +18,8 @@
  *      version }` so the render layer knows which language and
  *      version badge to surface.
  *
- *   2. The action handles the workspace-picker form POST. Per
- *      CONTEXT.md C-03 / SC3, the action does NOT touch D1, does
+ *   2. The action handles the workspace-picker form POST. By
+ *      design, the action does NOT touch D1, does
  *      NOT validate slug shape, does NOT call any tenant-existence
  *      helper. It trims and lowercases the input, returns a
  *      `Response.json({ error: "empty" }, 400)` on empty submit,
@@ -45,7 +45,7 @@
  * string check against the existing `LEGACY_HOST_MAP` and
  * `SUBDOMAIN_HOST_SUFFIXES` constants in `app/lib/tenant.ts`.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { redirect } from "react-router";
@@ -285,4 +285,4 @@ export default function LandingRoute({
   );
 }
 
-// @version v0.6.0
+// @version v0.8.0
