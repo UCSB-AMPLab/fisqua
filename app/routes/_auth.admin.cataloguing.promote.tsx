@@ -17,7 +17,20 @@
  * calling tenant rather than a single-tenant hard-code in
  * `mapEntryToDescription`.
  *
- * @version v0.4.2
+ * Promoted manifests go to the tenant's part of its federation's
+ * storage: the action resolves the tenant's storage destination, writes
+ * each manifest to the federation's manifest bucket under the tenant's
+ * slug (`{slug}/iiif/{reference_code}/manifest.json`) with the
+ * federation's manifest key, and builds each description's
+ * `iiif_manifest_url` under `{manifest_base_url}/{slug}`. A tenant whose
+ * destination is not set up is refused (`tenant_destination_unset`)
+ * before anything is written.
+ *
+ * The action checks the crowdsourcing capability itself, after the
+ * super-admin check: the layout's check runs in its loader, which
+ * does not guard a POST to this route.
+ *
+ * @version v0.8.0
  */
 
 import { useState, useRef, useCallback, useMemo } from "react";
@@ -25,6 +38,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { VolumeSelector } from "../components/promote/volume-selector";
 import { PromotionTable } from "../components/promote/promotion-table";
 import { RefCodePattern } from "../components/promote/ref-code-pattern";
@@ -114,6 +128,10 @@ export async function action({ context, request }: Route.ActionArgs) {
     return { error: "Unauthorized" };
   }
   const tenant = context.get(tenantContext);
+  // The layout's crowdsourcing gate runs in its loader only, and a
+  // loader does not guard an action: check the capability here too,
+  // before anything reads or writes.
+  requireCapability(tenant, "crowdsourcing");
 
   // Drizzle infers `tenant.descriptiveStandard` as nullable because
   // the column is NOT NULL only when `kind = 'tenant'`. The schema
@@ -158,13 +176,32 @@ export async function action({ context, request }: Route.ActionArgs) {
     referenceCode: referenceCodes[id] || "",
   }));
 
-  const manifestBaseUrl =
-    (env as any).MANIFEST_BASE_URL || "https://manifests.zasqua.org";
+  const { resolveTenantDestination, TenantDestinationError } = await import(
+    "../lib/pipeline/tenant-destination.server"
+  );
+  const { s3ManifestWriter } = await import("../lib/pipeline/canonical.server");
+  let destination;
+  try {
+    destination = await resolveTenantDestination(db, tenant, env);
+  } catch (err) {
+    if (err instanceof TenantDestinationError) return { error: err.code };
+    throw err;
+  }
+  const manifestBaseUrl = destination.manifestBaseUrl;
 
   try {
     const result = await promoteEntries({
       db,
-      manifestsBucket: env.MANIFESTS_BUCKET,
+      manifestsBucket: s3ManifestWriter(
+        {
+          endpoint: destination.manifestEndpoint,
+          bucket: destination.manifestBucket,
+          keyId: destination.manifestWrite.keyId,
+          secretKey: destination.manifestWrite.secretKey,
+        },
+        undefined,
+        destination.manifestKeyPrefix,
+      ),
       entries,
       volumeId,
       userId: user.id,
@@ -225,6 +262,7 @@ const PROMOTE_ERROR_KEYS: Record<string, string> = {
   batch_too_large: "error.batch_too_large",
   volume_not_found: "error.volume_not_found",
   no_matching_description: "error.no_matching_description",
+  tenant_destination_unset: "error.tenant_destination_unset",
 };
 
 export default function PromotePage({
@@ -526,3 +564,5 @@ export default function PromotePage({
     </div>
   );
 }
+
+// @version v0.8.0

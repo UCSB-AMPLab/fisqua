@@ -6,7 +6,7 @@
  * lets a superadmin lift entries out of the cataloguing tree into the
  * published archival data model.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   heading: {
@@ -29,7 +29,8 @@ export default {
       refCode: "Reference code",
       status: "Status",
     },
-    children: "{{count}} sub-entries",
+    children_one: "{{count}} sub-entry",
+    children_other: "{{count}} sub-entries",
   },
   refCode: {
     patternLabel: "Reference code pattern",
@@ -44,7 +45,8 @@ export default {
   },
   action: {
     review: "Review promotion",
-    promote: "Promote {{count}} entries",
+    promote_one: "Promote {{count}} entry",
+    promote_other: "Promote {{count}} entries",
     back: "Back to selection",
   },
   summary: {
@@ -68,5 +70,7 @@ export default {
     volume_not_found: "Volume not found: {{id}}",
     no_matching_description:
       "No description matches the volume's reference code {{code}}",
+    tenant_destination_unset:
+      "Entries can't be promoted: this workspace doesn't have a place to store manifests yet. Contact the Fisqua team to set it up.",
   },
 } as const;
