@@ -12,14 +12,21 @@
  * declaration for the typecheck step to pass without first running a
  * wrangler build.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   EXPORT_BUCKET: R2Bucket;
+  // No longer read: each tenant's manifests go to its federation's
+  // manifest bucket (the federation's record replaces this binding).
+  // It stays bound until Neogranadina's record is adopted in both
+  // environments.
   MANIFESTS_BUCKET: R2Bucket;
   METS_BUCKET: R2Bucket;
+  // Media pipeline run specs and the copies a publication keeps. Bound
+  // to the bucket `PIPELINE_SPEC_BUCKET` names in the same environment.
+  SPEC_BUCKET: R2Bucket;
   APP_NAME: string;
   SENDER_EMAIL: string;
   ALLOWED_MANIFEST_HOSTS: string;
@@ -39,4 +46,49 @@ interface Env {
   IMPORTS_STAGING_BUCKET: string;
   IMPORTS_STAGING_KEY_ID: string;
   IMPORTS_STAGING_SECRET_KEY: string;
+  // Media pipeline. All optional: local development and the tests carry
+  // none of the deployed values, and dispatch refuses while the GitHub
+  // App's settings are unset. Secrets are marked; the rest are plain
+  // settings.
+  //
+  // GitHub `repository_dispatch` to the runner repository (`owner/name`),
+  // authenticated as the GitHub App installed on its organization: the
+  // App id, its installation id and its private key (PEM, PKCS#1 as
+  // GitHub issues it, or PKCS#8).
+  PIPELINE_GITHUB_APP_ID?: string; // secret
+  PIPELINE_GITHUB_APP_INSTALLATION_ID?: string; // secret
+  PIPELINE_GITHUB_APP_PRIVATE_KEY?: string; // secret
+  PIPELINE_DISPATCH_REPO?: string;
+  // "production" or "staging". Both dispatch to the same runner
+  // repository, so the runner's key store for a tenant is named per
+  // environment; dispatch refuses any other value.
+  PIPELINE_ENVIRONMENT?: string;
+  // The apex origin the runner calls back on; the machine routes answer
+  // on this host only.
+  PIPELINE_CALLBACK_ORIGIN?: string;
+  // Spec store: the R2 S3 endpoint and bucket, and a read-only R2 key
+  // that only signs spec URLs.
+  PIPELINE_SPEC_S3_ENDPOINT?: string;
+  PIPELINE_SPEC_BUCKET?: string;
+  PIPELINE_SPEC_KEY_ID?: string; // secret
+  PIPELINE_SPEC_SECRET_KEY?: string; // secret
+  // B2 working bucket (run reports, held manifests), read-only key.
+  PIPELINE_WORKING_S3_ENDPOINT?: string;
+  PIPELINE_WORKING_BUCKET?: string;
+  PIPELINE_WORKING_READ_KEY_ID?: string; // secret
+  PIPELINE_WORKING_READ_SECRET_KEY?: string; // secret
+  // Delivery (the tiles bucket, its endpoint, the image address, the
+  // read key) and the manifest bucket, host and write key are per
+  // federation: columns on the federation's row, and four secrets named
+  // from its `storage_secret_prefix` (`{prefix}_DELIVERY_READ_KEY_ID` and so on),
+  // read by name through `readSecret`. They are not declared here.
+  // "b2" in deployed environments; unset reads through `BUCKET`.
+  PIPELINE_READER_BACKEND?: string;
+  // The default runner pin for new runs: an image by digest, and the
+  // runner's script version.
+  PIPELINE_RUNNER_IMAGE?: string;
+  PIPELINE_SCRIPT_VERSION?: string;
+  // Publishing writes canonical manifests; it is on only where this is
+  // exactly "true". No environment sets it yet.
+  PIPELINE_PUBLISH_ENABLED?: string;
 }

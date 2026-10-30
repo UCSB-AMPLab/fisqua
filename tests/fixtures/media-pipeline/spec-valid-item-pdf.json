@@ -1,0 +1,146 @@
+{
+  "spec_version": 1,
+  "run_id": "6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10",
+  "tenant_id": "test-tenant",
+  "kind": "item_pdf",
+  "created_at": "2026-11-02T14:00:00Z",
+  "regenerates_run_id": null,
+  "runner": {
+    "image": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "script_version": "v1.0.0",
+    "arch": "x64"
+  },
+  "callback": {
+    "url_template": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/volumes/{volume_id}/callback",
+    "complete_url": "https://fisqua.test/api/pipeline/runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/complete",
+    "token_expires_at": "2026-11-03T02:00:00Z",
+    "token": "fpr_TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"
+  },
+  "max_review_frac": 0.1,
+  "destination": {
+    "backend": "b2",
+    "endpoint": "https://s3.b2.test.example",
+    "tiles_bucket": "zasqua-iiif-tiles",
+    "tiles_prefix": "",
+    "image_base_url": "https://tiles.test.example",
+    "ocr_bucket": "zasqua-iiif-tiles",
+    "ocr_prefix": "ocr/",
+    "credentials_ref": "fisqua-pipeline-test-tenant"
+  },
+  "working": {
+    "backend": "b2",
+    "endpoint": "https://s3.b2.test.example",
+    "bucket": "test-working-bucket",
+    "prefix": "test-tenant/pipeline-runs/6f1b2a4e-0c3d-4e7f-9a51-2b8d7c6e5f10/"
+  },
+  "jobs": [
+    {
+      "job_index": 0,
+      "volume_ids": [
+        "pv_01"
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "volume_id": "pv_01",
+      "reference_code": "pe-bn-cdip-00001",
+      "description_id": "test-description-pv_01",
+      "tile_root": "pe-bn-cdip-00001",
+      "restricted": false,
+      "expected_count": 2,
+      "pages": [
+        {
+          "seq": 1,
+          "page_key": "p0001",
+          "pdf_page": 1
+        },
+        {
+          "seq": 2,
+          "page_key": "p0002",
+          "pdf_page": 2
+        }
+      ],
+      "source": {
+        "backend": "b2",
+        "endpoint": "https://s3.b2.test.example",
+        "bucket": "test-ingest-bucket",
+        "key": "test-ingest/pe-bn-cdip-00001.pdf",
+        "checksums_key": null
+      },
+      "recipe": {
+        "declaration_id": "test-declaration-1",
+        "declaration_version": 1,
+        "capture": {
+          "platen": "none",
+          "background": "dark"
+        },
+        "output_class": "tonal",
+        "tone_preset": "item-pdf",
+        "stages": {
+          "preprocess": {
+            "run": false,
+            "reason": "item PDF: pages are rendered from the PDF"
+          },
+          "render": {
+            "run": true,
+            "params": {
+              "dpi": 300
+            }
+          },
+          "ocr": {
+            "run": true,
+            "params": {
+              "engine": "pdf_text_layer"
+            }
+          },
+          "tile": {
+            "run": true,
+            "params": {
+              "tile_size": 512,
+              "layout": "iiif3",
+              "thumbnail_widths": [
+                96,
+                200
+              ]
+            }
+          }
+        },
+        "page_overrides": []
+      },
+      "manifest": {
+        "id": "https://iiif.test.example/pe-bn-cdip-00001/manifest.json",
+        "label": {
+          "es": [
+            "Test description title"
+          ]
+        },
+        "homepage": [
+          {
+            "id": "https://zasqua.org/pe-bn-cdip-00001",
+            "type": "Text",
+            "format": "text/html",
+            "label": {
+              "es": [
+                "Zasqua"
+              ]
+            }
+          }
+        ],
+        "rights": "https://rights.test.example/test-statement",
+        "required_statement": null,
+        "provider": [
+          {
+            "id": "https://provider.test.example",
+            "type": "Agent",
+            "label": {
+              "es": [
+                "Test provider"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fisqua.org/schemas/pipeline-run-spec.v1.json",
+  "$comment": "Fisqua media pipeline run spec schema. This is the contract Fisqua publishes to the media pipeline runner: Fisqua validates every spec against it before writing one, and the runner validates every spec it fetches against a byte-identical copy before it pulls anything. A volume run whose OCR stage runs names the OCR language in params.lang; an item PDF reads its text layer and names none. A volume's manifest block carries the descriptive fields of its manifest; homepage, metadata, summary and see_also are optional and are left out of the manifest when absent. A volume run's page entry may carry sha256, the lowercase hex SHA-256 of the object at its master_key, which the runner checks against the bytes it pulls. A volume run's page entry may also carry quarter_turns (1, 2 or 3), the clockwise quarter-turns the runner applies to the master after its EXIF orientation and before any stage; a page without it is processed as it was before the field existed. A volume run's page entry or a review run's page entry may carry rotate_deg (0, 90, 180 or 270), the clockwise rotation that makes the image upright, counted from its pixels as stored with any EXIF orientation ignored; for such a page the runner turns the stored pixels by rotate_deg, plus 90 degrees for each quarter_turn counted from the image so turned, and never reads the EXIF orientation, also when the total is 0; a page without it is processed and reviewed as it was before the field existed. An item PDF's pages and a review run's pages take no quarter_turns, and an item PDF's pages take no rotate_deg. A review run (kind review_run) tiles each page's image as captured, for capture QC, into the review bucket the top-level review block names, under the volume's review_prefix; its volume entries carry no recipe, manifest or tile root, and every page carries sha256. A volume run's entry may carry review_purge, the review prefixes the runner deletes once that volume's tiles are verified; a purge run (kind review_purge) deletes the prefixes its volume entries name and does nothing else. A spec that carries a review block, or a volume entry with review_purge, must also name every bucket as a bare bucket name by its backend's rule (B2: 6 to 63 letters, digits and hyphens; R2: 3 to 63 lowercase letters, digits and hyphens, with a letter or digit at each end) and every endpoint as its backend's S3 host, compared without regard to case (b2: s3.<region>.backblazeb2.com; r2: <account>.r2.cloudflarestorage.com, or its eu or fedramp form); a spec without review fields is checked as it was before review runs existed. A review prefix is exactly tenant/delivery/. spec_version changes only when a spec valid under an earlier form of this schema would become invalid or change its meaning; an addition that leaves every such spec valid, with the same meaning, keeps it. Version: v0.8.0",
+  "title": "Fisqua media pipeline run spec, version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_version", "run_id", "tenant_id", "kind", "created_at",
+               "runner", "callback", "max_review_frac", "destination",
+               "working", "jobs", "volumes"],
+  "properties": {
+    "spec_version": { "const": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["volume_run", "item_pdf", "review_run", "review_purge"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "regenerates_run_id": { "type": ["string", "null"] },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "script_version", "arch"],
+      "properties": {
+        "image": { "type": "string", "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$" },
+        "script_version": { "type": "string", "minLength": 1 },
+        "arch": { "const": "x64" }
+      }
+    },
+    "callback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url_template", "complete_url", "token_expires_at", "token"],
+      "properties": {
+        "url_template": { "type": "string", "pattern": "^https://.*\\{volume_id\\}" },
+        "complete_url": { "type": "string", "pattern": "^https://" },
+        "token_expires_at": { "type": "string", "format": "date-time" },
+        "token": { "type": "string", "minLength": 1 }
+      }
+    },
+    "max_review_frac": { "type": "number", "minimum": 0, "maximum": 1 },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "endpoint", "tiles_bucket", "tiles_prefix",
+                   "image_base_url", "ocr_bucket", "ocr_prefix", "credentials_ref"],
+      "properties": {
+        "backend": { "enum": ["b2", "r2"] },
+        "endpoint": { "type": "string" },
+        "tiles_bucket": { "type": "string" },
+        "tiles_prefix": { "type": "string" },
+        "image_base_url": { "type": "string" },
+        "ocr_bucket": { "type": "string" },
+        "ocr_prefix": { "type": "string" },
+        "credentials_ref": { "type": "string" }
+      }
+    },
+    "working": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "endpoint", "bucket", "prefix"],
+      "properties": {
+        "backend": { "const": "b2" },
+        "endpoint": { "type": "string" },
+        "bucket": { "type": "string" },
+        "prefix": { "type": "string" }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["job_index", "volume_ids"],
+        "properties": {
+          "job_index": { "type": "integer", "minimum": 0 },
+          "volume_ids": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        }
+      }
+    },
+    "review": { "$ref": "#/$defs/review_store" },
+    "volumes": {
+      "type": "array",
+      "minItems": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": { "anyOf": [
+        { "required": ["review"] },
+        { "required": ["volumes"],
+          "properties": { "volumes": { "contains": { "required": ["review_purge"] } } } }
+      ] },
+      "then": {
+        "required": ["review"],
+        "properties": {
+          "destination": { "$ref": "#/$defs/strict_destination" },
+          "working": { "properties": { "endpoint": { "$ref": "#/$defs/b2_endpoint" },
+                                       "bucket": { "$ref": "#/$defs/b2_bucket" } } },
+          "volumes": { "items": { "properties": {
+            "source": { "$ref": "#/$defs/bucket_by_backend" } } } }
+        }
+      }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "const": "review_run" } } },
+      "then": {
+        "required": ["review"],
+        "properties": {
+          "review": { "required": ["image_base_url"] },
+          "volumes": { "items": { "$ref": "#/$defs/review_volume" } }
+        }
+      }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "const": "review_purge" } } },
+      "then": {
+        "required": ["review"],
+        "properties": { "volumes": { "items": { "$ref": "#/$defs/purge_volume" } } }
+      }
+    },
+    {
+      "if": { "required": ["kind"], "properties": { "kind": { "enum": ["volume_run", "item_pdf"] } } },
+      "then": { "properties": { "volumes": { "items": { "$ref": "#/$defs/volume" } } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "volume_run" } } },
+      "then": { "properties": { "volumes": { "items": { "properties": { "recipe": { "properties": {
+        "stages": { "properties": { "ocr": {
+          "if": { "properties": { "run": { "const": true } } },
+          "then": { "properties": { "params": {
+            "required": ["lang"],
+            "properties": { "lang": { "type": "string", "minLength": 1 } }
+          } } }
+        } } }
+      } } } } } } }
+    }
+  ],
+  "$defs": {
+    "page_key": { "type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*$" },
+    "b2_bucket": { "type": "string", "pattern": "^[A-Za-z0-9-]{6,63}$" },
+    "r2_bucket": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$" },
+    "b2_endpoint": { "type": "string", "pattern": "^[hH][tT][tT][pP][sS]://[sS]3\\.[A-Za-z0-9-]+\\.[bB][aA][cC][kK][bB][lL][aA][zZ][eE][bB]2\\.[cC][oO][mM](:443)?/?$" },
+    "r2_endpoint": { "type": "string", "pattern": "^[hH][tT][tT][pP][sS]://[A-Fa-f0-9]{32}\\.(([eE][uU]|[fF][eE][dD][rR][aA][mM][pP])\\.)?[rR]2\\.[cC][lL][oO][uU][dD][fF][lL][aA][rR][eE][sS][tT][oO][rR][aA][gG][eE]\\.[cC][oO][mM](:443)?/?$" },
+    "strict_destination": {
+      "if": { "properties": { "backend": { "const": "r2" } } },
+      "then": { "properties": { "endpoint": { "$ref": "#/$defs/r2_endpoint" },
+                                "tiles_bucket": { "$ref": "#/$defs/r2_bucket" },
+                                "ocr_bucket": { "$ref": "#/$defs/r2_bucket" } } },
+      "else": { "properties": { "endpoint": { "$ref": "#/$defs/b2_endpoint" },
+                                "tiles_bucket": { "$ref": "#/$defs/b2_bucket" },
+                                "ocr_bucket": { "$ref": "#/$defs/b2_bucket" } } }
+    },
+    "bucket_by_backend": {
+      "if": { "properties": { "backend": { "const": "r2" } } },
+      "then": { "properties": { "endpoint": { "$ref": "#/$defs/r2_endpoint" },
+                                "bucket": { "$ref": "#/$defs/r2_bucket" } } },
+      "else": { "properties": { "endpoint": { "$ref": "#/$defs/b2_endpoint" },
+                                "bucket": { "$ref": "#/$defs/b2_bucket" } } }
+    },
+    "review_prefix": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_-][A-Za-z0-9._-]*/[A-Za-z0-9_-][A-Za-z0-9._-]*/$" },
+    "purge_volume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["volume_id", "review_purge"],
+      "properties": {
+        "volume_id": { "type": "string" },
+        "review_purge": { "$ref": "#/$defs/purge_prefixes" }
+      }
+    },
+    "purge_prefixes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/review_prefix" }
+    },
+    "review_store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "endpoint", "bucket"],
+      "properties": {
+        "backend": { "const": "b2" },
+        "endpoint": { "$ref": "#/$defs/b2_endpoint" },
+        "bucket": { "$ref": "#/$defs/b2_bucket" },
+        "image_base_url": { "type": "string", "pattern": "^https://" }
+      }
+    },
+    "review_page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "page_key", "master_key", "sha256"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1 },
+        "page_key": { "$ref": "#/$defs/page_key" },
+        "master_key": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "rotate_deg": { "enum": [0, 90, 180, 270] }
+      }
+    },
+    "review_volume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["volume_id", "reference_code", "restricted", "expected_count",
+                   "review_prefix", "pages", "source"],
+      "properties": {
+        "volume_id": { "type": "string" },
+        "reference_code": { "type": "string", "minLength": 1 },
+        "restricted": { "type": "boolean" },
+        "expected_count": { "type": "integer", "minimum": 1 },
+        "review_prefix": { "$ref": "#/$defs/review_prefix" },
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/review_page" }
+        },
+        "source": { "$ref": "#/$defs/store_prefix" }
+      }
+    },
+    "store_prefix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "endpoint", "bucket", "prefix"],
+      "properties": {
+        "backend": { "enum": ["b2", "r2"] },
+        "endpoint": { "type": "string" },
+        "bucket": { "type": "string" },
+        "prefix": { "type": "string" },
+        "checksums_key": { "type": ["string", "null"] }
+      }
+    },
+    "store_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "endpoint", "bucket", "key"],
+      "properties": {
+        "backend": { "enum": ["b2", "r2"] },
+        "endpoint": { "type": "string" },
+        "bucket": { "type": "string" },
+        "key": { "type": "string" },
+        "checksums_key": { "type": ["string", "null"] }
+      }
+    },
+    "stage_on": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "params"],
+      "properties": {
+        "run": { "const": true },
+        "params": { "type": "object" }
+      }
+    },
+    "stage_off": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run", "reason"],
+      "properties": {
+        "run": { "const": false },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stage": { "oneOf": [ { "$ref": "#/$defs/stage_on" }, { "$ref": "#/$defs/stage_off" } ] },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declaration_id", "declaration_version", "capture",
+                   "output_class", "tone_preset", "stages", "page_overrides"],
+      "properties": {
+        "declaration_id": { "type": "string" },
+        "declaration_version": { "type": "integer", "minimum": 1 },
+        "capture": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["platen", "background"],
+          "properties": {
+            "platen": { "enum": ["v", "none"] },
+            "background": { "enum": ["dark", "light"] }
+          }
+        },
+        "output_class": { "enum": ["tonal", "bilevel"] },
+        "tone_preset": { "type": "string" },
+        "stages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["preprocess", "render", "ocr", "tile"],
+          "properties": {
+            "preprocess": { "$ref": "#/$defs/stage" },
+            "render": { "$ref": "#/$defs/stage" },
+            "ocr": { "$ref": "#/$defs/stage" },
+            "tile": { "$ref": "#/$defs/stage_on" }
+          }
+        },
+        "page_overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page_key", "stage", "params", "verdict_id"],
+            "properties": {
+              "page_key": { "$ref": "#/$defs/page_key" },
+              "stage": { "enum": ["preprocess", "render", "ocr", "tile"] },
+              "params": { "type": "object" },
+              "verdict_id": { "type": "string" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "stages": { "properties": { "ocr": { "properties": {
+            "run": { "const": true },
+            "params": { "properties": { "engine": { "const": "tesseract" } } }
+          } } } } } },
+          "then": { "properties": { "output_class": { "const": "bilevel" } } }
+        }
+      ]
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "rights", "required_statement", "provider"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "object" },
+        "homepage": { "type": "array", "minItems": 1 },
+        "rights": { "type": ["string", "null"] },
+        "required_statement": { "type": ["object", "null"] },
+        "provider": { "type": "array" },
+        "metadata": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "object" },
+              "value": { "type": "object" }
+            }
+          }
+        },
+        "summary": { "type": "object" },
+        "see_also": { "type": "array" }
+      }
+    },
+    "page_master": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "page_key", "master_key"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1 },
+        "page_key": { "$ref": "#/$defs/page_key" },
+        "master_key": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "quarter_turns": { "enum": [1, 2, 3] },
+        "rotate_deg": { "enum": [0, 90, 180, 270] }
+      }
+    },
+    "page_pdf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "page_key", "pdf_page"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1 },
+        "page_key": { "$ref": "#/$defs/page_key" },
+        "pdf_page": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["volume_id", "reference_code", "description_id", "tile_root",
+                   "restricted", "expected_count", "pages", "source", "recipe", "manifest"],
+      "properties": {
+        "volume_id": { "type": "string" },
+        "reference_code": { "type": "string", "minLength": 1 },
+        "description_id": { "type": "string" },
+        "tile_root": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "restricted": { "type": "boolean" },
+        "expected_count": { "type": "integer", "minimum": 1 },
+        "pages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "oneOf": [ { "$ref": "#/$defs/page_master" }, { "$ref": "#/$defs/page_pdf" } ] }
+        },
+        "source": { "oneOf": [ { "$ref": "#/$defs/store_prefix" }, { "$ref": "#/$defs/store_key" } ] },
+        "recipe": { "$ref": "#/$defs/recipe" },
+        "manifest": { "$ref": "#/$defs/manifest" },
+        "review_purge": { "$ref": "#/$defs/purge_prefixes" }
+      }
+    }
+  }
+}
