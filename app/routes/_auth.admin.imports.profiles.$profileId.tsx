@@ -25,7 +25,7 @@
  * row. Delete is allowed: runs and uploads keep FK-free pointers, so a
  * deleted profile leaves those intact.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useMemo, useState } from "react";
@@ -49,7 +49,7 @@ import {
 import type { Route } from "./+types/_auth.admin.imports.profiles.$profileId";
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { allowedTargetFields } = await import("~/lib/import/target-fields");
   const { federationLeadTenantId } = await import(
@@ -57,7 +57,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -119,11 +119,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {

@@ -1,15 +1,15 @@
 /**
  * Decision comment mutations — server core.
  *
- * The decision-side twin of `comments.server.ts`'s `updateCommentBody`
- * and `softDeleteComment`, mirroring their check order and copy for
- * comment rows anchored to a pending decision (`comments.decisionId`
- * set) instead of a volume. The two modules deliberately stay
- * separate rather than sharing one polymorphic function:
- * `comments.server.ts` treats a decision-anchored comment as absent —
- * decision threads are ruled through the review queue, not mutated
- * from a volume surface — and this module returns the identical 404
- * for any volume-anchored comment it is handed, so neither side can
+ * This module is the decision-side twin of `comments.server.ts`'s
+ * `updateCommentBody` and `softDeleteComment`, mirroring their check
+ * order and copy for comment rows anchored to a pending decision
+ * (`comments.decisionId` set) instead of a volume. The two modules
+ * deliberately stay separate rather than sharing one polymorphic
+ * function: `comments.server.ts` treats a decision-anchored comment as
+ * absent — decision threads are ruled through the review queue, not
+ * mutated from a volume surface — and this module returns the identical
+ * 404 for any volume-anchored comment it is handed, so neither side can
  * reach across the boundary by accident.
  *
  * Authorisation here is tenant-scope, not project-role, because
@@ -23,16 +23,17 @@
  * on a shared-space decision (`tenantId` NULL) is visible to any
  * federation caller who reaches it. Delete additionally grants an
  * admin override that edit deliberately withholds (no lead override on
- * edit, matching the volume side's stance) so a tenant admin can
- * retract another user's comment, including a label-authored (pipeline)
+ * edit, matching the volume side's stance) so an admin of the
+ * decision's area can retract another user's comment, including a label-authored (pipeline)
  * comment, from their own thread — but never rewrite its words.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { and, eq, isNull, or } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { comments, pendingDecisions } from "../db/schema";
 import type { Tenant, User } from "../context";
+import { canAdministerArea } from "./user-access.server";
 
 /**
  * Edit a decision comment's body in place. Author-only — there is no
@@ -132,7 +133,8 @@ export async function editDecisionComment(
 
 /**
  * Soft-delete a decision comment, cascading to replies when the row is
- * a root. Authorised for the comment's author OR a tenant admin — the
+ * a root. Authorised for the comment's author OR an admin of the
+ * decision's area — the
  * one place this module grants an override edit withholds, so an
  * admin can remove a label-authored (pipeline) comment from their own
  * thread. Decision threads render flat today, but the storage supports
@@ -190,7 +192,9 @@ export async function deleteDecisionComment(
     throw new Response("Comment already deleted", { status: 410 });
   }
 
-  if (comment.authorId !== user.id && !user.isAdmin) {
+  // Every pending decision (authority proposal or duplicate pair) is in
+  // the authorities area; vocabulary proposals carry no decision thread.
+  if (comment.authorId !== user.id && !canAdministerArea(user, "authorities")) {
     throw new Response(
       "Only the author or an admin can delete this comment",
       { status: 403 },

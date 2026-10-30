@@ -23,8 +23,16 @@
  *     rights.
  *   - `isCataloguer` marks a user as cataloguing staff so they appear
  *     in project team pickers and see the cataloguing sidebar.
- *   - `isArchiveUser` is a reserved placeholder for a future
- *     read-only research role.
+ *   - `isArchiveUser` is the Reader: read-only access to the
+ *     workspace's published records under `/records`. A Reader with
+ *     no other role is kept to those pages (`app/lib/reader.server.ts`).
+ *
+ * Four area-admin flags sit beside them -- `isRecordsAdmin`,
+ * `isAuthoritiesAdmin`, `isImportsAdmin`, `isDigitizationAdmin` -- each
+ * passing one area of the workspace's administration, where `isAdmin`
+ * passes all four. `app/lib/user-access.server.ts` holds the checks.
+ * They are not role flags in the sense above: operators do not
+ * impersonate them and a federation grant sets them all to false.
  *
  * Plus `githubId` for users who signed in with GitHub OAuth, so the
  * profile UI can show the link and prevent accidental duplicate accounts.
@@ -60,7 +68,7 @@
  * that must know a request is cross-tenant (a grant banner, the
  * steward-gate helpers, grant-write audit).
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
@@ -79,6 +87,10 @@ export type User = {
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  isRecordsAdmin: boolean;
+  isAuthoritiesAdmin: boolean;
+  isImportsAdmin: boolean;
+  isDigitizationAdmin: boolean;
   lastActiveAt: number | null;
   githubId: string | null;
 };
@@ -88,7 +100,8 @@ export type User = {
  * including the boolean capability flags
  * (`crowdsourcingEnabled`, `vocabularyHubEnabled`,
  * `publishPipelineEnabled`, `multiRepositoryEnabled`,
- * `authoritiesEnabled`, `importsEnabled`), the
+ * `authoritiesEnabled`, `importsEnabled`, `mediaPipelineEnabled`,
+ * `digitizationEnabled`), the
  * `kind` discriminator (`"tenant"` | `"platform"`), and
  * descriptive-standard / status fields.
  */
@@ -136,3 +149,5 @@ export type GrantState = {
 };
 
 export const grantContext = createContext<GrantState | null>();
+
+// @version v0.8.0

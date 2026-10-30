@@ -15,7 +15,7 @@
  * insertion runs in the same batch as the project insert. The
  * cases pin both halves of the batch landing or neither.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import {
   describe,
@@ -60,6 +60,10 @@ describe("project creation", () => {
         isArchiveUser: false,
         isUserManager: false,
         isCataloguer: false,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
         lastActiveAt: null,
         githubId: null,
       };
@@ -78,6 +82,10 @@ describe("project creation", () => {
         isArchiveUser: false,
         isUserManager: false,
         isCataloguer: false,
+        isRecordsAdmin: false,
+        isAuthoritiesAdmin: false,
+        isImportsAdmin: false,
+        isDigitizationAdmin: false,
         lastActiveAt: null,
         githubId: null,
       };

@@ -24,13 +24,14 @@
  * its forms on `intent` rather than `_action`, hence the field
  * override on `isPendingSubmission`.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState, useEffect, useMemo } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { FUNCTION_CATEGORIES } from "~/lib/validation/enums";
 import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
@@ -71,14 +72,17 @@ interface LinkedEntity {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
+  // Checked here as well as in the layout: a data request for this
+  // route alone runs this loader or action without the layout's.
+  requireCapability(tenant, "vocabulary_hub");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -139,7 +143,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities, changelog } = await import("~/db/schema");
@@ -149,8 +153,11 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
+  // Checked here as well as in the layout: a data request for this
+  // route alone runs this loader or action without the layout's.
+  requireCapability(tenant, "vocabulary_hub");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);

@@ -1,15 +1,16 @@
 /**
  * DecisionThread — renders a pending-decision conversation.
  *
- * A comment is the producer's whole message to the reviewer: prose
- * first (reasoning, caveats, and the source sentence at its end), and
+ * This component renders the conversation on a pending decision. A
+ * comment is the producer's whole message to the reviewer: prose first
+ * (reasoning, caveats, and the source sentence at its end), and
  * optionally one passage lifted off the catalogue. Attribution is
  * author + pill + date: label authors ("Fisqua") get the System pill,
- * human authors get a pill naming their snapshotted role. Comment
- * prose is set in the sans — Spectral italic is reserved for quoted
- * catalogue text, so quotation keeps reading as quotation. The quote
- * sits on parchment (the archival surface), its reference in mono with
- * a render-time source line; none of that presentation is stored.
+ * human authors get a pill naming their snapshotted role. Comment prose
+ * is set in the sans — Spectral italic is reserved for quoted catalogue
+ * text, so quotation keeps reading as quotation. The quote sits on
+ * parchment (the archival surface), its reference in mono with a
+ * render-time source line; none of that presentation is stored.
  *
  * The `note` column stays in the data shape but is no longer rendered
  * on decision threads: what a producer knows and how sure it is belongs
@@ -28,7 +29,7 @@
  * `viewer` is handed in — the queue cards and the duplicates list pass
  * nothing and render exactly as they always have. Where a viewer is
  * present, each comment carries the two acts its author (or, for
- * delete, a tenant admin) is entitled to, at the quietest tier the
+ * delete, an admin of the decision's area) is entitled to, at the quietest tier the
  * card has: a text Edit that swaps the prose for a textarea in place,
  * and a Delete that arms on first click and commits on the second.
  * Deleting one comment is not a ruling, so it gets no dialog — the
@@ -37,12 +38,13 @@
  * "Edited" chip is not viewer-gated: that a comment was rewritten is
  * part of the record, so every surface shows it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
+import { useFormatters } from "~/lib/use-formatters";
 
 export interface ThreadComment {
   id: string;
@@ -62,6 +64,11 @@ export interface ThreadComment {
 /** The signed-in reader, when the surface lets them act on the thread. */
 export interface ThreadViewer {
   userId: string;
+  /**
+   * Whether the reader administers the decision's area (a workspace
+   * admin, a super admin, or the area's admin), which lets them delete
+   * other people's comments.
+   */
   isAdmin: boolean;
 }
 
@@ -182,7 +189,7 @@ function EditableComment({
   const pendingAct = useRef<PendingAct>(null);
   const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Author-only edit, author-or-admin delete — the same split the
+  // Author-only edit, author-or-area-admin delete — the same split the
   // server enforces, so the buttons never offer what a call would 403.
   const isAuthor =
     comment.authorId !== null && comment.authorId === viewer.userId;
@@ -338,6 +345,7 @@ export function DecisionComment({
   quoteRefIds?: Record<string, string>;
 }) {
   const { t } = useTranslation("decisions");
+  const { formatIsoDateTime } = useFormatters();
   const quoteRefId = comment.quoteRef
     ? quoteRefIds?.[comment.quoteRef]
     : undefined;
@@ -363,7 +371,7 @@ export function DecisionComment({
           )
         )}
         <span className="font-mono text-11 text-stone-400 nums">
-          {new Date(comment.createdAt).toISOString().slice(0, 10)}
+          {formatIsoDateTime(comment.createdAt).slice(0, 10)}
         </span>
         {comment.editedAt !== null && (
           <span className="text-11 text-stone-400">{t("commentEdited")}</span>
@@ -410,3 +418,5 @@ export function DecisionThread({
     </div>
   );
 }
+
+/* @version v0.8.0 */

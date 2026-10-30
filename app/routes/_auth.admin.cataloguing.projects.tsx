@@ -15,7 +15,12 @@
  * rendered inside it would unmount before it could be read) and feeds
  * one page-level result region.
  *
- * @version v0.7.0
+ * Both the loader and the action pass `requireCollabAdmin` (collab
+ * admin, tenant admin or super admin). The action also checks the
+ * crowdsourcing capability itself: the layout's check runs in its
+ * loader, which does not guard a POST to this route.
+ *
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -28,6 +33,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ExternalLink } from "lucide-react";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import { useFormatters } from "~/lib/use-formatters";
 import {
   SaveButton,
@@ -178,6 +184,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   requireCollabAdmin(user);
   const tenant = context.get(tenantContext);
+  // The layout's crowdsourcing gate runs in its loader only, and a
+  // loader does not guard an action: check the capability here too,
+  // before anything reads or writes.
+  requireCapability(tenant, "crowdsourcing");
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
@@ -475,3 +485,5 @@ export default function AdminCataloguingProjects({
     </div>
   );
 }
+
+// @version v0.8.0

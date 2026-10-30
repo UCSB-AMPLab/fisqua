@@ -17,7 +17,7 @@
  * outline is being reshaped would only churn the workflow, so the
  * banner prompts the lead to resolve the request first.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Link } from "react-router";
@@ -145,6 +145,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const db = drizzle(context.cloudflare.env.DB);
 
   await requireProjectRole(db, tenant.id, user.id, params.id, ["lead"], user.isAdmin);
@@ -326,3 +331,5 @@ export default function DescriptionVolumeAssignmentRoute({
     </div>
   );
 }
+
+// @version v0.8.0

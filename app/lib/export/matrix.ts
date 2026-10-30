@@ -11,7 +11,9 @@
  *
  * THREE INPUTS DECIDE EVERYTHING. The record class (what kind of thing
  * the scope holds), the workspace's own descriptive standard, and
- * whether the person may take machine-readable data. Nothing else: a
+ * whether the person may take machine-readable data of that class
+ * (`machineReadable`, which the caller reads from
+ * `mayExportMachineReadable` in `user-access.server.ts`). Nothing else: a
  * tile's fate never depends on how big the scope is or which door it
  * came through.
  *
@@ -22,7 +24,9 @@
  * choice on the page and dimming it would invite them to go looking for
  * the switch. The re-ruled permission tier (2026-08-15) puts the PDF
  * finding aid in every member's hands and keeps CSV, EAD XML and JSON
- * for admins, so a reader sees three descriptive-standard forms and one
+ * for those who may take machine-readable data (workspace and super
+ * admins, the record class's area admin, and the imports admin), so a
+ * reader sees three descriptive-standard forms and one
  * format, with no evidence that anything else exists.
  *
  * REASONS ARE MACHINE CODES. Every dim reason here is a stable
@@ -42,7 +46,7 @@
  *     standard built for the job and is a LATER CUT — the card shows it
  *     as a proposed aside, and nothing here builds it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import type { Standard } from "../standards/types";
@@ -129,25 +133,29 @@ export interface ExportMatrixContext {
   recordClass: ExportRecordClass;
   /** The workspace's own descriptive standard (`tenants.descriptiveStandard`). */
   ownStandard: Standard;
-  /** `user.isAdmin` — the tier gate, and the only role input. */
-  isAdmin: boolean;
+  /**
+   * Whether the person may take machine-readable data of this record
+   * class (`mayExportMachineReadable`) — the tier gate, and the only
+   * role input.
+   */
+  machineReadable: boolean;
 }
 
 /**
  * The permission tier, stated once (ruling 2 as re-ruled): the PDF
  * finding aid is a rendered, descriptive-fields-only artifact any
  * member may take; CSV, EAD XML and JSON are the bulk machine-readable
- * paths, and those are admin-only. Never gated on the `publish`
- * capability or any workspace product tier — the partner's admins are
- * the partner.
+ * paths, and those are for the people `mayExportMachineReadable`
+ * admits. Never gated on the `publish` capability or any workspace
+ * product tier — the partner's admins are the partner.
  */
-export function formatRequiresAdmin(format: ExportFormat): boolean {
+export function formatIsMachineReadable(format: ExportFormat): boolean {
   return format !== "pdf";
 }
 
 /** The formats a person's role lets them see at all. */
-export function availableFormats(isAdmin: boolean): ExportFormat[] {
-  return EXPORT_FORMATS.filter((f) => isAdmin || !formatRequiresAdmin(f));
+export function availableFormats(machineReadable: boolean): ExportFormat[] {
+  return EXPORT_FORMATS.filter((f) => machineReadable || !formatIsMachineReadable(f));
 }
 
 /**
@@ -202,7 +210,7 @@ export function isCombinationLegal(
 ): boolean {
   if (formLegality(form, context.recordClass) !== null) return false;
   if (formatLegality(format, form, context.recordClass) !== null) return false;
-  return !(formatRequiresAdmin(format) && !context.isAdmin);
+  return !(formatIsMachineReadable(format) && !context.machineReadable);
 }
 
 /** A refused combination, carrying the machine code the surface maps. */
@@ -243,10 +251,10 @@ export function assertCombinationLegal(
       `Format ${format} is not legal for the ${form} form`,
     );
   }
-  if (formatRequiresAdmin(format) && !context.isAdmin) {
+  if (formatIsMachineReadable(format) && !context.machineReadable) {
     throw new ExportCombinationError(
       "format-requires-admin",
-      `Format ${format} is available to workspace admins only`,
+      `Format ${format} is machine-readable, which this person may not take for ${context.recordClass}`,
     );
   }
 }
@@ -263,7 +271,7 @@ export function formTile(
 ): ExportTile {
   const reason = formLegality(form, context.recordClass);
   if (reason !== null) return { present: true, legal: false, reason };
-  const reachable = availableFormats(context.isAdmin).some(
+  const reachable = availableFormats(context.machineReadable).some(
     (format) => formatLegality(format, form, context.recordClass) === null,
   );
   return reachable ? PRESENT_LEGAL : { present: false };
@@ -279,7 +287,7 @@ export function formatTile(
   form: ExportForm,
   format: ExportFormat,
 ): ExportTile {
-  if (formatRequiresAdmin(format) && !context.isAdmin) return { present: false };
+  if (formatIsMachineReadable(format) && !context.machineReadable) return { present: false };
   const reason = formatLegality(format, form, context.recordClass);
   return reason === null ? PRESENT_LEGAL : { present: true, legal: false, reason };
 }
@@ -382,4 +390,4 @@ export function exportMatrix(context: ExportMatrixContext): ExportMatrixView {
   };
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

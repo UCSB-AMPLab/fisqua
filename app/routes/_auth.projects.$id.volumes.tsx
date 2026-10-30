@@ -7,9 +7,11 @@
  * assignments, and open-QC-flag count denormalised at read time so the
  * page can render in a single round-trip. Leads can add new volumes
  * from a IIIF manifest URL here; per-volume deep management lives on
- * the `$volumeId/manage` page.
+ * the `$volumeId/manage` page. A manifest URL is accepted from the
+ * deployment's allowlist of manifest hosts and from the manifest host of
+ * any federation's storage destination.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -50,11 +52,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { requireProjectRole } = await import("../lib/permissions.server");
   const { getProjectVolumes, createVolume, deleteVolume } = await import("../lib/volumes.server");
   const { validateManifestUrl, parseManifest, ManifestError } = await import("../lib/iiif.server");
+  const { tenantManifestHosts } = await import("../lib/pipeline/tenant-destination.server");
   const { getInstance } = await import("~/middleware/i18next");
   const { volumes: volumesTable } = await import("../db/schema");
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
@@ -103,10 +111,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       };
 
       const results: AddResult[] = [];
+      const tenantHosts = await tenantManifestHosts(db);
 
       for (const url of urls) {
         // Validate URL format and host
-        const validation = validateManifestUrl(url, env);
+        const validation = validateManifestUrl(url, env, tenantHosts);
         if (!validation.valid) {
           results.push({
             url,
@@ -308,3 +317,4 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
   );
 }
 
+// @version v0.8.0

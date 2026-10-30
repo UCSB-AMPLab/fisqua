@@ -15,7 +15,7 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -23,6 +23,7 @@ import { Form, Link, redirect, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, AlertTriangle, Pencil, Trash2, Plus, X, Check } from "lucide-react";
 import { tenantContext, userContext } from "../context";
+import { requireCapability } from "../lib/tenant";
 import {
   ENTITY_ROLES,
   PLACE_ROLES,
@@ -62,19 +63,23 @@ type VocabKey = keyof typeof VOCAB_MAP;
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const {
     descriptionEntities,
     descriptionPlaces,
+    descriptions,
     entities,
     places,
   } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
   const tenant = context.get(tenantContext);
+  // Checked here as well as in the layout: a data request for this
+  // route alone runs this loader or action without the layout's.
+  requireCapability(tenant, "vocabulary_hub");
 
   const url = new URL(request.url);
   const vocabParam = url.searchParams.get("vocab") as VocabKey | null;
@@ -89,6 +94,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Build usage count map
   const usageMap = new Map<string, number>();
 
+  // The two role junctions carry no tenant of their own; each link is
+  // counted through its description, which does, so another tenant's
+  // usage never reaches these numbers.
   if (vocabParam === "entity-roles") {
     const rows = await db
       .select({
@@ -96,6 +104,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`,
       })
       .from(descriptionEntities)
+      .innerJoin(descriptions, eq(descriptions.id, descriptionEntities.descriptionId))
+      .where(eq(descriptions.tenantId, tenant.id))
       .groupBy(descriptionEntities.role)
       .all();
     for (const row of rows) usageMap.set(row.role, row.count);
@@ -106,6 +116,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         count: sql<number>`count(*)`,
       })
       .from(descriptionPlaces)
+      .innerJoin(descriptions, eq(descriptions.id, descriptionPlaces.descriptionId))
+      .where(eq(descriptions.tenantId, tenant.id))
       .groupBy(descriptionPlaces.role)
       .all();
     for (const row of rows) usageMap.set(row.role, row.count);
@@ -182,10 +194,11 @@ interface PendingChange {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "records");
+  requireCapability(context.get(tenantContext), "vocabulary_hub");
 
   // Superadmin check for all mutations
   if (!user.isSuperAdmin) {

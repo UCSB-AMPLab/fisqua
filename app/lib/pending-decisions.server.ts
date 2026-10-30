@@ -36,7 +36,8 @@
  * its own status machine and the decisions surface reads it directly.
  *
  * PERMISSIONS. No new rule is invented here. A question owned by the
- * request tenant (tenant_id set) is ruled by that tenant's admins; a
+ * request tenant (tenant_id set) is ruled by that tenant's authorities
+ * admins (workspace admins included); a
  * shared-space question (tenant_id NULL) by a federation steward; a
  * question owned by another tenant 404s before revealing it exists —
  * the same three-way split requireAuthorityMutation applies to records,
@@ -44,7 +45,7 @@
  * requireAuthorityMint, so the gate and the ownership stamp on the new
  * record cannot disagree.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
@@ -232,7 +233,8 @@ export async function countOpenVocabularyProposals(
 
 /**
  * Both pending-decision counts for the dashboard card, in parallel.
- * Admin-only: called from the loader behind the admin flag.
+ * The dashboard loader calls it only for those who pass the records or
+ * authorities area, and keeps each count only for its own area.
  */
 export async function loadPendingDecisionCounts(
   db: DrizzleD1Database<any>,
@@ -358,7 +360,8 @@ export async function fileAuthorityProposals(
 
 /**
  * Load a question and apply the three-way ownership gate. Foreign-owned
- * questions 404 before anything else; own questions need tenant admin;
+ * questions 404 before anything else; own questions need the
+ * authorities area;
  * shared questions need a steward.
  */
 async function requireRulableDecision(
@@ -368,7 +371,7 @@ async function requireRulableDecision(
   id: string,
   kind: "authority-proposal",
 ) {
-  const { requireAdmin } = await import("./permissions.server");
+  const { requireArea } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const row = await db
@@ -387,7 +390,7 @@ async function requireRulableDecision(
     throw new Response("Not found", { status: 404 });
   }
   if (row.tenantId === tenant.id) {
-    requireAdmin(user);
+    requireArea(user, "authorities");
   } else {
     await requireFederationSteward(db, user, tenant);
   }

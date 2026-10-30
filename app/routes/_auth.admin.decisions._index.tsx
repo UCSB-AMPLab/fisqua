@@ -1,11 +1,11 @@
 /**
  * Pending Decisions — Proposals tab
  *
- * The authority-proposal queue, and the default tab of the Pending
- * decisions surface. Producers (an import commit, a bulk load) file a
- * proposal when they meet a heading they cannot resolve against the
- * authority file on their own; this page is where an admin rules on
- * it. Three rulings, all handled by `ruleAuthorityProposal`:
+ * This route is the authority-proposal queue, and the default tab of
+ * the Pending decisions surface. Producers (an import commit, a bulk
+ * load) file a proposal when they meet a heading they cannot resolve
+ * against the authority file on their own; this page is where an admin
+ * rules on it. Three rulings, all handled by `ruleAuthorityProposal`:
  *
  *   Accept   take the proposal as filed. A mint proposal creates the
  *            entity or place under the maintaining agency's code
@@ -21,9 +21,10 @@
  * `listAuthorityProposals` (this tenant's questions plus the shared
  * ones); the three-way ownership gate on the ruling itself — tenant
  * admin for its own, federation steward for shared, 404 for another
- * tenant's — lives inside `ruleAuthorityProposal`. The route adds only
- * the admin guard and the `authorities` capability gate its sibling
- * authority surfaces carry.
+ * tenant's — lives inside `ruleAuthorityProposal`. The route adds the
+ * authorities area guard and the `authorities` capability gate its
+ * sibling authority surfaces carry, and redirects someone who can open
+ * only the vocabulary tab (the records area without this one) there.
  *
  * A single page-level fetcher drives every row. The rows are per
  * proposal and the accepted ones vanish on revalidation, so a result
@@ -43,12 +44,13 @@
  * mention count is one COUNT per row, which is what tells a reviewer
  * whether the name is load-bearing before they open anything.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useEffect, useMemo, useState } from "react";
 import {
   Link,
+  redirect,
   useFetcher,
   useSearchParams,
   type FetcherWithComponents,
@@ -56,7 +58,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { Check, ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
 import { tenantContext, userContext } from "../context";
-import { requireCapability } from "../lib/tenant";
+import { hasCapability, requireCapability } from "../lib/tenant";
+import { useFormatters } from "~/lib/use-formatters";
 import { SaveFeedbackBanner } from "~/components/admin/save-feedback";
 import {
   DecisionThread,
@@ -111,7 +114,7 @@ function readStatus(value: string | null): QueueStatus {
 // ---------------------------------------------------------------------------
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const {
     listAuthorityProposals,
@@ -121,8 +124,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   } = await import("~/lib/pending-decisions.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
   const tenant = context.get(tenantContext);
+  // Someone who can open only the vocabulary tab lands on it rather
+  // than on a refusal: the sidebar and the dashboard send them there.
+  const authorityTabs =
+    canAdministerArea(user, "authorities") && hasCapability(tenant, "authorities");
+  if (
+    !authorityTabs &&
+    canAdministerArea(user, "records") &&
+    hasCapability(tenant, "vocabulary_hub")
+  ) {
+    throw redirect("/admin/decisions/vocabulary");
+  }
+  requireArea(user, "authorities");
   requireCapability(tenant, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
@@ -228,14 +242,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { ruleAuthorityProposal, PROPOSAL_TYPES: TYPES } = await import(
     "~/lib/pending-decisions.server"
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -538,6 +552,7 @@ function ProposalCard({
   pending: boolean;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const { formatIsoDateTime } = useFormatters();
   const { payload } = proposal;
   const isOpen = proposal.status === "open";
 
@@ -642,7 +657,7 @@ function ProposalCard({
           </span>
           {proposal.ruledAt
             ? ` · ${t("ruledOn", {
-                date: new Date(proposal.ruledAt).toISOString().slice(0, 10),
+                date: formatIsoDateTime(proposal.ruledAt).slice(0, 10),
               })}`
             : ""}
           {proposal.resultId ? ` · ${t("ruledResult")}` : ""}
@@ -733,3 +748,5 @@ function ProposalCard({
     </div>
   );
 }
+
+/* @version v0.8.0 */

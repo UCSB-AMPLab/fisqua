@@ -8,7 +8,7 @@
  * describer assignment on the kanban card; every other mutation lives
  * on the dedicated sub-pages.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState, useCallback } from "react";
@@ -62,6 +62,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
 
@@ -264,3 +269,5 @@ export default function ProjectOverview({
     </div>
   );
 }
+
+// @version v0.8.0

@@ -18,7 +18,7 @@
  * its federation keeps authorities private, NULL when it shares them,
  * with the same setting deciding whether a steward is required.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -39,9 +39,9 @@ import type { Route } from "./+types/_auth.admin.places.new";
 // ---------------------------------------------------------------------------
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   return {};
@@ -52,14 +52,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { places } = await import("~/db/schema");
   const { createPlaceSchema } = await import("~/lib/validation/place");
   const { generateUniqueCode } = await import("~/lib/codes.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 

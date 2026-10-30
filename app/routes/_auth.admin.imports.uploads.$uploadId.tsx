@@ -25,7 +25,7 @@
  * `discard`. Commit re-derives verdicts inside the Workflow under the
  * acceptances read from the upload row — never from client input.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useState } from "react";
@@ -33,7 +33,6 @@ import { Form, Link, redirect, useActionData, useNavigation } from "react-router
 import { Trans, useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { formatIsoDateTime } from "../lib/format-date";
 import { useFormatters } from "../lib/use-formatters";
 import type { DryRunReport } from "../lib/import/dry-run.server";
 import type { CheckState } from "../lib/import/check.server";
@@ -49,7 +48,7 @@ type StepId = "upload" | "check" | "dryRun" | "import";
 type StepState = RailStepState;
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { repositories } = await import("~/db/schema");
@@ -59,7 +58,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -216,11 +215,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -734,7 +733,7 @@ function UploadPane({
   t: ReturnType<typeof useTranslation>["t"];
   upload: Route.ComponentProps["loaderData"]["upload"];
 }) {
-  const { formatBytes } = useFormatters();
+  const { formatBytes, formatIsoDateTime } = useFormatters();
   return (
     <section aria-labelledby="upload-h">
       <div className="flex items-center gap-2">
@@ -1208,6 +1207,7 @@ function DryRunPane({
   // this route, so the pending state is scoped by intent).
   const navigation = useNavigation();
   const running = isPendingIntent(navigation.state, navigation.formData, "run");
+  const { formatIsoDateTime } = useFormatters();
   return (
     <section aria-labelledby="dryrun-h">
       <div className="flex items-center gap-2">
@@ -1572,3 +1572,5 @@ function ImportPane({
     </section>
   );
 }
+
+/* @version v0.8.0 */

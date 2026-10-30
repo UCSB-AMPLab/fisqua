@@ -1,11 +1,12 @@
 /**
  * Tests — canonical CSV round trip
  *
- * The flagship pin for `app/lib/export/canonical-csv.server.ts`: a scope
- * emitted as canonical CSV, then read back through the IMPORT module's
- * own reader (`decodeAndParseCsv` / `parseCsv`, `app/lib/import/csv.ts`)
- * rather than any hand-rolled parsing, so this test exercises the actual
- * seam export → edit in a spreadsheet → re-import depends on.
+ * This suite is the flagship pin for
+ * `app/lib/export/canonical-csv.server.ts`: a scope emitted as canonical
+ * CSV, then read back through the IMPORT module's own reader
+ * (`decodeAndParseCsv` / `parseCsv`, `app/lib/import/csv.ts`) rather
+ * than any hand-rolled parsing, so this test exercises the actual seam
+ * export → edit in a spreadsheet → re-import depends on.
  *
  * Two cases:
  *
@@ -35,7 +36,7 @@
  * resolution and multi-row cases in one scope; one of the two children
  * carries the quote/comma/newline title.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
@@ -76,6 +77,10 @@ function makeUser(overrides: Partial<User> & Pick<User, "id" | "tenantId">): Use
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,

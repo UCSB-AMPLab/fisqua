@@ -3,15 +3,14 @@
  *
  * This suite deals with pinning the behaviour of the user-level
  * permission guards in `permissions.server.ts`. The current suite
- * focuses on
- * `requireCollabAdmin`, which is the canonical example of a two-tier
- * role wall: it accepts superadmin and collab-admin users and rejects
- * every other flag combination, including archive admins -- the
- * collab-admin tier and the archive-admin tier are intentionally
- * separate, and the test pins that wall so a future permission
- * refactor cannot quietly tear it down.
+ * focuses on `requireCollabAdmin`, the gate on the cataloguing admin
+ * surface: it admits super admins, collab admins and tenant admins
+ * (`isAdmin`), and rejects every other flag combination, including an
+ * archive user and a user manager. Admitting a tenant admin to the
+ * surface grants no flag; `tests/admin/users-reach.test.tsx` pins that
+ * `assignableRoleFlags` is unchanged for them.
  *
- * @version v0.3.0
+ * @version v0.8.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -52,8 +51,13 @@ describe("requireCollabAdmin", () => {
     expect(requireCollabAdmin(user)).toBeUndefined();
   });
 
-  it("rejects an admin-only user — the two admin tiers are walled off", () => {
+  it("allows a tenant admin (isAdmin only)", () => {
     const user = makeUser({ isAdmin: true });
+    expect(requireCollabAdmin(user)).toBeUndefined();
+  });
+
+  it("rejects a user manager who is not also an admin", () => {
+    const user = makeUser({ isUserManager: true });
     expectForbidden(() => requireCollabAdmin(user));
   });
 
@@ -67,3 +71,5 @@ describe("requireCollabAdmin", () => {
     expectForbidden(() => requireCollabAdmin(user));
   });
 });
+
+// @version v0.8.0

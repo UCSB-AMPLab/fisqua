@@ -1,13 +1,13 @@
 /**
  * Spanish translations — handlists namespace
  *
- * The Spanish mirror of the handlists namespace. The feature is
- * «listas de trabajo» — ruled, and a translation of the sense rather
- * than of the word: a bare «lista» loses the working-document meaning
- * that carries the snapshot rule, while «inventario» and «catálogo»
- * both name something more formal and more permanent. Once the context
- * has been set the strings shorten to «lista», the way buttons are
- * allowed to shorten and warnings are not.
+ * This file is the Spanish mirror of the handlists namespace. The
+ * feature is «listas de trabajo» — ruled, and a translation of the
+ * sense rather than of the word: a bare «lista» loses the
+ * working-document meaning that carries the snapshot rule, while
+ * «inventario» and «catálogo» both name something more formal and more
+ * permanent. Once the context has been set the strings shorten to
+ * «lista», the way buttons are allowed to shorten and warnings are not.
  *
  * COUNT LINES ARE COMPOSED, NEVER ASSEMBLED. Each kind of thing gets
  * its own whole sentence — «1 registro se exportará», «3 entidades se
@@ -20,7 +20,7 @@
  * handlist's name, a record's title, a reference code — is never
  * translated; it appears exactly as its owner typed it.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 export default {
   // ── La superficie ────────────────────────────────────────────────
@@ -54,7 +54,7 @@ export default {
   // ── La fila que quedó bloqueada ──────────────────────────────────
   lockedLabel: "No puedes abrirla",
   reasonAuthoritiesAdminOnly:
-    "Solo los administradores del espacio de trabajo pueden abrir una lista de registros de autoridad.",
+    "Las listas de registros de autoridad solo las pueden abrir los administradores del espacio de trabajo, los superadministradores y los administradores de autoridades.",
 
   // ── Estados vacíos ───────────────────────────────────────────────
   emptyMineHeading: "Todavía no tienes listas de trabajo",

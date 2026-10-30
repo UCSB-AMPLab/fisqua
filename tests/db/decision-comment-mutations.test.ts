@@ -1,17 +1,17 @@
 /**
  * Tests — decision comment mutations (server core)
  *
- * Covers `app/lib/decision-comments.server.ts`: the tenant-scoped
- * edit/delete pair for decision-anchored comment rows. Fixtures use
- * the harness's two federations: the default tenant inside the
- * Neogranadina federation, and the second tenant as lead of its own
+ * This suite covers `app/lib/decision-comments.server.ts`: the
+ * tenant-scoped edit/delete pair for decision-anchored comment rows.
+ * Fixtures use the harness's two federations: the default tenant inside
+ * the Neogranadina federation, and the second tenant as lead of its own
  * separate federation — so the foreign-tenant cases exercise the
  * federation gate, the shared-space (`tenantId` NULL) cases exercise
  * within-federation visibility, and a small volume-anchored comment
  * (project/volume/entry chain) proves the module refuses to touch the
  * other side's rows.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -47,6 +47,10 @@ function makeUser(overrides: Partial<User> & Pick<User, "id" | "tenantId">): Use
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,

@@ -16,7 +16,7 @@
  * loader's filter (`unresolved=true`) hides resolved threads
  * without DELETEing them so the audit history stays intact.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -44,6 +44,10 @@ function buildUser(overrides: Partial<User> & { id: string; email: string }): Us
     isArchiveUser: overrides.isArchiveUser ?? false,
     isUserManager: overrides.isUserManager ?? false,
     isCataloguer: overrides.isCataloguer ?? false,
+    isRecordsAdmin: overrides.isRecordsAdmin ?? false,
+    isAuthoritiesAdmin: overrides.isAuthoritiesAdmin ?? false,
+    isImportsAdmin: overrides.isImportsAdmin ?? false,
+    isDigitizationAdmin: overrides.isDigitizationAdmin ?? false,
     lastActiveAt: overrides.lastActiveAt ?? null,
     githubId: overrides.githubId ?? null,
   };

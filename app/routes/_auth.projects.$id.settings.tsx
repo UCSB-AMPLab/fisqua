@@ -14,7 +14,7 @@
  * type level, while `documentSubtypes` owns its own dedicated form
  * and action handler.
  *
- * @version v0.4.2
+ * @version v0.8.0
  */
 import { useState } from "react";
 import { Form, useActionData, useNavigate, useNavigation } from "react-router";
@@ -64,6 +64,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
@@ -597,4 +602,4 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
   );
 }
 
-//
+// @version v0.8.0

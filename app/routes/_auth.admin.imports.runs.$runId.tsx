@@ -20,7 +20,7 @@
  * capability and read the run tenant-scoped through `getRun` (a
  * first-class `tenant_id` filter), so a cross-tenant run id 404s.
  *
- * @version v0.6.0
+ * @version v0.8.0
  */
 
 import { useEffect, useState } from "react";
@@ -29,7 +29,7 @@ import { useTranslation } from "react-i18next";
 import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
-import { formatIsoDateTime } from "../lib/format-date";
+import { useFormatters } from "../lib/use-formatters";
 import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs.$runId";
 
@@ -64,12 +64,12 @@ interface RevertCounts {
 }
 
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { getRun } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -97,12 +97,12 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireAdmin } = await import("~/lib/permissions.server");
+  const { requireArea } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { getRun } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireAdmin(user);
+  requireArea(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -186,6 +186,7 @@ function Stat({ value, label }: { value: number; label: string }) {
 
 export default function ImportRunDetailPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("imports");
+  const { formatIsoDateTime } = useFormatters();
   const { run, counts, canRevert } = loaderData;
   const actionData = useActionData<typeof action>();
   const revalidator = useRevalidator();
@@ -528,3 +529,5 @@ export default function ImportRunDetailPage({ loaderData }: Route.ComponentProps
     </div>
   );
 }
+
+/* @version v0.8.0 */

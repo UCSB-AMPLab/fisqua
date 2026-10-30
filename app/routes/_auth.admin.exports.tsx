@@ -1,6 +1,7 @@
 /**
  * Exports — the surface where the workspace's records leave
  *
+ * This route is the surface where the workspace's records leave Fisqua.
  * Three axes, decided in the order they are numbered: WHAT leaves, the
  * FORM it takes, and the FORMAT that carries it. The three are
  * independent by design — the same records can leave in any shape a
@@ -9,10 +10,11 @@
  * accepted and failed late.
  *
  * THE PAGE IS MEMBER-LEVEL; THE TIER SHAPES WHAT RENDERS. There is no
- * `requireAdmin` here, because portability is not a product tier and
+ * role guard here, because portability is not a product tier and
  * refusing the URL would be refusing the promise. What a role changes
  * is the page itself: `matrix.ts` marks the machine-readable formats
- * ABSENT for a non-admin — not dimmed, since a role is not a choice on
+ * ABSENT for anyone `mayExportMachineReadable` does not admit for the
+ * chosen record class — not dimmed, since a role is not a choice on
  * this page and dimming it would invite someone to go looking for the
  * switch. A reader sees three descriptive standards and the PDF
  * finding aid, and no evidence that anything else exists.
@@ -44,13 +46,15 @@
  * cron behind the thirty-day promise — the same bargain the handlist
  * integrity read makes.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Info, Search } from "lucide-react";
 import { tenantContext, userContext } from "../context";
+import { requestTimeZone } from "~/lib/format";
+import { useFormatters } from "~/lib/use-formatters";
 import { BranchPicker } from "~/components/exports/branch-picker";
 import type { BranchNode } from "~/components/exports/branch-picker";
 import {
@@ -128,6 +132,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { eq, sql } = await import("drizzle-orm");
   const { descriptions } = await import("~/db/schema");
   const { exportMatrix } = await import("~/lib/export/matrix");
+  const { mayExportMachineReadable } = await import("~/lib/user-access.server");
   const { countWorkspaceTotals, resolveExportScope, ExportScopeError } =
     await import("~/lib/export/scopes.server");
   const { listExportRuns, sweepExpiredExports } = await import(
@@ -294,7 +299,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const matrix =
     ownStandard === null
       ? null
-      : exportMatrix({ recordClass, ownStandard, isAdmin: user.isAdmin });
+      : exportMatrix({
+          recordClass,
+          ownStandard,
+          machineReadable: mayExportMachineReadable(user, recordClass),
+        });
 
   const runs = await listExportRuns(db, tenant);
 
@@ -413,8 +422,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (intent === "cancel") {
     const runId = String(formData.get("runId") ?? "");
     const run = await getExportRun(db, tenant, runId);
-    // A run belongs to the person who started it; an admin may stop
-    // any of them, because a run holding the workspace's own machinery
+    // A run belongs to the person who started it; a workspace admin may
+    // stop any of them, because a run holding the workspace's own machinery
     // is the workspace's business.
     if (!run || (run.userId !== user.id && !user.isAdmin)) {
       return { ok: false as const, code: "not-found" };
@@ -454,11 +463,19 @@ export async function action({ request, context }: Route.ActionArgs) {
     // before a run row exists. Repeating them here would resolve the
     // scope twice to reach the same answer.
     // The finding aid's furniture speaks the exporting member's
-    // language; the flat data formats ignore the locale.
+    // language; the flat data formats ignore the locale. The file
+    // name's date is the exporting member's calendar day.
     const { getLocale } = await import("~/middleware/i18next");
     const locale = getLocale(context) === "en" ? ("en" as const) : ("es" as const);
     const { runId, execute } = await startExportRun(
-      { db, bucket: env.BUCKET, tenant, user, locale },
+      {
+        db,
+        bucket: env.BUCKET,
+        tenant,
+        user,
+        locale,
+        timeZone: requestTimeZone(request),
+      },
       { scope, form, format, includeAuthorities },
     );
     context.cloudflare.ctx.waitUntil(execute());
@@ -487,6 +504,7 @@ export default function ExportsPage({ loaderData }: Route.ComponentProps) {
   const labels = useExportLabels();
   const scopeText = useScopeText();
   const lossSummary = useLossSummary();
+  const { formatIsoDateTime } = useFormatters();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const fetcher = useFetcher<ExportActionResult>();
@@ -1005,7 +1023,7 @@ export default function ExportsPage({ loaderData }: Route.ComponentProps) {
                         {labels.number(recent.total)}
                       </span>
                       <span className="flex-none font-mono text-11 nums text-stone-400">
-                        {new Date(recent.createdAt).toISOString().slice(5, 10)}
+                        {formatIsoDateTime(recent.createdAt).slice(5, 10)}
                       </span>
                     </Link>
                   </li>
@@ -1050,10 +1068,7 @@ export default function ExportsPage({ loaderData }: Route.ComponentProps) {
           <small className="font-mono text-11 nums text-stone-500">
             {carried.pills.length > 0
               ? t("carriedRunStamp", {
-                  stamp: new Date(carried.carriedAt)
-                    .toISOString()
-                    .slice(0, 16)
-                    .replace("T", " "),
+                  stamp: formatIsoDateTime(carried.carriedAt).slice(0, 16),
                 })
               : carried.origin
                 ? // Ticked on a browse list: name where, and say plainly
@@ -1107,7 +1122,7 @@ export default function ExportsPage({ loaderData }: Route.ComponentProps) {
         {carried.pills.length > 0 ? (
           <p className="mt-2 text-11 leading-normal text-stone-500">
             {t("carriedRerun", {
-              time: new Date(carried.carriedAt).toISOString().slice(11, 16),
+              time: formatIsoDateTime(carried.carriedAt).slice(11, 16),
             })}
           </p>
         ) : (
@@ -1137,7 +1152,7 @@ export default function ExportsPage({ loaderData }: Route.ComponentProps) {
               records: labels.count("records", chosen.memberCount),
               entities: labels.count("entities", chosen.memberCount),
               places: labels.count("places", chosen.memberCount),
-              date: new Date(chosen.updatedAt).toISOString().slice(0, 10),
+              date: formatIsoDateTime(chosen.updatedAt).slice(0, 10),
             })}
           </small>
           <button
@@ -1315,4 +1330,4 @@ function EmptyNotice({ heading, body }: { heading: string; body: string }) {
   );
 }
 
-/* @version v0.7.0 */
+/* @version v0.8.0 */

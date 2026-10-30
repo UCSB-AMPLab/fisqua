@@ -16,7 +16,7 @@
  * both the row-level state and the dashboard-visible counter at
  * each lifecycle stage.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -50,6 +50,10 @@ function buildUser(overrides: {
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
   };

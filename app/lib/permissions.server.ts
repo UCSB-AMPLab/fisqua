@@ -42,18 +42,22 @@
  * to paint UI (disable a button when the user cannot write) and on the
  * server to gate writes before they hit D1.
  *
- * Role-assignment scope -- `canManageTenantUsers`,
+ * Role-assignment scope -- `canManageTenantUsers`, `canReachUsersArea`,
  * `assignableRoleFlags`, `canAssignTenantRoles`,
  * `unassignableSubmittedRoleFlags`, `INVITE_ROLE_CHOICES` -- answers a
  * different question from the guards above: not "may this user reach
- * the resource" but "may this user hand out this ROLE". The six role
- * flags split into tenant-scoped (assignable by a tenant admin, on
+ * the resource" but "may this user hand out this ROLE". The ten role
+ * flags split into tenant-scoped (assignable by a workspace admin, on
  * users of the request tenant) and super-admin-only. Both the form
  * rendering and the actions read the same helper, so the UI can never
  * offer a toggle the server will refuse, and a crafted form body that
  * adds a super-admin-only field is rejected rather than trusted.
+ * `canGrantSteward` and `canGrantStaff` answer the same question for
+ * the two federation roles: a steward is granted by a super admin at
+ * home on the federation's lead workspace, and staff by a federation
+ * steward or that same super admin.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
@@ -62,6 +66,7 @@ import { eq, and } from "drizzle-orm";
 import { PROJECT_ROLES } from "./validation/enums";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
+  federations,
   projects,
   projectMembers,
   entries,
@@ -69,7 +74,8 @@ import {
   volumePages,
 } from "../db/schema";
 import type { DescriptionStatus } from "./description-workflow";
-import type { User } from "../context";
+import type { Tenant, User } from "../context";
+import { isFederationSteward } from "./federation.server";
 
 /**
  * Throws a 403 Response if the user is not an admin.
@@ -81,19 +87,22 @@ export function requireAdmin(user: User): void {
 }
 
 /**
- * Throws a 403 Response if the user is not a collaborative-cataloguing
- * admin or superadmin. Plain archive admins (`isAdmin` only) are
- * rejected here -- the archive-admin tier and the collab-admin tier
- * are intentionally walled off so that a user who curates archival
- * descriptions cannot automatically invite cataloguers or reassign
- * volumes.
+ * Throws a 403 Response unless the user is a collaborative-cataloguing
+ * admin, a tenant admin (`isAdmin`) or a super admin. This is the gate
+ * on the cataloguing admin surface: All projects (creating projects)
+ * and Team (project memberships). A tenant admin is admitted because
+ * the workspace is theirs to run: they can create a project from the
+ * dashboard, and Team is where it is staffed.
+ *
+ * The gate admits to the surface; it grants no role flag. Every flag
+ * change goes through `assignableRoleFlags`, on the user detail page.
  */
 export function requireCollabAdmin(user: User): void {
   const u = user as User & {
     isCollabAdmin?: boolean;
     isSuperAdmin?: boolean;
   };
-  if (!u.isCollabAdmin && !u.isSuperAdmin) {
+  if (!u.isCollabAdmin && !u.isSuperAdmin && !u.isAdmin) {
     throw new Response("Forbidden", { status: 403 });
   }
 }
@@ -178,27 +187,42 @@ export { WORKFLOW_ROLE_PRECEDENCE, highestProjectRole } from "./workflow";
 
 // --- Role-assignment scope ---------------------------------------------
 //
-// Who may hand out which role flag. The six flags on `users` are not
-// one tier: two of them describe a person's standing INSIDE one
-// archive, two describe standing across the whole platform, and two
-// gate the cataloguing surface. Before this split every flag was
-// super-admin-only, which left a federation steward -- whose effective
-// member-tenant flags are admin-equivalent but deliberately NOT
-// `isSuperAdmin` (see `grantEffectiveRoleFlags`) -- able to invite
-// staff into a partner workspace but unable to give them any role, so
-// the people they invited landed on an empty dashboard.
+// Who may hand out which role flag. The ten flags on `users` are not
+// one tier: two of them describe standing across the whole platform,
+// and the other eight describe standing INSIDE one workspace -- the
+// workspace admin, the Reader, the four area admins and the
+// cataloguing pair. A workspace admin hands out the eight; only a super
+// admin hands out the platform two. A federation steward's effective
+// member-tenant flags include `isAdmin` but deliberately NOT
+// `isSuperAdmin` (see `grantEffectiveRoleFlags`), so a steward
+// onboarding a partner workspace gives its people their workspace roles
+// and nothing beyond them.
 
 /**
- * Roles a tenant admin may assign, on users of their own tenant.
- * Both describe standing inside one archive and confer nothing
+ * The cataloguing pair. Granted by a workspace admin or a super admin,
+ * and written only while the workspace has crowdsourcing on.
+ */
+export const CATALOGUING_ROLE_FLAGS = ["isCollabAdmin", "isCataloguer"] as const;
+
+/**
+ * Roles a workspace admin may assign, on users of their own tenant.
+ * Each describes standing inside one workspace and confers nothing
  * anywhere else on the platform.
  */
-export const TENANT_SCOPED_ROLE_FLAGS = ["isAdmin", "isArchiveUser"] as const;
+export const TENANT_SCOPED_ROLE_FLAGS = [
+  "isAdmin",
+  "isArchiveUser",
+  "isRecordsAdmin",
+  "isAuthoritiesAdmin",
+  "isImportsAdmin",
+  "isDigitizationAdmin",
+  ...CATALOGUING_ROLE_FLAGS,
+] as const;
 
 /**
  * Roles that stay super-admin-only. `isSuperAdmin` is the flag that
  * hands out every other flag, and `isUserManager` reaches the whole
- * user-administration surface; a tenant admin who could set either
+ * user-administration surface; a workspace admin who could set either
  * would be able to escalate themselves out of their own tenant.
  */
 export const PLATFORM_SCOPED_ROLE_FLAGS = [
@@ -206,19 +230,9 @@ export const PLATFORM_SCOPED_ROLE_FLAGS = [
   "isUserManager",
 ] as const;
 
-/**
- * The crowdsourcing pair. Super-admin-only, unchanged: the cataloguing
- * admin tier has always been walled off from the archive admin tier
- * (see `requireCollabAdmin`), and the per-row `toggleCollabAdmin`
- * handler already gates on super admin. They are listed here so the
- * flag vocabulary below is exhaustive, not to widen anything.
- */
-export const CATALOGUING_ROLE_FLAGS = ["isCollabAdmin", "isCataloguer"] as const;
-
-/** Every role flag on `users`, in the order the admin form renders them. */
+/** Every role flag on `users`. */
 export const ROLE_FLAGS = [
   ...PLATFORM_SCOPED_ROLE_FLAGS,
-  ...CATALOGUING_ROLE_FLAGS,
   ...TENANT_SCOPED_ROLE_FLAGS,
 ] as const;
 
@@ -248,21 +262,39 @@ export function canManageTenantUsers(user: RoleAssigner): boolean {
 }
 
 /**
+ * Whether `user` may reach the users area of `tenant` at all: whoever
+ * `canManageTenantUsers` admits, and a steward of the tenant's
+ * federation (`isFederationSteward`), who grants and revokes staff. A
+ * steward with no workspace flag reaches the list and the detail
+ * page's Federation section and nothing else: the profile, the
+ * workspace roles, the project memberships and the invitation stay
+ * behind `canManageTenantUsers`.
+ */
+export async function canReachUsersArea(
+  db: DrizzleD1Database<any>,
+  user: User,
+  tenant: Tenant,
+): Promise<boolean> {
+  return canManageTenantUsers(user) || (await isFederationSteward(db, user, tenant));
+}
+
+/**
  * The role flags `user` may assign to somebody else. This is the ONE
  * place the split is decided; the form-rendering code and the action
  * both read it, so the UI can never offer a toggle the action will
  * refuse.
  *
- * A super admin assigns everything. A tenant admin -- which a
- * federation steward's effective member-tenant flags include -- assigns
- * the two tenant-scoped roles and nothing else. Everyone else assigns
- * nothing.
+ * A super admin assigns everything. A workspace admin -- which a
+ * federation steward's effective member-tenant flags include --
+ * assigns the eight tenant-scoped roles and nothing else. Everyone
+ * else, area admins and user managers included, assigns nothing.
  *
  * Note what is NOT consulted: the tenant the acting user's row names.
  * Scope of the TARGET is a separate question, enforced by the caller
  * against the REQUEST tenant from `tenantContext`; under a federation
  * grant the two differ, and the acting user's home tenant is never the
- * right answer.
+ * right answer. Nor is the workspace's capability: whether an area's
+ * flag is written at all is the caller's filter, on top of this one.
  */
 export function assignableRoleFlags(user: RoleAssigner): readonly RoleFlag[] {
   if (user.isSuperAdmin) return ROLE_FLAGS;
@@ -284,11 +316,13 @@ export function canAssignTenantRoles(user: RoleAssigner): boolean {
  *
  * The form is treated as hostile. A checkbox rendered `disabled` is
  * not submitted by the browser at all, and an unchecked one is not
- * submitted either -- so for an actor who is not a super admin, a
- * well-formed post NEVER carries `isSuperAdmin` or `isUserManager` as
- * a key. Presence of such a key is therefore not an unchecked box, it
- * is a crafted body, and the action refuses the whole submission
- * rather than silently dropping the field.
+ * submitted either; nor does the page post the shown value
+ * (`shown_<flag>`) of a flag the caller cannot change -- so for an
+ * actor who is not a super admin, a well-formed post NEVER carries
+ * `isSuperAdmin` or `isUserManager`, in either form, as a key.
+ * Presence of such a key is therefore not an unchecked box, it is a
+ * crafted body, and the action refuses the whole submission rather
+ * than silently dropping the field.
  */
 export function unassignableSubmittedRoleFlags(
   user: RoleAssigner,
@@ -296,27 +330,95 @@ export function unassignableSubmittedRoleFlags(
 ): RoleFlag[] {
   const assignable = assignableRoleFlags(user);
   return ROLE_FLAGS.filter(
-    (flag) => !assignable.includes(flag) && formData.has(flag),
+    (flag) =>
+      !assignable.includes(flag) &&
+      (formData.has(flag) || formData.has(`shown_${flag}`)),
+  );
+}
+
+/**
+ * Whether `user` may grant or revoke the `steward` role in `tenant`'s
+ * federation, including turning a steward into staff: a super admin at
+ * home on the federation's lead workspace, the request served on that
+ * workspace. A super admin of another workspace, or one reaching the
+ * lead through a grant, may not. The federation must be active, as for
+ * `isFederationSteward`.
+ */
+export async function canGrantSteward(
+  db: DrizzleD1Database<any>,
+  user: User,
+  tenant: Pick<Tenant, "id" | "federationId">,
+): Promise<boolean> {
+  if (!user.isSuperAdmin || user.tenantId !== tenant.id) return false;
+  const fed = await db
+    .select({ leadTenantId: federations.leadTenantId, status: federations.status })
+    .from(federations)
+    .where(eq(federations.id, tenant.federationId))
+    .get();
+  return !!fed && fed.status === "active" && fed.leadTenantId === tenant.id;
+}
+
+/**
+ * Whether `user` may grant or revoke the `staff` role in `tenant`'s
+ * federation: a steward of that federation (`isFederationSteward`, with
+ * the request's effective flags), or whoever may grant stewards.
+ */
+export async function canGrantStaff(
+  db: DrizzleD1Database<any>,
+  user: User,
+  tenant: Tenant,
+): Promise<boolean> {
+  return (
+    (await isFederationSteward(db, user, tenant)) ||
+    (await canGrantSteward(db, user, tenant))
   );
 }
 
 /**
  * The role a new account may be given at invite time, keyed by the
  * value the invite form posts. `null` is the "no role" choice, which
- * reproduces the pre-existing behaviour (every flag false).
+ * leaves every flag false.
  *
- * Only tenant-scoped roles appear. A platform role is not offered to
- * anyone at invite time -- promoting somebody to super admin or user
- * manager is a deliberate second step on the user detail page, not a
- * side effect of sending an email -- so any other value is an invalid
- * request, whoever sent it.
+ * Only workspace roles appear: the workspace admin, the four area
+ * admins and the Reader. `records_admin` names the records area's
+ * admin; the workspace admin is `workspace_admin`. An area's value is
+ * accepted only while the workspace has that area (`INVITE_ROLE_AREAS`).
+ * A platform role is not offered to anyone at invite time --
+ * promoting somebody to super admin or user manager is a deliberate
+ * second step on the user detail page, not a side effect of sending an
+ * email -- so any other value is an invalid request, whoever sent it.
  */
 export const INVITE_ROLE_CHOICES: Readonly<
-  Record<string, "isAdmin" | "isArchiveUser" | null>
+  Record<
+    string,
+    | "isAdmin"
+    | "isRecordsAdmin"
+    | "isAuthoritiesAdmin"
+    | "isDigitizationAdmin"
+    | "isImportsAdmin"
+    | "isArchiveUser"
+    | null
+  >
 > = {
   none: null,
-  records_admin: "isAdmin",
+  workspace_admin: "isAdmin",
+  records_admin: "isRecordsAdmin",
+  authorities_admin: "isAuthoritiesAdmin",
+  digitization_admin: "isDigitizationAdmin",
+  imports_admin: "isImportsAdmin",
   archive_user: "isArchiveUser",
+};
+
+/**
+ * The tenant capability an invite value needs, for the values that
+ * belong to an optional area of the workspace.
+ */
+export const INVITE_ROLE_AREAS: Readonly<
+  Record<string, "authoritiesEnabled" | "digitizationEnabled" | "importsEnabled">
+> = {
+  authorities_admin: "authoritiesEnabled",
+  digitization_admin: "digitizationEnabled",
+  imports_admin: "importsEnabled",
 };
 
 /**
@@ -572,3 +674,5 @@ export async function requirePageAccess(
 
   return { volume, page };
 }
+
+// @version v0.8.0

@@ -17,7 +17,7 @@
  * `getCommentsForQcFlag` to keep this file scoped to the QC-flag
  * thread rather than the global comments fetch path.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -48,6 +48,10 @@ function buildUser(
     isArchiveUser: overrides.isArchiveUser ?? false,
     isUserManager: overrides.isUserManager ?? false,
     isCataloguer: overrides.isCataloguer ?? false,
+    isRecordsAdmin: overrides.isRecordsAdmin ?? false,
+    isAuthoritiesAdmin: overrides.isAuthoritiesAdmin ?? false,
+    isImportsAdmin: overrides.isImportsAdmin ?? false,
+    isDigitizationAdmin: overrides.isDigitizationAdmin ?? false,
     lastActiveAt: overrides.lastActiveAt ?? null,
     githubId: overrides.githubId ?? null,
   };

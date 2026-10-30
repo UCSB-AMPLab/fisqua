@@ -1,18 +1,18 @@
 /**
  * Tests — handlists
  *
- * Covers `app/lib/handlists.server.ts`, the ordered, named, persistent
- * sets a person keeps and works from. What is pinned here is the model
- * card's ruled behaviour that no surface can check for itself: the type
- * fixed by the first member and refused thereafter, dedupe reporting
- * that never lets a UNIQUE constraint surface as a crash, the soft
- * ceiling's warn-then-refuse boundary, who may manage a handlist versus
- * who may only work in it, the share dialog's eligibility gate, the
- * visibility rule that makes an absent handlist and a foreign one the
- * same 404, one name per owner per workspace, and — the hardest part —
- * that the membership integrity read never lies about a member that has
- * since been merged, split, or deleted from the workspace it was drawn
- * from.
+ * This suite covers `app/lib/handlists.server.ts`, the ordered, named,
+ * persistent sets a person keeps and works from. What is pinned here is
+ * the model card's ruled behaviour that no surface can check for
+ * itself: the type fixed by the first member and refused thereafter,
+ * dedupe reporting that never lets a UNIQUE constraint surface as a
+ * crash, the soft ceiling's warn-then-refuse boundary, who may manage a
+ * handlist versus who may only work in it, the share dialog's
+ * eligibility gate, the visibility rule that makes an absent handlist
+ * and a foreign one the same 404, one name per owner per workspace, and
+ * — the hardest part — that the membership integrity read never lies
+ * about a member that has since been merged, split, or deleted from the
+ * workspace it was drawn from.
  *
  * INTEGRITY IS COMPUTED, NOT STORED, so every merge/split/tombstone pin
  * here writes the DRIFT directly (a `merged_into` column, an
@@ -40,7 +40,7 @@
  * D1's hundred-binding cap) rather than by calling `addMembers`
  * thousands of times.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
@@ -104,6 +104,10 @@ function makeUser(overrides: Partial<User> & Pick<User, "id" | "tenantId">): Use
     isArchiveUser: false,
     isUserManager: false,
     isCataloguer: false,
+    isRecordsAdmin: false,
+    isAuthoritiesAdmin: false,
+    isImportsAdmin: false,
+    isDigitizationAdmin: false,
     lastActiveAt: null,
     githubId: null,
     ...overrides,
@@ -594,6 +598,55 @@ describe("handlists", () => {
       });
       const afterShare = await getWithMembers(db(), tenantA, admin, created.id);
       expect(afterShare.shares.map((s) => s.userId)).toEqual([ADMIN2_ID]);
+    });
+
+    it("lets an authorities admin hold a share, and names both admin kinds when refusing", async () => {
+      const created = await makeAuthorityHandlist();
+
+      const refused = await shareHandlist(db(), tenantA, admin, created.id, {
+        userId: COLLEAGUE_ID,
+        role: "viewer",
+      }).catch((e) => e);
+      expect(refused).toBeInstanceOf(Response);
+      expect(refused.status).toBe(400);
+      expect(await refused.text()).toBe(
+        `This handlist holds entities, which only workspace, super and authorities administrators can open, so it cannot be shared with ${COLLEAGUE_ID}@test.local.`,
+      );
+
+      await env.DB.prepare("UPDATE users SET is_authorities_admin = 1 WHERE id = ?")
+        .bind(COLLEAGUE_ID)
+        .run();
+      await shareHandlist(db(), tenantA, admin, created.id, {
+        userId: COLLEAGUE_ID,
+        role: "viewer",
+      });
+      const candidates = await listShareCandidates(db(), tenantA, admin, created.id);
+      expect(candidates.find((c) => c.userId === COLLEAGUE_ID)?.eligible).toBe(true);
+
+      // The shared authorities admin opens it; a records admin cannot.
+      const authoritiesAdmin = makeUser({
+        id: COLLEAGUE_ID,
+        tenantId: TENANT_A,
+        isAuthoritiesAdmin: true,
+      });
+      const detail = await getWithMembers(db(), tenantA, authoritiesAdmin, created.id);
+      expect(detail.role).toBe("viewer");
+    });
+
+    it("lets a super admin hold a share", async () => {
+      const created = await makeAuthorityHandlist();
+      await env.DB.prepare("UPDATE users SET is_super_admin = 1 WHERE id = ?")
+        .bind(COLLEAGUE_ID)
+        .run();
+      const candidates = await listShareCandidates(db(), tenantA, admin, created.id);
+      expect(candidates.find((c) => c.userId === COLLEAGUE_ID)?.eligible).toBe(true);
+      await shareHandlist(db(), tenantA, admin, created.id, {
+        userId: COLLEAGUE_ID,
+        role: "viewer",
+      });
+      const superAdmin = makeUser({ id: COLLEAGUE_ID, tenantId: TENANT_A, isSuperAdmin: true });
+      const detail = await getWithMembers(db(), tenantA, superAdmin, created.id);
+      expect(detail.role).toBe("viewer");
     });
 
     it("marks the non-admin candidate ineligible with the reason, and the admin eligible", async () => {
@@ -1253,6 +1306,72 @@ describe("handlists", () => {
       await transferOwnership(db(), tenantA, admin, created.id, VIEWER_ID);
       const detail = await getWithMembers(db(), tenantA, viewer, created.id);
       expect(detail.ownerId).toBe(VIEWER_ID);
+    });
+
+    it("works for the records admin on a records handlist, and not on an entities one", async () => {
+      const recordsAdmin = makeUser({
+        id: COLLEAGUE_ID,
+        tenantId: TENANT_A,
+        isRecordsAdmin: true,
+      });
+      const records = await createHandlist(db(), tenantA, owner, {
+        name: "Records transfer by records admin",
+        workspaceVisible: true,
+        recordType: "records",
+        memberIds: ["rec-transfer-seed"],
+      });
+      await transferOwnership(db(), tenantA, recordsAdmin, records.id, VIEWER_ID);
+      const detail = await getWithMembers(db(), tenantA, viewer, records.id);
+      expect(detail.ownerId).toBe(VIEWER_ID);
+
+      const entities = await createHandlist(db(), tenantA, admin, {
+        name: "Entities transfer by records admin",
+        workspaceVisible: true,
+        recordType: "entities",
+        memberIds: ["ent-transfer-seed"],
+      });
+      const refused = await transferOwnership(
+        db(),
+        tenantA,
+        recordsAdmin,
+        entities.id,
+        ADMIN2_ID,
+      ).catch((e) => e);
+      expect(refused).toBeInstanceOf(Response);
+      expect(refused.status).toBe(403);
+    });
+
+    it("works for the authorities admin on an entities handlist, and not on a records one", async () => {
+      const authoritiesAdmin = makeUser({
+        id: COLLEAGUE_ID,
+        tenantId: TENANT_A,
+        isAuthoritiesAdmin: true,
+      });
+      const entities = await createHandlist(db(), tenantA, admin, {
+        name: "Entities transfer by authorities admin",
+        workspaceVisible: true,
+        recordType: "entities",
+        memberIds: ["ent-transfer-seed"],
+      });
+      await transferOwnership(db(), tenantA, authoritiesAdmin, entities.id, ADMIN2_ID);
+      const detail = await getWithMembers(db(), tenantA, admin2, entities.id);
+      expect(detail.ownerId).toBe(ADMIN2_ID);
+
+      const records = await createHandlist(db(), tenantA, owner, {
+        name: "Records transfer by authorities admin",
+        workspaceVisible: true,
+        recordType: "records",
+        memberIds: ["rec-transfer-seed"],
+      });
+      const refused = await transferOwnership(
+        db(),
+        tenantA,
+        authoritiesAdmin,
+        records.id,
+        VIEWER_ID,
+      ).catch((e) => e);
+      expect(refused).toBeInstanceOf(Response);
+      expect(refused.status).toBe(403);
     });
 
     it("is refused for a random editor", async () => {

@@ -34,16 +34,18 @@
  *
  * WHO MAY CHANGE IT. viewer reads; editor adds, removes and reorders;
  * the OWNER alone renames, shares, sets workspace visibility and
- * deletes. Ownership transfer is the owner's or a tenant admin's —
+ * deletes. Ownership transfer is the owner's, a workspace admin's, or
+ * the admin of the area the handlist's records belong to —
  * people leave teams, and `handlists.owner_id` RESTRICTs precisely so
  * that a departure has to be handled rather than silently cascading
  * someone's shared working sets away.
  *
- * THE ADMIN GATE ON AUTHORITY HANDLISTS. Entities and places live
- * behind `requireAdmin` on their own surfaces, so a handlist of them is
- * openable only by an admin — the same helper, not a second permission
- * system. Two consequences the surfaces depend on. A share with a
- * non-admin is REFUSED with a 400 naming the reason, so the dialog's
+ * THE AREA GATE ON AUTHORITY HANDLISTS. Entities and places live
+ * behind `requireArea(user, "authorities")` on their own surfaces, so a
+ * handlist of them is openable only by those who pass that area — the
+ * same helper, not a second permission system. Two consequences the
+ * surfaces depend on. A share with someone who is not a workspace,
+ * super or authorities admin is REFUSED with a 400 naming the reason, so the dialog's
  * dimming and the server agree rather than the dialog merely being
  * polite. And a handlist someone was shared before losing the flag is
  * still LISTED for them, carrying `locked`, never silently absent —
@@ -92,7 +94,7 @@
  * number of parameters as an empty one. Writes chunk under D1's
  * hundred-binding cap.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -106,7 +108,7 @@ import {
   users,
 } from "../db/schema";
 import { authorityScopeSql } from "./authority-ownership.server";
-import { requireAdmin } from "./permissions.server";
+import { canAdministerArea, requireArea } from "./user-access.server";
 import type { Tenant, User } from "../context";
 
 /** records · entities · places, in the vocabulary the search tabs use. */
@@ -386,7 +388,7 @@ async function loadAccess(
   if (isAuthorityType(row.record_type)) {
     // The same gate the entities and places surfaces take — including
     // for the owner, who may have been demoted since making it.
-    requireAdmin(user);
+    requireArea(user, "authorities");
   }
   return {
     id: row.id,
@@ -493,7 +495,7 @@ export async function createHandlist(
     );
   }
   if (recordType !== null && isAuthorityType(recordType)) {
-    requireAdmin(user);
+    requireArea(user, "authorities");
   }
   refuseOversized(memberIds.length);
   await refuseDuplicateName(db, tenant, user.id, name, null);
@@ -599,31 +601,59 @@ async function loadShareTarget(
   db: DrizzleD1Database<any>,
   tenant: Tenant,
   targetUserId: string,
-): Promise<{ id: string; email: string; isAdmin: boolean }> {
+): Promise<{
+  id: string;
+  email: string;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isAuthoritiesAdmin: boolean;
+}> {
   const row = await db
-    .select({ id: users.id, email: users.email, isAdmin: users.isAdmin })
+    .select({
+      id: users.id,
+      email: users.email,
+      isAdmin: users.isAdmin,
+      isSuperAdmin: users.isSuperAdmin,
+      isAuthoritiesAdmin: users.isAuthoritiesAdmin,
+    })
     .from(users)
     .where(and(eq(users.id, targetUserId), eq(users.tenantId, tenant.id)))
     .get();
   if (!row) {
     throw new Response("That person is not in this workspace.", { status: 400 });
   }
-  return { id: row.id, email: row.email, isAdmin: row.isAdmin };
+  return {
+    id: row.id,
+    email: row.email,
+    isAdmin: row.isAdmin,
+    isSuperAdmin: row.isSuperAdmin,
+    isAuthoritiesAdmin: row.isAuthoritiesAdmin,
+  };
 }
 
 /**
  * A share that could never be opened is refused rather than stored, so
  * the dialog's dimming and the server say the same thing. The reason
- * travels in the message: a handlist of authority records is admin-only
- * because its module is.
+ * travels in the message: a handlist of authority records is for
+ * workspace, super and authorities admins because its module is.
  */
 function refuseIneligibleShare(
   access: HandlistAccess,
-  target: { email: string; isAdmin: boolean },
+  target: {
+    email: string;
+    isAdmin: boolean;
+    isSuperAdmin: boolean;
+    isAuthoritiesAdmin: boolean;
+  },
 ): void {
-  if (isAuthorityType(access.recordType) && !target.isAdmin) {
+  if (
+    isAuthorityType(access.recordType) &&
+    !target.isAdmin &&
+    !target.isSuperAdmin &&
+    !target.isAuthoritiesAdmin
+  ) {
     throw new Response(
-      `This handlist holds ${access.recordType}, which only workspace administrators can open, so it cannot be shared with ${target.email}.`,
+      `This handlist holds ${access.recordType}, which only workspace, super and authorities administrators can open, so it cannot be shared with ${target.email}.`,
       { status: 400 },
     );
   }
@@ -719,6 +749,8 @@ interface RawCandidateRow {
   name: string | null;
   email: string;
   is_admin: number;
+  is_super_admin: number;
+  is_authorities_admin: number;
   share_role: HandlistShareRole | null;
 }
 
@@ -743,6 +775,8 @@ export async function listShareCandidates(
            u.name AS name,
            u.email AS email,
            u.is_admin AS is_admin,
+           u.is_super_admin AS is_super_admin,
+           u.is_authorities_admin AS is_authorities_admin,
            s.role AS share_role
     FROM users u
     LEFT JOIN handlist_shares s ON s.user_id = u.id AND s.handlist_id = ${handlistId}
@@ -752,7 +786,11 @@ export async function listShareCandidates(
 
   const authority = isAuthorityType(access.recordType);
   return rows.map((row) => {
-    const eligible = !authority || row.is_admin === 1;
+    const eligible =
+      !authority ||
+      row.is_admin === 1 ||
+      row.is_super_admin === 1 ||
+      row.is_authorities_admin === 1;
     return {
       userId: row.id,
       name: row.name,
@@ -768,8 +806,10 @@ export async function listShareCandidates(
 }
 
 /**
- * Hand the handlist on. The owner may give it away; a tenant admin may
- * move it, which is what makes a departure something the workspace can
+ * Hand the handlist on. The owner may give it away; a workspace admin,
+ * or the admin of the area its records belong to (authorities for
+ * entities and places, records otherwise), may move it, which is what
+ * makes a departure something the workspace can
  * settle rather than something that blocks a user delete forever. Any
  * share the new owner held is withdrawn — owning supersedes it.
  */
@@ -782,7 +822,8 @@ export async function transferOwnership(
   now: number = Date.now(),
 ): Promise<void> {
   const access = await loadAccess(db, tenant, user, handlistId);
-  if (access.role !== "owner" && !user.isAdmin) {
+  const area = isAuthorityType(access.recordType) ? "authorities" : "records";
+  if (access.role !== "owner" && !canAdministerArea(user, area)) {
     throw new Response("Forbidden", { status: 403 });
   }
   if (newOwnerId === access.ownerId) return;
@@ -909,8 +950,9 @@ export async function addMembers(
   }
   if (access.recordType === null && isAuthorityType(input.recordType)) {
     // Fixing the type to an authority one puts the handlist behind the
-    // admin gate, so it takes that gate now rather than at the next read.
-    requireAdmin(user);
+    // authorities gate, so it takes that gate now rather than at the
+    // next read.
+    requireArea(user, "authorities");
   }
 
   const arriving = dedupe(input.memberIds);
@@ -1068,7 +1110,8 @@ export async function listForUser(
   for (const row of rows) {
     const role: HandlistRole =
       row.owner_id === user.id ? "owner" : (row.share_role ?? "workspace");
-    const locked = isAuthorityType(row.record_type) && !user.isAdmin;
+    const locked =
+      isAuthorityType(row.record_type) && !canAdministerArea(user, "authorities");
     if (locked && role === "workspace") continue;
     summaries.push({
       id: row.id,

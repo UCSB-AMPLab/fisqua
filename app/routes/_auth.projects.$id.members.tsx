@@ -8,7 +8,7 @@
  * member. Cross-references the cataloguing admin team page so the
  * project lead can work without an admin round-trip.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { Form, useActionData, useFetcher } from "react-router";
@@ -85,6 +85,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
+  // The parent layout checks crowdsourcing in its loader, which does
+  // not run for a POST to this route: check it here, before any read
+  // or write.
+  const { requireCapability } = await import("../lib/tenant");
+  requireCapability(tenant, "crowdsourcing");
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const i18n = getInstance(context);
@@ -400,3 +405,5 @@ function AddMemberForm({
     </fetcher.Form>
   );
 }
+
+// @version v0.8.0

@@ -26,7 +26,7 @@
  * such a run to the aid route rather than pushing an attachment
  * header at a document meant to be read.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 import { redirect } from "react-router";
 import { tenantContext, userContext } from "../context";
@@ -35,7 +35,8 @@ import type { Route } from "./+types/_auth.admin.exports.download.$runId";
 export async function loader({ context, params }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { getExportRun } = await import("~/lib/export/run.server");
-  const { formatRequiresAdmin } = await import("~/lib/export/matrix");
+  const { formatIsMachineReadable } = await import("~/lib/export/matrix");
+  const { mayExportMachineReadable } = await import("~/lib/user-access.server");
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
@@ -52,7 +53,13 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     return redirect(`/admin/exports/aid/${run.id}`);
   }
 
-  if (formatRequiresAdmin(run.format) && !user.isAdmin) {
+  // A run with no recorded class is held to both classes' rule.
+  const machineReadable =
+    run.recordClass === null
+      ? mayExportMachineReadable(user, "records") &&
+        mayExportMachineReadable(user, "entities")
+      : mayExportMachineReadable(user, run.recordClass);
+  if (formatIsMachineReadable(run.format) && !machineReadable) {
     throw new Response(null, { status: 404 });
   }
 

@@ -22,7 +22,7 @@
  *
  * `requireUser` fetches the user row keyed by id and returns the full
  * role-flag snapshot that `_auth.tsx` needs to populate
- * `userContext`. It mirrors the shape of the `User` type defined in
+ * `userContext`, with the four area-admin flags. It mirrors the shape of the `User` type defined in
  * `app/context.ts` so loaders further down the tree can rely on every
  * role flag being present. The returned shape includes `tenantId`:
  * the source of truth that `authMiddleware`
@@ -30,7 +30,7 @@
  * before letting any loader run, and downstream loaders read it from
  * `userContext` to scope domain-table queries.
  *
- * @version v0.7.0
+ * @version v0.8.0
  */
 
 import { eq, and, isNull } from "drizzle-orm";
@@ -140,6 +140,10 @@ export async function requireUser(
   isArchiveUser: boolean;
   isUserManager: boolean;
   isCataloguer: boolean;
+  isRecordsAdmin: boolean;
+  isAuthoritiesAdmin: boolean;
+  isImportsAdmin: boolean;
+  isDigitizationAdmin: boolean;
   lastActiveAt: number | null;
   githubId: string | null;
 } | null> {
@@ -164,6 +168,10 @@ export async function requireUser(
     isArchiveUser: user.isArchiveUser as unknown as boolean,
     isUserManager: user.isUserManager as unknown as boolean,
     isCataloguer: user.isCataloguer as unknown as boolean,
+    isRecordsAdmin: user.isRecordsAdmin as unknown as boolean,
+    isAuthoritiesAdmin: user.isAuthoritiesAdmin as unknown as boolean,
+    isImportsAdmin: user.isImportsAdmin as unknown as boolean,
+    isDigitizationAdmin: user.isDigitizationAdmin as unknown as boolean,
     lastActiveAt: user.lastActiveAt ?? null,
     githubId: user.githubId ?? null,
   };

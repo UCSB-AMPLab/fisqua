@@ -5,16 +5,15 @@
  * 301 to the new path under `/admin/cataloguing/promote` so existing
  * bookmarks keep working.
  *
- * Capability gate runs before the redirect. Even on a redirect
- * route, `requireCapability(tenant, "publish_pipeline")` runs first
- * so a `publish_pipeline=off` tenant 404s here rather than chasing
- * the 301 into a (separately gated) `/admin/cataloguing/promote`
- * surface. Promote bridges crowdsourcing and the publish pipeline;
- * the sidebar's capability gate also requires `publish_pipeline` to
- * be on, so the 404 here keeps the structural surface aligned with
- * the UX surface.
+ * Capability gate runs before the redirect. Promote is a cataloguing
+ * feature, so `requireCapability(tenant, "crowdsourcing")` runs first
+ * and a crowdsourcing-off tenant 404s here rather than chasing the 301
+ * into the cataloguing layout, which would 404 it anyway. The publish
+ * pipeline has no part in Promote: the sidebar shows the item to a
+ * super admin on any tenant with crowdsourcing on, and this route
+ * follows the same rule.
  *
- * @version v0.4.0
+ * @version v0.8.0
  */
 
 import { redirect } from "react-router";
@@ -24,6 +23,8 @@ import type { Route } from "./+types/_auth.admin.promote";
 
 export function loader({ context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
-  requireCapability(tenant, "publish_pipeline");
+  requireCapability(tenant, "crowdsourcing");
   return redirect("/admin/cataloguing/promote", 301);
 }
+
+// @version v0.8.0
