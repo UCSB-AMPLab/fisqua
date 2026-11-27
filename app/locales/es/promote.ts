@@ -6,7 +6,7 @@
  * lets a superadmin lift entries out of the cataloguing tree into the
  * published archival data model.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   heading: {
@@ -29,8 +29,8 @@ export default {
       refCode: "Código de referencia",
       status: "Estado",
     },
-    children_one: "{{count}} entrada hija",
-    children_other: "{{count}} entradas hijas",
+    children_one: "{{count}} entrada subordinada",
+    children_other: "{{count}} entradas subordinadas",
   },
   refCode: {
     patternLabel: "Patrón de código de referencia",
@@ -53,7 +53,7 @@ export default {
     heading: "Resumen de promoción",
     col: {
       fields: "Campos que se copian",
-      parent: "Descripción padre",
+      parent: "Descripción superior",
     },
   },
   toast: {
@@ -61,11 +61,11 @@ export default {
   },
   error: {
     noParent:
-      "No se encontró la descripción padre del volumen {{code}}. Primero importa la descripción del volumen.",
+      "No se encontró la descripción del volumen {{code}}, que debe quedar como descripción superior de las entradas. Primero importa la descripción del volumen.",
     generic:
       "La promoción falló. Intenta de nuevo o avísale a quien administra el espacio.",
     noSelection: "Selecciona al menos una entrada para promover.",
-    duplicateRefCode: 'El código de referencia "{{code}}" ya existe.',
+    duplicateRefCode: 'El código de referencia “{{code}}” ya existe.',
     batch_too_large: "El lote supera el máximo de {{max}}",
     volume_not_found: "No se encontró el volumen: {{id}}",
     no_matching_description:

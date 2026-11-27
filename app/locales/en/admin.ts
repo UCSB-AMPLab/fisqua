@@ -6,7 +6,7 @@
  * project sections, and the all/archived project pickers the admin
  * landing page uses.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   heading: {
@@ -83,8 +83,8 @@ export default {
     project_deleted: "Project deleted.",
     invalid_name: "Name must be between 3 and 100 characters.",
     unknown_action: "Unknown action.",
-    delete_confirm: "Permanently delete \"{{name}}\" and all its data? This cannot be undone.",
-    delete_confirm_type: "Type \"{{name}}\" to confirm deletion. This cannot be undone.",
+    delete_confirm: "Permanently delete “{{name}}” and all its data? This cannot be undone.",
+    delete_confirm_type: "Type “{{name}}” to confirm deletion. This cannot be undone.",
   },
   pagination: {
     showing: "Showing {{start}}-{{end}} of {{total}} users",
@@ -108,4 +108,4 @@ export default {
   },
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

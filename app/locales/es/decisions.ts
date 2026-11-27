@@ -1,14 +1,14 @@
 /**
  * Spanish translations — decisions namespace
  *
- * Strings for the Pending decisions surface (Decisiones pendientes):
- * chrome and tab bar, the authority-proposal queue with its rulings,
- * the duplicates toggle, and the ruling feedback lines. Colombian
- * Spanish, tú-form, composed from meaning rather than translated
- * phrase-by-phrase; type labels and "Nombre para ordenar" follow the
- * entities module's established terminology.
+ * This module deals with the Spanish strings for the Pending decisions
+ * surface (Decisiones pendientes): chrome and tab bar, the
+ * authority-proposal queue with its rulings, the duplicates toggle, and
+ * the ruling feedback lines. Colombian Spanish, tú-form, composed from
+ * meaning rather than translated phrase-by-phrase; type labels and "Nombre
+ * para ordenar" follow the entities module's established terminology.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // Surface chrome
@@ -256,8 +256,36 @@ export default {
   // Procedencia ausente en el panel y mensajes del par
   pairProvNone: "Sin procedencia registrada.",
   pairErrorConflict: "Este par ya fue resuelto.",
+  pairErrorRelationCollision:
+    "No se fusionó nada. Si se hiciera la fusión, {{entity}} tendría dos vínculos con {{description}} como {{role}}, y los dos apuntarían al mismo lado de una relación.",
   feedbackPairMerged: "Registros fusionados.",
   feedbackPairKeptBoth: "Se conservaron ambos registros.",
+
+  // Filas de contexto de la página del par: las descripciones que
+  // nombran cada registro, a quién y qué más nombran, y de dónde salió
+  // el registro. Las fechas llegan ya formateadas; las líneas de origen
+  // dicen solo lo que está registrado.
+  pairRowNamedIn: "Aparece en",
+  pairRowEntities: "Entidades en las mismas descripciones",
+  pairRowPlaces: "Lugares en las mismas descripciones",
+  pairRowOrigin: "Origen",
+  pairAsRecorded: "Figura como “{{name}}”",
+  pairMoreDescriptions_one: "y {{formattedCount}} más",
+  pairMoreDescriptions_other: "y {{formattedCount}} más",
+  pairOriginImport: "Importado por {{user}} el {{date}}, en la ejecución “{{message}}”",
+  pairOriginImportOther: "Importado el {{date}}, en una ejecución de otro espacio de trabajo",
+  pairOriginFile: "Archivo: {{filename}}",
+  pairOriginCreatedBy: "Creado por {{user}} el {{date}}",
+  pairOriginPipeline: "Creado por el proceso automático de identificación de entidades el {{date}}",
+  pairOriginPipelineDecision: "Criterio: {{decision}}",
+  pairOriginPipelineMentions_one: "{{formattedCount}} mención en las fuentes que analizó el proceso",
+  pairOriginPipelineMentions_other: "{{formattedCount}} menciones en las fuentes que analizó el proceso",
+  pairOriginSplitFrom: "Dividido a partir de {{name}} por {{user}} el {{date}}",
+  pairOriginAbsorbed_one: "{{formattedCount}} registro fusionado con este",
+  pairOriginAbsorbed_other: "{{formattedCount}} registros fusionados con este",
+  pairOriginLegacy: "Identificadores anteriores",
+  pairOriginRowCreated: "Registro creado el {{date}}",
+  pairOriginNone: "Fisqua no tiene constancia de cómo se creó este registro.",
 
   // Tarjetas de términos cercanos del vocabulario. La procedencia es
   // deliberadamente sobria: el estado es el dato que importa, y las
@@ -265,9 +293,9 @@ export default {
   vocabContext: "Término de materia en espera de revisión",
   vocabIncomingProv: "Propuesto para el vocabulario; aún sin aprobar.",
   vocabExistingProv: "Aprobado como término de materia.",
-  vocabSuggestedMerge: 'Fusionar con "{{term}}"',
+  vocabSuggestedMerge: 'Fusionar con “{{term}}”',
   vocabDirection: "La fusión conserva {{term}}, la forma aprobada.",
-  vocabKeepModalTitle: '¿Conservar "{{term}}" como término propio?',
+  vocabKeepModalTitle: '¿Conservar “{{term}}” como término propio?',
   vocabKeepModalBody:
     "El término se aprueba y entra al vocabulario como forma propia, junto al término existente.",
   whyOwnTerm: "Por qué es una materia aparte",
@@ -276,3 +304,5 @@ export default {
     "Una forma sobrevive como el término de materia. La otra se retira: todas las entidades clasificadas con ella pasan a la forma que sobrevive. Esto no se puede deshacer.",
   whySameSubject: "Por qué son la misma materia",
 } as const;
+
+/* @version v0.9.0 */

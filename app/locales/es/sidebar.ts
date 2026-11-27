@@ -7,7 +7,7 @@
  * Entidades, Lugares, Repositorios, Publicar, Promover,
  * Catalogación colaborativa).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   search: "Buscar",
@@ -38,6 +38,7 @@ export default {
   capture_volumes: "Volúmenes",
   capture_qc: "Revisión de capturas",
   retakes: "Capturas por repetir",
+  capture_queue: "Cola de digitalización",
   scanner: "Escáner",
   my_settings: "Mi configuración",
   users: "Usuarios",
@@ -59,8 +60,8 @@ export default {
   vocabularies: "Vocabularios",
   collapse: "Contraer menú",
   expand: "Expandir menú",
-  section_show: "Mostrar la sección «{{section}}»",
-  section_hide: "Ocultar la sección «{{section}}»",
+  section_show: "Mostrar la sección “{{section}}”",
+  section_hide: "Ocultar la sección “{{section}}”",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

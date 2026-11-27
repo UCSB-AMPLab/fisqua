@@ -3,15 +3,27 @@
  *
  * This locale namespace carries the English strings for the
  * `/admin/publish` superadmin surface — the run trigger, the in-flight
- * progress panel, and the history table.
+ * progress panel, and the history table. The `counts` block is the
+ * notice shown in the changelog's place while its counts load after the
+ * page renders, and the retry notice when they fail.
  *
  * The `progress.stepLabels` block lets the progress
  * panel + history table render the per-fonds step IDs (`descriptions:`,
- * `children:`, `mets:`, `ead:`, `dc:`) with localised labels rather than
+ * `children:`, `ead:`, `dc:`) with localised labels rather than
  * raw step prefixes. EN labels are presented for review alongside the
  * matching ES translations in the plan summary.
  *
- * @version v0.8.0
+ * The progress panel lists every step of the run, grouped by artefact:
+ * `progress.state` names each step's state for screen readers,
+ * `progress.groupCount` is a group's "3 of 10", and `progress.files_count`
+ * what a children step wrote. The link files have their own `stepLabels`,
+ * and `stepLabels.mets` names the METS steps of runs created when the
+ * plan held them.
+ *
+ * The `changelog` labels and `detail.childrenFilesTotal` follow a
+ * number, so they carry `_one` / `_other` forms.
+ *
+ * @version v0.9.0
  */
 export default {
   title: "Publish",
@@ -23,12 +35,27 @@ export default {
     repositories: "Repositories",
     entities: "Entities",
     places: "Places",
+    added_one: "added",
+    added_other: "added",
+    // Base form: i18next falls back to it when Spanish selects the "many" category.
     added: "added",
+    modified_one: "modified",
+    modified_other: "modified",
+    // Base form: i18next falls back to it when Spanish selects the "many" category.
     modified: "modified",
+    unpublished_one: "unpublished",
+    unpublished_other: "unpublished",
+    // Base form: i18next falls back to it when Spanish selects the "many" category.
     unpublished: "unpublished",
     noChanges: "No changes",
     total: "total",
     fonds: "Fonds",
+  },
+  counts: {
+    loadingTitle: "Counting what will be published…",
+    loadingBody: "Fisqua is counting the descriptions, repositories, entities and places of every institution in the federation. This can take a few seconds.",
+    failed: "The count could not be completed. You can still publish.",
+    retry: "Retry",
   },
   controls: {
     title: "Export",
@@ -41,12 +68,12 @@ export default {
     selectAll: "Select all",
     deselectAll: "Deselect all",
     triggerExport: "Start export",
-    exporting: "Exporting...",
+    exporting: "Exporting…",
   },
   warning: {
     title: "Confirm publish run",
     body: "Publishing regenerates every export file for the selected fonds and data types. For large datasets this can take several minutes. The dashboard will show live progress — please leave it open until it finishes.",
-    estimate: "Estimated time: about {{minutes}} minute(s)",
+    estimate: "Estimated time: about {{minutes}} min",
     confirm: "Yes, start publishing",
     cancel: "Cancel",
   },
@@ -64,6 +91,18 @@ export default {
     stepElapsed: "Step time: {{minutes}}m {{seconds}}s",
     totalElapsed: "Total time: {{minutes}}m {{seconds}}s",
     lastUpdate: "Last update: {{timestamp}}",
+    files_count_one: "{{formattedCount}} file",
+    files_count_other: "{{formattedCount}} files",
+    stepsTitle: "Steps",
+    groupCount: "{{done}} of {{total}}",
+    duration: "{{minutes}}m {{seconds}}s",
+    state: {
+      completed: "Completed",
+      running: "In progress",
+      pending: "Pending",
+      failed: "Failed",
+      partial: "Partly completed",
+    },
     reassurance: {
       children: "Writing per-parent children files — this is the longest step for large fonds. It is safe to leave the page open.",
       index: "Writing the descriptions index — almost done.",
@@ -78,6 +117,8 @@ export default {
       entities: "Entities",
       places: "Places",
       index: "Descriptions index",
+      entity_links: "Entity links file",
+      place_links: "Place links file",
     },
   },
   history: {
@@ -107,7 +148,7 @@ export default {
   },
   detail: {
     title: "Publish run",
-    backToPublish: "Back to publish",
+    backToPublish: "Back to the publish page",
     overview: "Overview",
     runId: "Run ID",
     workflowInstanceId: "Workflow instance ID",
@@ -128,6 +169,9 @@ export default {
     recordCounts: "Per-step record counts",
     noRecordCounts: "No record counts recorded",
     childrenFiles: "Children files",
+    childrenFilesTotal_one: "{{count}} children/{refCode}.json file written across all fonds",
+    childrenFilesTotal_other: "{{count}} children/{refCode}.json files written across all fonds",
+    // Base form: i18next falls back to it when Spanish selects the "many" category.
     childrenFilesTotal: "{{count}} children/{refCode}.json files written across all fonds",
     childrenFilesFonds: "Fonds",
     childrenFilesCount: "Files written",

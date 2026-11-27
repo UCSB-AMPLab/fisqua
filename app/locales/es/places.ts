@@ -6,7 +6,7 @@
  * primary call-to-action. Places follow the Linked Places conventions
  * the rest of the entities surface uses.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // Page
@@ -52,7 +52,7 @@ export default {
   mine: "Mina",
   river: "Río",
   other: "Otro",
-  showMerged: "Mostrar combinados",
+  showMerged: "Mostrar fusionados",
 
   // Pagination
   previous: "Anterior",
@@ -63,23 +63,23 @@ export default {
   columnToggle: "Columnas",
 
   // Merge
-  mergeButton: "Combinar",
-  mergeTitle: "Combinar lugar",
+  mergeButton: "Fusionar",
+  mergeTitle: "Fusionar lugar",
   mergeSearch: "Buscar registro destino...",
   mergeReassignTitle: "Reasignar vínculos",
   mergeReassignSubtitle:
     "{{name}} tiene {{count}} descripciones vinculadas",
-  mergeConfirm: "Confirmar combinación",
+  mergeConfirm: "Confirmar fusión",
   mergeCancel: "Cancelar",
-  mergedBanner: "Este registro fue combinado en {{target}}.",
+  mergedBanner: "Este registro se fusionó con {{target}}.",
   mergedBannerLink: "Ver registro destino",
-  mergedSuffix: "(combinado)",
+  mergedSuffix: "(fusionado)",
 
   // Split
   splitButton: "Dividir",
   splitTitle: "Dividir lugar",
   splitSubtitle:
-    "Se creará un nuevo registro con los datos de {{name}}. Seleccione los vínculos que deben moverse al nuevo registro.",
+    "Se creará un nuevo registro con los datos de {{name}}. Selecciona los vínculos que deben moverse al nuevo registro.",
   splitConfirm: "Confirmar división",
   splitCancel: "Cancelar",
   loadMore: "Cargar más",
@@ -90,7 +90,7 @@ export default {
   successCreated: "Lugar creado.",
   successUpdated: "Lugar actualizado.",
   successDeleted: "Lugar eliminado.",
-  successMerged: "Lugar combinado.",
+  successMerged: "Lugar fusionado.",
   successSplit: "Lugar dividido.",
 
   // Error
@@ -105,7 +105,7 @@ export default {
   "field.placeCode": "Código de lugar",
   "field.placeType": "Tipo de lugar",
   "field.nameVariants": "Variantes del nombre",
-  "field.parentId": "Lugar padre",
+  "field.parentId": "Pertenece a",
   "field.historicalGobernacion": "Gobernación",
   "field.historicalPartido": "Partido",
   "field.historicalRegion": "Región",
@@ -115,7 +115,7 @@ export default {
   "field.latitude": "Latitud",
   "field.longitude": "Longitud",
   "field.coordinatePrecision": "Precisión de coordenadas",
-  "field.mergedInto": "Combinado en",
+  "field.mergedInto": "Fusionado con",
   "field.tgnId": "TGN",
   "field.hgisId": "HGIS",
   "field.whgId": "WHG",
@@ -241,8 +241,8 @@ export default {
     "Mostrando {{shown}} de {{total}} lugares por revisar: coordenadas marcadas como inciertas",
   countViewport:
     "Mostrando {{shown}} de {{inView}} coincidencias a la vista · {{located}} lugares tienen coordenadas · se excluyen {{without}} sin coordenadas mientras el filtro del mapa está activo",
-  countMergedSuffix_one: "· se muestra {{count}} registro combinado",
-  countMergedSuffix_other: "· se muestran {{count}} registros combinados",
+  countMergedSuffix_one: "· se muestra {{count}} registro fusionado",
+  countMergedSuffix_other: "· se muestran {{count}} registros fusionados",
   extHas: "Con {{id}}",
   extMissing: "Sin {{id}}",
   extFilterAria: "Filtrar por {{id}}",
@@ -256,3 +256,5 @@ export default {
   geocodeUnavailable:
     "La búsqueda de lugares no está disponible en este momento: marca la ubicación en el mapa o escribe las coordenadas.",
 } as const;
+
+// @version v0.9.0

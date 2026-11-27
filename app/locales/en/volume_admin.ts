@@ -7,7 +7,7 @@
  * assignments, workflow, metadata, danger zone) and the empty-state
  * copy for the entries table.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 export default {
   breadcrumb_volumes: "Volumes",
@@ -46,16 +46,16 @@ export default {
   error_transition_failed: "Transition failed",
   delete_eligible: "This volume is unstarted and unassigned. It can be deleted.",
   delete_ineligible:
-    "This volume cannot be deleted. Only unstarted volumes with no assignee can be removed. Change the status to \"unstarted\" and unassign it first.",
+    "This volume cannot be deleted. Only unstarted volumes with no assignee can be removed. Change the status to “unstarted” and unassign it first.",
   delete_confirm: "Delete {{name}}? This cannot be undone.",
   delete_button: "Delete volume",
   force_delete_heading: "Force delete (superadmin)",
   force_delete_warning:
     "This will permanently delete the volume and all related entries, comments, flags, and activity log rows. Any cataloguing work on this volume will be lost. This cannot be undone.",
-  force_delete_type_name: "Type \"{{name}}\" to confirm",
+  force_delete_type_name: "Type “{{name}}” to confirm",
   force_delete_confirm:
     "Really force-delete {{name}}? All cataloguing work will be destroyed.",
   force_delete_name_mismatch:
-    "Typed name does not match. Please type \"{{name}}\" exactly.",
+    "Typed name does not match. Please type “{{name}}” exactly.",
   force_delete_button: "Force delete volume",
 } as const;

@@ -29,7 +29,7 @@
  * column was dropped in migration 0036 (0% populated in the production
  * audit); the locale entry is removed in lockstep.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   // Page
@@ -365,6 +365,15 @@ export default {
   link_cancel: "Cancel",
   remove_link_confirm: "Remove link with {{name}}?",
   remove_link_button: "Remove",
+  // Refusals of a link edit or removal because of a relation between two people
+  link_error_relation_side_save:
+    "This link is one side of a relation between two people, and relations can't be edited in this form. Nothing was saved.",
+  link_error_relation_side_remove:
+    "This link is one side of a relation between two people. Removing it here would leave the other side of the relation without its partner. Nothing was removed.",
+  link_error_relation_changed_save:
+    "This link became part of a relation after you opened the page. Nothing was saved. Reload the page to see the link as it is now.",
+  link_error_relation_changed_remove:
+    "This link became part of a relation after you opened the page. Nothing was removed. Reload the page to see the link as it is now.",
   no_results: "No results found",
 
   // Draft/changelog
@@ -394,12 +403,22 @@ export default {
     "A description with that reference code already exists.",
   error_invalid_level:
     "The level must be below the parent record's level.",
+  error_delete_blocked_one:
+    "Cannot delete -- {{count}} child description",
+  error_delete_blocked_other:
+    "Cannot delete -- {{count}} child descriptions",
+  // Base form: i18next falls back to it when Spanish selects the "many" category.
   error_delete_blocked:
     "Cannot delete -- {{count}} child descriptions",
   error_delete_cascade:
     "Deleting this description will remove {{entityCount}} entity links and {{placeCount}} place links.",
   error_delete_confirm:
     "Are you sure you want to delete {{title}}? This action cannot be undone.",
+  error_move_children_one:
+    "This description has {{count}} child that will also be moved.",
+  error_move_children_other:
+    "This description has {{count}} children that will also be moved.",
+  // Base form: i18next falls back to it when Spanish selects the "many" category.
   error_move_children:
     "This description has {{count}} children that will also be moved.",
 
@@ -419,6 +438,7 @@ export default {
   aria_move_down: "Move down",
   aria_edit_link: "Edit link",
   aria_remove_link: "Remove link with {{name}}",
+  row_actions: "Actions for {{title}}",
 
   // Description level display names
   level_fonds: "Fonds",
@@ -430,6 +450,7 @@ export default {
   level_collection: "Collection",
   level_section: "Section",
   level_volume: "Volume",
+  level_repository: "Repository",
 
   // View toggle
   view_tree: "File tree",
@@ -476,4 +497,4 @@ export default {
   next_page: "Next page",
 } as const;
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -7,7 +7,7 @@
  * Clear). i18next loads it as the default namespace, so bare keys
  * like `t("button.save")` resolve here without an explicit prefix.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   app_name: "Fisqua",
@@ -82,6 +82,10 @@ export default {
       "The request didn't complete. Try again — and if it keeps failing, tell a workspace administrator what you were doing and when.",
     back_home: "Back to the workspace",
     try_again: "Try again",
+    // The static 503 page served when D1 is overloaded
+    // (`app/middleware/service-busy.ts`); it renders without i18next.
+    busy_title: "Fisqua is busy right now",
+    busy_detail: "Try again in a few seconds.",
   },
   pagination: {
     previous: "Previous",

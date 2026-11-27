@@ -7,11 +7,11 @@
  * team) in both languages; the promote button and the child-entry count
  * take the singular for one and the plural otherwise, rendered through
  * i18next as the page does; and the Spanish bundle addresses the reader
- * as tú and calls child entries «entradas hijas», without the usted
- * imperatives or the "exitosamente", "mapeados" and "subentradas"
- * wording it used to carry.
+ * as tú and calls child entries «entradas subordinadas», without the
+ * usted imperatives or the "exitosamente", "mapeados", "subentradas"
+ * and «entradas hijas» wording it used to carry.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import i18next from "i18next";
@@ -57,7 +57,7 @@ describe("promote locale", () => {
     expect(t("en", "table.children", 0)).toBe("0 sub-entries");
     expect(t("es", "action.promote", 1)).toBe("Promover 1 entrada");
     expect(t("es", "action.promote", 3)).toBe("Promover 3 entradas");
-    expect(t("es", "table.children", 1)).toBe("1 entrada hija");
-    expect(t("es", "table.children", 4)).toBe("4 entradas hijas");
+    expect(t("es", "table.children", 1)).toBe("1 entrada subordinada");
+    expect(t("es", "table.children", 4)).toBe("4 entradas subordinadas");
   });
 });

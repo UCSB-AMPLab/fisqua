@@ -17,7 +17,7 @@
  * standards (ISAD(G), DACS, RAD) and the institutional names
  * (AMPL, Neogranadina) render as semibold.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 export default {
   header: {
@@ -29,7 +29,7 @@ export default {
   hero: {
     eyebrow: "FISQUA · v{{version}}",
     tagline:
-      "An open-source, collaborative archival cataloguing and records management platform.",
+      "An open-source, modular platform for collaborative archival cataloguing, records management, digitization, image processing, and preservation.",
   },
   picker: {
     label: "Workspace",
@@ -43,13 +43,13 @@ export default {
       shape:
         "Workspace names use lowercase letters, numbers, and hyphens, and start with a letter.",
       notFound:
-        'We don\'t have a workspace called "{{slug}}". Check the spelling and try again.',
+        'We don\'t have a workspace called “{{slug}}”. Check the spelling and try again.',
     },
   },
   context: {
     eyebrow: "About Fisqua",
     paragraph:
-      'Fisqua, from the Muisca verb "to gather scattered things", is an open-source platform for archival cataloguing and records management. It is built to run on lightweight serverless infrastructure and designed to support community-based collaborative description. It supports <strong>ISAD(G)</strong>, <strong>DACS</strong>, and <strong>RAD</strong>, and exports all data in open formats. It is developed at the <strong>Archives, Memory, and Preservation Lab (AMPL)</strong> at UC Santa Barbara and <strong>Neogranadina</strong>.',
+      'Fisqua, from the Muisca verb “to gather scattered things”, is an open-source platform for archival cataloguing and records management. It is built to run on lightweight serverless infrastructure and designed to support community-based collaborative description. It supports <strong>ISAD(G)</strong>, <strong>DACS</strong>, and <strong>RAD</strong>, and exports all data in open formats. It is developed at the <strong>Archives, Memory, and Preservation Lab (AMPL)</strong> at UC Santa Barbara and <strong>Neogranadina</strong>.',
   },
   footer: {
     version: "Fisqua v{{version}}",
@@ -60,8 +60,8 @@ export default {
   meta: {
     title: "Fisqua",
     description:
-      "An open-source platform for archival cataloguing and records management, developed at AMPL (UC Santa Barbara) and Neogranadina.",
+      "Fisqua brings together archival cataloguing, records management, digitization, and preservation in one collaborative, modular, open-source platform.",
   },
 } as const;
 
-// @version v0.6.0
+// @version v0.9.0

@@ -52,7 +52,7 @@
  * existed does. There is no shared or federated visibility here and no
  * admin override — an unconsumed selection is nobody else's business.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -143,8 +143,8 @@ export interface StashCarriedScopeInput {
   /**
    * The faceted result total at carry time — how many MATCHED, before
    * any unticking. In `ids` mode this is what lets the export page
-   * print the honest arithmetic («6 found − 1 unticked → 5 will
-   * export») instead of rounding a pruned set to "all matches". In
+   * print the honest arithmetic ("6 found − 1 unticked → 5 will
+   * export") instead of rounding a pruned set to "all matches". In
    * `all` mode it equals the materialised total and may be omitted.
    */
   found?: number;

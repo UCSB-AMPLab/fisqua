@@ -2,25 +2,25 @@
  * Spanish translations — handlists namespace
  *
  * This file is the Spanish mirror of the handlists namespace. The
- * feature is «listas de trabajo» — ruled, and a translation of the
- * sense rather than of the word: a bare «lista» loses the
+ * feature is "listas de trabajo" — ruled, and a translation of the
+ * sense rather than of the word: a bare "lista" loses the
  * working-document meaning that carries the snapshot rule, while
- * «inventario» and «catálogo» both name something more formal and more
+ * "inventario" and "catálogo" both name something more formal and more
  * permanent. Once the context has been set the strings shorten to
- * «lista», the way buttons are allowed to shorten and warnings are not.
+ * "lista", the way buttons are allowed to shorten and warnings are not.
  *
  * COUNT LINES ARE COMPOSED, NEVER ASSEMBLED. Each kind of thing gets
- * its own whole sentence — «1 registro se exportará», «3 entidades se
- * exportarán» — because the article and any participle agree with the
+ * its own whole sentence — "1 registro se exportará", "3 entidades se
+ * exportarán" — because the article and any participle agree with the
  * noun, and a sentence built from fragments would be wrong for half
  * the nouns it meets.
  *
- * Colombian usage throughout: «agregar» rather than «añadir», tú-form
- * («elige», «marca», «inténtalo»), no voseo. User content — a
+ * Colombian usage throughout: "agregar" rather than "añadir", tú-form
+ * ("elige", "marca", "inténtalo"), no voseo. User content — a
  * handlist's name, a record's title, a reference code — is never
  * translated; it appears exactly as its owner typed it.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   // ── La superficie ────────────────────────────────────────────────
@@ -59,16 +59,16 @@ export default {
   // ── Estados vacíos ───────────────────────────────────────────────
   emptyMineHeading: "Todavía no tienes listas de trabajo",
   emptyMineBody:
-    "Marca resultados en la página de búsqueda y elige «Agregar a una lista de trabajo», o agrega un registro a una lista desde su propia página mientras navegas.",
+    "Marca resultados en la página de búsqueda y elige “Agregar a una lista de trabajo”, o agrega un registro a una lista desde su propia página mientras navegas.",
   emptySharedHeading: "Nadie ha compartido una lista contigo",
   emptySharedBody:
     "Cuando alguien comparta una lista de trabajo contigo, aparecerá aquí con el nombre de quien la compartió.",
   emptyAllHeading: "Todavía no hay listas de trabajo",
   emptyAllBody:
-    "Marca resultados en la página de búsqueda y elige «Agregar a una lista de trabajo», o agrega un registro a una lista desde su propia página mientras navegas.",
+    "Marca resultados en la página de búsqueda y elige “Agregar a una lista de trabajo”, o agrega un registro a una lista desde su propia página mientras navegas.",
   emptyMembersHeading: "Esta lista todavía está vacía",
   emptyMembersBody:
-    "Marca resultados en la página de búsqueda y elige «Agregar a una lista de trabajo», o agrega un registro desde su propia página mientras navegas. Lo primero que agregues fija lo que contiene esta lista.",
+    "Marca resultados en la página de búsqueda y elige “Agregar a una lista de trabajo”, o agrega un registro desde su propia página mientras navegas. Lo primero que agregues fija lo que contiene esta lista.",
 
   // ── La página de la lista ────────────────────────────────────────
   ownYours: "es tuya",
@@ -162,7 +162,7 @@ export default {
   renameUnaffected: "sin cambios",
 
   // ── Eliminar ─────────────────────────────────────────────────────
-  deleteTitle: "¿Eliminar «{{name}}»?",
+  deleteTitle: "¿Eliminar “{{name}}”?",
   deleteBody:
     "La lista y su orden se pierden para siempre. Esto no se puede deshacer.",
   deleteKeepLead: "No se afecta ningún registro.",
@@ -180,7 +180,7 @@ export default {
   deleteConfirm: "Eliminar lista de trabajo",
 
   // ── Compartir ────────────────────────────────────────────────────
-  shareTitle: "Compartir «{{name}}»",
+  shareTitle: "Compartir “{{name}}”",
   shareBody:
     "Las personas con quienes la compartas pueden leer esta lista y abrir sus miembros.",
   shareAddLabel: "Agregar a alguien",
@@ -205,7 +205,7 @@ export default {
   // ── Negativas, dichas donde se tomó la decisión ──────────────────
   errorNameRequired: "La lista necesita un nombre.",
   errorDuplicateName:
-    "Ya tienes una lista de trabajo llamada «{{name}}». Los nombres deben ser distintos para poder diferenciar las exportaciones en el historial.",
+    "Ya tienes una lista de trabajo llamada “{{name}}”. Los nombres deben ser distintos para poder diferenciar las exportaciones en el historial.",
   errorCeiling:
     "Una lista de trabajo admite máximo {{max}} miembros. Exporta una rama o todo el espacio de trabajo en su lugar.",
   errorIneligibleShare:

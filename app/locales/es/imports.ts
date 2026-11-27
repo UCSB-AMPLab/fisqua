@@ -1,5 +1,5 @@
 /**
- * Traducciones al español — namespace imports
+ * Spanish translations — imports namespace
  *
  * Este namespace lleva las cadenas en español de toda la superficie del
  * módulo de importaciones en `/admin/imports`: la carga de archivos y la
@@ -12,7 +12,7 @@
  * posición y los textos de accesibilidad van en infinitivo; el
  * imperativo con tú se reserva para el texto de ayuda instructivo.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 export default {
   title: "Importaciones",
@@ -96,7 +96,7 @@ export default {
       desc: "La plantilla de listado del Endangered Archives Programme (British Library): descripción ISAD(G) multinivel.",
     },
     meap: {
-      name: "Metadatos MEAP (nivel de ítem)",
+      name: "Metadatos MEAP (nivel de unidad documental simple)",
       desc: "La plantilla del Modern Endangered Archives Program (UCLA): una fila por objeto digitalizado, sin jerarquía.",
     },
     canonical: {
@@ -259,7 +259,7 @@ export default {
       multiple: "{{count}} filas de nivel {{level}} no tienen {{fields}}",
     },
     decisionBody:
-      "Esta asignación exige {{fields}} en el nivel {{level}}, el lugar de la fila en la jerarquía (colección, serie, expediente, ítem), y esas filas los dejan vacíos.",
+      "Esta asignación exige {{fields}} en el nivel de {{level}}, pero esas filas no tienen esos datos. El nivel es el lugar de la fila en la jerarquía: colección, serie, unidad documental compuesta, unidad documental simple.",
     cascade: {
       self: "Sin resolver, esas {{count}} filas se rechazarán.",
       descendants: "Sin resolver, sus {{cascade}} filas subordinadas se rechazan con ellas.",
@@ -272,9 +272,9 @@ export default {
       missing: "{{count}} filas no tienen código de referencia",
       missingBody:
         "Las filas se identifican por su código de referencia; {{count}} filas lo dejan en blanco y se rechazarán. Agrega un código de referencia a cada una y <landing>vuelve a cargar el archivo</landing>.",
-      unresolvable: "{{count}} filas apuntan a una unidad superior que no existe ({{parent}})",
+      unresolvable: "{{count}} filas apuntan a una descripción superior que no existe ({{parent}})",
       unresolvableBody:
-        "La unidad superior {{parent}} no está ni en el archivo ni en este espacio de trabajo, así que esas filas se rechazarán. <landing>Importa primero la unidad contenedora</landing> y luego <landing>vuelve a cargar los ítems</landing>, o corrige la referencia a la unidad superior en tu archivo de origen.",
+        "La descripción superior {{parent}} no está ni en el archivo ni en este espacio de trabajo, así que esas filas se rechazarán. <landing>Importa primero la descripción superior</landing> y luego <landing>vuelve a cargar esas filas</landing>, o corrige la referencia a la descripción superior en tu archivo de origen.",
       cycle: "{{count}} filas forman un ciclo de jerarquía",
       cycleBody:
         "Esas filas se referencian entre sí en círculo, así que ningún orden puede crearlas. Rompe el ciclo en tu archivo de origen y <landing>vuelve a cargarlo</landing>.",
@@ -328,8 +328,8 @@ export default {
       subfonds: "subfondo",
       series: "serie",
       subseries: "subserie",
-      file: "expediente",
-      item: "ítem",
+      file: "unidad documental compuesta",
+      item: "unidad documental simple",
       collection: "colección",
       section: "sección",
       volume: "volumen",
@@ -414,13 +414,13 @@ export default {
     },
     warning: {
       parent_change_ignored:
-        "El archivo le asigna a este registro una unidad superior distinta; las importaciones nunca reubican registros existentes: se conserva la unidad superior actual.",
+        "El archivo le asigna a este registro una descripción superior distinta; las importaciones nunca reubican registros existentes: se conserva la descripción superior actual.",
     },
     reason: {
       missing_reference_code: "Falta el código de referencia: fila bloqueada",
       duplicate_reference_code: "El código de referencia aparece más de una vez en el archivo",
-      unresolvable_parent: "No se pudo resolver la unidad superior",
-      parent_rejected: "Su unidad superior fue rechazada",
+      unresolvable_parent: "No se pudo resolver la descripción superior",
+      parent_rejected: "Su descripción superior fue rechazada",
       parent_cycle: "Las relaciones de jerarquía forman un ciclo",
       value_too_long: "Un valor supera la longitud máxima",
       missing_required_field: "Falta un campo obligatorio",
@@ -429,7 +429,7 @@ export default {
     },
     reasonDetail: {
       missing_required_field: "Faltan campos obligatorios: {{fields}}",
-      parent_rejected: "Su unidad superior ({{parent}}) fue rechazada",
+      parent_rejected: "Su descripción superior ({{parent}}) fue rechazada",
       duplicate_reference_code: "Código de referencia repetido: también en las filas {{rows}}",
     },
     errors: {
@@ -506,7 +506,7 @@ export default {
     restored: "Restaurados",
     reinserted: "Recreados",
     skippedEdited: "Conservados · editados después",
-    skippedForeignChildren: "Conservados · con unidades subordinadas nuevas",
+    skippedForeignChildren: "Conservados · con descripciones subordinadas nuevas",
     skippedConflict: "Conservados · código en uso",
     downloadReport: "Descargar informe de reversión",
     errors: {
@@ -527,3 +527,5 @@ export default {
     uploadFailed: "No se pudo preparar la carga. Inténtalo de nuevo.",
   },
 } as const;
+
+/* @version v0.9.0 */

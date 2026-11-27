@@ -6,7 +6,7 @@
  * the general-settings form (name, manifest URL, contact email, role,
  * description, conventions) and the surrounding section labels.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   settings: {
@@ -33,7 +33,7 @@ export default {
     restore: "Restaurar",
     delete_title: "Eliminar este proyecto",
     delete_description: "Eliminar permanentemente este proyecto y todos sus datos. Esta acción no se puede deshacer.",
-    delete_confirm: "Escribe \"{{name}}\" para confirmar la eliminación.",
+    delete_confirm: "Escribe “{{name}}” para confirmar la eliminación.",
     delete_permanently: "Eliminar permanentemente",
     subtypes_heading: "Subtipos de documento",
     subtypes_help: "Personaliza la lista de subtipos documentales que los catalogadores pueden elegir. Las etiquetas se muestran siempre en español colombiano, independientemente del idioma de la interfaz, según las convenciones archivísticas. Eliminar un subtipo no modifica los documentos que ya lo tengan asignado.",
@@ -90,7 +90,7 @@ export default {
   empty: {
     no_volumes: "Aún no hay unidades compuestas en este proyecto.",
     no_members: "Aún no hay miembros.",
-    no_volumes_add: "Aún no hay unidades compuestas. Haz clic en \"Agregar\" para importar unidades compuestas desde manifiestos IIIF.",
+    no_volumes_add: "Aún no hay unidades compuestas. Haz clic en “Agregar” para importar unidades compuestas desde manifiestos IIIF.",
     no_volumes_assigned: "Aún no hay unidades compuestas asignadas.",
     no_projects_title: "Aún no hay proyectos",
     no_projects_body: "Todavía no eres miembro de ningún proyecto. Pídele a un coordinador que te agregue, o crea uno nuevo si tienes permisos.",

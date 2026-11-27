@@ -10,8 +10,8 @@
  *
  * THE DUPLICATE REFERENCE CODE IS CHECKED BEFORE ANYTHING IS
  * SERIALISED, and it is the failure the design cards make canonical:
- * «Two records share the reference code CMD-SR-0441. Reference codes
- * must be unique to encode a finding aid.» A reference code is a
+ * "Two records share the reference code CMD-SR-0441. Reference codes
+ * must be unique to encode a finding aid." A reference code is a
  * document's `<unitid>` and, in an arbitrary set, the only handle a
  * child has on its parent; two records sharing one make the hierarchy
  * ambiguous and the document a lie about which record is which. The run
@@ -27,8 +27,8 @@
  * checking is emitting the ambiguity.
  *
  * AN AUTHORITY SCOPE NEVER REACHES HERE — the legality matrix refuses
- * EAD for one before a run row exists («an authority file is not a
- * finding aid») — and neither does a Dublin Core or canonical form. The
+ * EAD for one before a run row exists ("an authority file is not a
+ * finding aid") — and neither does a Dublin Core or canonical form. The
  * guards below restate both, because a crafted form body can name any
  * pair and a failed run with a named reason is a better answer than a
  * confusing document.
@@ -38,7 +38,7 @@
  * public site; a workspace encoding its own scope as a finding aid is
  * not publishing it, and the confirm bar already stated the count.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { buildEad3ForSet } from "./ead/builder";
@@ -205,4 +205,4 @@ function scopeTitle(input: ExportEmitInput): string {
   }
 }
 
-/* @version v0.7.0 */
+/* @version v0.9.0 */

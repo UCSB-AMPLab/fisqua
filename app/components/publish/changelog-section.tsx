@@ -5,9 +5,10 @@
  * would change — per-fonds counts of added, modified, and unpublished
  * descriptions plus aggregate modification counts for repositories,
  * entities, and places. Read-only display consumed by the publish
- * dashboard.
+ * dashboard. Each label after a count is looked up with that count,
+ * so it takes the singular or plural form.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -72,17 +73,17 @@ export function ChangelogSection({ changelog }: ChangelogSectionProps) {
                   <div className="flex gap-3">
                     {f.added > 0 && (
                       <span className="font-sans text-xs text-verdigris-deep">
-                        +{f.added} {t("changelog.added")}
+                        +{f.added} {t("changelog.added", { count: f.added })}
                       </span>
                     )}
                     {f.modified > 0 && (
                       <span className="font-sans text-xs text-saffron-deep">
-                        {f.modified} {t("changelog.modified")}
+                        {f.modified} {t("changelog.modified", { count: f.modified })}
                       </span>
                     )}
                     {f.unpublished > 0 && (
                       <span className="font-sans text-xs text-madder-deep">
-                        {f.unpublished} {t("changelog.unpublished")}
+                        {f.unpublished} {t("changelog.unpublished", { count: f.unpublished })}
                       </span>
                     )}
                   </div>
@@ -136,7 +137,7 @@ export function ChangelogSection({ changelog }: ChangelogSectionProps) {
             </h3>
             {count > 0 ? (
               <p className="mt-1 font-sans text-xs text-saffron-deep">
-                {count} {t("changelog.modified")}
+                {count} {t("changelog.modified", { count })}
               </p>
             ) : (
               <p className="mt-1 font-sans text-xs text-stone-400">

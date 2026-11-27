@@ -1,14 +1,14 @@
 /**
  * Spanish translations — search namespace
  *
- * Strings for the global search surface. Colombian Spanish, tú-form,
- * composed from meaning. Category labels keep the sidebar's module
- * vocabulary (Registros / Entidades / Lugares); "Cualquiera" is the
- * facet's neutral first option because the facet nouns disagree on
- * gender (el nivel, la función).
+ * This module deals with the Spanish strings for the global search
+ * surface. Colombian Spanish, tú-form, composed from meaning. Category
+ * labels keep the sidebar's module vocabulary (Registros / Entidades /
+ * Lugares); "Cualquiera" is the facet's neutral first option because the
+ * facet nouns disagree on gender (el nivel, la función).
  *
- * The refine vocabulary (sí/no, the «No: » pill prefix, «Agregar
- * filtro de texto», the help copy's include/exclude phrasing) is
+ * The refine vocabulary (sí/no, the "No: " pill prefix, "Agregar
+ * filtro de texto", the help copy's include/exclude phrasing) is
  * carried over verbatim from Zasqua's search so the two systems read
  * as one family; there are no operator keywords in any language.
  *
@@ -17,10 +17,10 @@
  * que ofrece una lista donde pararse, la etiqueta verdigrís del
  * conjunto y las líneas de conteo de una búsqueda hecha dentro de una
  * lista. Lo que dicen el diálogo y las páginas de listas vive en el
- * espacio de nombres `handlists` — incluida la línea «{{count}}
- * registros» que las filas del menú toman prestada en vez de repetir.
+ * espacio de nombres `handlists` — incluida la línea "{{count}}
+ * registros" que las filas del menú toman prestada en vez de repetir.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   title: "Búsqueda",
@@ -58,8 +58,8 @@ export default {
   sortRelevance: "Relevancia",
 
   // El conmutador de vista. La vista predeterminada se nombra por lo
-  // que hace — buscar y filtrar por facetas — porque «Búsqueda» a
-  // secas no dice nada junto a «Búsqueda avanzada».
+  // que hace — buscar y filtrar por facetas — porque "Búsqueda" a
+  // secas no dice nada junto a "Búsqueda avanzada".
   facetedToggle: "Búsqueda con facetas y filtros",
   facetedBlurb:
     "Este es el sistema de búsqueda de Zasqua, como en el catálogo público: agrega términos y filtros, refina incluyendo o excluyendo, y cada elección se convierte en una etiqueta que puedes quitar.",
@@ -106,14 +106,14 @@ export default {
   // mientras otras pestañas sí tienen resultados.
   emptyHeading: "Sin resultados",
   emptyBody:
-    "No hay resultados para «{{query}}». Prueba con menos palabras o con otras.",
+    "No hay resultados para “{{query}}”. Prueba con menos palabras o con otras.",
   emptyCategoryBody:
     "Nada en esta categoría coincide con la búsqueda. Prueba otra pestaña o menos filtros.",
 
   filterLevel: "Nivel",
   filterRepository: "Repositorio",
   filterType: "Tipo",
-  // El criterio de clase de objeto del formulario avanzado; «Tipo» le
+  // El criterio de clase de objeto del formulario avanzado; "Tipo" le
   // pertenece a la faceta de tipo de entidad.
   filterCategory: "Categoría",
   filterFunction: "Función",
@@ -125,8 +125,8 @@ export default {
   // marcas). Cada frase de conteo se escribe completa por tipo de
   // registro: los participios concuerdan en género y número, así que
   // una frase armada por fragmentos quedaría mal para la mitad de los
-  // sustantivos. «Conjunto» nombra aquí el grupo que se lleva a
-  // exportación; «alcance» ya es la etiqueta del campo scope_content
+  // sustantivos. "Conjunto" nombra aquí el grupo que se lleva a
+  // exportación; "alcance" ya es la etiqueta del campo scope_content
   // en este espacio de nombres.
   selBar_records_one: "{{count}} registro seleccionado",
   selBar_records_other: "{{count}} registros seleccionados",
@@ -176,13 +176,13 @@ export default {
   chooserWhy_places_records: "contiene lugares, no registros",
   chooserWhy_places_entities: "contiene lugares, no entidades",
   // De quién es la lista, después del conteo en cada fila del menú.
-  // Concuerda con «lista», que es femenina.
+  // Concuerda con "lista", que es femenina.
   chooserYours: "tuya",
   chooserSharedBy: "compartida por {{name}}",
 
   // Búsqueda dentro de una lista de trabajo. La etiqueta nombra el
   // terreno donde se hace la pregunta, no un término buscado, así que
-  // se lee como un lugar («en Inventarios de misiones»). Cada línea de
+  // se lee como un lugar ("en Inventarios de misiones"). Cada línea de
   // conteo se escribe completa por tipo: el verbo y el sustantivo
   // concuerdan, y una plantilla dejaría mal la mitad de los casos.
   handlistPill: "en {{name}}",
@@ -224,8 +224,8 @@ export default {
   warnChangeTitle: "¿{{act}}?",
   warnChangeBody1:
     "Esto cambia la búsqueda y los resultados se consultan de nuevo.",
-  // El singular se escribe completo, con su género: «único registro»,
-  // «única entidad». La segunda frase no cambia — es general.
+  // El singular se escribe completo, con su género: "único registro",
+  // "única entidad". La segunda frase no cambia — es general.
   // El costo, una frase por tipo de registro, y la razón dicha una
   // sola vez debajo (la vista agrupada puede tener dos tipos marcados
   // a la vez). Para un solo tipo, el texto que se ve es exactamente el

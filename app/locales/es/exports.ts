@@ -1,30 +1,30 @@
 /**
  * Spanish translations — exports namespace
  *
- * Las cadenas de la superficie de exportación: los tres ejes que una
- * persona escoge (qué sale, bajo qué norma descriptiva y en qué
- * formato), el diálogo que acompaña una ejecución, y la bitácora que
- * anota todo lo que ha salido del espacio de trabajo.
+ * This module deals with the Spanish strings of the export surface: the
+ * three axes a person chooses (what goes out, under which descriptive
+ * standard and in which format), the dialog that accompanies a run, and
+ * the log that records everything that has left the workspace.
  *
  * DOS EJES, DOS PALABRAS. `norma` nombra la norma descriptiva y
- * `formato` el archivo. Juntarlas en «formato» borraría la distinción
+ * `formato` el archivo. Juntarlas en "formato" borraría la distinción
  * sobre la que está construida toda la superficie.
  *
  * ALCANCE, NO ÁMBITO. En este espacio `alcance` traduce *scope* — el
  * eje del Qué — por decisión explícita del contrato de cadenas. No hay
- * colisión con «alcance y contenido» porque ese elemento no aparece
+ * colisión con "alcance y contenido" porque ese elemento no aparece
  * aquí como etiqueta, solo como nombre de campo en el informe de
  * pérdidas.
  *
  * LAS LÍNEAS CON CIFRAS SE COMPONEN, NO SE ARMAN POR PEDAZOS. Cada
  * frase que lleva un número y una clase de cosa tiene su propia clave
  * por clase, porque el artículo y el participio concuerdan con el
- * sustantivo: «{{n}} entidades encontradas» y «{{n}} lugares
- * encontrados» no salen del mismo molde. Cada clave recibe `count`
+ * sustantivo: "{{n}} entidades encontradas" y "{{n}} lugares
+ * encontrados" no salen del mismo molde. Cada clave recibe `count`
  * (para que i18next escoja el plural) y `formatted` (el número ya
  * agrupado con la coma y el punto de es-CO).
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // ── La superficie ────────────────────────────────────────────────
@@ -89,7 +89,7 @@ export default {
   branchMatches_other: "{{count}} coincidencias en {{collections}}",
   branchHidden_one: "{{count}} serie sin coincidencias, oculta",
   branchHidden_other: "{{count}} series sin coincidencias, ocultas",
-  branchNoMatchHeading: "Ninguna colección o serie coincide con «{{term}}»",
+  branchNoMatchHeading: "Ninguna colección o serie coincide con “{{term}}”",
   branchNoMatchBody:
     "Revisa la ortografía, o limpia el filtro para recorrer toda la jerarquía.",
   branchNoMatchCount: "0 coincidencias.",
@@ -227,7 +227,7 @@ export default {
   fieldEditionStatement: "mención de edición",
   fieldExtent: "volumen y soporte",
   fieldFindingAids: "instrumentos de descripción",
-  fieldGenre: "género",
+  fieldGenre: "género documental",
   fieldHasDigital: "disponibilidad digital",
   fieldIiifManifestUrl: "manifiesto IIIF",
   fieldImprint: "pie de imprenta",

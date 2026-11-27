@@ -13,7 +13,7 @@
  * divisor y los mensajes de error se mantienen sin cambios. Español
  * colombiano: tuteo, sin voseo.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   email_label: "Correo electrónico",
@@ -23,6 +23,8 @@ export default {
   or_divider: "o",
   error: {
     expired_link: "Este enlace ha expirado. Solicita uno nuevo.",
+    sign_in_busy:
+      "No se pudo enviar el enlace de acceso. Intenta de nuevo en unos segundos.",
     invalid_link: "Este enlace no es válido. Solicita uno nuevo.",
     invalid_email: "Ingresa una dirección de correo válida.",
     oauth_failed: "Error al iniciar sesión con GitHub. Intenta de nuevo.",
@@ -35,13 +37,13 @@ export default {
   // Tokens del enlace mágico por correo (`login.*`), distintos de
   // `error.no_account`, que es el mensaje específico de GitHub OAuth.
   login: {
-    no_account: "No encontramos una cuenta con este correo.",
+    no_account: "No se encontró una cuenta con este correo.",
   },
-  page_title: "Iniciar sesión | Fisqua",
+  page_title: "Iniciar sesión",
   footer_note:
     "Inicia sesión con GitHub o con el correo de tu cuenta.",
   wrong_workspace: {
-    page_title: "Espacio incorrecto | Fisqua",
+    page_title: "Espacio de trabajo equivocado",
     eyebrow: "Espacio incorrecto",
     title: "Estás en el lugar equivocado",
     body: "Parece que iniciaste sesión desde un subdominio que no corresponde. Tu cuenta está en otro espacio de trabajo.",

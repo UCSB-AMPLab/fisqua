@@ -17,7 +17,7 @@
  * alrededor de los estándares (ISAD(G), DACS, RAD) y los nombres
  * institucionales (AMPL, Neogranadina) renderizan en seminegrita.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 export default {
   header: {
@@ -29,7 +29,7 @@ export default {
   hero: {
     eyebrow: "FISQUA · v{{version}}",
     tagline:
-      "Una plataforma colaborativa y de código abierto para la catalogación y gestión de archivos.",
+      "Una plataforma modular y de código abierto para la catalogación colaborativa de archivos, la gestión documental, la digitalización, el procesamiento de imágenes y la preservación digital.",
   },
   picker: {
     label: "Espacio de trabajo",
@@ -43,13 +43,13 @@ export default {
       shape:
         "Los nombres de espacios de trabajo solo usan letras minúsculas, números y guiones, y empiezan con una letra.",
       notFound:
-        'No tenemos un espacio de trabajo llamado "{{slug}}". Revisa la ortografía e inténtalo de nuevo.',
+        'No tenemos un espacio de trabajo llamado “{{slug}}”. Revisa la ortografía e inténtalo de nuevo.',
     },
   },
   context: {
     eyebrow: "Acerca de Fisqua",
     paragraph:
-      'Fisqua, del verbo muisca "recoger cosas desperdigadas", es una plataforma de código abierto para catalogación y gestión archivística. Funciona sobre infraestructura <em>serverless</em> ligera y abre la descripción al trabajo colaborativo de comunidades. Admite los estándares <strong>ISAD(G)</strong>, <strong>DACS</strong> y <strong>RAD</strong>, y exporta todos los datos en formatos abiertos. La desarrolla el <strong>Laboratorio de Archivos, Memoria y Preservación (AMPL)</strong> de la Universidad de California, Santa Bárbara, y <strong>Neogranadina</strong>.',
+      'Fisqua, del verbo muisca “recoger cosas desperdigadas”, es una plataforma de código abierto para catalogación y gestión archivística. Funciona sobre infraestructura <em>serverless</em> ligera y abre la descripción al trabajo colaborativo de comunidades. Admite los estándares <strong>ISAD(G)</strong>, <strong>DACS</strong> y <strong>RAD</strong>, y exporta todos los datos en formatos abiertos. La desarrolla el <strong>Laboratorio de Archivos, Memoria y Preservación (AMPL)</strong> de la Universidad de California, Santa Bárbara, y <strong>Neogranadina</strong>.',
   },
   footer: {
     version: "Fisqua v{{version}}",
@@ -60,8 +60,8 @@ export default {
   meta: {
     title: "Fisqua",
     description:
-      "Plataforma de código abierto para la catalogación y gestión de archivos, desarrollada en el Laboratorio de Archivos, Memoria y Preservación (AMPL) de la Universidad de California, Santa Bárbara, y en Neogranadina.",
+      "Fisqua reúne catalogación de archivos, gestión documental, digitalización y preservación digital en una plataforma colaborativa, modular y de código abierto.",
   },
 } as const;
 
-// @version v0.6.0
+// @version v0.9.0

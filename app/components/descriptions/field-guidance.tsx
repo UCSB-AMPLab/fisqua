@@ -1,11 +1,11 @@
 /**
  * Field guidance — the standard's own words, beside the field
  *
- * A cataloguer looking at "Extent" should be able to find out what the
- * standard means by it without leaving the form. This renders that: a
- * small info affordance next to a field label which, on hover or
- * focus, shows the descriptive standard's own statement of the
- * element's purpose, quoted, with the element number cited beneath it.
+ * This component lets a cataloguer looking at "Extent" find out what the
+ * standard means by it without leaving the form: a small info affordance
+ * next to a field label which, on hover or focus, shows the descriptive
+ * standard's own statement of the element's purpose, quoted, with the
+ * element number cited beneath it.
  *
  * ## Quoted, not paraphrased — and never re-attributed
  *
@@ -23,21 +23,19 @@
  * citation itself comes from `FieldConfig.guidance`, so the words and
  * the reference to them are sourced from the same declaration.
  *
- * ## Quotation marks follow the language, not the browser
+ * ## Quotation marks are added here
  *
- * English takes curly doubles, Spanish takes angle quotes. The `<q>`
- * element would delegate that to the browser's idea of the document
- * language, which yields curly doubles for Spanish in every engine we
- * care about — wrong for the house Spanish style. So the marks are
- * chosen here, from the active language, and are not baked into the
- * locale strings (which stay clean for reuse in exports and elsewhere).
+ * English and Spanish both take curly doubles: guillemets are kept for
+ * academic prose meant for publication, never for interface text. The
+ * marks are added here rather than baked into the locale strings,
+ * which stay clean for reuse in exports and elsewhere.
  *
  * Hover and keyboard focus both reveal it, via `group-hover` and
  * `group-focus-within`; the trigger is a real button so it is
  * reachable by tab, and `aria-describedby` ties it to the text for
  * screen readers.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { useId } from "react";
@@ -46,9 +44,9 @@ import { Info } from "lucide-react";
 import { getStandardConfig } from "~/lib/standards/registry";
 import type { Standard } from "~/lib/standards/types";
 
-/** Language-appropriate quotation marks (see the module header). */
-function quote(text: string, language: string): string {
-  return language.startsWith("es") ? `«${text}»` : `“${text}”`;
+/** Quotation marks for a verbatim quote (see the module header). */
+function quote(text: string): string {
+  return `“${text}”`;
 }
 
 export function FieldGuidance({
@@ -61,7 +59,7 @@ export function FieldGuidance({
   /** The element number from `FieldConfig.guidance`, e.g. "3.1.1". */
   element: string;
 }) {
-  const { t, i18n } = useTranslation("descriptions_admin");
+  const { t } = useTranslation("descriptions_admin");
   const id = useId();
 
   // Keyed `<column>.<standard>`, the house override convention the
@@ -116,7 +114,7 @@ export function FieldGuidance({
         role="tooltip"
         className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1 w-64 rounded-md bg-indigo px-3 py-2 text-xs font-normal leading-snug text-parchment opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
       >
-        {verbatim ? quote(text, i18n.language) : text}
+        {verbatim ? quote(text) : text}
         {example && (
           <span className="mt-1.5 block text-parchment/85">
             {t("guidance_example_label")}{" "}
@@ -131,4 +129,4 @@ export function FieldGuidance({
   );
 }
 
-/* @version v0.7.0 */
+/* @version v0.9.0 */
