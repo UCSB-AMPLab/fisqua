@@ -1,14 +1,15 @@
 /**
  * English translations — authorities namespace
  *
- * Shared chrome for the authorities module's full-page workbenches
- * (merge and split), the ledger-derived status band, and the entity/
- * place list bulk-merge toolbar. Kept in one namespace (rather than
- * duplicated across `entities` and `places`) because every string here
- * is record-type agnostic; the record-type-specific field labels come
- * from the caller's own namespace.
+ * This module deals with the English strings of the shared chrome for the
+ * authorities module's full-page workbenches (merge and split), the
+ * ledger-derived status band, and the entity/place list bulk-merge
+ * toolbar. They are kept in one namespace (rather than duplicated across
+ * `entities` and `places`) because every string here is record-type
+ * agnostic; the record-type-specific field labels come from the caller's
+ * own namespace.
  *
- * @version v0.4.3
+ * @version v0.9.0
  */
 export default {
   // Merge workbench — page head
@@ -61,10 +62,15 @@ export default {
   // Merge — bottom bar
   reasonLabel: "Reason",
   reasonRequired: "· required",
+  reasonOptional: "· optional",
   reasonPlaceholder: "Why is this being done? (recorded in the ledger)",
   mergeSummary: "{{moved}} links move · {{stay}} stay",
   mergeConfirm: "Merge into {{name}}",
   mergeConfirmGeneric: "Merge record",
+
+  // Merge — refused because a relation repoint would duplicate a link
+  mergeErrorRelationCollision:
+    "Nothing was merged. After the merge, {{entity}} would hold two links to {{description}} as {{role}} that point to the same side of a relation.",
 
   // Merge — conflict state
   conflictTitle: "This record changed since you opened it",
@@ -153,7 +159,8 @@ export default {
   dupHeading: "Possible duplicates",
   dupIntro:
     "Work through candidate duplicate pairs: merge true duplicates, or dismiss false matches with a reason recorded in the ledger.",
-  dupCountLine: "candidate pairs · sorted by match strength",
+  dupCountLine_one: "candidate pair",
+  dupCountLine_other: "candidate pairs · sorted by match strength",
   dupSignalName: "normalized name",
   dupSignalNearName: "near spelling",
   dupNearSpellingHint:
@@ -230,4 +237,86 @@ export default {
   wlOcrWideCaption: "Wider window (capped) — shipped with the card.",
   wlOcrFullCaption: "Full transcript ({{kb}} KB) — fetched on demand.",
   wlOcrLoading: "Loading transcript…",
+
+  // Evidence for a merge of two entity records: a fact and the
+  // descriptions that show it. A shared name is never evidence.
+  merge_evidence: {
+    // By record type, as the pair page asks its question.
+    facts_heading: {
+      person: "What shows they are the same person?",
+      family: "What shows they are the same family?",
+      corporate: "What shows they are the same corporate body?",
+      generic: "What shows they are the same record?",
+    },
+    facts_hint: "Tick at least one",
+    fact: {
+      dates: "Dates",
+      office: "Office",
+      kin: "Kin",
+      place: "Place",
+      matter: "Matter",
+    },
+    fact_help: {
+      dates: "Overlapping, consistent dates",
+      office: "Same office, occupation or function",
+      kin: "Same parents, spouse, children or members",
+      place: "Same residence or origin",
+      matter: "Same case, event or business",
+    },
+    name_alone: "A name alone is not enough",
+    descriptions_heading: "Which descriptions show it?",
+    descriptions_hint: "At least one for each record",
+    no_descriptions:
+      "This record has no descriptions in this workspace, so there is nothing to cite and the pair cannot be merged.",
+    loading: "Loading the descriptions…",
+    note_label: "Note (optional)",
+    error: {
+      evidence_facts: {
+        person: "Tick at least one fact that shows they are the same person. A name alone is not enough.",
+        family: "Tick at least one fact that shows they are the same family. A name alone is not enough.",
+        corporate: "Tick at least one fact that shows they are the same corporate body. A name alone is not enough.",
+        generic: "Tick at least one fact that shows they are the same record. A name alone is not enough.",
+      },
+      evidence_loser: "Choose at least one description of the record being merged away.",
+      evidence_survivor: "Choose at least one description of the surviving record.",
+      evidence_unlinked: "A description you chose is not linked to its record. Reload the page and choose again.",
+      evidence_stale: "A description you chose was unlinked from its record in the meantime. Reload the page and choose again.",
+    },
+  },
+
+  // Possible-duplicates card: what the scan found, shown as chips. They
+  // inform; they are not evidence.
+  duplicates: {
+    signals_label: "Found by the scan",
+    signal: {
+      name: "Same name",
+      nearName: "Near spelling",
+      dates: "Overlapping dates: {{a}} · {{b}}",
+      externalId: "Shared external id",
+    },
+    facts: {
+      label: "Facts that support this pair",
+      warningTitle: "Same document.",
+      warningBody: "Both records appear in the same document. They may be two people with the same name, such as a father and a son.",
+      offices_one: "Office",
+      offices_other: "Offices",
+      officesLead: "Both hold",
+      associates_one: "Associated record",
+      associates_other: "Associated records",
+      associatesLead: "Both appear with",
+      documents_one: "Document",
+      documents_other: "Documents",
+      documentsLead: "Both are named in",
+      untitled: "Untitled description",
+      dates: "Dates",
+      datesBoth: "{{a}} · {{b}}",
+      datesOverlap: "The spans overlap.",
+      places_one: "Place",
+      places_other: "Places",
+      placesLead: "Both are linked to",
+      more: "+{{count}} more",
+    },
+  },
 } as const;
+
+// @version v0.9.0

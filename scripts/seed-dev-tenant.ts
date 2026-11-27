@@ -37,27 +37,23 @@
  * staging or production. The wrangler invocation below explicitly
  * passes `--local`.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
-import { execSync } from "child_process";
+import { runD1 } from "./lib/d1-cli";
 
 const TEST_ARCHIVE_TENANT_ID = "33333333-3333-4333-8333-333333333333";
 const TEST_ARCHIVE_SLUG = "test-archive";
 const TEST_ARCHIVE_NAME = "Test Archive";
 
-function wrangler(args: string): string {
-  return execSync(`npx wrangler ${args}`, {
-    encoding: "utf-8",
-    maxBuffer: 50 * 1024 * 1024,
-  });
+function wrangler(args: string[]): string {
+  return runD1(args, { maxBuffer: 50 * 1024 * 1024 });
 }
 
 function main(): void {
   const now = Date.now();
   // Match tests/helpers/db.ts:seedTenants() column order verbatim.
-  // All values are static literals; there is no user-controlled input
-  // crossing the command boundary, so single-quote-escaping the SQL
-  // for shell safety is sufficient.
+  // All values are static literals, and the SQL reaches wrangler as one
+  // argument with no shell in between.
   const sql =
     `INSERT OR IGNORE INTO tenants ` +
     `(id, slug, name, kind, descriptive_standard, status, ` +
@@ -67,9 +63,7 @@ function main(): void {
     `'tenant', 'isadg', 'active', 1, 1, 1, 1, 1, NULL, ${now}, ${now});`;
 
   console.log(`Seeding ${TEST_ARCHIVE_SLUG} tenant into local D1...`);
-  const output = wrangler(
-    `d1 execute fisqua-db --local --command "${sql.replace(/"/g, '\\"')}"`,
-  );
+  const output = wrangler(["wrangler", "d1", "execute", "fisqua-db", "--local", "--command", sql]);
   console.log(output);
   console.log(
     `Done. Now run \`npm run dev\` and visit ` +

@@ -22,7 +22,7 @@
  *     steps fail, and a failure in it leaves their counts as they were.
  *     That step's own cases are in `publish-sweep.test.ts`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -58,6 +58,7 @@ import { runHoldsVolumesSql } from "../../app/lib/pipeline/run-state.server";
 import { startPipelineRun } from "../../app/lib/pipeline/dispatch.server";
 import { getPipelineSpecStore, type MediaObjectReader } from "../../app/lib/pipeline/store.server";
 import { TONAL_DEFAULT_PRESET } from "../../app/lib/pipeline/recipe";
+import { REVIEW_RUN_LIFETIME_CONSTANTS } from "../../app/lib/pipeline/run-config";
 import { NEOGRANADINA_FEDERATION_ID } from "../../app/lib/tenant";
 
 type Json = Record<string, any>;
@@ -199,6 +200,7 @@ describe("runPipelineSweep", () => {
             urlFloorSeconds: 1800,
             callbackTailSeconds: 600,
           },
+          reviewLifetime: REVIEW_RUN_LIFETIME_CONSTANTS,
           presets: { byOutputClass: { tonal: TONAL_DEFAULT_PRESET }, acceptedKeys: { preprocess: [], render: [] } },
         },
         now: () => Date.now(),
@@ -401,4 +403,4 @@ describe("runPipelineSweep", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

@@ -41,12 +41,28 @@
  * picks it and accepts, which is why its radios post through the
  * ruling form rather than a form of their own.
  *
- * @version v0.8.0
+ * The link-role selects offer the federation's approved roles for the
+ * chosen type, and the role labels are the federation's
+ * (`readRolePickers`). No role is assumed: the proposed role is
+ * preselected only when the list holds it, and otherwise a placeholder
+ * with no value stays selected until the reviewer chooses. An accept
+ * that would link with no role, or with one the list does not hold, is
+ * refused by `ruleAuthorityProposal` and shows the invalid-ruling
+ * message. The page reads the cited reference code as the core does
+ * (`evidenceReference`), so it offers the role and skip controls exactly
+ * when the accept would write the link. The submitted role decides: a
+ * select left on the placeholder, with the link not skipped, is refused,
+ * and the proposed role is never written in its place. The proposed role
+ * is read as the core reads it (`roleCode`: trimmed, matched exactly).
+ *
+ * @version v0.9.0
  */
 
 import { useState } from "react";
 import { Link, useNavigation, useSubmit } from "react-router";
 import { useTranslation } from "react-i18next";
+import { evidenceReference } from "~/lib/evidence-reference";
+import { entityRoleLabel, entityRoleOptions, placeRoleLabel, roleCode } from "~/lib/role-options";
 import { Check, ChevronLeft, ExternalLink } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import {
@@ -61,15 +77,10 @@ import type {
   ProposalType,
 } from "~/lib/pending-decisions.server";
 import type { Route } from "./+types/_auth.admin.decisions.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** Evidence rows the panel shows before deferring to search. */
 const EVIDENCE_ROWS = 10;
-
-/** Role labels are the description editor's — one vocabulary, one set of names. */
-const ROLE_NS = "descriptions_admin";
-
-/** The link role a proposal falls back to when nobody proposed one. */
-const DEFAULT_LINK_ROLE = "mentioned";
 
 /**
  * Where each reconciliation scheme's identifiers live. A candidate is
@@ -130,20 +141,28 @@ function isCommentResult(
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.proposal?.payload?.proposedName,
+    heading("decisions:tabProposals"),
+    heading("decisions:surfaceName"),
+  );
+}
+
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
+  const { canAdministerArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const {
     getAuthorityProposal,
     listDecisionComments,
     PROPOSAL_TYPES,
   } = await import("~/lib/pending-decisions.server");
-  const { ENTITY_ROLES, PLACE_ROLES, PLACE_TYPES } = await import(
-    "~/lib/validation/enums"
-  );
+  const { PLACE_TYPES } = await import("~/lib/validation/enums");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -163,7 +182,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
   const { descriptions } = await import("~/db/schema");
   const { and, eq, inArray } = await import("drizzle-orm");
   const refCodes = new Set<string>();
-  if (payload.evidenceRef) refCodes.add(payload.evidenceRef);
+  const evidenceCode = evidenceReference(payload.evidenceRef);
+  if (evidenceCode) refCodes.add(evidenceCode);
   for (const comment of comments) {
     if (comment.quoteRef) refCodes.add(comment.quoteRef);
   }
@@ -202,6 +222,10 @@ export async function loader({ context, params }: Route.LoaderArgs) {
     countHeadingMentions(db, scope, payload.heading),
   ]);
 
+  // The link-role selects and labels come from the federation's lists.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
+
   return {
     comments,
     viewer: { userId: user.id, isAdmin: canAdministerArea(user, "authorities") },
@@ -211,8 +235,7 @@ export async function loader({ context, params }: Route.LoaderArgs) {
       related: mentions.related,
       count: mentionCount,
     },
-    entityRoles: [...ENTITY_ROLES],
-    placeRoles: [...PLACE_ROLES],
+    roles,
     proposal: {
       id: row.id,
       status: row.status,
@@ -238,14 +261,14 @@ export async function action({
   context,
   params,
 }: Route.ActionArgs): Promise<DetailActionResult> {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { ruleAuthorityProposal, PROPOSAL_TYPES } = await import(
     "~/lib/pending-decisions.server"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -342,7 +365,9 @@ export async function action({
   // stay out of the untouched diff above. The confirmed candidate
   // travels as "scheme:id" and is checked against the payload's own
   // list server-side; the form is never trusted to name an authority.
-  const linkRole = ((formData.get("linkRole") as string) || "").trim();
+  // The submitted role decides, even when the select was left on the
+  // placeholder: the proposal's role is never written in its place.
+  const linkRole = roleCode(formData.get("linkRole") as string | null);
   const skipLink = formData.get("skipLink") !== null;
   const confirmedRaw = ((formData.get("confirmedExternal") as string) || "").trim();
   const schemeEnd = confirmedRaw.indexOf(":");
@@ -371,7 +396,7 @@ export async function action({
             amendedInternalNote:
               ((formData.get("internalNote") as string) || "").trim() ||
               undefined,
-            linkRole: linkRole || undefined,
+            linkRole,
             skipLink,
             confirmedExternal,
           }),
@@ -404,11 +429,8 @@ export async function action({
       resultPath,
       resultCode,
       linkedRef: result.linkedRef,
-      // The core resolves the role the same way; reporting it here
-      // keeps the success line saying what was actually written.
-      linkedRole: result.linkedRef
-        ? linkRole || filed?.proposedRole || DEFAULT_LINK_ROLE
-        : null,
+      // The role the core wrote, so the success line says what was written.
+      linkedRole: result.linkedRole,
     };
   } catch (err) {
     if (err instanceof Response && (err.status === 409 || err.status === 400)) {
@@ -446,9 +468,12 @@ export default function DecisionDetailPage({
     viewer,
     refIds,
     evidence,
-    entityRoles,
-    placeRoles,
+    roles,
   } = loaderData;
+  const entityRoles = entityRoleOptions(roles);
+  const placeRoles = roles.placeOptions;
+  const linkRoleLabel = (code: string) =>
+    type === "place" ? placeRoleLabel(roles.labels, code) : entityRoleLabel(roles.labels, code);
   const { payload } = proposal;
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -484,17 +509,17 @@ export default function DecisionDetailPage({
   // resolved against this tenant's descriptions. An unresolved code
   // offers nothing to link, so the row stays away rather than
   // promising a link the accept will not make.
-  const evidenceId = payload.evidenceRef
-    ? refIds[payload.evidenceRef]
-    : undefined;
+  // Read as the ruling core reads it (`evidenceReference`).
+  const evidenceCode = evidenceReference(payload.evidenceRef);
+  const evidenceId = evidenceCode ? refIds[evidenceCode] : undefined;
   const linkable = type !== "topic" && evidenceId !== undefined;
   const roleOptions = type === "place" ? placeRoles : entityRoles;
-  const proposedRole = payload.proposedRole ?? DEFAULT_LINK_ROLE;
-  // Switching the type switches the vocabulary; a role from the other
-  // enum cannot survive the swap, and "mentioned" is in both.
-  const defaultRole = (roleOptions as readonly string[]).includes(proposedRole)
-    ? proposedRole
-    : DEFAULT_LINK_ROLE;
+  // The proposed role is preselected only when the federation's list for
+  // the chosen type holds it approved; otherwise the placeholder stays
+  // selected and the reviewer chooses. Switching the type switches the
+  // list, so a role from the other list cannot survive the swap.
+  const proposedRole = roleCode(payload.proposedRole);
+  const defaultRole = roleOptions.some((o) => o.value === proposedRole) ? proposedRole : "";
 
   // The catalogue's own evidence. Phrase tier when it found anything,
   // the related terms only as its fallback — never both.
@@ -534,9 +559,7 @@ export default function DecisionDetailPage({
             <p className="mt-1 text-13 text-stone-600">
               {t("linkCreated", {
                 ref: rulingData.linkedRef,
-                role: t(
-                  `${ROLE_NS}:role_${rulingData.linkedRole ?? DEFAULT_LINK_ROLE}`,
-                ),
+                role: rulingData.linkedRole ? linkRoleLabel(rulingData.linkedRole) : "",
               })}
             </p>
           )}
@@ -682,9 +705,10 @@ export default function DecisionDetailPage({
                         defaultValue={defaultRole}
                         className={inputClass}
                       >
-                        {placeRoles.map((role) => (
-                          <option key={role} value={role}>
-                            {t(`${ROLE_NS}:role_${role}`)}
+                        <option value="">{t("entities:select_role")}</option>
+                        {placeRoles.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
                           </option>
                         ))}
                       </select>
@@ -695,9 +719,10 @@ export default function DecisionDetailPage({
                         defaultValue={defaultRole}
                         className={inputClass}
                       >
-                        {entityRoles.map((role) => (
-                          <option key={role} value={role}>
-                            {t(`${ROLE_NS}:role_${role}`)}
+                        <option value="">{t("entities:select_role")}</option>
+                        {entityRoles.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
                           </option>
                         ))}
                       </select>
@@ -949,3 +974,5 @@ export default function DecisionDetailPage({
     </div>
   );
 }
+
+// @version v0.9.0

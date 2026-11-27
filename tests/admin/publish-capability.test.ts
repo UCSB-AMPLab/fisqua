@@ -15,11 +15,9 @@
  * `publishPipelineEnabled` to `true` so we can confirm the gate
  * does not throw on a permissive tenant; we test the
  * non-superadmin branch (which returns `authorized: false`) to avoid
- * exercising the heavy CTE/D1 queries the superadmin branch fans out
- * to (those are covered by the `_auth.admin.publish.tsx` integration
- * suite when run end-to-end off-laptop).
+ * exercising the superadmin branch's D1 reads.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -129,10 +127,11 @@ describe("admin publish layout capability gate", () => {
 
     expect(res).toBeDefined();
     expect(res.authorized).toBe(false);
-    // Shape preserved: empty fondsList, null changelog, null
-    // activeExport, empty history.
+    // Shape preserved: empty fondsList, null activeExport, empty
+    // history. The changelog is not in the loader at all; the counts
+    // route serves it (tests/admin/publish-counts.test.ts).
     expect(res.fondsList).toEqual([]);
-    expect(res.changelog).toBeNull();
+    expect(res).not.toHaveProperty("changelog");
     expect(res.activeExport).toBeNull();
     expect(res.history).toEqual([]);
   });
@@ -211,4 +210,4 @@ describe("admin promote legacy redirect capability gate", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

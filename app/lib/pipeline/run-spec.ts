@@ -35,7 +35,11 @@
  * `checkVolumePages` checks one volume's page list: the count equals
  * `expected_count`, `seq` runs 1..n in list order, page keys are unique,
  * a volume run lists master files under its source prefix and an item
- * PDF lists PDF pages from a single source object, and every per-page
+ * PDF lists PDF pages from a single source object, no master key or
+ * item PDF source key holds a control character (U+0000-U+001F or
+ * U+007F: `master_key_control_character`, `source_key_control_character`;
+ * `hasControlCharacter`, the check a capture delivery holds page file
+ * names and calibration shot names to), and every per-page
  * override names a listed page. Each rule reports at most once per
  * volume, at its first offending element, so a caller can name the rule
  * in a refusal. The dispatcher runs it on each volume before it writes
@@ -46,7 +50,10 @@
  * `validateRunSpec` runs the Zod schema and then the invariants, and
  * throws a `RunSpecError` listing every offending path and rule. The
  * runner makes the same cross-field checks on read, so a spec that
- * passes here is one the runner accepts.
+ * passes here is one the runner accepts. The control-character rule is
+ * Fisqua's alone except for calibration keys: the runner applies its own
+ * check to those only, so for a master or source key Fisqua is the one
+ * that refuses.
  *
  * `buildRunSpec` writes a spec from rows already read from D1, and
  * makes no query of its own. It derives nothing that has a recorded
@@ -72,8 +79,14 @@
  * built, so the recipe the ledger stores and the recipe the spec
  * carries serialise to the same bytes.
  *
- * Three inputs are for runner v1.1.0 and later, and one for v1.2.0 and
- * later. A caller that passes none of them gets a spec with no
+ * Three inputs are for runner v1.1.0 and later, one for v1.2.0 and
+ * later, and one for v1.3.0 and later: a volume's `calibration`, the
+ * objects of its calibration shots (contract 1.12) by key and digest,
+ * which the runner pulls once and verifies as it does a page's master,
+ * stopping the volume with a fixity error on a mismatch, and makes
+ * nothing of; it is written only when it names one, under the volume's
+ * source prefix and each key once (`checkVolumePages`:
+ * `calibration_key_under_prefix`, `calibration_key_unique`). A caller that passes none of them gets a spec with no
  * `rotate_deg`, `quarter_turns`, `review` or `review_purge`, which
  * runner v1.0.0 accepts. A volume's `rotateDegs` maps page keys to the
  * `rotate_deg` its capture images carry; `specPages` writes it on a
@@ -115,11 +128,13 @@
  * description's repository and the tenant. Dispatch uses the one in
  * `manifest-inputs.ts`. A resolver that cannot build a block throws a
  * `ManifestInputsError`, whose code names why: no inputs to build from
- * (`manifest_inputs_unavailable`), a repository without rights
- * (`repository_rights_unset`), or a repository with an attribution in
- * one language only (`repository_attribution_incomplete`).
+ * (`manifest_inputs_unavailable`) or a repository without rights
+ * (`repository_rights_unset`). `repository_attribution_incomplete`
+ * remains a code of the type, but the resolver in `manifest-inputs.ts`
+ * does not raise it: it writes each language of the attribution that
+ * has a line.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { z } from "zod";
@@ -132,6 +147,7 @@ import type {
 } from "../../db/schema";
 import { pipelineKey } from "./store.server";
 import { runnerKeyStoreName, type PipelineEnvironment } from "./key-store";
+import { hasControlCharacter } from "../capture/manifest";
 import {
   PIPELINE_BACKGROUNDS,
   PIPELINE_OUTPUT_CLASSES,
@@ -266,6 +282,8 @@ export const REVIEW_PREFIX_PATTERN =
   /^(?!.*\.\.)[A-Za-z0-9_-][A-Za-z0-9._-]*\/[A-Za-z0-9_-][A-Za-z0-9._-]*\/$/;
 
 const reviewPrefix = z.string().regex(REVIEW_PREFIX_PATTERN);
+/** One object of a volume's calibration shots: its key and digest (contract 1.12). */
+const calibrationObject = z.object({ key: z.string().min(1), sha256: z.string().regex(SHA256_PATTERN) }).strict();
 const purgePrefixes = z.array(reviewPrefix).min(1);
 
 const volume = z
@@ -281,6 +299,7 @@ const volume = z
     recipe,
     manifest,
     review_purge: purgePrefixes.optional(),
+    calibration: z.array(calibrationObject).min(1).optional(),
   })
   .strict();
 
@@ -503,6 +522,35 @@ export interface VolumePagesInput {
   pages: RunSpecPage[];
   source: RunSpecSource;
   recipe?: { page_overrides: { page_key: string }[] };
+  /** The objects of the volume's calibration shots, which the runner pulls and verifies only. */
+  calibration?: { key: string; sha256: string }[];
+}
+
+/**
+ * A calibration key is exactly `<prefix>calibration/<name>`: the rest after
+ * the prefix splits at its first `/` into `calibration` and a name that is
+ * not empty, `.` or `..` and holds no `/`; no backslash or control
+ * character (U+0000-U+001F, U+007F) anywhere in the rest. The name holds no
+ * unpaired surrogate and is at most 200 bytes of UTF-8. This is the
+ * media-pipeline runner's rule (v1.3.0).
+ */
+function isCalibrationKey(key: string, prefix: string): boolean {
+  if (!key.startsWith(prefix)) return false;
+  const rest = key.slice(prefix.length);
+  if (rest.includes("\\") || hasControlCharacter(rest)) return false;
+  const slash = rest.indexOf("/");
+  if (slash < 0) return false;
+  const head = rest.slice(0, slash);
+  const name = rest.slice(slash + 1);
+  return (
+    head === "calibration" &&
+    name !== "" &&
+    !name.includes("/") &&
+    name !== "." &&
+    name !== ".." &&
+    !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(name) &&
+    new TextEncoder().encode(name).length <= 200
+  );
 }
 
 export function checkVolumePages(
@@ -533,6 +581,8 @@ export function checkVolumePages(
     pages.forEach((page, i) => {
       if (!("master_key" in page)) {
         report(`pages.${i}`, "master_key_required");
+      } else if (hasControlCharacter(page.master_key)) {
+        report(`pages.${i}.master_key`, "master_key_control_character");
       } else if (
         prefix !== null &&
         !(page.master_key.startsWith(prefix) && page.master_key.length > prefix.length)
@@ -542,10 +592,23 @@ export function checkVolumePages(
     });
   } else {
     if (!("key" in source)) report("source", "source_key_required");
+    else if (hasControlCharacter(source.key)) report("source.key", "source_key_control_character");
     pages.forEach((page, i) => {
       if (!("pdf_page" in page)) report(`pages.${i}`, "pdf_page_required");
     });
   }
+
+  // A calibration shot's key is exactly `<prefix>calibration/<name>`, the
+  // runner's rule, and each is named once.
+  const shotPrefix = "prefix" in source ? source.prefix : null;
+  const shotKeys = new Set<string>();
+  (volume.calibration ?? []).forEach((object, i) => {
+    if (shotPrefix === null || !isCalibrationKey(object.key, shotPrefix)) {
+      report(`calibration.${i}.key`, "calibration_key_under_prefix");
+    }
+    if (shotKeys.has(object.key)) report(`calibration.${i}.key`, "calibration_key_unique");
+    shotKeys.add(object.key);
+  });
 
   (volume.recipe?.page_overrides ?? []).forEach((override, i) => {
     if (!keys.has(override.page_key)) {
@@ -749,6 +812,8 @@ export interface BuildRunSpecVolume {
   rotateDegs?: Map<string, number>;
   /** The review prefixes to delete once the volume's tiles are verified (runner v1.1.0 and later). */
   reviewPurge?: string[];
+  /** The objects of the volume's calibration shots, key and digest (runner v1.3.0 and later). */
+  calibration?: { key: string; sha256: string }[];
 }
 
 export interface BuildRunSpecInput {
@@ -867,6 +932,7 @@ export function buildRunSpec(input: BuildRunSpecInput): RunSpec {
       ...(entry.reviewPurge !== undefined && entry.reviewPurge.length > 0
         ? { review_purge: entry.reviewPurge }
         : {}),
+      ...(entry.calibration !== undefined && entry.calibration.length > 0 ? { calibration: entry.calibration } : {}),
     };
     const problems = checkVolumePages(input.kind, built);
     if (problems.length > 0) {
@@ -918,4 +984,4 @@ export function buildRunSpec(input: BuildRunSpecInput): RunSpec {
   return spec;
 }
 
-// @version v0.8.0
+// @version v0.9.0

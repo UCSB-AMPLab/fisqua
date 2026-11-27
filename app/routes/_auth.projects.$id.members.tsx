@@ -8,7 +8,7 @@
  * member. Cross-references the cataloguing admin team page so the
  * project lead can work without an admin round-trip.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Form, useActionData, useFetcher } from "react-router";
@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { userContext, tenantContext } from "../context";
 import { PROJECT_ROLES, type ProjectRole } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id.members";
+import { pageMeta, heading, projectName } from "../lib/page-title";
 
 type MemberRow = {
   membershipId: string;
@@ -24,6 +25,14 @@ type MemberRow = {
   name: string | null;
   role: string;
 };
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:tab.users"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -406,4 +415,4 @@ function AddMemberForm({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -19,7 +19,10 @@
  * leaves: before the canonical put, the volume stays ready, nothing
  * reaches the canonical key and the claim is failed; a refused put
  * leaves the other writer's bytes; a final batch that fails after the
- * put leaves the row copying for the stalled-publication sweep. They
+ * put leaves the row copying for the stalled-publication sweep. The
+ * run's pages are written before the put, and with them the
+ * description's `updated_at`, so a failure after that point leaves the
+ * description's fields as they were and its version moved. They
  * pin the catalogue change and its journal entry; migrated page-1 OCR
  * text, which the run's pages replace after its text is kept in
  * Fisqua's bucket and recorded with its digest, a failed keep that
@@ -30,7 +33,7 @@
  * concurrent cases, the shared canonical key across tenants, and the
  * query budget for a 734-page volume.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -329,6 +332,24 @@ async function refusal(p: Promise<unknown>): Promise<PublishRefusal> {
 
 async function one<T = Record<string, any>>(q: string, ...binds: unknown[]): Promise<T> {
   return (await env.DB.prepare(q).bind(...binds).first()) as T;
+}
+
+/**
+ * A description row without its version. The run's pages replace the
+ * description's OCR text before the canonical put, and that write moves
+ * the description's `updated_at`, so a publish that fails after the
+ * pages are in leaves every field but the version as it was.
+ */
+function withoutVersion(row: Record<string, any>) {
+  const { updated_at: _, ...rest } = row;
+  return rest;
+}
+
+/** The description's fields are as before; its version moved with its pages. */
+async function expectOnlyVersionMoved(descriptionId: string, before: Record<string, any>) {
+  const after = await one("SELECT * FROM descriptions WHERE id = ?", descriptionId);
+  expect(withoutVersion(after)).toEqual(withoutVersion(before));
+  expect(after.updated_at).toBeGreaterThan(before.updated_at);
 }
 
 async function all<T = Record<string, any>>(q: string, ...binds: unknown[]): Promise<T[]> {
@@ -687,7 +708,7 @@ describe("publish: the sequence", () => {
     expect((await rows(seed.volumeId))[0].status).toBe("failed");
     expect((await one("SELECT state FROM pipeline_volumes WHERE id = ?", seed.volumeId)).state).toBe("ready");
     expect(await canonicalBytes(seed)).toBeNull();
-    expect(await one("SELECT * FROM descriptions WHERE id = ?", seed.descriptionId)).toEqual(descBefore);
+    await expectOnlyVersionMoved(seed.descriptionId, descBefore);
   });
 
   it("rolls forward when the canonical put wrote and then threw", async () => {
@@ -710,15 +731,18 @@ describe("publish: the sequence", () => {
     expect(row.status).toBe("failed");
     expect(JSON.parse(row.error).class).toBe("canonical_conflict");
     expect((await one("SELECT state FROM pipeline_volumes WHERE id = ?", seed.volumeId)).state).toBe("ready");
-    expect(await one("SELECT * FROM descriptions WHERE id = ?", seed.descriptionId)).toEqual(descBefore);
+    await expectOnlyVersionMoved(seed.descriptionId, descBefore);
   });
 
   it("leaves the row copying when the final batch fails after the put", async () => {
     const seed = await seedReadyVolume();
     let failed = false;
+    let fours = 0;
     const d1 = wrapD1(env.DB, {
       batch(n) {
-        if (!failed && n === 4) {
+        // The first batch of four is the OCR page batch; the second is
+        // the final batch.
+        if (!failed && n === 4 && ++fours === 2) {
           failed = true;
           throw new Error("D1 unavailable");
         }
@@ -730,16 +754,19 @@ describe("publish: the sequence", () => {
     expect(new TextDecoder().decode((await canonicalBytes(seed))!)).toBe(await heldText(seed));
     expect((await one("SELECT state FROM pipeline_volumes WHERE id = ?", seed.volumeId)).state).toBe("ready");
     expect((await rows(seed.volumeId))[0].status).toBe("copying");
-    expect(await one("SELECT * FROM descriptions WHERE id = ?", seed.descriptionId)).toEqual(descBefore);
+    await expectOnlyVersionMoved(seed.descriptionId, descBefore);
     expect(await journal(seed.descriptionId)).toEqual([]);
   });
 
   it("rolls the final batch back when the claim was lost", async () => {
     const seed = await seedReadyVolume();
     let failed = false;
+    let fours = 0;
     const d1 = wrapD1(env.DB, {
       batch(n) {
-        if (!failed && n === 4) {
+        // The first batch of four is the OCR page batch; the second is
+        // the final batch.
+        if (!failed && n === 4 && ++fours === 2) {
           failed = true;
           throw new Error("D1 unavailable");
         }
@@ -766,9 +793,12 @@ describe("publish: the sequence", () => {
   it("rolls the final batch back when the volume was flagged restricted", async () => {
     const seed = await seedReadyVolume();
     let failed = false;
+    let fours = 0;
     const d1 = wrapD1(env.DB, {
       batch(n) {
-        if (!failed && n === 4) {
+        // The first batch of four is the OCR page batch; the second is
+        // the final batch.
+        if (!failed && n === 4 && ++fours === 2) {
           failed = true;
           throw new Error("D1 unavailable");
         }
@@ -853,7 +883,7 @@ describe("publish: the sequence", () => {
     const d1 = wrapD1(env.DB, { batch: (n) => sizes.push(n) });
     await publish(seed, deps({ db: drizzle(d1, { schema }) }));
     expect(sizes[sizes.length - 1]).toBe(2);
-    expect(await one("SELECT * FROM descriptions WHERE id = ?", seed.descriptionId)).toEqual(descBefore);
+    await expectOnlyVersionMoved(seed.descriptionId, descBefore);
     expect(await journal(seed.descriptionId)).toEqual([]);
     expect((await one("SELECT state FROM pipeline_volumes WHERE id = ?", seed.volumeId)).state).toBe("published");
     expect((await rows(seed.volumeId))[0].status).toBe("published");
@@ -959,3 +989,5 @@ describe("publish: the sequence", () => {
     for (const s of statements) expect(params(s).length).toBeLessThanOrEqual(100);
   });
 });
+
+// @version v0.9.0

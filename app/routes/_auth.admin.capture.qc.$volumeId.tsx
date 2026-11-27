@@ -25,7 +25,7 @@
  * height of the window and the sidebar's narrow rail, as it does the
  * segmentation viewer.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 
 import type { ShouldRevalidateFunctionArgs } from "react-router";
@@ -33,6 +33,16 @@ import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { CaptureQcViewer } from "../components/capture/viewer/capture-qc-viewer";
 import type { Route } from "./+types/_auth.admin.capture.qc.$volumeId";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.volume?.referenceCode,
+    heading("capture:queue.title"),
+  );
+}
 
 export async function loader({ context, params }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
@@ -54,4 +64,4 @@ export default function CaptureQcViewerPage({ loaderData }: Route.ComponentProps
   return <CaptureQcViewer key={loaderData.delivery.manifestId} data={loaderData} />;
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

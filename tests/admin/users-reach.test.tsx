@@ -40,7 +40,7 @@
  * middleware for the actions that read `getInstance`, as
  * `tests/admin/users-role-scope.test.ts` does.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -211,7 +211,7 @@ function sidebarUser(overrides: Partial<SidebarUser> = {}): SidebarUser {
     isAuthoritiesAdmin: false,
     isImportsAdmin: false,
     hasAnyProjectMembership: false,
-    isCaptureManager: false,
+    isCaptureWorker: false,
     isCaptureReviewer: false,
     ...overrides,
   };
@@ -911,4 +911,4 @@ describe("/admin/cataloguing/users", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

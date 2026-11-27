@@ -2,11 +2,16 @@
  * Collapsible Section
  *
  * This component is the generic accordion wrapper for grouping dense
- * admin content into expandable panels. Keeps an internal open/closed
- * state unless an explicit controlled pair is passed, and emits a summary
- * line when collapsed so the caller never loses scanning context.
+ * admin content into expandable panels. It keeps its own open/closed
+ * state (open unless `defaultOpen` is false); the title button toggles
+ * it and stays visible when the section is closed.
  *
- * @version v0.4.2
+ * A closed section keeps its content mounted, in a region carrying the
+ * `hidden` attribute: the inputs of a closed section in an edit form
+ * are still submitted with it, and keep any value typed before the
+ * section was closed.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useId } from "react";
@@ -49,16 +54,15 @@ export function CollapsibleSection({
           <ChevronDown className="h-4 w-4 text-stone-500" />
         )}
       </button>
-      {isOpen && (
-        <div
-          id={contentId}
-          role="region"
-          aria-labelledby={headingId}
-          className="pb-4"
-        >
-          {children}
-        </div>
-      )}
+      <div
+        id={contentId}
+        role="region"
+        aria-labelledby={headingId}
+        hidden={!isOpen}
+        className="pb-4"
+      >
+        {children}
+      </div>
     </div>
   );
 }

@@ -28,6 +28,15 @@
  *     the master where there is one, with its digest, otherwise the
  *     capture; null and unknown `externalId`, a record still `captured`,
  *     keys outside `{slug}/{stem}/`, bad filenames and record roles, a
+ *     page's file name, capture key or preview key holding a control
+ *     character (refused as `filename`, ahead of its rotation, or as
+ *     `capture-key` or `preview-key`), each refusal quoting the name or key
+ *     with every control character written as `\uXXXX`, a calibration
+ *     shot's name, the stem, the transfer root, a key outside the prefix
+ *     and the inventory's missing and unlisted objects included, and a
+ *     manifest with a control character in any one field, a repeated
+ *     stem or external id among them, producing no message that holds
+ *     one, a
  *     volume past `received` or held by an open run are each reported
  *     and not registered;
  *   - the inventory: a missing master rejects the volume; objects the
@@ -44,24 +53,41 @@
  *     multi-volume file a UUIDv5 of the manifest's id and the stem, with
  *     its records, its openings and rejected records counted, every
  *     image with its `rotate_deg` (null where the manifest gives none)
- *     and the link's answer; a newer manifest
- *     supersedes it; a volume any run has named is left alone; an image
+ *     and the link's answer, and a 1.12 volume's calibration shots and
+ *     statement beside its images, a shot missing from the bucket setting
+ *     the volume aside as `calibration-object`; a newer manifest
+ *     supersedes it, noting `sequence-reordered` when its records keep
+ *     the registered delivery's ids in another relative order; a
+ *     replacement whose only record is an open placeholder registered and
+ *     verified against the pages and expected count the volume keeps, its
+ *     revision raised, and a lost page or an unapplied file still stopping
+ *     the command; a volume
+ *     any run has named is left alone; an image
  *     whose capture is missing has no size and a note; a volume with a
  *     statement past what D1 takes is set aside and the others are
  *     written; a 5,000-page volume stays within D1's statement size; a
  *     delivery already recorded is answered first (a replay, or
  *     `id_reused` for another body), before the volume's state or
  *     objects are checked;
- *   - the command: a dry run writes only the report; `--apply` writes
- *     one SQL file, applies it, re-reads the counts and writes the
- *     report; `--apply` needs B2 credentials, and against production
- *     `--confirm-production`; a transfer root other than `{slug}/`
- *     stops it.
+ *   - the verb, `fisqua capture register`, through which every run here
+ *     goes: a plan writes the report and the SQL file and nothing to the
+ *     database; an apply writes one SQL file, checks it on disk, applies
+ *     it as one unit, re-reads the counts, plans again and writes the
+ *     report; an apply needs B2 credentials, and against production
+ *     `--confirm-production`, checked before anything is read; each run
+ *     names its files on its own; a transfer root other than `{slug}/`
+ *     stops it;
+ *   - who acts: a digitization admin of the tenant or a staff member of
+ *     its federation is accepted; an unknown user, one without capture
+ *     rights, a disabled tenant and one without the digitization
+ *     capability are refused; the SQL file opens with a guard on the
+ *     tenant and one on the actor, each failing when what it guards
+ *     changes, and an apply after such a change writes nothing.
  *
  * Every value here is a test value: no real tenant, bucket, endpoint,
  * reference code or digest.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
@@ -74,17 +100,21 @@ import {
   parseCaptureManifest,
   planPages,
   planVolumes,
-  registerCaptureVolumes,
   registrationSql,
-  reportPath,
-  sqlPath,
   unlistedVolumes,
   type CaptureManifest,
   type ExistingVolume,
   type PlannedVolume,
-  type RegistrationProviders,
 } from "../../scripts/lib/capture-registration";
-import { parseArgs } from "../../scripts/commands/register-capture-volumes";
+import {
+  calibrationProblems,
+  checkCaptureManifest,
+  inventoryNotes,
+  transferRootProblem,
+} from "../../app/lib/capture/manifest";
+import { runCaptureRegister, type CaptureRegisterProviders, type CaptureRegisterReport } from "../../scripts/lib/capture-cli/register";
+import { ACTOR_MESSAGE, CAPTURE_TENANT_MESSAGE } from "../../scripts/lib/cli/access-guards";
+import { d1Read } from "./d1-limits";
 import {
   fileDeliveryId,
   FILE_DELIVERY_NAMESPACE,
@@ -98,6 +128,11 @@ const ROOT = `${SLUG}/`;
 const OTHER_TENANT = "22222222-bbbb-4bbb-8bbb-222222222222";
 const MANIFEST_ID = "3f0c9a52-7d1e-4b8a-9c3e-5a6b7c8d9e0f";
 const NOW = 1_800_000_000_000;
+const FEDERATION_ID = "fed-acme";
+const ACTOR_ID = "user-operator";
+const ACTOR_EMAIL = "operator@example.test";
+/** The name every run's report and SQL file share, without the extension. */
+const RUN_NAME = /^\.import\/capture-register_(staging|production)_\d{8}T\d{6}Z-[0-9a-f]{8}$/;
 
 const RECORD: DestinationValues = {
   pipeline_delivery_endpoint: FAKE_B2_S3,
@@ -185,8 +220,27 @@ function objectsOf(m: Json): { fileName: string; contentLength: number }[] {
         if (img.previewObjectKey) out.push({ fileName: `${ROOT}${img.previewObjectKey}`, contentLength: 1000 });
       }
     }
+    for (const shot of Array.isArray(v.calibration) ? v.calibration : []) {
+      out.push({ fileName: `${ROOT}${shot.objectKey}`, contentLength: 500 });
+      if (shot.previewObjectKey) out.push({ fileName: `${ROOT}${shot.previewObjectKey}`, contentLength: 500 });
+    }
   }
   return out;
+}
+
+/** A calibration shot of camera `c` (contract 1.12), applying from the capture `from`, JPEG only. */
+function calibrationShot(stem: string, c: number, from: string): Json {
+  const filename = `${stem}-cal_0001_c${c}.jpg`;
+  return {
+    captureId: `cal-${stem}-${c}`,
+    filename,
+    objectKey: `${stem}/calibration/${filename}`,
+    sha256: digest(`calibration ${filename}`),
+    camera: `c${c}`,
+    capturedAt: "2026-11-20T09:15:00Z",
+    settings: { shutter: "1/60", iso: 100 },
+    appliesFromCaptureId: from,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -200,8 +254,18 @@ const migration = (name: string) =>
 function database(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  db.exec("CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL)");
-  db.exec("CREATE TABLE users (id TEXT PRIMARY KEY NOT NULL)");
+  // The tenant, its federation and the acting user, with the columns the capture access check reads.
+  db.exec("CREATE TABLE federations (id TEXT PRIMARY KEY NOT NULL, slug TEXT, status TEXT)");
+  db.exec(
+    "CREATE TABLE tenants (id TEXT PRIMARY KEY NOT NULL, slug TEXT, kind TEXT NOT NULL DEFAULT 'tenant', federation_id TEXT, status TEXT, disabled_at INTEGER, " +
+      "digitization_enabled INTEGER DEFAULT 0)",
+  );
+  db.exec(
+    "CREATE TABLE users (id TEXT PRIMARY KEY NOT NULL, email TEXT, name TEXT, tenant_id TEXT, is_admin INTEGER DEFAULT 0, " +
+      "is_super_admin INTEGER DEFAULT 0, is_records_admin INTEGER DEFAULT 0, is_authorities_admin INTEGER DEFAULT 0, " +
+      "is_imports_admin INTEGER DEFAULT 0, is_digitization_admin INTEGER DEFAULT 0, is_platform_admin INTEGER NOT NULL DEFAULT 0)",
+  );
+  db.exec("CREATE TABLE federation_memberships (id TEXT PRIMARY KEY NOT NULL, user_id TEXT, federation_id TEXT, role TEXT)");
   db.exec(
     "CREATE TABLE descriptions (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id), " +
       "reference_code TEXT NOT NULL, UNIQUE (tenant_id, reference_code))",
@@ -219,10 +283,28 @@ function database(): DatabaseSync {
   db.exec(migration("0093_capture_link.sql"));
   db.exec(migration("0094_capture_qc.sql"));
   db.exec(migration("0095_capture_delivery_route.sql"));
+  db.exec(migration("0096_capture_qc_rotation_role.sql"));
   db.exec(migration("0100_capture_qc_retakes.sql"));
+  db.exec(migration("0106_capture_qc_side.sql"));
   db.exec(migration("0109_capture_image_rotate_deg.sql"));
   db.exec(migration("0110_capture_rejected_records.sql"));
-  for (const t of [FAKE_TENANT_ID, OTHER_TENANT]) db.prepare("INSERT INTO tenants (id) VALUES (?)").run(t);
+  db.exec(migration("0111_capture_qc_excluded.sql"));
+  db.exec(migration("0128_capture_calibration_shots.sql"));
+  db.prepare("INSERT INTO federations (id, slug, status) VALUES (?, 'acme', 'active')").run(FEDERATION_ID);
+  db.prepare("INSERT INTO tenants (id, slug, federation_id, status, digitization_enabled) VALUES (?, ?, ?, 'active', 1)").run(
+    FAKE_TENANT_ID,
+    SLUG,
+    FEDERATION_ID,
+  );
+  db.prepare("INSERT INTO tenants (id, slug, federation_id, status, digitization_enabled) VALUES (?, 'other', ?, 'active', 1)").run(
+    OTHER_TENANT,
+    FEDERATION_ID,
+  );
+  db.prepare("INSERT INTO users (id, email, name, tenant_id, is_digitization_admin) VALUES (?, ?, 'Test Operator', ?, 1)").run(
+    ACTOR_ID,
+    ACTOR_EMAIL,
+    FAKE_TENANT_ID,
+  );
   const desc = db.prepare("INSERT INTO descriptions (id, tenant_id, reference_code) VALUES (?, ?, ?)");
   desc.run("desc-001", FAKE_TENANT_ID, "co-test-001");
   desc.run("desc-002", FAKE_TENANT_ID, "co-test-002");
@@ -325,19 +407,34 @@ function world(m: Json, opts: { b2?: boolean; db?: DatabaseSync } = {}) {
   const db = opts.db ?? database();
   const files = new Map<string, string>();
   const applied: string[] = [];
-  const providers: RegistrationProviders = {
+  let n = 0;
+  const providers: CaptureRegisterProviders = {
     d1: w.providers.d1,
-    rows: async (sql) => db.prepare(sql).all() as Record<string, unknown>[],
+    rows: async (sql) => d1Read(db, sql),
     b2: opts.b2 === false ? null : w.providers.b2,
     writeFile: (path, text) => {
       files.set(path, text);
     },
+    createFile: (path, text) => {
+      if (files.has(path)) throw new Error(`EEXIST: ${path} already exists`);
+      files.set(path, text);
+    },
+    readFile: (path) => files.get(path) ?? "",
+    // As `wrangler d1 execute --file` applies it: every statement, or none.
     applyFile: (path) => {
       applied.push(path);
-      db.exec(files.get(path) as string);
+      db.exec("BEGIN");
+      try {
+        db.exec(files.get(path) as string);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
     },
     now: () => NOW,
-    newId: ids("new"),
+    // UUID-shaped, so the run's name takes eight hex characters from the first.
+    newId: () => `${(++n).toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
   };
   const lines: string[] = [];
   return { ...w, db, files, applied, providers, lines, log: (l: string) => lines.push(l) };
@@ -352,6 +449,36 @@ async function stopped(p: Promise<unknown>): Promise<string> {
   }
   throw new Error("expected the command to stop");
 }
+
+/** Runs `fisqua capture register` on `m` against the world, acting as the test operator on staging. */
+function register(
+  m: Json,
+  w: ReturnType<typeof world>,
+  opts: { apply?: boolean; bodySha256?: string; target?: "staging" | "production"; confirmProduction?: boolean; actorEmail?: string } = {},
+): Promise<CaptureRegisterReport> {
+  return runCaptureRegister(
+    { file: "manifest.json", raw: m, ...(opts.bodySha256 ? { bodySha256: opts.bodySha256 } : {}) },
+    {
+      target: opts.target ?? "staging",
+      tenant: SLUG,
+      actorEmail: opts.actorEmail ?? ACTOR_EMAIL,
+      apply: opts.apply ?? false,
+      confirmProduction: opts.confirmProduction ?? false,
+      allowCaptured: false,
+    },
+    w.providers,
+    w.log,
+  );
+}
+
+/** The paths the world holds with `extension`, in the order they were written. */
+const pathsOf = (w: ReturnType<typeof world>, extension: string) => [...w.files.keys()].filter((k) => k.endsWith(extension));
+/** The last SQL file written. */
+const sqlOf = (w: ReturnType<typeof world>) => w.files.get(pathsOf(w, ".sql").at(-1) as string) as string;
+/** The last report written, parsed. */
+const reportOf = (w: ReturnType<typeof world>) => JSON.parse(w.files.get(pathsOf(w, ".json").at(-1) as string) as string);
+/** Whether every path names one run's file. */
+const runFiles = (paths: string[], extension: string) => paths.every((p) => p.endsWith(extension) && RUN_NAME.test(p.slice(0, -extension.length)));
 
 function plan(m: Json, existing: ExistingVolume[] = []): PlannedVolume[] {
   const parsed = parseCaptureManifest(m);
@@ -517,7 +644,7 @@ describe("an image's rotateDeg", () => {
           role: "right",
         }),
       ]);
-      expect(rejected.detail?.[0]).toMatch(/^the image co-test-001-img_0003_c1\.cr3 has rotateDeg .+, not 0, 90, 180 or 270$/);
+      expect(rejected.detail?.[0]).toMatch(/^the image "co-test-001-img_0003_c1\.cr3" has rotateDeg .+, not 0, 90, 180 or 270$/);
       expect(other.action).toBe("register");
     },
   );
@@ -634,6 +761,208 @@ describe("planning a volume's pages", () => {
     expect(planned.detail?.[0]).toContain("not one single or a left and right");
   });
 
+  it("refuses a page file name holding a control character as filename, and passes a Captua name", () => {
+    const stem = "co-test-001";
+    const named = (filename: string) => {
+      const v = firstVolume();
+      const base = filename.replace(/\.[^.]+$/, "");
+      Object.assign(v.records[1].images[0], {
+        filename,
+        objectKey: `${stem}/captures/${filename}`,
+        previewObjectKey: `${stem}/previews/${base}_preview.jpg`,
+      });
+      return planPages(parseCaptureManifest(manifest([v])).volumes[0], SLUG, ROOT).issues;
+    };
+    // Every control character is written as \uXXXX, so no message carries one.
+    for (const [bad, shown] of [
+      [`${stem}-img_0001_c0a\nb.cr3`, `"${stem}-img_0001_c0a\\u000ab.cr3"`],
+      [`${stem}-img_0001_c0\t.cr3`, `"${stem}-img_0001_c0\\u0009.cr3"`],
+      [`${stem}-img_0001_c0.cr3\u007f`, `"${stem}-img_0001_c0.cr3\\u007f"`],
+      [`${stem}-img_0001_c0\u0000"\\.cr3`, `"${stem}-img_0001_c0\\u0000\\"\\\\.cr3"`],
+    ]) {
+      const issues = named(bad);
+      expect(issues, JSON.stringify(bad)).toEqual([
+        expect.objectContaining({
+          rule: "filename",
+          message: `the image's file name ${shown} holds a control character`,
+          filename: bad,
+          captureId: `cap-${stem}-img_0001_c0`,
+        }),
+      ]);
+      expect(issues[0].message).not.toMatch(/[\u0000-\u001f\u007f]/);
+    }
+    expect(named(`${stem}-img_0001_c0.cr3`)).toEqual([]);
+  });
+
+  it("refuses a page's file name holding a control character first, before its rotation, and quotes it escaped there too", () => {
+    const v = firstVolume();
+    const bad = "co-test-001-img_0001_c0.cr3\u007f";
+    Object.assign(v.records[1].images[0], { filename: bad, objectKey: `co-test-001/captures/${bad}`, rotateDeg: 45 });
+    const issues = planPages(parseCaptureManifest(manifest([v])).volumes[0], SLUG, ROOT).issues;
+    expect(issues.map((i) => i.rule)).toEqual(["filename", "rotate-deg"]);
+    expect(issues[1].message).toBe('the image "co-test-001-img_0001_c0.cr3\\u007f" has rotateDeg "45", not 0, 90, 180 or 270');
+    for (const i of issues) expect(i.message).not.toMatch(/[\u0000-\u001f\u007f]/);
+  });
+
+  it("writes no raw control character in the stem, transfer-root, object-key, missing-object and unlisted-object refusals", () => {
+    const raw = /[\u0000-\u001f\u007f]/;
+    // A stem holding U+007F, and every file name and key built on it.
+    const stem = "co-test-001\u007f";
+    const v = vol("co-test-001", stem, [rec(1, 1, "approved", [image(stem, 1, 0, "single")])]);
+    const stemIssues = planPages(parseCaptureManifest(manifest([v])).volumes[0], SLUG, ROOT).issues;
+    expect(stemIssues).toContainEqual(expect.objectContaining({ rule: "stem", message: 'stem "co-test-001\\u007f" is outside the page-key pattern' }));
+    for (const i of stemIssues) expect(i.message, i.rule).not.toMatch(raw);
+
+    // A transfer root holding a newline: the root refusal, and the keys it puts outside the prefix.
+    const m = manifest([firstVolume()], { transfer: { channel: "upload", root: "sbmal\n/" } });
+    const parsed = parseCaptureManifest(m);
+    expect(transferRootProblem(parsed, SLUG)?.message).toBe(`The manifest's transfer root "sbmal\\u000a/" is not the tenant's prefix "sbmal/"`);
+    const outside = planPages(parsed.volumes[0], SLUG, "sbmal\n/").issues;
+    expect(outside.map((i) => i.rule)).toContain("object-key");
+    expect(outside.find((i) => i.rule === "object-key")?.message).toBe(
+      '"sbmal\\u000a/co-test-001/captures/co-test-001-img_0001_c0.cr3" and "sbmal\\u000a/co-test-001/previews/co-test-001-img_0001_c0_preview.jpg" lie outside "sbmal/co-test-001/"',
+    );
+    for (const i of outside) expect(i.message, i.rule).not.toMatch(raw);
+
+    // A master missing from the bucket, and a stray and a missing non-master object, each holding a tab.
+    const [planned] = plan(manifest([firstVolume()]));
+    planned.pages = planned.pages!.map((pg, i) => (i === 0 ? { ...pg, masterKey: "sbmal/co-test-001/previews/a\tb_preview.jpg" } : pg));
+    const listed = listingsOf(manifest([firstVolume()]));
+    const [missing] = applyInventory([planned], listed);
+    expect(missing.issues).toEqual([
+      expect.objectContaining({ rule: "missing-object", message: '"sbmal/co-test-001/previews/a\\u0009b_preview.jpg" is not in the masters bucket' }),
+    ]);
+    expect(missing.detail).toEqual(['"sbmal/co-test-001/previews/a\\u0009b_preview.jpg" is not in the masters bucket']);
+    const notes = inventoryNotes({
+      ...planned,
+      inventory: { masterBytes: 0, missingMasters: [], missingOthers: ["sbmal/co-test-001/captures/c\td.cr3"], unlisted: [{ key: "sbmal/co-test-001/captures/e\tf.cr3", size: 1 }] },
+    });
+    expect(notes.map((n) => n.message)).toEqual([
+      '"sbmal/co-test-001/captures/e\\u0009f.cr3" is in the masters bucket and not in the manifest',
+      '"sbmal/co-test-001/captures/c\\u0009d.cr3" is in the manifest and not in the masters bucket',
+    ]);
+  });
+
+  it("writes no raw control character in any message, whichever field of the delivery holds one", () => {
+    const raw = /[\u0000-\u001f\u007f]/;
+    const CTL = "\u007f\n\t\u0000";
+    /** A 1.12 manifest of one volume, with a calibration shot and a record carrying a request id. */
+    const base = (): Json => {
+      const v = firstVolume();
+      v.records[1].requestId = "req-1";
+      v.calibration = [calibrationShot("co-test-001", 0, "cap-co-test-001-img_0001_c0")];
+      v.calibrationStatus = "present";
+      return manifest([v], { version: "1.12" });
+    };
+    /** Every message a delivery of `m` can produce here: the shape check, the plan, the inventory and its notes. */
+    const everyMessage = (m: Json): string[] => {
+      const out: string[] = [];
+      const checked = checkCaptureManifest(m);
+      if (!checked.ok) return checked.problems.map((p) => p.message);
+      const parsed = checked.manifest;
+      const root = transferRootProblem(parsed, SLUG);
+      if (root) out.push(root.message);
+      const descriptions = new Map(
+        parsed.volumes.filter((v) => v.externalId !== null).map((v, i) => [v.externalId as string, { id: `desc-${i}`, referenceCode: v.externalId as string }]),
+      );
+      const planned = planVolumes({ manifest: parsed, slug: SLUG, descriptions, existing: [], newId: ids("vol") });
+      const listing = listingsOf(base());
+      listing.get(`${ROOT}co-test-001/`)?.set(`${ROOT}co-test-001/captures/stray${CTL}.cr3`, 1);
+      for (const v of [...planned, ...applyInventory(planned, listing)]) {
+        out.push(...(v.detail ?? []), ...(v.issues ?? []).map((i) => i.message), ...inventoryNotes(v).map((n) => n.message));
+      }
+      for (const v of parsed.volumes) {
+        out.push(...calibrationProblems(v).map((p) => p.message), ...planPages(v, SLUG, parsed.transfer.root).issues.map((i) => i.message));
+      }
+      return out;
+    };
+    const at = (m: Json, path: string): [Json, string] => {
+      const parts = path.split(".");
+      let o: Json = m;
+      for (const k of parts.slice(0, -1)) o = o[k];
+      return [o, parts[parts.length - 1]];
+    };
+    const fields = [
+      "contract", "version", "kind", "id", "generatedAt", "generatedBy.system", "generatedBy.instance",
+      "generatedBy.systemVersion", "project.name", "transfer.channel", "transfer.root",
+      "project.captuaProjectId", "volumes.0.captuaCollectionId", "volumes.0.records.1.captuaRecordId",
+      "volumes.0.records.1.sequence",
+      "volumes.0.externalId", "volumes.0.stem", "volumes.0.title", "volumes.0.calibrationStatus",
+      "volumes.0.records.1.status", "volumes.0.records.1.requestId", "volumes.0.records.2.rejectionNote",
+      "volumes.0.records.1.images.0.captureId", "volumes.0.records.1.images.0.filename",
+      "volumes.0.records.1.images.0.role", "volumes.0.records.1.images.0.objectKey",
+      "volumes.0.records.1.images.0.sha256", "volumes.0.records.1.images.0.previewObjectKey",
+      "volumes.0.records.1.images.0.previewSha256", "volumes.0.records.0.images.0.pairId",
+      "volumes.0.calibration.0.captureId", "volumes.0.calibration.0.filename", "volumes.0.calibration.0.objectKey",
+      "volumes.0.calibration.0.sha256", "volumes.0.calibration.0.camera", "volumes.0.calibration.0.capturedAt",
+      "volumes.0.calibration.0.appliesFromCaptureId", "volumes.0.calibration.0.settings.shutter",
+    ];
+    const cases: Array<[string, Json]> = fields.map((path) => {
+      const m = base();
+      const [o, k] = at(m, path);
+      o[k] = `${o[k]}${CTL}`;
+      return [path, m];
+    });
+    // Values set whole: a rotation that is a string or an object keyed by one, on an image and a shot.
+    for (const path of ["volumes.0.records.1.images.0.rotateDeg", "volumes.0.calibration.0.rotateDeg"]) {
+      for (const value of [CTL, { [CTL]: 1 }]) {
+        const m = base();
+        const [o, k] = at(m, path);
+        o[k] = value;
+        cases.push([`${path} = ${JSON.stringify(value)}`, m]);
+      }
+    }
+    // The stem throughout, every file name and key built on it.
+    const stemmed = firstVolume(`co-test-001${CTL}`);
+    stemmed.externalId = "co-test-001";
+    cases.push(["the stem throughout", manifest([stemmed])]);
+    // Two volumes sharing a stem, and two sharing an external id.
+    const twin = (field: "stem" | "externalId") => {
+      const a = firstVolume();
+      const b = firstVolume("co-test-002");
+      a[field] = b[field] = `co-test-00${CTL}`;
+      return manifest([a, b]);
+    };
+    cases.push(["a repeated stem", twin("stem")], ["a repeated external id", twin("externalId")]);
+
+    for (const [label, m] of cases) {
+      const messages = everyMessage(m);
+      for (const message of messages) expect(message, `${label}: ${JSON.stringify(message)}`).not.toMatch(raw);
+    }
+    // Each repetition is reported, its value escaped.
+    expect(everyMessage(twin("stem"))).toContain('volumes.1.stem: stem "co-test-00\\u007f\\u000a\\u0009\\u0000" appears twice');
+    expect(everyMessage(twin("externalId"))).toContain('volumes.1.externalId: externalId "co-test-00\\u007f\\u000a\\u0009\\u0000" appears twice');
+  });
+
+  it("quotes a calibration shot's file name with its control characters escaped", () => {
+    const v = { ...firstVolume(), calibration: [{ ...calibrationShot("co-test-001", 0, "cap-co-test-001-img_0001_c0"), filename: "a\u007f\nb.jpg", objectKey: "co-test-001/calibration/a\u007f\nb.jpg" }] };
+    const [problem] = calibrationProblems(parseCaptureManifest(manifest([v], { version: "1.12" })).volumes[0]);
+    expect(problem).toMatchObject({
+      rule: "calibration-key",
+      message: 'the calibration shot\'s file name "a\\u007f\\u000ab.jpg" is not a single path segment of at most 200 bytes without control characters',
+    });
+  });
+
+  it("refuses a page's capture or preview key holding a control character, quoting the key", () => {
+    const v = firstVolume();
+    v.records[1].images[0].objectKey = "co-test-001/captures/co-test-001-img_0001_c0.cr3\n";
+    const w = firstVolume();
+    w.records[1].images[0].previewObjectKey = "co-test-001/previews/co-test-001-img_0001_c0\t_preview.jpg";
+    const issuesOf = (m: Json) => planPages(parseCaptureManifest(manifest([m])).volumes[0], SLUG, ROOT).issues;
+    expect(issuesOf(v)).toEqual([
+      expect.objectContaining({
+        rule: "capture-key",
+        message: 'the capture "co-test-001-img_0001_c0.cr3" is at "co-test-001/captures/co-test-001-img_0001_c0.cr3\\u000a", which holds a control character',
+      }),
+    ]);
+    expect(issuesOf(w)).toEqual([
+      expect.objectContaining({
+        rule: "preview-key",
+        message: 'the preview of "co-test-001-img_0001_c0.cr3" is "co-test-001/previews/co-test-001-img_0001_c0\\u0009_preview.jpg", which holds a control character',
+      }),
+    ]);
+  });
+
   it("rejects a volume with no record under review or approved", () => {
     const v = vol("co-test-001", "co-test-001", [rec(1, 1, "rejected", [image("co-test-001", 1, 0, "single")])]);
     expect(plan(manifest([v]))[0]).toMatchObject({ action: "skip", reason: "rejected" });
@@ -735,7 +1064,7 @@ describe("the inventory", () => {
       unlisted: [{ key: "sbmal/co-test-001/captures/stray.cr3", size: 42 }],
     });
     expect(b).toMatchObject({ action: "skip", reason: "missing_objects" });
-    expect(b.detail).toEqual(["sbmal/co-test-002/previews/co-test-002-img_0002_c1_preview.jpg is not in the masters bucket"]);
+    expect(b.detail).toEqual(['"sbmal/co-test-002/previews/co-test-002-img_0002_c1_preview.jpg" is not in the masters bucket']);
     expect(b.inventory?.missingOthers).toEqual(["sbmal/co-test-002/captures/co-test-002-img_0003_c0.cr3"]);
   });
 });
@@ -818,34 +1147,37 @@ describe("the registration SQL", () => {
   });
 });
 
-describe("registerCaptureVolumes", () => {
-  it("dry run: reads, lists and plans, writes only the report, and writes nothing to the database", async () => {
+describe("fisqua capture register", () => {
+  it("a plan reads, lists and plans, writes the report and the SQL file, and writes nothing to the database", async () => {
     const m = manifest([firstVolume(), vol(null, "on-device-1", [])]);
     const w = world(m);
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: false }, w.providers, w.log);
+    const report = await register(m, w, { apply: false });
     expect(report.applied).toBe(false);
     expect(report.inventory).toBe("checked");
     expect(report.volumes.map((v) => [v.stem, v.action, v.reason])).toEqual([
       ["co-test-001", "register", undefined],
       ["on-device-1", "skip", "unmatched"],
     ]);
-    expect([...w.files.keys()]).toEqual([reportPath(MANIFEST_ID)]);
+    // A plan creates the SQL file for review beside the report, and applies nothing.
+    expect(pathsOf(w, ".sql")).toHaveLength(1);
+    expect(runFiles([...w.files.keys()].filter((k) => k.endsWith(".sql")), ".sql")).toBe(true);
+    expect(pathsOf(w, ".json")).toHaveLength(1);
     expect(w.applied).toEqual([]);
     expect(w.db.prepare("SELECT COUNT(*) AS n FROM pipeline_volumes").get()).toEqual(expect.objectContaining({ n: 0 }));
     expect(w.world.calls).toContain("b2.listFiles:sbmal/co-test-001/");
     expect(w.lines.join("\n")).toContain("[register] co-test-001 (co-test-001): 4 pages under sbmal/co-test-001/, 4000 bytes of masters");
   });
 
-  it("dry run without B2 credentials prints the inventory as unchecked; --apply refuses", async () => {
+  it("a plan without B2 credentials prints the inventory as unchecked; an apply refuses", async () => {
     const m = manifest([firstVolume()]);
     const w = world(m, { b2: false });
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: false }, w.providers, w.log);
+    const report = await register(m, w, { apply: false });
     expect(report.inventory).toBe("unchecked");
     expect(w.lines.join("\n")).toContain("[unchecked] masters bucket");
     const message = await stopped(
-      registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log),
+      register(m, w, { apply: true }),
     );
-    expect(message).toContain("--apply needs the operator's B2 credentials");
+    expect(message).toContain("An apply needs the operator's B2 credentials");
     expect(w.applied).toEqual([]);
   });
 
@@ -865,7 +1197,7 @@ describe("registerCaptureVolumes", () => {
       files.push({ fileName: name, contentLength: 10 });
     }
     w.world.b2.files.set(MASTERS_BUCKET_ID, files);
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log);
+    const report = await register(m, w, { apply: true });
     expect(report.unlistedVolumes).toEqual(["sbmal/co-extra-009/"]);
     expect(w.world.calls).toContain("b2.listFolders:sbmal/");
     const log = w.lines.join("\n");
@@ -877,18 +1209,18 @@ describe("registerCaptureVolumes", () => {
       ["co-test-001", "register"],
       ["on-device-1", "skip"],
     ]);
-    const written = w.files.get(sqlPath(MANIFEST_ID)) as string;
+    const written = sqlOf(w);
     expect(written).not.toContain("co-extra-009");
-    expect(JSON.parse(w.files.get(reportPath(MANIFEST_ID)) as string).unlistedVolumes).toEqual(["sbmal/co-extra-009/"]);
+    expect(reportOf(w).unlistedVolumes).toEqual(["sbmal/co-extra-009/"]);
   });
 
   it("without B2 credentials does not look for volumes outside the manifest", async () => {
     const m = manifest([firstVolume()]);
     const w = world(m, { b2: false });
     w.world.b2.files.get(MASTERS_BUCKET_ID)?.push({ fileName: "sbmal/co-extra-009/x.cr3", contentLength: 10 });
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: false }, w.providers, w.log);
+    const report = await register(m, w, { apply: false });
     expect(report.unlistedVolumes).toBeUndefined();
-    expect("unlistedVolumes" in JSON.parse(w.files.get(reportPath(MANIFEST_ID)) as string)).toBe(false);
+    expect("unlistedVolumes" in reportOf(w)).toBe(false);
     expect(w.world.calls.some((c) => c.startsWith("b2.listFolders"))).toBe(false);
     expect(w.lines.join("\n")).not.toContain("[unlisted]");
   });
@@ -897,15 +1229,16 @@ describe("registerCaptureVolumes", () => {
     const m = manifest([firstVolume()], { transfer: { channel: "upload", root: "other/" } });
     const w = world(m);
     expect(
-      await stopped(registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log)),
-    ).toContain("transfer root other/ is not the tenant's prefix sbmal/");
+      await stopped(register(m, w, { apply: true })),
+    ).toContain(`transfer root "other/" is not the tenant's prefix "sbmal/"`);
   });
 
-  it("--apply writes one SQL file, applies it, re-reads the counts and writes the report", async () => {
+  it("an apply writes one SQL file, applies it, re-reads the counts, plans again and writes the report", async () => {
     const m = manifest([firstVolume()]);
     const w = world(m);
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log);
-    expect(w.applied).toEqual([sqlPath(MANIFEST_ID)]);
+    const report = await register(m, w, { apply: true });
+    expect(w.applied).toHaveLength(1);
+    expect(runFiles(w.applied, ".sql")).toBe(true);
     expect(report.applied).toBe(true);
     const volumeId = report.volumes[0].volumeId as string;
     expect(report.verification).toEqual([
@@ -934,7 +1267,7 @@ describe("registerCaptureVolumes", () => {
     ]);
     expect(pages[3].sha256).toBe(digest("capture co-test-001-img_0005_c0"));
     expect(pages.every((p) => p.tenant_id === FAKE_TENANT_ID)).toBe(true);
-    const written = JSON.parse(w.files.get(reportPath(MANIFEST_ID)) as string);
+    const written = reportOf(w);
     expect(written).toMatchObject({ manifestId: MANIFEST_ID, applied: true, tenant: SLUG });
     expect(w.lines.join("\n")).toContain(
       `[ok] co-test-001: 4 pages, 4 digests, expected 4, state received, delivery ${MANIFEST_ID}`,
@@ -951,12 +1284,12 @@ describe("registerCaptureVolumes", () => {
     const m = manifest([retaken, { ...firstVolume("co-test-002"), externalId: "co-test-002" }]);
     const w = world(m, { db });
 
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log);
+    const report = await register(m, w, { apply: true });
     expect(report.volumes.map((v) => [v.stem, v.action, v.reason])).toEqual([
       ["co-test-001", "replace", undefined],
       ["co-test-002", "skip", "not_received"],
     ]);
-    const sql = w.files.get(sqlPath(MANIFEST_ID)) as string;
+    const sql = sqlOf(w);
     expect(sql.indexOf('update "pipeline_volumes"')).toBeGreaterThanOrEqual(0);
     expect(sql.indexOf('update "pipeline_volumes"')).toBeLessThan(sql.indexOf("DELETE FROM pipeline_volume_pages"));
     expect(sql.indexOf("DELETE FROM pipeline_volume_pages")).toBeLessThan(sql.indexOf("INSERT INTO pipeline_volume_pages"));
@@ -983,7 +1316,7 @@ describe("registerCaptureVolumes", () => {
     seedVolume(db, "pv-closed", { description: "desc-002", code: "co-test-002", held: "closed" });
     const m = manifest([firstVolume(), { ...firstVolume("co-test-002"), externalId: "co-test-002" }]);
     const w = world(m, { db });
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log);
+    const report = await register(m, w, { apply: true });
     expect(report.volumes.map((v) => [v.stem, v.action, v.reason])).toEqual([
       ["co-test-001", "skip", "held_by_run"],
       ["co-test-002", "replace", undefined],
@@ -995,16 +1328,16 @@ describe("registerCaptureVolumes", () => {
   it("writes nothing when no volume passes", async () => {
     const m = manifest([vol(null, "on-device-1", [])]);
     const w = world(m);
-    const report = await registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true }, w.providers, w.log);
+    const report = await register(m, w, { apply: true });
     expect(report.applied).toBe(false);
     expect(w.applied).toEqual([]);
-    expect([...w.files.keys()]).toEqual([reportPath(MANIFEST_ID)]);
+    expect(pathsOf(w, ".sql")).toEqual([]);
+    expect(pathsOf(w, ".json")).toHaveLength(1);
   });
 });
 
 describe("the capture delivery", () => {
-  const apply = (m: Json, w: ReturnType<typeof world>, opts: { bodySha256?: string } = {}) =>
-    registerCaptureVolumes(parseCaptureManifest(m), { slug: SLUG, target: "staging", apply: true, ...opts }, w.providers, w.log);
+  const apply = (m: Json, w: ReturnType<typeof world>, opts: { bodySha256?: string } = {}) => register(m, w, { apply: true, ...opts });
 
   it("records a file delivery under the manifest's id, with its records, images and answer", async () => {
     const m = manifest([firstVolume()]);
@@ -1070,6 +1403,42 @@ describe("the capture delivery", () => {
     ]);
   });
 
+  it("records a 1.12 volume's calibration shots and statement beside its images, never as images", async () => {
+    const v = firstVolume();
+    v.calibration = [calibrationShot("co-test-001", 0, "cap-co-test-001-img_0001_c0"), calibrationShot("co-test-001", 1, "cap-co-test-001-img_0001_c0")];
+    v.calibrationStatus = "present";
+    const m = manifest([v], { version: "1.12" });
+    const w = world(m);
+    await apply(m, w, { bodySha256: FILE_DIGEST });
+    expect(
+      w.db.prepare("SELECT seq, capture_id, camera, capture_bytes, settings FROM capture_calibration_shots WHERE delivery_id = ? ORDER BY seq").all(MANIFEST_ID),
+    ).toEqual([
+      { seq: 1, capture_id: "cal-co-test-001-0", camera: "c0", capture_bytes: 500, settings: '{"shutter":"1/60","iso":100}' },
+      { seq: 2, capture_id: "cal-co-test-001-1", camera: "c1", capture_bytes: 500, settings: '{"shutter":"1/60","iso":100}' },
+    ]);
+    expect(w.db.prepare("SELECT COUNT(*) AS n FROM capture_images WHERE delivery_id = ?").get(MANIFEST_ID)).toEqual({ n: 6 });
+    expect(deliveriesOf(w.db)[0]).toMatchObject({ openings: 3, calibration_status: "present", problems: "[]" });
+  });
+
+  it("sets aside a 1.12 volume whose calibration shot is not in the bucket, as calibration-object", async () => {
+    const v = firstVolume();
+    v.calibration = [calibrationShot("co-test-001", 0, "cap-co-test-001-img_0001_c0")];
+    const m = manifest([v], { version: "1.12" });
+    const w = world(m);
+    const missing = "sbmal/co-test-001/calibration/co-test-001-cal_0001_c0.jpg";
+    w.world.b2.files.set(
+      MASTERS_BUCKET_ID,
+      (w.world.b2.files.get(MASTERS_BUCKET_ID) ?? []).filter((f) => f.fileName !== missing),
+    );
+    const [planned] = applyInventory(plan(m), listingsOf({ ...m, volumes: [{ ...v, calibration: [] }] }));
+    expect(planned).toMatchObject({ action: "skip", reason: "missing_calibration" });
+    expect(planned.issues).toEqual([
+      expect.objectContaining({ rule: "calibration-object", objectKey: "co-test-001/calibration/co-test-001-cal_0001_c0.jpg", kind: "capture" }),
+    ]);
+    await apply(m, w);
+    expect(deliveriesOf(w.db)).toEqual([]);
+  });
+
   it("takes the body digest of the parsed manifest when the command gives none", async () => {
     const m = manifest([firstVolume()]);
     const w = world(m);
@@ -1105,7 +1474,8 @@ describe("the capture delivery", () => {
     const report = await apply(m, w, { bodySha256: FILE_DIGEST });
     expect(report.volumes.map((v) => [v.action, v.reason])).toEqual([["skip", "already_registered"]]);
     expect(report.applied).toBe(false);
-    expect(w.applied).toEqual([sqlPath(MANIFEST_ID)]);
+    expect(w.applied).toHaveLength(1);
+    expect(runFiles(w.applied, ".sql")).toBe(true);
     expect(deliveriesOf(w.db).map((d) => [d.id, d.state])).toEqual([[MANIFEST_ID, "registered"]]);
     expect(w.lines.join("\n")).toContain(`already_registered\n      delivery ${MANIFEST_ID} already holds this manifest`);
   });
@@ -1174,6 +1544,92 @@ describe("the capture delivery", () => {
     expect(report.verification?.[0]).toMatchObject({ deliveryId: "4a1d0b63-8e2f-4c9b-8d4f-6b7c8d9e0f1a", ok: true });
   });
 
+  describe("a replacement whose only record is an open placeholder (contract 1.9)", () => {
+    const REOPENED_ID = "6c3f2d85-0a4b-4ebd-8f6b-8d9e0f1a2b3c";
+    /** The first volume's spread, record 12, handed back missing its left page; the rest gone. */
+    const reopened = () =>
+      manifest(
+        [
+          vol("co-test-001", "co-test-001", [
+            {
+              ...rec(12, 1, "missing", [image("co-test-001", 2, 1, "right")]),
+              missingSide: "left",
+            },
+          ]),
+        ],
+        { id: REOPENED_ID, version: "1.9" },
+      );
+    const counts = (w: ReturnType<typeof world>, volumeId: string) =>
+      w.db
+        .prepare(
+          "SELECT expected_count, pages_revision, (SELECT COUNT(*) FROM pipeline_volume_pages p WHERE p.pipeline_volume_id = v.id) AS pages FROM pipeline_volumes v WHERE id = ?",
+        )
+        .get(volumeId) as Record<string, number>;
+
+    it("registers, verifies against the pages the volume keeps, and does not stop", async () => {
+      const m = manifest([firstVolume()]);
+      const w = world(m);
+      const first = await apply(m, w);
+      const volumeId = first.volumes[0].volumeId as string;
+      const before = counts(w, volumeId);
+      expect(before.pages).toBe(4);
+
+      const report = await apply(reopened(), w);
+      expect(report.volumes[0]).toMatchObject({ action: "replace", volumeId, pageCount: 0 });
+      expect(report.verification).toEqual([
+        { volumeId, state: "received", expectedCount: 4, pages: 4, digests: 4, deliveryId: REOPENED_ID, ok: true },
+      ]);
+      expect(counts(w, volumeId)).toEqual({ ...before, pages_revision: before.pages_revision + 1 });
+      expect(deliveriesOf(w.db).map((d) => [d.id, d.state, d.openings, d.rejected_records])).toEqual([
+        [MANIFEST_ID, "superseded", 3, 1],
+        [REOPENED_ID, "registered", 0, 1],
+      ]);
+      expect(w.lines.join("\n")).toContain("[ok] co-test-001: 4 pages, 4 digests, expected 4");
+    });
+
+    it("still stops on a real mismatch: a kept page lost, or the write not landed", async () => {
+      const m = manifest([firstVolume()]);
+      for (const spoil of ["page", "unapplied"] as const) {
+        const w = world(m);
+        await apply(m, w);
+        const applyFile = w.providers.applyFile;
+        w.providers.applyFile = (path, statements) => {
+          if (spoil === "unapplied") return;
+          applyFile(path, statements);
+          w.db.exec("DELETE FROM pipeline_volume_pages WHERE id = (SELECT MIN(id) FROM pipeline_volume_pages)");
+        };
+        expect(await stopped(apply(reopened(), w))).toBe("The re-read does not match what was written; see the report");
+      }
+    });
+  });
+
+  it("notes sequence-reordered on a newer manifest whose records the registered delivery holds in another order", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    await apply(m, w);
+    // The same records unmoved: nothing noted.
+    const same = manifest([firstVolume()], { id: "4a1d0b63-8e2f-4c9b-8d4f-6b7c8d9e0f1a" });
+    await apply(same, w);
+    expect(JSON.parse(deliveriesOf(w.db)[1].problems)).toEqual([]);
+    // Records 11 and 12 swap places.
+    const moved = firstVolume();
+    moved.records[0].sequence = 1; // record 12
+    moved.records[1].sequence = 2; // record 11
+    const reordered = manifest([moved], { id: "5b2e1c74-9f3a-4dac-9e5a-7c8d9e0f1a2b" });
+    const report = await apply(reordered, w);
+    expect(report.volumes[0].action).toBe("replace");
+    const latest = deliveriesOf(w.db)[2];
+    expect([latest.id, latest.state]).toEqual(["5b2e1c74-9f3a-4dac-9e5a-7c8d9e0f1a2b", "registered"]);
+    expect(JSON.parse(latest.problems)).toEqual([
+      {
+        rule: "sequence-reordered",
+        message: "The volume's records appear in a different order from the delivery Fisqua had registered",
+        stem: "co-test-001",
+        referenceCode: "co-test-001",
+      },
+    ]);
+  });
+
   it("leaves alone a volume any run has named, as the link does, and records nothing", async () => {
     const db = database();
     seedVolume(db, "pv-ran");
@@ -1225,7 +1681,8 @@ describe("the capture delivery", () => {
       ["co-test-002", "register", undefined],
     ]);
     expect(report.volumes[0].detail?.[0]).toContain(`past the ${MAX_FILE_STATEMENT_BYTES} a file statement may take`);
-    expect(w.applied).toEqual([sqlPath(MANIFEST_ID)]);
+    expect(w.applied).toHaveLength(1);
+    expect(runFiles(w.applied, ".sql")).toBe(true);
     expect(report.verification).toEqual([expect.objectContaining({ ok: true })]);
     expect(deliveriesOf(w.db).map((d) => d.reference_code)).toEqual(["co-test-002"]);
     expect(w.db.prepare("SELECT COUNT(*) AS n FROM pipeline_volumes WHERE reference_code = 'co-test-001'").get()).toEqual(
@@ -1242,13 +1699,14 @@ describe("the capture delivery", () => {
     const w = world(m);
     const report = await apply(m, w);
     expect(report.verification?.[0]).toMatchObject({ pages: 5000, digests: 5000, deliveryId: MANIFEST_ID, ok: true });
-    const statements = (w.files.get(sqlPath(MANIFEST_ID)) as string).split(";\n");
+    const statements = (sqlOf(w)).split(";\n");
     for (const statement of statements) {
       expect(Buffer.byteLength(statement)).toBeLessThanOrEqual(MAX_FILE_STATEMENT_BYTES);
     }
-    // The closing guard names the batch's pages by prefix, not one by one.
+    // The closing guard names the batch's pages by prefix, not one by one:
+    // the statement holds the records and a fixed text, about 20 KB here.
     const delivery = statements.find((x) => x.startsWith("INSERT INTO capture_deliveries")) as string;
-    expect(Buffer.byteLength(delivery)).toBeLessThan(20_000);
+    expect(Buffer.byteLength(delivery)).toBeLessThan(21_000);
     expect(w.db.prepare("SELECT COUNT(*) AS n FROM capture_images WHERE delivery_id = ?").get(MANIFEST_ID)).toEqual(
       expect.objectContaining({ n: 5000 }),
     );
@@ -1270,29 +1728,157 @@ describe("the capture delivery", () => {
     expect(again.volumes.map((v) => [v.action, v.reason])).toEqual([["skip", "already_registered"]]);
     const changed = await apply(m, w, { bodySha256: digest("a changed manifest file") });
     expect(changed.volumes.map((v) => [v.action, v.reason])).toEqual([["skip", "id_reused"]]);
-    expect(w.applied).toEqual([sqlPath(MANIFEST_ID)]);
+    expect(w.applied).toHaveLength(1);
+    expect(runFiles(w.applied, ".sql")).toBe(true);
     expect(w.world.calls.filter((c) => c === "b2.listFiles:sbmal/co-test-001/")).toHaveLength(1);
   });
 });
 
-describe("the command's arguments", () => {
-  const base = ["--manifest", "m.json", "--tenant", SLUG];
+describe("who acts, and the guards that open the SQL file", () => {
+  /** The opening guards of a plan's SQL file that fail once `change` has run (node:sqlite reports a guard's abort as malformed JSON). */
+  async function failingGuards(change: (db: DatabaseSync) => void): Promise<string[]> {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    await register(m, w);
+    const statements = sqlOf(w).split("\n");
+    const opening = statements.slice(0, statements.findIndex((x) => !x.startsWith("SELECT CASE")));
+    expect(opening).toHaveLength(2);
+    change(w.db);
+    return opening
+      .filter((x) => {
+        try {
+          w.db.prepare(x).all();
+          return false;
+        } catch {
+          return true;
+        }
+      })
+      .map((x) => /'ABORT: ((?:[^']|'')*)'/.exec(x)![1].replace(/''/g, "'"));
+  }
 
-  it("takes a dry run by default and each target", () => {
-    for (const target of ["local", "staging", "production"]) {
-      expect(parseArgs([...base, "--target", target])).toMatchObject({ target, apply: false });
+  it("refuses an apply to production without --confirm-production before anything is read", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    let reads = 0;
+    const rows = w.providers.rows;
+    w.providers.rows = (sql) => {
+      reads++;
+      return rows(sql);
+    };
+    expect(await stopped(register(m, w, { apply: true, target: "production" }))).toBe("Applying to production also needs --confirm-production");
+    expect(reads).toBe(0);
+    expect(w.world.calls).toEqual([]);
+    expect(w.files.size).toBe(0);
+  });
+
+  it("acts as a digitization admin of the tenant, and records the actor in the report", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    const report = await register(m, w, { apply: true });
+    expect(report.actor).toEqual({ id: ACTOR_ID, email: ACTOR_EMAIL, actedAs: "member" });
+    expect(report.problems).toEqual([]);
+    expect(reportOf(w)).toMatchObject({ actor: { id: ACTOR_ID, email: ACTOR_EMAIL }, applied: true, problems: [] });
+    expect(w.lines.join("\n")).toContain("Planned again: nothing is left to write.");
+  });
+
+  it("refuses an unknown actor, one without capture rights, a disabled tenant and one without the digitization capability", async () => {
+    const m = manifest([firstVolume()]);
+    const cases: Array<[string, (db: DatabaseSync) => void, string]> = [
+      ["unknown", () => {}, "No user has the email nobody@example.test"],
+      ["no rights", (db) => db.exec(`UPDATE users SET is_digitization_admin = 0 WHERE id = '${ACTOR_ID}'`),
+        `${ACTOR_EMAIL} is a user of sbmal without digitization admin rights or a steward membership in its federation`],
+      ["disabled", (db) => db.exec(`UPDATE tenants SET disabled_at = 1 WHERE id = '${FAKE_TENANT_ID}'`), "The tenant sbmal is disabled"],
+      ["no digitization", (db) => db.exec(`UPDATE tenants SET digitization_enabled = 0 WHERE id = '${FAKE_TENANT_ID}'`),
+        "The tenant sbmal does not have the digitization capability"],
+    ];
+    for (const [label, change, message] of cases) {
+      const w = world(m);
+      change(w.db);
+      const got = await stopped(register(m, w, { apply: true, actorEmail: label === "unknown" ? "nobody@example.test" : ACTOR_EMAIL }));
+      expect(got).toBe(message);
+      expect(w.applied).toEqual([]);
+      expect(w.files.size).toBe(0);
     }
   });
 
-  it("refuses --apply against production without --confirm-production, and a missing or unknown value", () => {
-    expect(() => parseArgs([...base, "--target", "production", "--apply"])).toThrow(/--confirm-production/);
-    expect(parseArgs([...base, "--target", "production", "--apply", "--confirm-production"]).apply).toBe(true);
-    expect(() => parseArgs(["--tenant", SLUG, "--target", "staging"])).toThrow(/--manifest is required/);
-    expect(() => parseArgs([...base, "--target", "remote"])).toThrow(/--target is required/);
-    expect(parseArgs([...base, "--target", "staging", "--allow-captured"]).allowCaptured).toBe(true);
-    expect(() => parseArgs([...base, "--target", "production", "--allow-captured"])).toThrow(/refused against production/);
-    expect(() => parseArgs([...base, "--target", "staging", "--force"])).toThrow(/Unknown argument/);
+  it("accepts a staff member of the tenant's federation from another tenant", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    w.db.exec(`INSERT INTO users (id, email, tenant_id) VALUES ('user-staff', 'staff@example.test', '${OTHER_TENANT}')`);
+    w.db.exec(`INSERT INTO federation_memberships (id, user_id, federation_id, role) VALUES ('m-1', 'user-staff', '${FEDERATION_ID}', 'staff')`);
+    const report = await register(m, w, { apply: true, actorEmail: "staff@example.test" });
+    expect(report.verification).toEqual([expect.objectContaining({ ok: true })]);
+  });
+
+  it("opens the SQL file with a guard on the tenant and one on the actor, each failing when what it guards changes", async () => {
+    expect(await failingGuards(() => {})).toEqual([]);
+    expect(await failingGuards((db) => db.exec(`UPDATE tenants SET digitization_enabled = 0 WHERE id = '${FAKE_TENANT_ID}'`))).toEqual([
+      CAPTURE_TENANT_MESSAGE,
+    ]);
+    expect(await failingGuards((db) => db.exec(`UPDATE tenants SET disabled_at = 1 WHERE id = '${FAKE_TENANT_ID}'`))).toEqual([
+      CAPTURE_TENANT_MESSAGE,
+    ]);
+    expect(await failingGuards((db) => db.exec(`UPDATE federations SET status = 'suspended' WHERE id = '${FEDERATION_ID}'`))).toEqual([
+      CAPTURE_TENANT_MESSAGE,
+    ]);
+    expect(await failingGuards((db) => db.exec(`UPDATE users SET is_digitization_admin = 0 WHERE id = '${ACTOR_ID}'`))).toEqual([
+      ACTOR_MESSAGE,
+    ]);
+    expect(await failingGuards((db) => db.exec(`UPDATE users SET tenant_id = '${OTHER_TENANT}' WHERE id = '${ACTOR_ID}'`))).toEqual([
+      ACTOR_MESSAGE,
+    ]);
+    expect(
+      await failingGuards((db) =>
+        db.exec(`INSERT INTO federation_memberships (id, user_id, federation_id, role) VALUES ('m-2', '${ACTOR_ID}', '${FEDERATION_ID}', 'staff')`),
+      ),
+    ).toEqual([ACTOR_MESSAGE]);
+  });
+
+  it("writes nothing when the actor's rights change between the plan and the apply", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    const applyFile = w.providers.applyFile;
+    w.providers.applyFile = (path, statements) => {
+      w.db.exec(`UPDATE users SET is_digitization_admin = 0 WHERE id = '${ACTOR_ID}'`);
+      return applyFile(path, statements);
+    };
+    await expect(register(m, w, { apply: true })).rejects.toThrow();
+    expect(w.applied).toHaveLength(1);
+    expect(w.db.prepare("SELECT COUNT(*) AS n FROM pipeline_volumes").get()).toEqual(expect.objectContaining({ n: 0 }));
+    expect(deliveriesOf(w.db)).toEqual([]);
+  });
+
+  it("writes nothing when the tenant's capability changes between the plan and the apply", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    const applyFile = w.providers.applyFile;
+    w.providers.applyFile = (path, statements) => {
+      w.db.exec(`UPDATE tenants SET digitization_enabled = 0 WHERE id = '${FAKE_TENANT_ID}'`);
+      return applyFile(path, statements);
+    };
+    await expect(register(m, w, { apply: true })).rejects.toThrow();
+    expect(w.db.prepare("SELECT COUNT(*) AS n FROM pipeline_volumes").get()).toEqual(expect.objectContaining({ n: 0 }));
+    expect(deliveriesOf(w.db)).toEqual([]);
+  });
+
+  it("applies nothing when the SQL file on disk is not the one planned", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    const readFile = w.providers.readFile;
+    w.providers.readFile = (path) => readFile(path) + "DELETE FROM pipeline_volumes;\n";
+    expect(await stopped(register(m, w, { apply: true }))).toMatch(/does not hold the SQL this run planned; nothing was applied$/);
+    expect(w.applied).toEqual([]);
+  });
+
+  it("gives each run's report and SQL file a name of its own", async () => {
+    const m = manifest([firstVolume()]);
+    const w = world(m);
+    await register(m, w);
+    await register(m, w);
+    expect(pathsOf(w, ".sql")).toHaveLength(2);
+    expect(pathsOf(w, ".json")).toHaveLength(2);
+    expect(runFiles(pathsOf(w, ".sql"), ".sql") && runFiles(pathsOf(w, ".json"), ".json")).toBe(true);
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

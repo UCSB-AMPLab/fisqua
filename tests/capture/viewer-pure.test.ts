@@ -54,7 +54,7 @@
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, vi } from "vitest";
 import {
@@ -124,6 +124,7 @@ function opening(id: number, sequence: number, single = false): ViewerOpening {
 
 const APPROVED = { decision: "approved" as const, reason: null, side: null, note: null, decidedBy: null, decidedAt: null };
 const REJECTED = { decision: "rejected" as const, reason: "blur" as const, side: null, note: "Smeared", decidedBy: null, decidedAt: null };
+const EXCLUDED = { decision: "excluded" as const, reason: null, side: null, note: null, decidedBy: null, decidedAt: null };
 
 describe("search parameters", () => {
   it("falls back to Spreads and All", () => {
@@ -133,6 +134,7 @@ describe("search parameters", () => {
     expect(parseView("nonsense")).toBe("spreads");
     expect(parseShow(null)).toBe("all");
     expect(parseShow("rejected")).toBe("rejected");
+    expect(parseShow("excluded")).toBe("excluded");
     expect(parseShow("approved")).toBe("all");
   });
 
@@ -153,6 +155,8 @@ describe("keyboard shortcuts", () => {
     expect(shortcutFor({ key: "a", target: body })).toBe("approve");
     expect(shortcutFor({ key: "A", shiftKey: true, target: body })).toBe("approve");
     expect(shortcutFor({ key: "r", target: body })).toBe("reject");
+    expect(shortcutFor({ key: "x", target: body })).toBe("exclude");
+    expect(shortcutFor({ key: "X", shiftKey: true, target: body })).toBe("exclude");
     expect(shortcutFor({ key: "[", target: body })).toBe("rotate_left");
     expect(shortcutFor({ key: "]", target: body })).toBe("rotate_right");
     expect(shortcutFor({ key: "j", target: body })).toBe("next");
@@ -162,7 +166,7 @@ describe("keyboard shortcuts", () => {
     expect(shortcutFor({ key: "z", ctrlKey: true, target: body })).toBe("undo");
     expect(shortcutFor({ key: "z", metaKey: true, target: body })).toBe("undo");
     expect(shortcutFor({ key: "Z", metaKey: true, shiftKey: true, target: body })).toBe("redo");
-    expect(shortcutFor({ key: "x", target: body })).toBeNull();
+    expect(shortcutFor({ key: "q", target: body })).toBeNull();
     expect(shortcutFor({ key: "Enter", target: body })).toBeNull();
   });
 
@@ -244,6 +248,22 @@ describe("decisions, rotations and undo", () => {
       note: "Smeared",
       rotations: [],
     });
+  });
+
+  it("sends an exclusion with no reason, side or rotation, and its note when it has one", () => {
+    const o = opening(1, 1);
+    expect(entryFor(o, { decision: EXCLUDED, turns: { "right:cap-1": 1 } })).toEqual({
+      captuaRecordId: 1,
+      decision: "excluded",
+      rotations: [],
+    });
+    expect(entryFor(o, { decision: { ...EXCLUDED, note: "Test shot" }, turns: {} })).toEqual({
+      captuaRecordId: 1,
+      decision: "excluded",
+      note: "Test shot",
+      rotations: [],
+    });
+    expect(stateFromEntry({ captuaRecordId: 1, decision: "excluded", rotations: [] })).toEqual({ decision: EXCLUDED, turns: {} });
   });
 
   it("holds a pair's rejection recorded without a side as both, and sends it so when rotated", () => {
@@ -413,15 +433,17 @@ describe("decisions, rotations and undo", () => {
   });
 
   it("takes a filter's openings when it is chosen", () => {
-    const list = [opening(1, 1), opening(2, 2), opening(3, 3)];
+    const list = [opening(1, 1), opening(2, 2), opening(3, 3), opening(4, 4)];
     const states = new Map<number, OpeningState>([
       [1, { decision: APPROVED, turns: {} }],
       [2, { decision: REJECTED, turns: {} }],
       [3, { decision: null, turns: {} }],
+      [4, { decision: EXCLUDED, turns: {} }],
     ]);
     expect([...filterIds(list, states, "undecided")]).toEqual([3]);
     expect([...filterIds(list, states, "rejected")]).toEqual([2]);
-    expect([...filterIds(list, states, "all")]).toEqual([1, 2, 3]);
+    expect([...filterIds(list, states, "excluded")]).toEqual([4]);
+    expect([...filterIds(list, states, "all")]).toEqual([1, 2, 3, 4]);
   });
 });
 
@@ -677,4 +699,4 @@ describe("layout and windowing", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

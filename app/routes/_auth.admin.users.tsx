@@ -20,6 +20,12 @@
  * profiles belong to their own workspace, and the detail page reads
  * only this tenant's users.
  *
+ * Platform admins (`users.is_platform_admin`), who are at home in every
+ * live workspace, are left out of both tables and the counts and shown
+ * in a section of their own under the "Platform admins" heading, with name
+ * and email and no link: their rows are not the workspace's to edit,
+ * demote or remove, and the detail page 404s on them.
+ *
  * Search and filter travel in the URL (`?q=` and `?area=`), so a
  * filtered view can be linked to; `/admin/cataloguing/users` redirects
  * here with `?area=cataloguing`. The search form is a plain GET form.
@@ -42,22 +48,38 @@
  * regardless of what the body says. Each option is labelled with the
  * role's name on the user detail page.
  *
+ * The page also holds the workspace's Language section: the default
+ * interface language a visitor who has not chosen one sees the
+ * workspace in (`tenants.default_locale`; English, Spanish, or follow
+ * the browser). It is the workspace's own setting, so only those who
+ * administer the workspace see and change it: a workspace admin
+ * (`isWorkspaceAdmin`) or a steward of its federation
+ * (`isFederationSteward`), computed as `canSetDefaultLocale`. A user
+ * manager reaches the page without the section, and a federation staff
+ * grant reaches neither. The action's `setDefaultLocale` intent runs the
+ * operator console's rule (`setDefaultLocale` in
+ * `default-locale.server.ts`), which validates the value, writes it and
+ * audits it, with the person's home tenant as the actor's tenant.
+ *
  * Invite feedback runs through the shared `SaveFeedbackBanner` /
  * `SaveButton` pair. The banner sits on the page rather than inside
  * the invite modal because the modal closes on submit — a result
  * rendered inside it would be unmounted before it could be read.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
 import { Form, Link, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   grantContext,
   impersonationContext,
   tenantContext,
   userContext,
+  type Tenant,
+  type User,
 } from "../context";
 import { useFormatters } from "../lib/use-formatters";
 import {
@@ -69,10 +91,18 @@ import type { Route } from "./+types/_auth.admin.users";
 // Type-only: erased at build time, so the server module is not pulled
 // into the client bundle.
 import type { AreaBadge, UsersArea } from "../lib/users-area.server";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("sidebar:users"),
+  );
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -104,7 +134,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     canAssignTenantRoles: canAssignTenantRoles(user),
     // The invitation stays with those who manage the workspace's users.
     canInvite: canManageTenantUsers(user),
+    defaultLocale: tenant.defaultLocale ?? null,
+    canSetDefaultLocale: await canSetWorkspaceDefaultLocale(db, user, tenant),
   };
+}
+
+/**
+ * Whether `user` may change the workspace's default language: a
+ * workspace admin, or a steward of its federation.
+ */
+async function canSetWorkspaceDefaultLocale(
+  db: DrizzleD1Database<any>,
+  user: User,
+  tenant: Tenant,
+): Promise<boolean> {
+  const { isWorkspaceAdmin } = await import("../lib/user-access.server");
+  const { isFederationSteward } = await import("../lib/federation.server");
+  return isWorkspaceAdmin(user) || (await isFederationSteward(db, user, tenant));
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +162,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { canManageTenantUsers } = await import("../lib/permissions.server");
 
   const user = context.get(userContext);
-  if (!canManageTenantUsers(user)) {
-    throw new Response("Forbidden", { status: 403 });
-  }
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -127,16 +170,46 @@ export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
 
+  // The workspace's default language: its own gate, not the users gate.
+  if (intent === "setDefaultLocale") {
+    if (!(await canSetWorkspaceDefaultLocale(db, user, tenant))) {
+      throw new Response("Forbidden", { status: 403 });
+    }
+    const { setDefaultLocale } = await import("../lib/default-locale.server");
+    return setDefaultLocale(db, tenant, formData.get("defaultLocale"), {
+      userId: user.id,
+      email: user.email,
+      tenantId: context.get(grantContext)?.homeTenantId ?? user.tenantId,
+      impersonationSessionId: context.get(impersonationContext)?.sessionId ?? null,
+    });
+  }
+
+  if (!canManageTenantUsers(user)) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+
   if (intent === "inviteUser") {
     const { handleUsersAction } = await import(
       "./_auth.admin.users.action.server"
     );
     const i18n = await import("i18next");
+    const { requestLanguage } = await import("../lib/email-locale.server");
     const origin = new URL(request.url).origin;
-    return handleUsersAction(user, tenant, db, formData, env, i18n, origin, {
-      homeTenantId: context.get(grantContext)?.homeTenantId ?? user.tenantId,
-      impersonationSessionId: context.get(impersonationContext)?.sessionId ?? null,
-    });
+    return handleUsersAction(
+      user,
+      tenant,
+      db,
+      formData,
+      env,
+      i18n,
+      origin,
+      {
+        homeTenantId: context.get(grantContext)?.homeTenantId ?? user.tenantId,
+        impersonationSessionId: context.get(impersonationContext)?.sessionId ?? null,
+      },
+      {},
+      requestLanguage(context),
+    );
   }
 
   // No `error` text: the branch is not reachable from the UI, so the
@@ -205,10 +278,13 @@ export default function SystemUsersPage({
     areas,
     people,
     federationPeople,
+    platformAdmins,
     query,
     area,
     canAssignTenantRoles,
     canInvite,
+    defaultLocale,
+    canSetDefaultLocale,
   } = loaderData;
   const { t } = useTranslation(["user_admin", "sidebar", "admin"]);
   const { formatDate } = useFormatters();
@@ -591,8 +667,92 @@ export default function SystemUsersPage({
           </div>
         </section>
       )}
+
+      {platformAdmins.length > 0 && (
+        <section aria-labelledby="platform-admins-heading" className="space-y-3">
+          <h2
+            id="platform-admins-heading"
+            className="font-serif text-xl font-medium text-indigo"
+          >
+            {t("user_admin:platform_admin")}
+          </h2>
+          <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+            <table className="w-full min-w-[760px] border-collapse">
+              <thead className="bg-stone-50">
+                <tr className="border-b border-stone-200">
+                  <th scope="col" className={TH}>
+                    {t("sidebar:col_name")}
+                  </th>
+                  <th scope="col" className={TH}>
+                    {t("sidebar:col_email")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {platformAdmins.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-3 font-sans text-sm font-semibold text-indigo">
+                      {p.name}
+                    </td>
+                    <td className="px-4 py-3 font-sans text-sm text-stone-600">
+                      {p.email}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {canSetDefaultLocale && <LanguageSection defaultLocale={defaultLocale} />}
     </div>
   );
 }
 
-// @version v0.8.0
+/**
+ * The workspace's Language section: the default interface language,
+ * posted to this route's action as `setDefaultLocale`.
+ */
+function LanguageSection({ defaultLocale }: { defaultLocale: "en" | "es" | null }) {
+  const { t } = useTranslation("user_admin");
+  const fetcher = useFetcher<{ localeSaved?: boolean }>();
+  const saving = fetcher.state !== "idle";
+  return (
+    <section aria-labelledby="workspace-language" className="space-y-3 border-t border-stone-200 pt-6">
+      <h2 id="workspace-language" className="font-serif text-lg font-semibold text-stone-700">
+        {t("language_heading")}
+      </h2>
+      <fetcher.Form method="post" className="max-w-md space-y-3">
+        <input type="hidden" name="_action" value="setDefaultLocale" />
+        <div>
+          <label htmlFor="workspace-default-locale" className="block font-sans text-sm font-medium text-indigo">
+            {t("language_label")}
+          </label>
+          <select
+            id="workspace-default-locale"
+            name="defaultLocale"
+            defaultValue={defaultLocale ?? ""}
+            aria-describedby="workspace-default-locale-help"
+            className="mt-1 block w-full rounded-md border border-stone-200 bg-white px-3 py-2 font-sans text-sm text-indigo focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+          >
+            <option value="">{t("language_browser")}</option>
+            <option value="es">{t("language_es")}</option>
+            <option value="en">{t("language_en")}</option>
+          </select>
+          <p id="workspace-default-locale-help" className="mt-1 font-sans text-xs text-stone-500">
+            {t("language_help")}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <SaveButton pending={saving} label={t("language_submit")} pendingLabel={t("common:save.saving")} />
+          <span role="status" className="font-sans text-sm text-verdigris">
+            {!saving && fetcher.data?.localeSaved ? t("language_saved") : ""}
+          </span>
+        </div>
+      </fetcher.Form>
+    </section>
+  );
+}
+
+// @version v0.9.0

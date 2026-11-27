@@ -1,6 +1,10 @@
 /**
  * Publish Trigger API
  *
+ * Both handlers refuse a tenant without the `publish_pipeline`
+ * capability with a bare 404, as the publish page and its counts route
+ * do, after the superadmin check and before anything is read or written.
+ *
  * This API endpoint is the superadmin-only POST that starts a new
  * publish run. The payload is validated against a dynamic schema that
  * only accepts
@@ -12,18 +16,25 @@
  *
  * The dynamic fonds list is tenant-scoped via
  * `getFondsList(db, tenant)` so a Tenant A superadmin cannot smuggle
- * a Tenant B fonds reference through the validator. The workflow
- * itself resolves the tenant from
- * `exportRuns.triggeredBy → users.tenantId` inside `load-config`;
- * this route's tenant context comes from the auth middleware that
- * resolved the request host.
+ * a Tenant B fonds reference through the validator. The run row
+ * records the request tenant (`export_runs.tenant_id`, migration 0115),
+ * which comes from the auth middleware that resolved the request host;
+ * the workflow's `load-config`, the in-flight check and the polling
+ * below all scope on it, never on the triggering user's stored
+ * workspace, which for a platform admin is another workspace.
  *
  * The run's `total_steps` counts what the workflow will mark complete
- * (see `publish-steps.ts`): five steps per fonds and the index when
+ * (the length of the plan in `publish-steps.ts`): four steps per fonds and the index when
  * descriptions are selected, one per other type, and one more each for
  * the link files that entities and places bring with them. Entities,
  * places and their link files count only when the tenant has the
  * authorities capability, as the workflow runs them only then.
+ *
+ * Polling one run returns its selected fonds and data types with the
+ * heartbeat columns, from which the progress panel lists the run's
+ * whole step plan, and its step log (`step_log`), from which it shows
+ * each completed step's duration. The step log is returned only there,
+ * for a run of the request tenant, never in the list of recent runs.
  *
  * A tenant has at most one publish in flight. Two publishes of one
  * tenant write the same R2 keys, so the action refuses with 409 while
@@ -31,31 +42,42 @@
  * heartbeat within `PUBLISH_STALE_AFTER_MS`. The check and the insert
  * of the new row are a single conditional INSERT, so concurrent
  * requests cannot both pass it. A run silent for longer than the
- * window no longer blocks; it is presumed dead.
+ * window does not block; it is presumed dead.
  *
- * @version v0.8.0
+ * The request's schema, the conditional insert and its values, the
+ * workflow's parameters and the message a failed create closes the run
+ * with are in `app/lib/export/publish-run.ts`, which the command line's
+ * `publish start` (`scripts/lib/publish-cli/`) uses too, so a run
+ * started from either is the same run.
+ *
+ * A request may carry `force: true`. The action passes it to the
+ * workflow in its parameters, and the run then writes every per-fonds
+ * file whatever the fingerprint recorded for it
+ * (`app/lib/export/fingerprint.server.ts`); without it, a per-fonds step
+ * whose fonds has not changed since it last succeeded writes nothing.
+ *
+ * @version v0.9.0
  */
 
-import { z } from "zod";
 import { tenantContext, userContext } from "../context";
 import { requireSuperAdmin } from "../lib/superadmin.server";
+import { requireCapability } from "../lib/tenant";
 import { getScopedFondsList } from "../lib/export/fonds-list.server";
 import { resolveExportScope } from "../lib/export/federation-scope.server";
 import { countPublishSteps } from "../lib/export/publish-steps";
+import {
+  INSERT_PUBLISH_RUN_SQL,
+  insertPublishRunBinds,
+  PUBLISH_IN_PROGRESS_MESSAGE,
+  PUBLISH_STALE_AFTER_MS,
+  publishRequestSchema,
+  publishWorkflowParams,
+  workflowCreateFailedMessage,
+} from "../lib/export/publish-run";
 import type { Route } from "./+types/api.publish";
 
-const VALID_TYPES = ["descriptions", "repositories", "entities", "places"] as const;
-
-/**
- * How long an unfinished run blocks a new publish of the same tenant,
- * counted from its last heartbeat (or its start, or its creation, when
- * it has not yet written one). The workflow sets no step timeouts of
- * its own, and every step writes a heartbeat, so a pending or running
- * row that has been silent this long is presumed dead: a run killed
- * without reaching its error handler would otherwise block publishing
- * for good.
- */
-export const PUBLISH_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+// The stale window, defined with the insert in `publish-run.ts`.
+export { PUBLISH_STALE_AFTER_MS };
 
 /**
  * POST /api/publish — Trigger a new export run.
@@ -71,6 +93,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   requireSuperAdmin(user);
+  requireCapability(tenant, "publish_pipeline");
 
   const { drizzle } = await import("drizzle-orm/d1");
 
@@ -106,18 +129,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     descriptiveStandard: tenant.descriptiveStandard,
   });
   const fondsList = await getScopedFondsList(db, scope.memberTenantIds);
-  const PublishRequestSchema = z.object({
-    selectedFonds: z
-      .array(
-        z.string().refine((val) => fondsList.includes(val), {
-          message: "Invalid fonds code",
-        })
-      )
-      .nonempty("selectedFonds must contain at least one fonds code"),
-    selectedTypes: z
-      .array(z.enum(VALID_TYPES))
-      .nonempty("selectedTypes must contain at least one type"),
-  });
+  const PublishRequestSchema = publishRequestSchema(fondsList);
 
   // Parse and validate request body
   let body: unknown;
@@ -135,7 +147,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     );
   }
 
-  const { selectedFonds, selectedTypes } = parsed.data;
+  const { selectedFonds, selectedTypes, force } = parsed.data;
 
   // Count only the steps the workflow marks complete. Entities, places
   // and their link files are left out when the tenant lacks the
@@ -153,46 +165,30 @@ export async function action({ request, context }: Route.ActionArgs) {
   // flight. The check and the insert are one statement, so two requests
   // that arrive together cannot both pass the check: D1 runs each
   // statement atomically, and the second one sees the first one's row.
-  // export_runs has no tenant column, so the tenant comes from the
-  // triggering user, as in the loader below and the workflow's
-  // load-config. A federation publish runs on the lead host and writes
-  // under the lead's slug, so the lead tenant is the one checked.
-  const inserted = await context.cloudflare.env.DB.prepare(
-    `INSERT INTO export_runs (
-       id, triggered_by, status, selected_fonds, selected_types,
-       federation_id, steps_completed, total_steps, created_at
-     )
-     SELECT ?1, ?2, 'pending', ?3, ?4, ?5, 0, ?6, ?7
-     WHERE NOT EXISTS (
-       SELECT 1 FROM export_runs r
-       INNER JOIN users u ON u.id = r.triggered_by
-       WHERE u.tenant_id = ?8
-         AND r.status IN ('pending', 'running')
-         AND COALESCE(r.last_heartbeat_at, r.started_at, r.created_at) > ?9
-     )`
-  )
+  // The run records the request tenant, and the check reads the runs
+  // of that tenant, as the loader below and the workflow's load-config
+  // do. A federation publish runs on the lead host and writes under the
+  // lead's slug, so the lead tenant is the one checked.
+  // The statement and its values are shared with the command line's
+  // `publish start` (`app/lib/export/publish-run.ts`).
+  const inserted = await context.cloudflare.env.DB.prepare(INSERT_PUBLISH_RUN_SQL)
     .bind(
-      exportId,
-      user.id,
-      JSON.stringify(selectedFonds),
-      JSON.stringify(selectedTypes),
-      // Federation this run publishes (migration 0055). Recorded at
-      // insert so the run history is federation-attributed even before
-      // the workflow's load-config runs.
-      scope.federationId ?? null,
-      totalSteps,
-      now,
-      tenant.id,
-      now - PUBLISH_STALE_AFTER_MS
+      ...insertPublishRunBinds({
+        exportId,
+        triggeredBy: user.id,
+        tenantId: tenant.id,
+        selectedFonds,
+        selectedTypes,
+        federationId: scope.federationId,
+        totalSteps,
+        now,
+      })
     )
     .run();
 
   if (inserted.meta.changes === 0) {
     return Response.json(
-      {
-        error:
-          "Another publish for this tenant is still in progress. Wait for it to finish before starting a new one.",
-      },
+      { error: PUBLISH_IN_PROGRESS_MESSAGE },
       { status: 409 }
     );
   }
@@ -209,19 +205,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   context.cloudflare.ctx.waitUntil(
     context.cloudflare.env.PUBLISH_EXPORT.create({
       id: exportId,
-      params: { exportId },
+      params: publishWorkflowParams(exportId, force),
     })
       .then(() => undefined)
       .catch(async (err) => {
         const { exportRuns: runs } = await import("../db/schema");
         const { eq } = await import("drizzle-orm");
-        const message =
-          err instanceof Error ? err.message : "failed to create workflow";
         await db
           .update(runs)
           .set({
             status: "error",
-            errorMessage: `workflow create failed: ${message}`,
+            errorMessage: workflowCreateFailedMessage(err),
             completedAt: Date.now(),
           })
           .where(eq(runs.id, exportId));
@@ -240,20 +234,19 @@ export async function action({ request, context }: Route.ActionArgs) {
  * Both branches must be tenant-scoped: an unscoped query against the
  * global `exportRuns` table would let a Tenant A superadmin read any
  * Tenant B run by id, and the list branch would return the 20 most
- * recent runs platform-wide. `exportRuns` carries no `tenantId`
- * column (the schema add was deliberately deferred to v0.5+), so
- * tenant scoping is enforced by joining `exportRuns.triggeredBy →
- * users.tenantId` and filtering by the route's `tenantContext`. This
- * mirrors the workflow's `load-config` pattern.
+ * recent runs platform-wide. Both filter on `export_runs.tenant_id`,
+ * the tenant the run was started in, against the route's
+ * `tenantContext`, as the workflow's `load-config` reads it.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   requireSuperAdmin(user);
+  requireCapability(tenant, "publish_pipeline");
 
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, desc } = await import("drizzle-orm");
-  const { exportRuns, users } = await import("../db/schema");
+  const { exportRuns } = await import("../db/schema");
 
   const db = drizzle(context.cloudflare.env.DB);
   const url = new URL(request.url);
@@ -264,10 +257,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       .select({
         id: exportRuns.id,
         status: exportRuns.status,
+        // The run's selection, from which the progress panel lists
+        // every step of the plan before the first one starts.
+        selectedFonds: exportRuns.selectedFonds,
+        selectedTypes: exportRuns.selectedTypes,
         currentStep: exportRuns.currentStep,
         stepsCompleted: exportRuns.stepsCompleted,
         totalSteps: exportRuns.totalSteps,
         recordCounts: exportRuns.recordCounts,
+        // Each plan step's start and end (migration 0117), for the
+        // panel's durations; the run is this tenant's, as below.
+        stepLog: exportRuns.stepLog,
         errorMessage: exportRuns.errorMessage,
         startedAt: exportRuns.startedAt,
         completedAt: exportRuns.completedAt,
@@ -276,8 +276,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         lastHeartbeatAt: exportRuns.lastHeartbeatAt,
       })
       .from(exportRuns)
-      .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
-      .where(and(eq(exportRuns.id, exportId), eq(users.tenantId, tenant.id)))
+      .where(and(eq(exportRuns.id, exportId), eq(exportRuns.tenantId, tenant.id)))
       .get();
 
     if (!run) {
@@ -287,9 +286,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     return Response.json(run);
   }
 
-  // Return 20 most recent export runs scoped to this tenant. The
-  // explicit column projection avoids `users.*` leaking into the
-  // response body.
+  // Return 20 most recent export runs scoped to this tenant, with an
+  // explicit column projection.
   const runs = await db
     .select({
       id: exportRuns.id,
@@ -311,11 +309,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       createdAt: exportRuns.createdAt,
     })
     .from(exportRuns)
-    .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
-    .where(eq(users.tenantId, tenant.id))
+    .where(eq(exportRuns.tenantId, tenant.id))
     .orderBy(desc(exportRuns.createdAt))
     .limit(20)
     .all();
 
   return Response.json(runs);
 }
+
+// @version v0.9.0

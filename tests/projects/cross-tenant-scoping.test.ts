@@ -23,7 +23,7 @@
  *    that lives only in the loader protects nothing, since loaders and
  *    actions are separately reachable.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -320,13 +320,14 @@ async function seedTwoTenants() {
     },
   ]);
 
-  // `export_runs` carries no tenant_id: the run's tenant is the
-  // triggering user's. One run per tenant, so the detail route has a
-  // foreign one to refuse and an own one to render.
+  // Each run records the tenant it was started in (migration 0115).
+  // One run per tenant, so the detail route has a foreign one to refuse
+  // and an own one to render.
   await db.insert(schema.exportRuns).values([
     {
       id: "run-a",
       triggeredBy: leadA.id,
+      tenantId: DEFAULT_TEST_TENANT_ID,
       status: "complete",
       selectedFonds: JSON.stringify(["fonds-a"]),
       selectedTypes: JSON.stringify(["descriptions"]),
@@ -335,6 +336,7 @@ async function seedTwoTenants() {
     {
       id: "run-b",
       triggeredBy: userB.id,
+      tenantId: SECOND_TEST_TENANT_ID,
       status: "complete",
       selectedFonds: JSON.stringify(["fonds-b"]),
       selectedTypes: JSON.stringify(["descriptions"]),
@@ -1011,3 +1013,5 @@ describe("cross-tenant scoping — crowdsourcing surface", () => {
     });
   });
 });
+
+// @version v0.9.0

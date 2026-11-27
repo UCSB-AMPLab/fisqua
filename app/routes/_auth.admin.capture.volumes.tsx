@@ -4,10 +4,11 @@
  * This page lists every volume the tenant's Captua scanner handed over,
  * one row per reference code, with the handover the capture link would
  * report for it: its openings, when it was handed over, where it stands
- * and the next step. It is for the people who manage capture work, the
- * tenant's digitization admins and its federation's stewards; the tenant must have
- * the digitization capability (a bare 404 otherwise) and anyone else
- * gets a bare 403. The rows come from `loadCaptureVolumes`, scoped to
+ * and the next step. It is for the people who work in capture
+ * (`captureAccess(...).worker`): the tenant's digitization admins, its
+ * federation's stewards and its federation's staff grants; the tenant
+ * must have the digitization capability (a bare 404 otherwise) and
+ * anyone else gets a bare 403. The rows come from `loadCaptureVolumes`, scoped to
  * the request's tenant.
  *
  * The state filter is the `state` search parameter, so a filtered view
@@ -21,7 +22,11 @@
  * A volume whose delivery has no review run yet (one registered from a
  * file) shows Prepare review images, and one whose review run failed
  * shows Retry; each posts to the volume's review-run route and, when the
- * run cannot be started, says so under the button. A next step links
+ * run cannot be started, says so under the button, and says when the
+ * most review runs allowed at a time (`REVIEW_ACTIVE_RUN_CAP`) are
+ * already being prepared. Preparing review
+ * images is capture work, so everyone who opens this page gets the
+ * buttons (the review-run route checks the same people). A next step links
  * only to what exists. Assigning a reviewer goes to
  * the Capture QC queue, which assigns through the reviewer route.
  * Continuing a review opens the volume in the capture QC viewer. A
@@ -31,7 +36,7 @@
  * screen has no way to choose. The volume's runs have no page to link
  * to, so the screen has no Runs column.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link, useFetcher, useSearchParams } from "react-router";
@@ -43,7 +48,16 @@ import { useFormatters } from "../lib/use-formatters";
 import { DRAWN_SCREEN_STATES, SCREEN_STATES, refusalKey, shortError, type ScreenState } from "../lib/capture/screens";
 import type { CaptureVolumeRow } from "../lib/capture/screens.server";
 import { CaptureEmptyState, CapturePageHeader, CaptureStateBadge } from "../components/capture/capture-parts";
+import { REVIEW_ACTIVE_RUN_CAP } from "../lib/pipeline/run-config";
 import type { Route } from "./+types/_auth.admin.capture.volumes";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("capture:volumes.title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
@@ -53,7 +67,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { captureAccess, loadCaptureVolumes } = await import("~/lib/capture/screens.server");
   const db = drizzle(context.cloudflare.env.DB);
   const access = await captureAccess(db, tenant, user);
-  if (!access.manager) throw new Response(null, { status: 403 });
+  if (!access.worker) throw new Response(null, { status: 403 });
   return { volumes: await loadCaptureVolumes(db, tenant.id, Date.now()) };
 }
 
@@ -213,7 +227,9 @@ function NextStepCell({ row }: { row: CaptureVolumeRow }) {
 /**
  * Prepare or Retry: posts to the volume's review-run route. While the
  * request is out the button is disabled; an answer other than a started
- * run shows the start-failed sentence under it. A started run shows on
+ * run shows a sentence under it: that the most review runs at a time are
+ * already being prepared, for a start the cap refused, and the
+ * start-failed sentence for any other. A started run shows on
  * the next load as Preparing review images.
  */
 function ReviewRunButton({ volumeId, step }: { volumeId: string; step: "prepare_review" | "retry_review" }) {
@@ -235,11 +251,13 @@ function ReviewRunButton({ volumeId, step }: { volumeId: string; step: "prepare_
       </button>
       {failed ? (
         <p id={noteId} role="status" className="mt-0.5 max-w-[32ch] text-xs text-madder-deep">
-          {t("review_run.start_failed")}
+          {fetcher.data?.error === "review_capacity_full"
+            ? t("review_run.capacity_full", { cap: REVIEW_ACTIVE_RUN_CAP })
+            : t("review_run.start_failed")}
         </p>
       ) : null}
     </>
   );
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

@@ -7,10 +7,10 @@
  * bucket under their old names; Captua writes one rename map per volume
  * that pairs each old key with the contract name it takes in the
  * federation's masters bucket, `{slug}/<stem>/captures/…` or
- * `{slug}/<stem>/previews/…_preview.jpg`. The command in
- * `scripts/commands/copy-renamed-captures.ts` is a thin shell around
- * `copyRenamedCaptures` here; the providers are injected, so the tests
- * run every step against fakes.
+ * `{slug}/<stem>/previews/…_preview.jpg`. `fisqua capture copy-renamed`
+ * (`scripts/lib/capture-cli/copy-renamed.ts`) runs `copyRenamedCaptures`
+ * here; the providers are injected, so the tests run every step against
+ * fakes.
  *
  * `parseRenameMap` checks the envelope (contract
  * `fisqua-captua-exchange`, version `1.1`, kind `rename-map`, produced by
@@ -44,8 +44,8 @@
  * destination holds something else, something whose SHA1 cannot be
  * compared, a hidden file or an earlier version; never overwritten and
  * never given a new version) or `[missing]` (the source is absent or
- * differs from the map). A dry run, the default, stops there. With
- * `--apply`, any conflict or missing entry stops the command before it
+ * differs from the map). A plan stops there. On an apply, any
+ * conflict or missing entry stops the command before it
  * copies anything; otherwise each `[copy]` entry is copied with
  * `b2_copy_file`, at most four in flight. Just before each copy the
  * destination key's versions are listed again, and any version that has
@@ -59,10 +59,11 @@
  * not overlap; if they do, the second version at a key is reported as a
  * failure, not removed.
  *
- * Every run writes `.import/rename-copy_<map id>.json`, with every entry
- * and its outcome, and prints counts and bytes per outcome.
+ * Every run writes its report to the path the caller gives
+ * (`reportFile`), with every entry and its outcome, and prints counts
+ * and bytes per outcome.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { z } from "zod";
@@ -76,6 +77,7 @@ import {
   type D1Api,
   type Log,
 } from "./tenant-storage";
+import { maxOf } from "./arrays";
 
 // ---------------------------------------------------------------------------
 // The map
@@ -175,7 +177,7 @@ export function checkRenameMap(map: RenameMap, slug: string): void {
     problems.push(`destination.root ${map.destination.root} is not the tenant's prefix ${slug}/`);
   }
   if (stem !== externalId) problems.push(`volume.stem ${stem} is not volume.externalId ${externalId}`);
-  const highest = Math.max(...map.entries.map((e) => e.ordinal));
+  const highest = maxOf(map.entries.map((e) => e.ordinal));
   if (highest > counterAfter) {
     problems.push(`the highest ordinal, ${highest}, is above volume.counterAfter ${counterAfter}`);
   }
@@ -304,6 +306,8 @@ export interface RenameCopyOptions {
   /** The tenant's slug. */
   slug: string;
   apply: boolean;
+  /** Where the report is written, a name no other run shares. */
+  reportFile: string;
 }
 
 export interface RenameCopyProviders {
@@ -315,7 +319,7 @@ export interface RenameCopyProviders {
   writeFile: (path: string, text: string) => void;
 }
 
-/** After `--apply`: copied and checked, failed, or not started because the run stopped. */
+/** After an apply: copied and checked, failed, or not started because the run stopped. */
 export type ApplyResult = "copied" | "failed" | "not-started";
 
 export interface ReportEntry extends RenameEntry {
@@ -340,12 +344,6 @@ export interface RenameCopyReport {
   applied: boolean;
   totals: Record<Outcome | ApplyResult, { objects: number; bytes: number }>;
   entries: ReportEntry[];
-}
-
-export const OUTPUT_DIR = ".import";
-
-export function reportPath(mapId: string): string {
-  return `${OUTPUT_DIR}/rename-copy_${mapId}.json`;
 }
 
 /** The prefixes that list every source key: each key's folder, or the key itself at the bucket's top. */
@@ -416,9 +414,9 @@ function totalsOf(entries: ReportEntry[]): RenameCopyReport["totals"] {
 
 /**
  * Copies one volume's pre-contract captures into the masters bucket
- * under contract names, or in a dry run says what it would do. Writes
+ * under contract names, or in a plan says what it would do. Writes
  * the report on every run that gets as far as the listing; stops after
- * writing it when `--apply` meets a conflict or missing entry, or a copy
+ * writing it when an apply meets a conflict or missing entry, or a copy
  * fails its check. Returns the report.
  */
 export async function copyRenamedCaptures(
@@ -488,7 +486,7 @@ export async function copyRenamedCaptures(
   };
   const finish = () => {
     report.totals = totalsOf(report.entries);
-    providers.writeFile(reportPath(map.id), JSON.stringify(report, null, 2) + "\n");
+    providers.writeFile(options.reportFile, JSON.stringify(report, null, 2) + "\n");
     log("");
     log("Totals");
     for (const [k, v] of Object.entries(report.totals)) {
@@ -496,7 +494,7 @@ export async function copyRenamedCaptures(
     }
     log(`  map: ${report.entries.length} objects, ${report.entries.reduce((n, e) => n + e.bytes, 0)} bytes`);
     log("");
-    log(`Report: ${reportPath(map.id)}`);
+    log(`Report: ${options.reportFile}`);
   };
 
   const blocking = rows.filter((r) => r.entry.outcome === "conflict" || r.entry.outcome === "missing");
@@ -575,4 +573,4 @@ async function findSourceBucket(b2: B2Api, name: string, log: Log): Promise<stri
   return bucket.bucketId;
 }
 
-// @version v0.8.0
+// @version v0.9.0

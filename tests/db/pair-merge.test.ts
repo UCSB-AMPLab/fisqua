@@ -18,7 +18,7 @@
  * Alpha is the request tenant throughout; Beta owns the records Alpha
  * must never touch.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -33,6 +33,7 @@ import {
   NEOGRANADINA_FEDERATION_ID,
 } from "../../app/lib/tenant";
 import { rulePairMerge } from "../../app/lib/pair-merge.server";
+import { mergeWithEvidence } from "../helpers/merge-evidence";
 import {
   getOrCreatePairDecision,
   rulePairKeepBoth,
@@ -280,9 +281,14 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     const descTwo = await seedDescription();
     const linkOne = await linkEntity(descOne, loserId, "scribe");
     const linkTwo = await linkEntity(descTwo, loserId, "witness");
+    // The survivor's own link, which the merge's evidence cites.
+    const descOwn = await seedDescription();
+    const linkOwn = await linkEntity(descOwn, survivorId, "scribe");
 
     const now = Date.UTC(2026, 7, 13, 12, 0, 0);
-    const result = await rulePairMerge(
+    // Versions read before the merge's clock, so each record takes `now`.
+    await env.DB.prepare("UPDATE entities SET updated_at = 1 WHERE id IN (?, ?)").bind(survivorId, loserId).run();
+    const result = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -300,7 +306,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       .from(schema.descriptionEntities)
       .where(eq(schema.descriptionEntities.entityId, survivorId))
       .all();
-    expect(links.map((l) => l.id).sort()).toEqual([linkOne, linkTwo].sort());
+    expect(links.map((l) => l.id).sort()).toEqual([linkOne, linkTwo, linkOwn].sort());
     const leftBehind = await db()
       .select()
       .from(schema.descriptionEntities)
@@ -344,7 +350,10 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     expect(Object.keys(detail).sort()).toEqual([
       "addVariants",
       "droppedLinks",
+      "evidence",
+      "foldedFunctions",
       "leftBehind",
+      "movedFunctions",
       "movedLinks",
       "reason",
     ]);
@@ -354,6 +363,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       droppedLinks: [],
       addVariants: true,
       leftBehind: 0,
+      evidence: { facts: ["matter"], descriptions: { [loserId]: [expect.any(String)], [survivorId]: [descOwn] } },
     });
 
     const rows = await pairRows();
@@ -381,7 +391,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     const collidingLink = await linkEntity(descId, loserId, "scribe");
     const movingLink = await linkEntity(descId, loserId, "witness");
 
-    const result = await rulePairMerge(
+    const result = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -447,7 +457,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     // Midnight UTC is still 12 August for a member in Bogotá, and the
     // provenance line carries the ruling member's day.
     const now = Date.parse("2026-08-13T00:00:00Z");
-    await rulePairMerge(
+    await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -541,13 +551,13 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     const descId = await seedDescription();
     await linkEntity(descId, loserId, "scribe");
 
-    await rulePairMerge(db(), admin, alpha, "entity", survivorId, loserId, "First");
+    await mergeWithEvidence(db(), admin, alpha, "entity", survivorId, loserId, "First");
     const decisionBefore = (await pairRows())[0];
     const ledgerBefore = await mergeLedgerRows();
 
     // This path 409s at the merged-record guard, before the ruled-row
     // guard — assert the body so the two guards stay distinguishable.
-    const error = await rulePairMerge(
+    const error = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -573,7 +583,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     await linkEntity(descId, recordId, "scribe");
 
     await expect(
-      rulePairMerge(db(), admin, alpha, "entity", recordId, recordId, null),
+      mergeWithEvidence(db(), admin, alpha, "entity", recordId, recordId, null),
     ).rejects.toMatchObject({ status: 400 });
 
     // The record's links are intact — the self-collision path that
@@ -606,7 +616,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       "Two different scribes",
     );
 
-    const error = await rulePairMerge(
+    const error = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -639,7 +649,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
       .set({ mergedInto: earlierSurvivorId })
       .where(eq(schema.entities.id, loserId));
 
-    const error = await rulePairMerge(
+    const error = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -682,7 +692,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     );
     expect(opened.status).toBe("open");
 
-    const result = await rulePairMerge(
+    const result = await mergeWithEvidence(
       db(),
       admin,
       alpha,
@@ -713,7 +723,7 @@ describe("pair merge — the decisions surface's merge ruling", () => {
     const linkId = await linkEntity(descId, foreignId, "scribe");
 
     await expect(
-      rulePairMerge(db(), admin, alpha, "entity", ownId, foreignId, "Same person"),
+      mergeWithEvidence(db(), admin, alpha, "entity", ownId, foreignId, "Same person"),
     ).rejects.toMatchObject({ status: 404 });
 
     expect(await pairRows()).toHaveLength(0);
@@ -802,4 +812,4 @@ describe("pair merge — the decisions surface's merge ruling", () => {
   });
 });
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

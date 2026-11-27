@@ -6,7 +6,7 @@
  * lets a superadmin lift entries out of the cataloguing tree into the
  * published archival data model.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   heading: {
@@ -65,7 +65,7 @@ export default {
     generic:
       "Promotion failed. Please try again or contact an administrator.",
     noSelection: "Select at least one entry to promote.",
-    duplicateRefCode: 'Reference code "{{code}}" already exists.',
+    duplicateRefCode: 'Reference code “{{code}}” already exists.',
     batch_too_large: "The batch exceeds the maximum of {{max}}",
     volume_not_found: "Volume not found: {{id}}",
     no_matching_description:

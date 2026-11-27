@@ -19,7 +19,11 @@
  * only update/delete/autosave and the description-link intents. The
  * header's Merge/Split buttons navigate to the workbenches, which
  * enforce the required-reason ledger invariant this action does not
- * carry.
+ * carry. An update writes only the fields the request carries: a field
+ * it leaves out keeps its stored value, the function rows are replaced
+ * only when `functions` is carried, the primary-function term link
+ * changes only when `primaryFunction` is, and a blank field whose
+ * stored value is already blank is left as stored.
  *
  * Authority scope is the federation (migrations 0045-0048). Every
  * read/update/delete of `entities` and every vocabulary-term lookup is
@@ -29,13 +33,67 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
+ * An entity's functions are its `entity_functions` rows, the only place
+ * they are kept: the page shows them one per line, in the order they
+ * were entered, and a save replaces the entity's set with the field's
+ * lines, together with the entity's fields and `updated_at`, in one
+ * batch (`entity-functions.server.ts`). A line that would add a
+ * function the record keeps or adds already, case and spacing aside,
+ * is dropped before the save (`distinctFunctionLines`), and the
+ * changelog records the lines kept. Every statement of the batch is
+ * conditional on the version the save read, so of two saves from the
+ * same version the second changes nothing and gets the conflict
+ * response. The new `updated_at` is the clock, or one past the version
+ * read when the clock has not passed it, so every save moves the
+ * version. The `entities.functions` column is neither shown nor
+ * written.
+ *
  * The header's "Add to handlist" is the browse-time half of how a
  * handlist gets built: one record at a time, through the same
  * type-matched picker the search page's selection bar opens. It offers
  * only handlists that hold entities, and it reports the resulting count
  * rather than a bare "Added".
  *
- * @version v0.8.0
+ * A save's UPDATE runs only while the record holds the version the
+ * save read, so a save that another lands between the version check and
+ * the write changes nothing, logs nothing and gets the conflict
+ * response. A successful save returns the new version, and the form
+ * submits the version its field values were loaded from
+ * (`useFormVersion`), which a loader revalidation does not move.
+ *
+ * After an edit conflict, the overwrite resubmits the editor's fields
+ * with `_force=true`. A forced update that carries none of the editable
+ * fields is refused, and a save deletes the autosaved draft only when
+ * it carried fields.
+ *
+ * A hard delete runs only while the record holds the version the delete
+ * read and no record is merged into it: a record others were merged
+ * into is refused (`merge_survivor`), and one changed between the
+ * delete's reads and its batch gets the conflict response. The loader
+ * says whether the record is a merge survivor (`isMergeSurvivor`), and
+ * the page disables Delete for one, with the reason as its title; a
+ * refusal shows the same reason in the error banner.
+ *
+ * The linked descriptions carry each link's relation as read
+ * (`related_to` and the links naming it). An edit or an unlink sends it
+ * back, and the action writes only while the link's relation is the one
+ * read (`relation-sides.server.ts`): a relation side, and a relation
+ * changed since the read, are refused each with its own message.
+ *
+ * The loader reads the federation's role lists once (`readRolePickers`).
+ * The link dialogs offer its approved roles, the worklist and the
+ * context cards show its labels, and the worklist's role filter takes
+ * any code its document or relation roles hold. A role pill whose links
+ * are all relation sides is labelled from the relation roles, as its
+ * rows are.
+ *
+ * The link actions write a role only while the federation's list
+ * approves it, checked inside the INSERT or UPDATE
+ * (`link-roles.server.ts`); an edit may keep the link's current code
+ * even when the list has deprecated it, and a refused role gets the
+ * generic refusal.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect } from "react";
@@ -56,6 +114,7 @@ import {
 import { HandlistPicker } from "~/components/handlists/handlist-picker";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
+import { useFormVersion, useRecordEditMode } from "~/lib/use-form-version";
 import { FieldDisplay } from "~/components/admin/field-display";
 import { EditField, EditTextarea } from "~/components/admin/edit-field";
 import {
@@ -67,25 +126,41 @@ import {
 } from "~/components/admin/authority-detail-layout";
 import { LinkedDescriptionsWorklist } from "~/components/admin/linked-descriptions-worklist";
 import { parseWorklistParams } from "~/lib/worklist-params";
-import { ENTITY_ROLES } from "~/lib/validation/enums";
+import type { ENTITY_ROLES } from "~/lib/validation/enums";
+import { entityRoleLabel, entityRoleOptions, placeRoleLabel } from "~/lib/role-options";
 import { TypeaheadInput } from "~/components/admin/typeahead-input";
+import { resolveSubmittedTerm } from "~/lib/typeahead-term.server";
 import type { Route } from "./+types/_auth.admin.entities.$id";
+import type { BatchItem } from "drizzle-orm/batch";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.entity?.displayName,
+    heading("entities:title"),
+  );
+}
+
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
   const { entities, descriptionEntities, descriptions, vocabularyTerms, repositories } = await import(
     "~/db/schema"
   );
 
+  const { namedBySql, relatedToSql } = await import("~/lib/relation-sides.server");
+  const { namedByList } = await import("~/lib/relation-as-read");
+
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -93,15 +168,23 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const db = drizzle(env.DB);
   const id = params.id;
 
-  const entity = await db
+  const entityRow = await db
     .select()
     .from(entities)
     .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)))
     .get();
 
-  if (!entity) {
+  if (!entityRow) {
     throw new Response("Not found", { status: 404 });
   }
+
+  // Functions are the entity's entity_functions rows, one per line.
+  const { readEntityFunctionRows, functionsText } = await import("~/lib/entity-functions.server");
+  const { officeSql } = await import("~/lib/link-attributes.server");
+  const entity = {
+    ...entityRow,
+    functions: functionsText(await readEntityFunctionRows(db, id)),
+  };
 
   // Click-to-unfold context card (spec §5 worklist enhancement):
   // fetched on demand by junction id, never eager-loaded for the page.
@@ -174,12 +257,20 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     .where(and(eq(descriptionEntities.entityId, id), eq(descriptions.tenantId, tenant.id)))
     .all();
 
+  // A record others were merged into is not deleted; the page disables
+  // Delete for it, and the delete action refuses it.
+  const { isMergeSurvivor } = await import("~/lib/entity-functions.server");
+  const mergeSurvivor = await isMergeSurvivor(db, id);
+
   // ---- Linked-descriptions worklist (spec §5 redesign; round-3 filters) ----
   const sp = new URL(request.url).searchParams;
   const wl = parseWorklistParams(sp);
-  // An off-vocabulary role param is ignored, never an empty worklist.
+  // The federation's role pickers and labels, read once. A role param
+  // its lists do not hold is ignored, never an empty worklist.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
   const role =
-    wl.role && (ENTITY_ROLES as readonly string[]).includes(wl.role)
+    wl.role && (Object.hasOwn(roles.labels.entity, wl.role) || Object.hasOwn(roles.labels.relation, wl.role))
       ? (wl.role as (typeof ENTITY_ROLES)[number])
       : null;
 
@@ -224,10 +315,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const roleCountConditions = repo
     ? [...dqConditions, eq(descriptions.repositoryId, repo)]
     : dqConditions;
+  // A pill whose links are all relation sides takes the relation role's
+  // label, as its rows do (`relationSide`).
+  const { relationSideSql } = await import("~/lib/relation-sides.server");
   const roleCounts = await db
     .select({
       role: descriptionEntities.role,
       count: sql<number>`count(*)`,
+      relationSide: sql<number>`min(${relationSideSql()})`.mapWith((v: unknown) => Number(v) === 1),
     })
     .from(descriptionEntities)
     .innerJoin(
@@ -298,7 +393,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       roleNote: descriptionEntities.roleNote,
       sequence: descriptionEntities.sequence,
       honorific: descriptionEntities.honorific,
-      function: descriptionEntities.function,
+      function: officeSql(),
       nameAsRecorded: descriptionEntities.nameAsRecorded,
       descriptionTitle: descriptions.title,
       referenceCode: descriptions.referenceCode,
@@ -308,6 +403,10 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       dateEnd: descriptions.dateEnd,
       creatorDisplay: descriptions.creatorDisplay,
       placeDisplay: descriptions.placeDisplay,
+      // The relation as read, which the link forms send back with an edit
+      // or a removal (`relation-as-read.ts`).
+      relatedTo: relatedToSql(),
+      namedByJoined: namedBySql(),
     })
     .from(descriptionEntities)
     .innerJoin(
@@ -318,7 +417,8 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     .orderBy(...orderBy)
     .limit(wl.size)
     .offset((wl.page - 1) * wl.size)
-    .all();
+    .all()
+    .then((rows) => rows.map(({ namedByJoined, ...l }) => ({ ...l, namedBy: namedByList(namedByJoined) })));
 
   // If merged, fetch target entity's displayName + the ledger-derived
   // band actor (who merged it, when). Superseded status is derived from
@@ -458,6 +558,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     // How many handlists this person can reach already hold it.
     holdingHandlists,
     descLinkCount,
+    isMergeSurvivor: mergeSurvivor,
     mergeTarget,
     mergeBand,
     splitIntoBand,
@@ -468,6 +569,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     roleCounts,
     repoCounts,
     repoSpan,
+    roles,
     wl: {
       dq: wl.dq,
       role,
@@ -489,19 +591,22 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, inArray, sql } = await import("drizzle-orm");
   const { entities, descriptionEntities, descriptions, vocabularyTerms } = await import(
     "~/db/schema"
   );
   const { updateEntitySchema } = await import("~/lib/validation/entity");
+  const { submittedFields, fieldsToWrite } = await import(
+    "~/lib/validation/update-schema"
+  );
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -562,73 +667,65 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "update": {
       await requireAuthorityMutation(db, user, tenant, "entity", [id]);
-      // Parse name variants from hidden field
-      let nameVariants: string[] = [];
-      try {
-        nameVariants = JSON.parse(
-          (formData.get("nameVariants") as string) || "[]"
-        );
-      } catch {
-        nameVariants = [];
+      // Each field is read only when the request carries it: a field
+      // absent from the request (a section the page did not submit) is
+      // absent from the values and is never written, and the entity's
+      // function rows are replaced only when `functions` is carried. A
+      // blank field the request carries is cleared (null), except the
+      // NOT NULL ones, which a blank leaves as stored.
+      const { has, trimmed } = submittedFields(formData);
+      const input: Record<string, unknown> = { id };
+      for (const name of ["displayName", "sortName", "entityType"] as const) {
+        if (has(name)) input[name] = trimmed(name) || undefined;
       }
+      for (const name of [
+        "surname",
+        "givenName",
+        "honorific",
+        "primaryFunction",
+        "datesOfExistence",
+        "dateStart",
+        "dateEnd",
+        "history",
+        "sources",
+        "wikidataId",
+        "viafId",
+        "notes",
+        "internalNotes",
+      ] as const) {
+        if (has(name)) input[name] = trimmed(name) || null;
+      }
+      if (has("nameVariants")) {
+        let nameVariants: string[] = [];
+        try {
+          nameVariants = JSON.parse((formData.get("nameVariants") as string) || "[]");
+        } catch {
+          nameVariants = [];
+        }
+        input.nameVariants = JSON.stringify(nameVariants);
+      }
+      // One function per line, written to entity_functions below.
+      const { functionLines, functionsText, readEntityFunctionRows, entityFunctionsReplacement } =
+        await import("~/lib/entity-functions.server");
+      const { distinctFunctionLines } = await import("~/lib/function-duplicates");
+      const functionsSubmitted = has("functions");
+      // The entity's function rows before the save, for the diff and to
+      // keep the rows a kept line names. A line that would add a
+      // function the record keeps or adds already is dropped.
+      const existingFunctions = await readEntityFunctionRows(db, id);
+      const lines = distinctFunctionLines(
+        functionLines(formData.get("functions") as string | null),
+        existingFunctions
+      );
+      if (functionsSubmitted) input.functions = lines.join("\n") || null;
 
-      // Normalise form data
-      const displayName =
-        (formData.get("displayName") as string)?.trim() || undefined;
-      const sortName =
-        (formData.get("sortName") as string)?.trim() || undefined;
-      const surname =
-        (formData.get("surname") as string)?.trim() || undefined;
-      const givenName =
-        (formData.get("givenName") as string)?.trim() || undefined;
-      const honorific =
-        (formData.get("honorific") as string)?.trim() || undefined;
-      const entityType =
-        (formData.get("entityType") as string)?.trim() || undefined;
-      const datesOfExistence =
-        (formData.get("datesOfExistence") as string)?.trim() || undefined;
-      const dateStart =
-        (formData.get("dateStart") as string)?.trim() || undefined;
-      const dateEnd =
-        (formData.get("dateEnd") as string)?.trim() || undefined;
-      const history =
-        (formData.get("history") as string)?.trim() || undefined;
-      const primaryFunction =
-        (formData.get("primaryFunction") as string)?.trim() || undefined;
-      // legalStatus dropped in 0036 (0% populated in production audit).
-      const functions =
-        (formData.get("functions") as string)?.trim() || undefined;
-      const sources =
-        (formData.get("sources") as string)?.trim() || undefined;
-      const wikidataId =
-        (formData.get("wikidataId") as string)?.trim() || undefined;
-      const viafId =
-        (formData.get("viafId") as string)?.trim() || undefined;
-      const notes = (formData.get("notes") as string)?.trim() || null;
-      const internalNotes =
-        (formData.get("internalNotes") as string)?.trim() || null;
-
-      const parsed = updateEntitySchema.safeParse({
-        id,
-        displayName,
-        sortName,
-        surname,
-        givenName,
-        honorific,
-        entityType,
-        primaryFunction,
-        nameVariants: JSON.stringify(nameVariants),
-        datesOfExistence,
-        dateStart: dateStart || null,
-        dateEnd: dateEnd || null,
-        history,
-        functions,
-        sources,
-        wikidataId: wikidataId || null,
-        viafId: viafId || null,
-        notes,
-        internalNotes,
-      });
+      // Several of these fields are optional but not nullable in the
+      // schema, so a cleared field is validated as absent and carried
+      // back as null after parsing.
+      const cleared = Object.keys(input).filter((key) => input[key] === null);
+      const parsed = updateEntitySchema.safeParse(
+        Object.fromEntries(Object.entries(input).filter(([, value]) => value !== null))
+      );
 
       if (!parsed.success) {
         return {
@@ -647,6 +744,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       // Optimistic lock check
       const formUpdatedAt = formData.get("_updatedAt") as string;
       const forceOverwrite = formData.get("_force") === "true";
+      // Whether the request carries any field the editor submits. An
+      // overwrite after a conflict resubmits the editor's fields; a
+      // forced update without any would write nothing and report
+      // success while the user's edits stay unsaved, so it is refused.
+      const carriesFields = Object.keys(input).some((key) => key !== "id");
+      if (forceOverwrite && !carriesFields) {
+        return { ok: false as const, error: "generic" };
+      }
       if (
         !forceOverwrite &&
         formUpdatedAt &&
@@ -660,43 +765,55 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
-      const { id: _id, ...updates } = parsed.data;
+      if (!original) throw new Response("Not found", { status: 404 });
 
-      // Resolve primaryFunctionId from typeahead
+      const { id: _id, ...parsedUpdates } = parsed.data;
+      const updates: Record<string, unknown> = {
+        ...parsedUpdates,
+        ...Object.fromEntries(cleared.map((key) => [key, null])),
+      };
+
+      // Resolve primaryFunctionId from the typeahead, only when the
+      // request carries the primary function: without it the stored
+      // term link stays as it is.
+      const primaryFunctionSubmitted = has("primaryFunction");
       let resolvedFunctionId: string | null = null;
-      const primaryFunctionIdRaw = (formData.get("primaryFunctionId") as string)?.trim();
-      const primaryFunctionText = updates.primaryFunction ?? null;
+      const primaryFunctionIdRaw = trimmed("primaryFunctionId");
+      const primaryFunctionText = (updates.primaryFunction as string | null | undefined) ?? null;
 
-      if (primaryFunctionIdRaw) {
-        // User selected an existing term. The hidden typeahead field
-        // bypasses the Zod schema, and entities.primaryFunctionId is an
-        // FK — an unverified stale id (term merged or deleted since
-        // page load, or a tampered field) would fail the whole UPDATE
-        // atomically and surface only the generic error, losing every
-        // other edit in the submission. Verify existence first and
-        // fail field-scoped instead.
-        const selectedTerm = await db
-          .select({ id: vocabularyTerms.id })
-          .from(vocabularyTerms)
-          .where(
-            and(
-              eq(vocabularyTerms.id, primaryFunctionIdRaw),
-              eq(vocabularyTerms.federationId, tenant.federationId)
+      // The hidden id bypasses the Zod schema and feeds an FK column, so
+      // it must name a term of this federation, or the whole UPDATE
+      // would fail and lose every other edit; a missing term fails
+      // field-scoped. The id is kept while the text still names the
+      // pick (its current name, or its name as picked), and a merged
+      // term is followed to its survivor.
+      const functionResolution =
+        primaryFunctionSubmitted && primaryFunctionIdRaw
+          ? await resolveSubmittedTerm(
+              db,
+              tenant.federationId,
+              primaryFunctionIdRaw,
+              primaryFunctionText,
+              trimmed("primaryFunctionSelectedText") || null
             )
-          )
-          .get();
-        if (!selectedTerm) {
-          return {
-            ok: false as const,
-            errors: {
-              primaryFunction: [
-                "Selected function no longer exists; reselect or retype it",
-              ],
-            },
-          };
-        }
-        resolvedFunctionId = selectedTerm.id;
-      } else if (primaryFunctionText) {
+          : null;
+      if (functionResolution?.kind === "missing") {
+        return {
+          ok: false as const,
+          errors: {
+            primaryFunction: [
+              "Selected function no longer exists; reselect or retype it",
+            ],
+          },
+        };
+      }
+
+      if (functionResolution?.kind === "use") {
+        resolvedFunctionId = functionResolution.id;
+        // The text stored is the kept term's current name, whatever the
+        // request carried.
+        updates.primaryFunction = functionResolution.canonical;
+      } else if (primaryFunctionSubmitted && primaryFunctionText) {
         // User typed a value -- check if it matches an existing term (case-insensitive)
         const { like: likeFn, isNull: isNullFn } = await import("drizzle-orm");
         const existingTerm = await db
@@ -732,33 +849,59 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         }
       }
 
-      const updatedFields = {
-        ...updates,
-        surname: updates.surname ?? null,
-        givenName: updates.givenName ?? null,
-        honorific: updates.honorific ?? null,
-        primaryFunction: updates.primaryFunction ?? null,
-        primaryFunctionId: resolvedFunctionId,
-        datesOfExistence: updates.datesOfExistence ?? null,
-        dateStart: updates.dateStart ?? null,
-        dateEnd: updates.dateEnd ?? null,
-        history: updates.history ?? null,
-        functions: updates.functions ?? null,
-        sources: updates.sources ?? null,
-        wikidataId: updates.wikidataId ?? null,
-        viafId: updates.viafId ?? null,
-        notes: updates.notes ?? null,
-        internalNotes: updates.internalNotes ?? null,
-      };
+      const updatedFields = fieldsToWrite(
+        {
+          ...updates,
+          ...(primaryFunctionSubmitted ? { primaryFunctionId: resolvedFunctionId } : {}),
+        },
+        {
+          ...original,
+          functions: functionsText(existingFunctions),
+        } as unknown as Record<string, unknown>
+      );
 
+      // The functions go to entity_functions, never to the column.
+      const { functions: _functionsText, ...entityFields } = updatedFields;
+
+      const { nextVersion } = await import("~/lib/record-version.server");
+      const savedVersion = nextVersion(original.updatedAt);
       try {
-        await db
-          .update(entities)
-          .set({
-            ...updatedFields,
-            updatedAt: Date.now(),
-          })
-          .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id)));
+        // Every statement runs only while the entity holds the version
+        // read above (which the form's version was checked against), the
+        // entity update last: a save that another lands before loses the
+        // whole batch, and the update's changes count says so. The new
+        // version is past the one read even when the clock is not, so a
+        // merge that read the old version always sees the save. The
+        // function rows are replaced only when the request carries them.
+        const now = savedVersion;
+        const { functionStatements } = functionsSubmitted
+          ? entityFunctionsReplacement(db, id, lines, existingFunctions, original.updatedAt, now)
+          : { functionStatements: [] };
+        const results = await db.batch([
+          ...functionStatements,
+          db
+            .update(entities)
+            .set({ ...entityFields, updatedAt: now })
+            .where(
+              and(
+                authorityScope(entities, tenant.federationId, tenant.id),
+                eq(entities.id, id),
+                eq(entities.updatedAt, original.updatedAt)
+              )
+            ),
+        ] as unknown as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+        if (((results.at(-1) as { meta?: { changes?: number } }).meta?.changes ?? 0) === 0) {
+          const current = await db
+            .select({ updatedAt: entities.updatedAt })
+            .from(entities)
+            .where(eq(entities.id, id))
+            .get();
+          return {
+            ok: false as const,
+            error: "conflict" as const,
+            modifiedAt: current?.updatedAt ?? original.updatedAt,
+          };
+        }
 
         // Update entity count on the vocabulary term
         if (resolvedFunctionId) {
@@ -775,7 +918,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           await db
             .update(vocabularyTerms)
             .set({ entityCount: entityCountForTerm, updatedAt: Date.now() })
-            .where(eq(vocabularyTerms.id, resolvedFunctionId));
+            .where(
+              and(
+                eq(vocabularyTerms.id, resolvedFunctionId),
+                eq(vocabularyTerms.federationId, tenant.federationId)
+              )
+            );
         }
       } catch (e) {
         // Residual race: the term can still vanish between the
@@ -801,7 +949,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           "~/lib/changelog.server"
         );
         const diff = computeDiff(
-          original as unknown as Record<string, unknown>,
+          {
+            ...original,
+            functions: functionsText(existingFunctions),
+          } as unknown as Record<string, unknown>,
           updatedFields as unknown as Record<string, unknown>
         );
         if (diff) {
@@ -811,14 +962,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         }
       }
 
-      // Delete draft after successful save
-      const { deleteDraft } = await import("~/lib/drafts.server");
-      await deleteDraft(db, tenant.id, id, "entity");
+      // The saved fields supersede the autosaved draft. A request that
+      // carried none of them saved nothing, and the draft is kept.
+      if (carriesFields) {
+        const { deleteDraft } = await import("~/lib/drafts.server");
+        await deleteDraft(db, tenant.id, id, "entity");
+      }
 
-      return { ok: true as const, message: "updated" };
+      // The new version, which the form submits with its next save.
+      return { ok: true as const, message: "updated", updatedAt: savedVersion };
     }
 
     case "delete": {
+      // Deleting a record is administration, which a staff grant does not have.
+      requireArea(user, "authorities");
       await requireAuthorityMutation(db, user, tenant, "entity", [id]);
       // Server-side cascade check
       const [{ count }] = await db
@@ -844,20 +1001,61 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         return redirect("/admin/entities");
       }
 
-      await db.batch([
-        db
-          .delete(entities)
-          .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id))),
-        logAuthorityOperation(db, {
-          federationId: tenant.federationId,
-          recordType: "entity",
-          operation: "delete",
-          sourceId: id,
-          targetId: null,
-          userId: user.id,
-          detail: { snapshot: original },
-        }),
-      ] as any);
+      // A record others were merged into holds their functions and is
+      // their pointer's target; deleting it would cascade the functions
+      // away and leave the pointers dangling. The batch opens with guards
+      // that the record still holds the version read and is no merge's
+      // survivor, so a merge or save between these reads and the batch
+      // fails it whole.
+      const {
+        entitiesAsReadGuard,
+        entitiesStillAsRead,
+        entityNotMergeSurvivorGuard,
+        isMergeSurvivor,
+      } = await import("~/lib/entity-functions.server");
+      if (await isMergeSurvivor(db, id)) {
+        return { ok: false as const, error: "merge_survivor" };
+      }
+      const asRead = [{ id, version: original.updatedAt }];
+      try {
+        await db.batch([
+          entitiesAsReadGuard(db, asRead),
+          entityNotMergeSurvivorGuard(db, id),
+          db
+            .delete(entities)
+            .where(
+              and(
+                authorityScope(entities, tenant.federationId, tenant.id),
+                eq(entities.id, id),
+                eq(entities.updatedAt, original.updatedAt)
+              )
+            ),
+          logAuthorityOperation(db, {
+            federationId: tenant.federationId,
+            recordType: "entity",
+            operation: "delete",
+            sourceId: id,
+            targetId: null,
+            userId: user.id,
+            detail: { snapshot: original },
+          }),
+        ] as any);
+      } catch (err) {
+        if (await isMergeSurvivor(db, id)) {
+          return { ok: false as const, error: "merge_survivor" };
+        }
+        if (await entitiesStillAsRead(db, asRead)) throw err;
+        const current = await db
+          .select({ updatedAt: entities.updatedAt })
+          .from(entities)
+          .where(eq(entities.id, id))
+          .get();
+        return {
+          ok: false as const,
+          error: "conflict" as const,
+          modifiedAt: current?.updatedAt ?? original.updatedAt,
+        };
+      }
       return redirect("/admin/entities");
     }
 
@@ -909,30 +1107,30 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "link_description": {
       const descriptionId = formData.get("descriptionId") as string;
-      const role = formData.get("role") as string;
+      const { roleCode } = await import("~/lib/role-options");
+      const role = roleCode(formData.get("role") as string | null);
       if (!descriptionId || !role) {
         return { ok: false as const, error: "generic" };
       }
-      const { ENTITY_ROLES } = await import("~/lib/validation/enums");
-      if (!(ENTITY_ROLES as readonly string[]).includes(role)) {
-        return { ok: false as const, error: "generic" };
-      }
-      const narrowedRole = role as (typeof ENTITY_ROLES)[number];
       const description = await db
         .select({ id: descriptions.id })
         .from(descriptions)
         .where(and(eq(descriptions.id, descriptionId), eq(descriptions.tenantId, tenant.id)))
         .get();
       if (!description) throw notFound();
+      // The role is checked inside the INSERT: a code the federation's
+      // list does not approve, at the moment of the write, writes nothing.
+      const { insertEntityLink } = await import("~/lib/link-roles.server");
       try {
-        await db.insert(descriptionEntities).values({
+        const written = await insertEntityLink(db, tenant.federationId, {
           id: crypto.randomUUID(),
           descriptionId,
           entityId: id,
-          role: narrowedRole,
+          role,
           sequence: 0,
           createdAt: Date.now(),
         });
+        if (!written) return { ok: false as const, error: "generic" };
       } catch (e) {
         if (String(e).includes("UNIQUE constraint failed")) {
           return { ok: false as const, error: "duplicate_link" };
@@ -944,19 +1142,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "edit_description_link": {
       const linkId = formData.get("linkId") as string;
-      const role = formData.get("role") as string;
+      const { roleCode } = await import("~/lib/role-options");
+      const role = roleCode(formData.get("role") as string | null);
       if (!linkId || !role) {
         return { ok: false as const, error: "generic" };
       }
-      const { ENTITY_ROLES: roles } = await import("~/lib/validation/enums");
-      if (!(roles as readonly string[]).includes(role)) {
-        return { ok: false as const, error: "generic" };
-      }
-      const narrowedRole = role as (typeof roles)[number];
       const roleNote = (formData.get("roleNote") as string)?.trim() || null;
       const sequence = parseInt(formData.get("sequence") as string, 10) || 0;
       const honorific = (formData.get("honorific") as string)?.trim() || null;
       const func = (formData.get("function") as string)?.trim() || null;
+      const { withOfficeSql } = await import("~/lib/link-attributes.server");
       const nameAsRecorded =
         (formData.get("nameAsRecorded") as string)?.trim() || null;
       const link = await db
@@ -965,10 +1160,26 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(linkHere(linkId))
         .get();
       if (!link) throw notFound();
-      await db
-        .update(descriptionEntities)
-        .set({ role: narrowedRole, roleNote, sequence, honorific, function: func, nameAsRecorded })
-        .where(linkHere(linkId));
+      // A relation side is not edited from this form. The UPDATE carries
+      // the relation the form read, outside every relation, so a change to
+      // it that lands in between is refused, not overwritten
+      // (relation-sides.server.ts).
+      const { relationRefusal, updateLinkAsRead } = await import("~/lib/relation-sides.server");
+      const { OUTSIDE_RELATIONS, isRelationSide, relationAsReadFrom } = await import("~/lib/relation-as-read");
+      const asRead = relationAsReadFrom(formData);
+      if (asRead && isRelationSide(asRead)) return { ok: false as const, error: "relation_side_save" as const };
+      // The role is checked inside the UPDATE: the link's current code, or
+      // one the federation's list approves at the moment of the write.
+      const { roleKeptOrApprovedSql } = await import("~/lib/link-roles.server");
+      const roleAllowed = roleKeptOrApprovedSql(descriptionEntities.role, tenant.federationId, "entity_role", role);
+      const updated = await updateLinkAsRead(db, linkId, and(linkHere(linkId), roleAllowed), asRead ?? OUTSIDE_RELATIONS, {
+        role: role as (typeof ENTITY_ROLES)[number], roleNote, sequence, honorific, attributes: withOfficeSql(func), nameAsRecorded,
+      });
+      if (!updated) {
+        const refusal = await relationRefusal(db, linkId, linkHere(linkId), asRead, "save");
+        if (refusal === null) throw notFound();
+        return { ok: false as const, error: refusal };
+      }
       return { ok: true as const };
     }
 
@@ -983,7 +1194,19 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(linkHere(linkId))
         .get();
       if (!link) throw notFound();
-      await db.delete(descriptionEntities).where(linkHere(linkId));
+      // Removing a relation side would leave its partner naming a link
+      // that is gone, with no kept link to repoint it to. The DELETE
+      // carries the relation the form read, outside every relation, so a
+      // change to it that lands in between is refused.
+      const { deleteLinkAsRead, relationRefusal } = await import("~/lib/relation-sides.server");
+      const { OUTSIDE_RELATIONS, isRelationSide, relationAsReadFrom } = await import("~/lib/relation-as-read");
+      const asRead = relationAsReadFrom(formData);
+      if (asRead && isRelationSide(asRead)) return { ok: false as const, error: "relation_side_remove" as const };
+      if (!(await deleteLinkAsRead(db, linkId, linkHere(linkId), asRead ?? OUTSIDE_RELATIONS))) {
+        const refusal = await relationRefusal(db, linkId, linkHere(linkId), asRead, "remove");
+        if (refusal === null) throw notFound();
+        return { ok: false as const, error: refusal };
+      }
       return { ok: true as const };
     }
 
@@ -1007,6 +1230,7 @@ export default function EntityDetailPage({
     entity,
     holdingHandlists,
     descLinkCount,
+    isMergeSurvivor,
     mergeTarget,
     mergeBand,
     splitIntoBand,
@@ -1018,20 +1242,21 @@ export default function EntityDetailPage({
     repoCounts,
     repoSpan,
     wl,
+    roles,
     conflictDraft,
     functionTerm,
   } = loaderData;
   const actionData = useActionData<typeof action>();
   const { t } = useTranslation("entities");
   const { t: ta } = useTranslation("authorities");
-  // Place-role labels for the context card's metadata strip live in the
-  // places namespace (an entity's linked description can carry places).
-  const { t: tp } = useTranslation("places");
   // The handlists namespace owns every string the picker says,
   // including the label on the control that opens it.
   const { t: th } = useTranslation("handlists");
 
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit mode belongs to the record it was opened on: following a link
+  // to another entity leaves it, so the form's inputs and its version
+  // always come from the same load.
+  const [isEditing, setIsEditing] = useRecordEditMode(entity.id);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [showConflictDialog, setShowConflictDialog] = useState(false);
@@ -1048,6 +1273,9 @@ export default function EntityDetailPage({
 
   // Autosave via shared debounced-draft hook
   const { formRef, handleFormChange, draftStatus } = useAutosaveDraft(isEditing);
+  // The version the form's field values were loaded from, which it
+  // submits; a loader revalidation does not move it.
+  const formVersion = useFormVersion(`${entity.id}:${isEditing}`, entity.updatedAt, actionData);
 
   const globalError =
     actionData && "error" in actionData ? actionData.error : undefined;
@@ -1086,6 +1314,7 @@ export default function EntityDetailPage({
         splitTo={`/admin/entities/${entity.id}/split`}
         onEdit={() => setIsEditing(true)}
         onDelete={() => setShowDeleteModal(true)}
+        deleteBlockedReason={isMergeSurvivor ? t("deleteBlockedMergeSurvivor") : undefined}
         extraActions={
           <HandlistPicker
             recordType="entities"
@@ -1193,7 +1422,9 @@ export default function EntityDetailPage({
         <div className="mt-4 rounded-md border border-indigo bg-indigo-tint px-4 py-3 text-sm text-stone-700">
           {globalError === "has_descriptions"
             ? t("deleteBlocked", { count: descLinkCount })
-            : t("errorGeneric")}
+            : globalError === "merge_survivor"
+              ? t("deleteBlockedMergeSurvivor")
+              : t("errorGeneric")}
         </div>
       )}
 
@@ -1214,6 +1445,7 @@ export default function EntityDetailPage({
                 onDiscard={() => setIsEditing(false)}
                 formRef={formRef}
                 onFormChange={handleFormChange}
+                formVersion={formVersion}
               />
             </div>
           ) : (
@@ -1242,12 +1474,12 @@ export default function EntityDetailPage({
             size={wl.size}
             page={wl.page}
             isMerged={isMerged}
-            roles={ENTITY_ROLES}
+            roleOptions={entityRoleOptions(roles)}
             recordId={entity.id}
             recordType="entity"
             showEntityFields={true}
-            roleLabel={(r) => t(`role_${r}`)}
-            placeRoleLabel={(r) => tp(`role_${r}`)}
+            roleLabel={(r, relationSide) => entityRoleLabel(roles.labels, r, relationSide)}
+            placeRoleLabel={(r) => placeRoleLabel(roles.labels, r)}
             t={t}
             ta={ta}
           />
@@ -1333,7 +1565,7 @@ export default function EntityDetailPage({
                 ? (actionData.modifiedAt as number)
                 : null
             }
-            recordUpdatedAt={entity.updatedAt}
+            formRef={formRef}
             onCancel={() => setShowConflictDialog(false)}
             t={t}
           />
@@ -1504,6 +1736,7 @@ function EditMode({
   onDiscard,
   formRef,
   onFormChange,
+  formVersion,
 }: {
   entity: any;
   nameVariantsList: string[];
@@ -1513,6 +1746,8 @@ function EditMode({
   onDiscard: () => void;
   formRef?: React.Ref<HTMLFormElement>;
   onFormChange?: () => void;
+  /** The version the form's field values were loaded from, submitted as `_updatedAt`. */
+  formVersion: number;
 }) {
   const [nameVariants, setNameVariants] = useState<string[]>(nameVariantsList);
   const [wikidataId, setWikidataId] = useState(entity.wikidataId || "");
@@ -1524,7 +1759,7 @@ function EditMode({
       <input
         type="hidden"
         name="_updatedAt"
-        value={String(entity.updatedAt)}
+        value={String(formVersion)}
       />
       <input
         type="hidden"
@@ -1733,4 +1968,4 @@ function EditMode({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -23,12 +23,16 @@
  * `fclass` column (5-value GeoNames feature class) with a CHECK
  * constraint and `legacyIds` JSON for migration provenance.
  *
- * @version v0.7.0
+ * `updatePlaceSchema` carries no defaults, so a field the edit form
+ * does not submit (`legacyIds` among them) never reaches the UPDATE.
+ *
+ * @version v0.9.0
  */
 
 import { z } from "zod/v4";
 import { PLACE_TYPES, GEONAMES_FCLASSES, COORDINATE_PRECISIONS } from "./enums";
 import { AUTHORITY_CODE_RE } from "./authority-code";
+import { updateSchemaFrom } from "./update-schema";
 
 export const placeSchema = z.object({
   id: z.string().uuid(),
@@ -69,6 +73,8 @@ export const createPlaceSchema = placeSchema.omit({
   updatedAt: true,
 });
 
-export const updatePlaceSchema = placeSchema.partial().required({ id: true });
+// No defaults: a field the edit form does not submit is absent from
+// the parsed output, never "[]" (see update-schema.ts).
+export const updatePlaceSchema = updateSchemaFrom(placeSchema);
 
 export const importPlaceSchema = placeSchema;

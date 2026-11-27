@@ -4,15 +4,15 @@
  * This module deals with the one question the export surface asks
  * before it lets a lossy choice through: not "may data be lost" but
  * WHICH FIELDS, on HOW MANY RECORDS, in THIS scope. The choice-cost
- * card is explicit that the difference matters — «"Some data may be
- * lost" is not a warning, it is an apology» — so nothing here returns a
+ * card is explicit that the difference matters — "'Some data may be
+ * lost' is not a warning, it is an apology" — so nothing here returns a
  * boolean or a severity. It returns fields and numbers, or it returns
  * null because there is nothing to say.
  *
  * THREE HARMS, NAMED SEPARATELY, because they are not the same harm.
  * DROPPED is absence: the field has no element in the target form and
  * simply will not appear. MERGED is ambiguity, and the card calls it
- * the most dangerous of the three, «because the file looks complete» —
+ * the most dangerous of the three, "because the file looks complete" —
  * two fields become one paragraph and no reader downstream can tell
  * which sentence came from where. FLATTENED is the loss of structure:
  * the records arrive, but nothing in the file says one sits inside
@@ -55,7 +55,7 @@
  * card draws only the Dublin Core case; this one is honest and cheap,
  * and the surface renders it with the same three blocks.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { and, eq, getTableColumns, inArray, sql } from "drizzle-orm";
@@ -293,8 +293,8 @@ async function countCarriers(
 }
 
 /**
- * The containers the scope's records sit in — «47 series across 6
- * collections». Walked upwards a level at a time from the members'
+ * The containers the scope's records sit in — "47 series across 6
+ * collections". Walked upwards a level at a time from the members'
  * parents, deduplicating as it climbs, because the containers are
  * usually NOT in the scope: a search result names a thousand items and
  * not one of the series that hold them.
@@ -370,4 +370,4 @@ export function formCrosswalks(form: ExportForm, ownStandard: Standard): boolean
   return form === "dc" || isDescriptiveStandardForm(form);
 }
 
-/* @version v0.7.0 */
+/* @version v0.9.0 */

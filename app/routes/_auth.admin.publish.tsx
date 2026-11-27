@@ -2,27 +2,33 @@
  * Publish Admin Dashboard
  *
  * This page is the superadmin-only surface for triggering a new
- * publish run and watching it progress. The loader derives the
- * pre-flight changelog —
- * what would be added, modified, or unpublished for every fonds and
- * every other data type — and an in-flight runs is passed to the
- * progress panel so the page can poll until completion. Recent runs
- * appear in the history table below, each linking into the per-run
- * detail page.
+ * publish run and watching it progress. The loader returns what is
+ * cheap to read: the fonds list for the controls, the in-flight run
+ * (passed to the progress panel so the page can poll until
+ * completion) and the recent runs for the history table, each linking
+ * into the per-run detail page. It sits in the sidebar's Import and
+ * export group, beside Exports.
+ *
+ * The pre-flight changelog — what would be added, modified or
+ * unpublished for every fonds and every other data type — is not in
+ * the loader. On the federation lead its counts take several seconds,
+ * so the page renders without them and fetches them after mount from
+ * `/admin/publish/counts` (`_auth.admin.publish.counts.tsx`, which
+ * calls `getPublishChangelog`). Meanwhile the changelog's place holds
+ * an indeterminate progress notice, and a retry notice if the counts
+ * fail. The publish controls work throughout; the confirm dialog
+ * leaves out its time estimate until the counts are there.
  *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. `resolveExportScope` then expands it to the export
  * SCOPE (federation spec §9 step 8): on the federation LEAD host the
  * scope is every member tenant (the lead publishes all members), so the
- * dropdown, the changelog, and the run history all span the federation;
- * a non-lead tenant sees only its own. Every scoped query below filters
- * by `memberTenantIds` — the pre-flight `repositories` / per-fonds
- * `descriptions` counts and the run-history joins take the member set,
- * and the authority counts on `entities` / `places` join the
- * federation-scoped authority tables (migrations 0045-0048) through the
- * junctions to the member tenants' published descriptions, so an entity
- * linked solely to an AHR description is counted once the AHR tenant is
- * a federation member.
+ * dropdown and the changelog's counts span the federation; a non-lead
+ * tenant sees only its own. A publish run belongs to the tenant it ran
+ * in, so the active run and the history are this tenant's own runs
+ * (`export_runs.tenant_id = tenant.id`), as polling and the run detail
+ * page read them; the counts route resolves the same scope and takes
+ * its reference point from this tenant's runs alone.
  *
  * Capability gate runs before everything else. The loader calls
  * `requireCapability(tenant, "publish_pipeline")` as the first
@@ -32,7 +38,7 @@
  * configuration 404s for everyone, never falling through to the
  * "superadmin required" page.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -43,8 +49,13 @@ import { ChangelogSection } from "../components/publish/changelog-section";
 import { ExportControls } from "../components/publish/export-controls";
 import { ExportProgress } from "../components/publish/export-progress";
 import { ExportHistory } from "../components/publish/export-history";
-import type { ChangelogData } from "../components/publish/changelog-section";
+import {
+  CountsFailed,
+  CountsLoading,
+  usePublishCounts,
+} from "../components/publish/counts-status";
 import type { Route } from "./+types/_auth.admin.publish";
+import { pageMeta, heading } from "../lib/page-title";
 
 export interface ExportRunRow {
   id: string;
@@ -62,20 +73,17 @@ export interface ExportRunRow {
   createdAt: number;
 }
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("publish:title"),
+  );
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
-  const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { sql, desc, eq, and, isNull, gt, inArray } = await import("drizzle-orm");
-  const {
-    descriptions,
-    repositories,
-    entities,
-    places,
-    descriptionEntities,
-    descriptionPlaces,
-    exportRuns,
-    users,
-  } = await import("../db/schema");
+  const { sql, desc, eq, and } = await import("drizzle-orm");
+  const { exportRuns, users } = await import("../db/schema");
 
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
@@ -85,7 +93,6 @@ export async function loader({ context }: Route.LoaderArgs) {
     return {
       authorized: false as const,
       fondsList: [] as string[],
-      changelog: null,
       activeExport: null,
       history: [],
     };
@@ -117,9 +124,8 @@ export async function loader({ context }: Route.LoaderArgs) {
   // Resolve the export scope (federation spec §9 step 8). On the
   // federation LEAD host the scope aggregates every member tenant, so
   // the dropdown offers fonds from ALL members (the lead publishes all
-  // members) and the changelog counts span the federation; a non-lead
-  // tenant sees only its own. `memberTenantIds` drives every scoped
-  // query below.
+  // members); a non-lead tenant sees only its own. `memberTenantIds`
+  // drives every scoped query below.
   const scope = await resolveExportScope(db, {
     id: tenant.id,
     federationId: tenant.federationId,
@@ -129,185 +135,35 @@ export async function loader({ context }: Route.LoaderArgs) {
   const memberTenantIds = scope.memberTenantIds;
   const fondsList = await getScopedFondsList(db, memberTenantIds);
 
-  // Find the last completed export timestamp scoped to this tenant.
-  // Reading `lastExport` from the global `exportRuns` pool would let
-  // a Tenant B run completing five minutes ago set the "since last
-  // export" reference for Tenant A's changelog deltas —
-  // under-counting legitimate Tenant A "modified since" rows.
-  // `exportRuns` has no `tenantId` column (the schema add was
-  // deferred to a future release), so tenant scoping joins
-  // `exportRuns.triggeredBy → users.tenantId`.
-  const lastExport = await db
-    .select({ completedAt: exportRuns.completedAt })
-    .from(exportRuns)
-    .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
-    .where(
-      and(
-        eq(exportRuns.status, "complete"),
-        inArray(users.tenantId, memberTenantIds)
-      )
-    )
-    .orderBy(desc(exportRuns.completedAt))
-    .limit(1)
-    .get();
-
-  const lastExportedAt = lastExport?.completedAt ?? null;
-
-  // Description changelog: per-fonds counts using rootDescriptionId join
-  // Since lastExportedAt column doesn't exist on descriptions, we use the
-  // last export run's completedAt as the reference point.
-  const fondsChanges = await db.all(sql`
-    SELECT
-      root.reference_code AS fonds,
-      root.title AS fonds_label,
-      SUM(CASE
-        WHEN d.is_published = 1 AND ${lastExportedAt ? sql`d.updated_at > ${lastExportedAt}` : sql`1 = 1`}
-        THEN 1 ELSE 0
-      END) AS modified,
-      SUM(CASE
-        WHEN d.is_published = 1 AND ${lastExportedAt ? sql`d.created_at > ${lastExportedAt}` : sql`1 = 1`}
-        THEN 1 ELSE 0
-      END) AS added,
-      SUM(CASE
-        WHEN d.is_published = 0 AND ${lastExportedAt ? sql`d.updated_at > ${lastExportedAt}` : sql`0 = 0`}
-        THEN 1 ELSE 0
-      END) AS unpublished
-    FROM ${descriptions} d
-    JOIN ${descriptions} root ON d.root_description_id = root.id
-    WHERE root.parent_id IS NULL
-      AND d.tenant_id IN (${sql.join(memberTenantIds.map((id) => sql`${id}`), sql`, `)})
-      AND root.tenant_id IN (${sql.join(memberTenantIds.map((id) => sql`${id}`), sql`, `)})
-    GROUP BY root.reference_code, root.title
-    ORDER BY root.reference_code
-  `);
-
-  const descriptionChangelog = (fondsChanges as Array<{
-    fonds: string;
-    fonds_label: string;
-    added: number;
-    modified: number;
-    unpublished: number;
-  }>).map((row) => ({
-    fonds: row.fonds,
-    fondsLabel: row.fonds_label,
-    added: Number(row.added),
-    modified: Number(row.modified),
-    unpublished: Number(row.unpublished),
-  }));
-
-  // Repository/entity/place changelog: count modified since last export
-  const repoCount = lastExportedAt
-    ? await db
-        .select({ count: sql<number>`count(*)` })
-        .from(repositories)
-        .where(
-          and(
-            inArray(repositories.tenantId, memberTenantIds),
-            gt(repositories.updatedAt, lastExportedAt)
-          )
-        )
-        .get()
-    : await db
-        .select({ count: sql<number>`count(*)` })
-        .from(repositories)
-        .where(inArray(repositories.tenantId, memberTenantIds))
-        .get();
-
-  // Authority counts mirror the export read exactly (exportEntities /
-  // exportPlaces in app/lib/export/pipeline.server.ts): authorities are
-  // federation-scoped (migrations 0045-0048), but this tenant's export only
-  // emits the federation authorities REFERENCED BY ITS OWN PUBLISHED
-  // DESCRIPTIONS — so the pre-flight count joins through the junction
-  // tables to this tenant's published descriptions rather than counting
-  // the whole federation set. Counting the raw federation set would
-  // overstate the numbers as soon as a federation holds more than one
-  // tenant. count(DISTINCT id) because an authority linked from several
-  // descriptions exports once.
-  // The entities/places workflow steps are skipped for an
-  // authorities-off tenant, so the preview must not advertise
-  // authority counts it will not export.
-  let entityCount: { count: number } | undefined;
-  let placeCount: { count: number } | undefined;
-  if (tenant.authoritiesEnabled) {
-    const entityCountConditions = [
-      authorityScope(entities, tenant.federationId, memberTenantIds),
-      inArray(descriptions.tenantId, memberTenantIds),
-      eq(descriptions.isPublished, true),
-      isNull(entities.mergedInto),
-    ];
-    if (lastExportedAt) {
-      entityCountConditions.push(gt(entities.updatedAt, lastExportedAt));
-    }
-    entityCount = await db
-      .select({ count: sql<number>`count(DISTINCT ${entities.id})` })
-      .from(entities)
-      .innerJoin(
-        descriptionEntities,
-        eq(descriptionEntities.entityId, entities.id)
-      )
-      .innerJoin(
-        descriptions,
-        eq(descriptionEntities.descriptionId, descriptions.id)
-      )
-      .where(and(...entityCountConditions))
-      .get();
-
-    const placeCountConditions = [
-      authorityScope(places, tenant.federationId, memberTenantIds),
-      inArray(descriptions.tenantId, memberTenantIds),
-      eq(descriptions.isPublished, true),
-      isNull(places.mergedInto),
-    ];
-    if (lastExportedAt) {
-      placeCountConditions.push(gt(places.updatedAt, lastExportedAt));
-    }
-    placeCount = await db
-      .select({ count: sql<number>`count(DISTINCT ${places.id})` })
-      .from(places)
-      .innerJoin(descriptionPlaces, eq(descriptionPlaces.placeId, places.id))
-      .innerJoin(
-        descriptions,
-        eq(descriptionPlaces.descriptionId, descriptions.id)
-      )
-      .where(and(...placeCountConditions))
-      .get();
-  }
-
-  const changelog: ChangelogData = {
-    descriptions: descriptionChangelog,
-    repositories: { modified: Number(repoCount?.count ?? 0) },
-    entities: { modified: Number(entityCount?.count ?? 0) },
-    places: { modified: Number(placeCount?.count ?? 0) },
-  };
-
   // Active export (running or pending) — scoped to this tenant.
   // A global query would let a Tenant A superadmin landing on
   // /admin/publish while a Tenant B run was in flight see the Tenant
   // B run's id and let the polling ExportProgress panel chain into
-  // the (also-leaked) GET /api/publish body. Same join pattern as
-  // `lastExport` above.
+  // the (also-leaked) GET /api/publish body. The scope is the run's
+  // own `tenant_id`, the tenant it was started in (migration 0115),
+  // against this tenant alone, not the export scope's members: polling
+  // and the run detail page read only this tenant's runs, so a member's
+  // run taken up here would 404 on every poll.
   const activeExport = await db
     .select({
       id: exportRuns.id,
       status: exportRuns.status,
     })
     .from(exportRuns)
-    .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
     .where(
       and(
         sql`${exportRuns.status} IN ('running', 'pending')`,
-        inArray(users.tenantId, memberTenantIds)
+        eq(exportRuns.tenantId, tenant.id)
       )
     )
     .orderBy(desc(exportRuns.createdAt))
     .limit(1)
     .get();
 
-  // Export history: 20 most recent — scoped to this tenant.
-  // A leftJoin on `users` would return platform-wide rows including
-  // each run's triggering user email and selected fonds (cross-tenant
-  // operator visibility); the join must be an innerJoin so it both
-  // filters and exposes `users.tenantId` as the scoping column.
+  // Export history: 20 most recent — this tenant's own runs, on the
+  // run's own `tenant_id`, so every row links to a run detail page this
+  // tenant can open. The join on `users` only reads the triggering
+  // user's email.
   const historyRows = await db
     .select({
       id: exportRuns.id,
@@ -326,7 +182,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     })
     .from(exportRuns)
     .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
-    .where(inArray(users.tenantId, memberTenantIds))
+    .where(eq(exportRuns.tenantId, tenant.id))
     .orderBy(desc(exportRuns.createdAt))
     .limit(20)
     .all();
@@ -334,7 +190,6 @@ export async function loader({ context }: Route.LoaderArgs) {
   return {
     authorized: true as const,
     fondsList,
-    changelog,
     activeExport: activeExport
       ? { id: activeExport.id, status: activeExport.status }
       : null,
@@ -344,7 +199,10 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export default function PublishPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("publish");
-  const { authorized, fondsList, changelog, activeExport, history } = loaderData;
+  const { authorized, fondsList, activeExport, history } = loaderData;
+  const counts = usePublishCounts("/admin/publish/counts", authorized);
+  const changelog =
+    counts.state.status === "ready" ? counts.state.changelog : null;
 
   const [activeExportId, setActiveExportId] = useState<string | null>(
     activeExport?.id ?? null
@@ -354,15 +212,13 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
 
   // Rough total: sum of all per-fonds description added/modified, plus the
   // repo/entity/place modified counts. Used to estimate the publish duration
-  // in the warning modal.
-  const totalRecordCount =
-    (changelog?.descriptions.reduce(
-      (sum, f) => sum + f.added + f.modified,
-      0
-    ) ?? 0) +
-    (changelog?.repositories.modified ?? 0) +
-    (changelog?.entities.modified ?? 0) +
-    (changelog?.places.modified ?? 0);
+  // in the warning modal; null until the counts are there.
+  const totalRecordCount = changelog
+    ? changelog.descriptions.reduce((sum, f) => sum + f.added + f.modified, 0) +
+      changelog.repositories.modified +
+      changelog.entities.modified +
+      changelog.places.modified
+    : null;
 
   if (!authorized) {
     return (
@@ -401,8 +257,6 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
     }
   }
 
-  // Lazy-load sub-components to avoid circular imports
-  // They will be created in Task 2
   return (
     <div className="space-y-8">
       <div>
@@ -414,6 +268,10 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
         </p>
       </div>
 
+      {counts.state.status === "loading" && <CountsLoading />}
+      {counts.state.status === "failed" && (
+        <CountsFailed onRetry={counts.retry} />
+      )}
       {changelog && <ChangelogSection changelog={changelog} />}
 
       <ExportControls
@@ -429,7 +287,7 @@ export default function PublishPage({ loaderData }: Route.ComponentProps) {
         </p>
       )}
 
-            {activeExportId && <ExportProgress exportId={activeExportId} />}
+      {activeExportId && <ExportProgress exportId={activeExportId} />}
 
       <ExportHistory history={history} />
     </div>

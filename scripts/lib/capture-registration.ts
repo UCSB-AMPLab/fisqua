@@ -4,8 +4,10 @@
  * This module deals with turning a capture manifest, the file a Captua
  * appliance writes when it hands a batch of captured volumes over, into
  * the media pipeline's volume and page rows, so the volumes can be
- * dispatched. The command in `scripts/commands/register-capture-volumes.ts`
- * is a thin shell around `registerCaptureVolumes` here.
+ * dispatched. `fisqua capture register`
+ * (`scripts/lib/capture-cli/register.ts`) plans with `planRegistration`
+ * here, writes the report and the SQL file, applies it, and reads back
+ * with `readKeptVolumes` and `verifyRegistration`.
  *
  * The checks a manifest goes through are not here: they are pure
  * functions in `app/lib/capture/manifest.ts`, which the Worker's
@@ -43,7 +45,11 @@
  * open run holds it and no run has named it), so a volume that changed
  * between the read and the write is left untouched rather than
  * half-written; the re-read after applying shows it, with the delivery
- * that holds each volume. A volume a run has ever named is left alone at
+ * that holds each volume. The re-read expects the plan's pages, or, for
+ * a replacement with no page (its records open placeholders, contract
+ * 1.9), the pages, digests and expected count the volume had before the
+ * file was applied and its revision raised by one, since such a
+ * replacement writes no page. A volume a run has ever named is left alone at
  * planning, as the link refuses it.
  *
  * Right after planning, before the state of a volume or its objects
@@ -56,21 +62,26 @@
  * Recorded with another digest, the volume is set aside as `id_reused`.
  * Either way the file's other volumes go on.
  *
- * The statements are built for every volume that passed, in a dry run
+ * The statements are built for every volume that passed, in a plan
  * too. A volume with a statement larger than D1 takes is set aside as
- * `too_large`, and the file's other volumes are written.
+ * `too_large`, and the file's other volumes are written. A re-registered
+ * volume's new delivery is compared with the records of the delivery
+ * that holds it (`registeredRecordsQuery`), and noted
+ * `sequence-reordered` when they appear in another relative order, as
+ * the link notes it.
  *
  * The read statements (`descriptionsQuery`, `existingVolumesQuery`,
- * `registeredFoldersQuery`, `verifyQuery`) go through `wrangler d1 execute --command`, never
+ * `registeredFoldersQuery`, `registeredRecordsQuery`, `verifyQuery`) go through `wrangler d1 execute --command`, never
  * `--file`: against a remote database `--file` is an import and returns
  * no rows. `wranglerRows` runs them through an injected command runner.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { escapeSql } from "./sql";
+import { runD1 } from "./d1-cli";
 import { fileDeliveryId, fileRegistrationSql } from "../../app/lib/capture/file-route.server";
-import { CaptureBudgetError, repeatedDelivery } from "../../app/lib/capture/link.server";
+import { CaptureBudgetError, readStoredRecords, repeatedDelivery } from "../../app/lib/capture/link.server";
 import { bodyDigest } from "../../app/lib/capture/token";
 import {
   d1Args,
@@ -97,6 +108,7 @@ import {
   type ExistingVolume,
   type PlannedVolume,
 } from "../../app/lib/capture/manifest";
+import { appendAll } from "./arrays";
 
 // The checks live in the app, where the delivery endpoint runs them
 // too; re-exported here for the command and its tests.
@@ -188,6 +200,12 @@ export interface RegistrationSqlInput {
   digest: string;
   /** The masters listing of each volume's prefix: full key to size. */
   listings: Map<string, Map<string, number>>;
+  /**
+   * The records of each re-registered volume's registered delivery, by
+   * volume id, which `sequence-reordered` is noted against; a volume
+   * absent here is compared with nothing.
+   */
+  previous?: Map<string, Array<{ captuaRecordId: number; sequence: number }>>;
   now: number;
   newId: () => string;
 }
@@ -220,10 +238,11 @@ export async function registrationSql(input: RegistrationSqlInput): Promise<Regi
         digest: input.digest,
         masters: { endpoint: input.store.endpoint, bucket: input.store.bucket },
         listing: input.listings.get(v.mastersPrefix as string) ?? new Map(),
+        previous: input.previous?.get(v.volumeId as string) ?? null,
         now: input.now,
         newId: input.newId,
       });
-      statements.push(...written.statements);
+      appendAll(statements, written.statements);
       deliveries.set(v.volumeId as string, written.deliveryId);
     } catch (err) {
       if (err instanceof CaptureBudgetError) {
@@ -270,6 +289,39 @@ export function registeredFoldersQuery(tenantId: string): string {
   return `SELECT masters_prefix, masters_key FROM pipeline_volumes WHERE tenant_id = ${escapeSql(tenantId)};`;
 }
 
+/** IN-list chunk for the registered records read: a delivery's records column can be large. */
+export const RECORDS_READ_CHUNK = 10;
+
+/** The records of the `registered` delivery of each of `volumeIds`, the one that holds it. */
+export function registeredRecordsQuery(tenantId: string, volumeIds: string[]): string {
+  return (
+    `SELECT pipeline_volume_id, IFNULL(records, '') AS records FROM capture_deliveries ` +
+    `WHERE tenant_id = ${escapeSql(tenantId)} AND state = 'registered' ` +
+    `AND pipeline_volume_id IN (${inList(volumeIds)});`
+  );
+}
+
+/**
+ * The records each re-registered volume's registered delivery holds,
+ * by volume id, which the new delivery's order is compared with
+ * (`reorderNotes`).
+ */
+async function readPrevious(
+  volumes: PlannedVolume[],
+  tenantId: string,
+  rows: RowReader,
+): Promise<Map<string, Array<{ captuaRecordId: number; sequence: number }>>> {
+  const out = new Map<string, Array<{ captuaRecordId: number; sequence: number }>>();
+  const ids = volumes.filter((v) => v.action === "replace").map((v) => v.volumeId as string);
+  for (const part of chunks(ids, RECORDS_READ_CHUNK)) {
+    for (const r of await rows(registeredRecordsQuery(tenantId, part))) {
+      const stored = String(r.records);
+      if (stored !== "") out.set(String(r.pipeline_volume_id), await readStoredRecords(stored));
+    }
+  }
+  return out;
+}
+
 /** The tenant's deliveries recorded under any of `ids`, with their body digests. */
 export function recordedDeliveriesQuery(tenantId: string, ids: string[]): string {
   return (
@@ -312,7 +364,7 @@ async function setAsideRecorded(
 export function verifyQuery(tenantId: string, volumeIds: string[]): string {
   const t = escapeSql(tenantId);
   return (
-    `SELECT v.id AS id, v.state AS state, v.expected_count AS expected_count, ` +
+    `SELECT v.id AS id, v.state AS state, v.expected_count AS expected_count, v.pages_revision AS pages_revision, ` +
     `(SELECT COUNT(*) FROM pipeline_volume_pages p WHERE p.tenant_id = ${t} AND p.pipeline_volume_id = v.id) AS pages, ` +
     `(SELECT COUNT(*) FROM pipeline_volume_pages p WHERE p.tenant_id = ${t} AND p.pipeline_volume_id = v.id ` +
     `AND p.sha256 IS NOT NULL) AS digests, ` +
@@ -325,13 +377,14 @@ export function verifyQuery(tenantId: string, volumeIds: string[]): string {
 export type RowReader = (sql: string) => Promise<Record<string, unknown>[]>;
 
 /**
- * Read rows through `wrangler d1 execute --command --json`. Remote output
+ * Read rows through `wrangler d1 execute --command --json`, by `runD1`,
+ * which runs a read again when D1 is overloaded. Remote output
  * can carry status lines before the JSON, so everything before the first
  * JSON token is dropped.
  */
 export function wranglerRows(target: Target, run: CommandRunner): RowReader {
   return async (sql) => {
-    const out = run("npx", [...d1Args(target), "--json", "--command", sql], {});
+    const out = runD1([...d1Args(target), "--json", "--command", sql], { exec: run });
     const start = out.search(/[[{]/);
     if (start < 0) throw new ProvisionStop(`wrangler produced no JSON output: ${out.slice(0, 200)}`);
     const parsed = JSON.parse(out.slice(start)) as Array<{ results?: Record<string, unknown>[] }>;
@@ -353,6 +406,7 @@ export interface RegistrationOptions {
   /** The tenant's slug. */
   slug: string;
   target: Target;
+  /** Whether the run is to apply: an apply needs the operator's B2 credentials. */
   apply: boolean;
   /** Staging tests only; refused with `target` production. */
   allowCaptured?: boolean;
@@ -366,12 +420,8 @@ export interface RegistrationOptions {
 export interface RegistrationProviders {
   d1: D1Api;
   rows: RowReader;
-  /** Null without the operator's B2 credentials; `--apply` needs them. */
+  /** Null without the operator's B2 credentials; an apply needs them. */
   b2: B2Api | null;
-  /** Writes a local file (the report, the SQL file). */
-  writeFile: (path: string, text: string) => void;
-  /** Applies a SQL file to the target with `wrangler d1 execute --file`. */
-  applyFile: (path: string) => void;
   now: () => number;
   newId: () => string;
 }
@@ -400,17 +450,11 @@ export interface RegistrationReport {
   unlistedVolumes?: string[];
   volumes: Array<Omit<PlannedVolume, "objects" | "pages" | "issues"> & { pageCount?: number }>;
   verification?: VerifiedVolume[];
+  /** After an apply: what the second plan found still to write; empty when it found nothing. */
+  problems?: string[];
 }
 
 export const OUTPUT_DIR = ".import";
-
-export function reportPath(manifestId: string): string {
-  return `${OUTPUT_DIR}/capture-registration_${manifestId}.json`;
-}
-
-export function sqlPath(manifestId: string): string {
-  return `${OUTPUT_DIR}/capture-registration_${manifestId}.sql`;
-}
 
 function volumeLine(v: PlannedVolume): string {
   const name = `${v.stem} (${v.externalId ?? "no externalId"})`;
@@ -429,24 +473,34 @@ function volumeLine(v: PlannedVolume): string {
   );
 }
 
+export interface RegistrationPlan {
+  report: RegistrationReport;
+  tenantId: string;
+  /** The volumes to write: every planned volume not set aside. */
+  writes: PlannedVolume[];
+  /** The statements that write them, in order, and each written volume's delivery id. */
+  statements: string[];
+  deliveries: Map<string, string>;
+}
+
 /**
- * Registers the volumes of one parsed manifest for one tenant: reads,
- * plans, takes the inventory, writes the report, and with `apply` writes
- * the rows in one file and re-reads them. Returns the report.
+ * Reads the tenant, plans the volumes of one parsed manifest, takes the
+ * inventory, builds the statements and logs every volume. Reads D1 and
+ * lists B2; writes nothing.
  */
-export async function registerCaptureVolumes(
+export async function planRegistration(
   manifest: CaptureManifest,
   options: RegistrationOptions,
   providers: RegistrationProviders,
   log: Log,
-): Promise<RegistrationReport> {
+): Promise<RegistrationPlan> {
   if (options.allowCaptured && options.target === "production") {
     throw new RegistrationStop("--allow-captured is for staging tests and is refused against production");
   }
   const { tenant, federation } = await resolveTenantStorage(options.slug, providers.d1);
   checkTransferRoot(manifest, tenant.slug);
   if (options.apply && !providers.b2) {
-    throw new RegistrationStop("--apply needs the operator's B2 credentials, to check the masters are in the bucket");
+    throw new RegistrationStop("An apply needs the operator's B2 credentials, to check the masters are in the bucket");
   }
   const now = providers.now();
   log(`Tenant ${tenant.slug} (${tenant.id}), federation ${federation.slug}, target ${options.target}`);
@@ -527,6 +581,7 @@ export async function registerCaptureVolumes(
     store: mastersStoreFor(federation),
     digest,
     listings,
+    previous: await readPrevious(volumes, tenant.id, providers.rows),
     now,
     newId: providers.newId,
   });
@@ -552,64 +607,76 @@ export async function registerCaptureVolumes(
       ...(pages ? { pageCount: pages.length } : {}),
     })),
   };
-
-  if (options.apply && writes.length > 0) {
-    const { statements, deliveries } = built;
-    const file = sqlPath(manifest.id);
-    providers.writeFile(file, statements.join("\n") + "\n");
-    log("");
-    log(`Wrote ${statements.length} statements to ${file}`);
-    providers.applyFile(file);
-    report.applied = true;
-
-    const verified: VerifiedVolume[] = [];
-    for (const part of chunks(writes, READ_CHUNK)) {
-      const rows = await providers.rows(verifyQuery(tenant.id, part.map((v) => v.volumeId as string)));
-      for (const v of part) {
-        const r = rows.find((row) => String(row.id) === v.volumeId);
-        const pages = Number(r?.pages ?? 0);
-        const digests = Number(r?.digests ?? 0);
-        const expected = r ? Number(r.expected_count) : null;
-        const count = (v.pages ?? []).length;
-        const deliveryId = r?.delivery_id != null ? String(r.delivery_id) : null;
-        verified.push({
-          volumeId: v.volumeId as string,
-          state: r ? String(r.state) : null,
-          expectedCount: expected,
-          pages,
-          digests,
-          deliveryId,
-          ok:
-            !!r &&
-            String(r.state) === "received" &&
-            expected === count &&
-            pages === count &&
-            digests === count &&
-            deliveryId === deliveries.get(v.volumeId as string),
-        });
-      }
-    }
-    report.verification = verified;
-    log("");
-    log("Re-read");
-    for (const [i, x] of verified.entries()) {
-      log(
-        `  [${x.ok ? "ok" : "mismatch"}] ${writes[i].stem}: ${x.pages} pages, ${x.digests} digests, ` +
-          `expected ${x.expectedCount ?? "-"}, state ${x.state ?? "absent"}, delivery ${x.deliveryId ?? "none"}`,
-      );
-    }
-  } else if (options.apply) {
-    log("");
-    log("Nothing to write.");
-  }
-
-  providers.writeFile(reportPath(manifest.id), JSON.stringify(report, null, 2) + "\n");
-  log("");
-  log(`Report: ${reportPath(manifest.id)}`);
-  if (report.verification?.some((x) => !x.ok)) {
-    throw new RegistrationStop("The re-read does not match what was written; see the report");
-  }
-  return report;
+  return { report, tenantId: tenant.id, writes, statements: built.statements, deliveries: built.deliveries };
 }
 
-// @version v0.8.0
+/**
+ * Before the apply: the volume each replacement with no page keeps, read
+ * as it stands. Such a replacement keeps the volume's pages and expected
+ * count and raises its revision (`buildRegistrationStatements`), so its
+ * read-back is checked against these rows.
+ */
+export async function readKeptVolumes(plan: RegistrationPlan, rows: RowReader): Promise<Map<string, Record<string, unknown>>> {
+  const kept = new Map<string, Record<string, unknown>>();
+  const keeping = plan.writes.filter((v) => v.action === "replace" && (v.pages ?? []).length === 0);
+  for (const part of chunks(keeping, READ_CHUNK)) {
+    for (const r of await rows(verifyQuery(plan.tenantId, part.map((v) => v.volumeId as string)))) {
+      kept.set(String(r.id), r);
+    }
+  }
+  return kept;
+}
+
+/**
+ * After the apply: re-reads every volume written, with its pages, digests
+ * and the delivery that holds it, records the verification in the report
+ * and logs each volume.
+ */
+export async function verifyRegistration(
+  plan: RegistrationPlan,
+  kept: Map<string, Record<string, unknown>>,
+  rows: RowReader,
+  log: Log,
+): Promise<VerifiedVolume[]> {
+  const { writes, deliveries, tenantId } = plan;
+  const verified: VerifiedVolume[] = [];
+  for (const part of chunks(writes, READ_CHUNK)) {
+    const found = await rows(verifyQuery(tenantId, part.map((v) => v.volumeId as string)));
+    for (const v of part) {
+      const r = found.find((row) => String(row.id) === v.volumeId);
+      const pages = Number(r?.pages ?? 0);
+      const digests = Number(r?.digests ?? 0);
+      const expected = r ? Number(r.expected_count) : null;
+      const deliveryId = r?.delivery_id != null ? String(r.delivery_id) : null;
+      const before = kept.get(v.volumeId as string);
+      const count = (v.pages ?? []).length;
+      const pagesOk = before
+        ? expected === Number(before.expected_count) &&
+          pages === Number(before.pages) &&
+          digests === Number(before.digests) &&
+          Number(r?.pages_revision) === Number(before.pages_revision) + 1
+        : expected === count && pages === count && digests === count;
+      verified.push({
+        volumeId: v.volumeId as string,
+        state: r ? String(r.state) : null,
+        expectedCount: expected,
+        pages,
+        digests,
+        deliveryId,
+        ok: !!r && String(r.state) === "received" && pagesOk && deliveryId === deliveries.get(v.volumeId as string),
+      });
+    }
+  }
+  plan.report.verification = verified;
+  log("");
+  log("Re-read");
+  for (const [i, x] of verified.entries()) {
+    log(
+      `  [${x.ok ? "ok" : "mismatch"}] ${writes[i].stem}: ${x.pages} pages, ${x.digests} digests, ` +
+        `expected ${x.expectedCount ?? "-"}, state ${x.state ?? "absent"}, delivery ${x.deliveryId ?? "none"}`,
+    );
+  }
+  return verified;
+}
+
+// @version v0.9.0

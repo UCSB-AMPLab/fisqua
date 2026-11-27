@@ -10,7 +10,10 @@
  *   2. Tenant-subdomain GET makes the loader throw `redirect("/dashboard")`
  *      so authenticated users on a tenant host land in the staff app.
  *   3. POST with a real (seeded) tenant slug 302s to
- *      `https://<slug>.fisqua.org/login` -- the picker handoff.
+ *      `https://<slug>.<apex>/login` -- the picker handoff -- where
+ *      the apex is the host the form was posted to when it is
+ *      `fisqua.org`, `staging.fisqua.org`, `fisqua.test` or `localhost`,
+ *      and `fisqua.org` for any other host.
  *   4. POST with an empty `slug` returns a 400 carrying
  *      `{ error: "empty" }` as JSON action data.
  *   5. POST with a shape-invalid `slug` (uppercase / charset / leading
@@ -31,7 +34,7 @@
  * `applyMigrations()` + `cleanDatabase()` run anyway so this file
  * composes cleanly with sibling tests in this directory.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -123,7 +126,7 @@ describe("landing route", () => {
     expect(typeof result).toBe("object");
   });
 
-  it("action 302s to <slug>.fisqua.org/login on a seeded tenant slug", async () => {
+  it("action 302s to <slug>.fisqua.test/login on a seeded tenant slug from the test apex", async () => {
     await seedTenants();
     const { action } = await import("../../app/routes/_index");
     try {
@@ -134,8 +137,46 @@ describe("landing route", () => {
       expect(response).toBeInstanceOf(Response);
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe(
-        "https://neogranadina.fisqua.org/login",
+        "https://neogranadina.fisqua.test/login",
       );
+    }
+  });
+
+  it.each([
+    ["https://fisqua.org/", "https://neogranadina.fisqua.org/login"],
+    ["https://staging.fisqua.org/", "https://neogranadina.staging.fisqua.org/login"],
+    ["https://fisqua.test/", "https://neogranadina.fisqua.test/login"],
+    ["https://localhost/", "https://neogranadina.localhost/login"],
+    ["http://localhost:5173/", "http://neogranadina.localhost:5173/login"],
+    ["http://fisqua.test:8787/", "http://neogranadina.fisqua.test:8787/login"],
+    ["https://staging.fisqua.test/", "https://neogranadina.fisqua.org/login"],
+  ])("action posted to %s redirects to %s", async (url, expected) => {
+    await seedTenants();
+    const { action } = await import("../../app/routes/_index");
+    try {
+      await action(makeActionArgs(url, "neogranadina") as any);
+      expect.unreachable("Action should have thrown a redirect");
+    } catch (e) {
+      expect((e as Response).headers.get("Location")).toBe(expected);
+    }
+  });
+
+  it("action does not redirect off fisqua.org for an unrecognised host", async () => {
+    await seedTenants();
+    const { action } = await import("../../app/routes/_index");
+    for (const url of [
+      "https://evil.example/",
+      "https://fisqua.org.evil.example/",
+      "https://neogranadina.fisqua.org/",
+    ]) {
+      try {
+        await action(makeActionArgs(url, "neogranadina") as any);
+        expect.unreachable("Action should have thrown a redirect");
+      } catch (e) {
+        expect((e as Response).headers.get("Location")).toBe(
+          "https://neogranadina.fisqua.org/login",
+        );
+      }
     }
   });
 
@@ -207,7 +248,7 @@ describe("landing route", () => {
       expect(response).toBeInstanceOf(Response);
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe(
-        "https://neogranadina.fisqua.org/login",
+        "https://neogranadina.fisqua.test/login",
       );
     }
   });
@@ -263,14 +304,14 @@ describe("landing render — locked copy + a11y", () => {
   it("renders the locked EN tagline on apex", async () => {
     const html = await renderLanding("en");
     expect(html).toContain(
-      "An open-source, collaborative archival cataloguing and records management platform.",
+      "An open-source, modular platform for collaborative archival cataloguing, records management, digitization, image processing, and preservation.",
     );
   });
 
   it("renders the locked ES tagline when lang=es", async () => {
     const html = await renderLanding("es");
     expect(html).toContain(
-      "Una plataforma colaborativa y de código abierto para la catalogación y gestión de archivos.",
+      "Una plataforma modular y de código abierto para la catalogación colaborativa de archivos, la gestión documental, la digitalización, el procesamiento de imágenes y la preservación digital.",
     );
   });
 
@@ -366,4 +407,4 @@ describe("landing render — locked copy + a11y", () => {
   });
 });
 
-// @version v0.6.0
+// @version v0.9.0

@@ -12,7 +12,7 @@
  * one `requireCapability` call closes the whole subtree, and a child
  * added later inherits the gate instead of having to remember it.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { Outlet, NavLink, Link } from "react-router";
@@ -21,6 +21,15 @@ import { userContext, tenantContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { PROJECT_ROLES } from "../lib/validation/enums";
 import type { Route } from "./+types/_auth.projects.$id";
+import { pageMeta } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.project?.name,
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");

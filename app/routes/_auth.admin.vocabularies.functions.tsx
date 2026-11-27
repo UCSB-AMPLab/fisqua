@@ -10,7 +10,14 @@
  * merge-dialog search, and the add/rename/deprecate mutations are all
  * scoped to `tenant.federationId`.
  *
- * @version v0.8.0
+ * A rename moves, in the same batch, the version of every entity whose
+ * primary function is the term (`nextVersionSql`, milliseconds), since
+ * each publishes the term's name; the term's own `updated_at` stays in
+ * seconds. The rename runs only while the term holds the name and
+ * version it read; one that another save or rename landed before writes
+ * nothing and answers `conflict`.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -24,6 +31,7 @@ import { CategoryFilterChips } from "~/components/admin/category-filter-chips";
 import { VocabularyStatusBadge } from "~/components/admin/vocabulary-status-badge";
 import { escapeLike } from "~/lib/sql-utils";
 import type { Route } from "./+types/_auth.admin.vocabularies.functions";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,8 +50,16 @@ interface VocabTerm {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("vocabularies:vocab_primary_functions"),
+    heading("vocabularies:page_title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, isNull, asc, desc, sql } = await import(
     "drizzle-orm"
@@ -51,7 +67,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { vocabularyTerms } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Checked here as well as in the layout: a data request for this
   // route alone runs this loader or action without the layout's.
@@ -157,16 +173,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
-  const { vocabularyTerms, changelog } = await import("~/db/schema");
+  const { vocabularyTerms, changelog, entities } = await import("~/db/schema");
   const { vocabularyTermSchema } = await import(
     "~/lib/validation/vocabulary"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Checked here as well as in the layout: a data request for this
   // route alone runs this loader or action without the layout's.
@@ -230,7 +246,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!parsed.success) return { error: "Invalid name" };
 
     const existing = await db
-      .select({ canonical: vocabularyTerms.canonical })
+      .select({ canonical: vocabularyTerms.canonical, updatedAt: vocabularyTerms.updatedAt })
       .from(vocabularyTerms)
       .where(
         and(
@@ -241,15 +257,50 @@ export async function action({ request, context }: Route.ActionArgs) {
       .get();
     if (!existing) return { error: "Term not found" };
 
-    await db
-      .update(vocabularyTerms)
-      .set({ canonical: parsed.data.canonical, updatedAt: now })
-      .where(
-        and(
-          eq(vocabularyTerms.id, termId),
-          eq(vocabularyTerms.federationId, tenant.federationId)
-        )
-      );
+    // The new name is every entity's published `primary_function` that
+    // names this term, so their versions move in the same batch, in
+    // milliseconds (`nextVersionSql`), while the term keeps its seconds.
+    const { nextVersionSql } = await import("~/lib/record-version.server");
+    // The batch opens with a guard that the term still holds the name and
+    // version read: a save or rename that landed in between fails the
+    // batch whole (`json()` of text that is not JSON raises), and this
+    // rename answers with the conflict.
+    const termAsRead = db
+      .select({
+        asRead: sql<number>`CASE WHEN EXISTS (SELECT 1 FROM vocabulary_terms t WHERE t.id = ${termId} AND t.canonical = ${existing.canonical} AND t.updated_at = ${existing.updatedAt}) THEN 1 ELSE json('the term changed since it was read') END`,
+      })
+      .from(sql`(SELECT 1)`);
+    try {
+      await db.batch([
+        termAsRead,
+        db
+          .update(vocabularyTerms)
+          .set({ canonical: parsed.data.canonical, updatedAt: now })
+          .where(
+            and(
+              eq(vocabularyTerms.id, termId),
+              eq(vocabularyTerms.federationId, tenant.federationId),
+              eq(vocabularyTerms.canonical, existing.canonical)
+            )
+          ),
+        ...(existing.canonical !== parsed.data.canonical
+          ? [
+              db
+                .update(entities)
+                .set({ updatedAt: nextVersionSql(entities.updatedAt) })
+                .where(and(eq(entities.federationId, tenant.federationId), eq(entities.primaryFunctionId, termId))),
+            ]
+          : []),
+      ] as any);
+    } catch (err) {
+      const current = await db
+        .select({ canonical: vocabularyTerms.canonical, updatedAt: vocabularyTerms.updatedAt })
+        .from(vocabularyTerms)
+        .where(and(eq(vocabularyTerms.id, termId), eq(vocabularyTerms.federationId, tenant.federationId)))
+        .get();
+      if (current && current.canonical === existing.canonical && current.updatedAt === existing.updatedAt) throw err;
+      return { error: "conflict" };
+    }
 
     await db.insert(changelog).values({
       id: crypto.randomUUID(),
@@ -702,3 +753,5 @@ function SortIndicator({
     <span className="ml-1 text-indigo">{dir === "asc" ? "\u2191" : "\u2193"}</span>
   );
 }
+
+// @version v0.9.0

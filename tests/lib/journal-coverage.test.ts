@@ -89,7 +89,7 @@
  * stage 2. Reviewers: adding to this list is a deliberate decision -
  * each entry must justify why the site does not (yet) journal.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -156,10 +156,13 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   //     updates; link/unlink + delete are traceless. All close in stage 2.
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|update|descriptions`, count: 3, reason: "Description hand-edit save + republish/unpublish toggles; legacy createChangelogEntry, non-atomic. Stage 2." },
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|delete|descriptions`, count: 1, reason: "Description hard delete; traceless today (survey §5). Stage 2 writes a delete pre-image row." },
-  { key: `${P}routes/_auth.admin.descriptions.$id.tsx|insert|descriptionEntities`, count: 1, reason: "Manual entity link; recorded nowhere today (survey §8). Stage 2 writes a link row." },
-  { key: `${P}routes/_auth.admin.descriptions.$id.tsx|update|descriptionEntities`, count: 3, reason: "Manual entity-link edits (role/sequence); un-journaled today. Stage 2." },
-  { key: `${P}routes/_auth.admin.descriptions.$id.tsx|delete|descriptionEntities`, count: 1, reason: "Manual entity unlink; recorded nowhere today. Stage 2 writes an unlink row." },
-  { key: `${P}routes/_auth.admin.descriptions.$id.tsx|insert|descriptionPlaces`, count: 1, reason: "Manual place link; recorded nowhere today. Stage 2 writes a link row." },
+  { key: `${P}lib/link-roles.server.ts|insertRaw|descriptionEntities`, count: 1, reason: "Every new entity link of the description page and the entity page, written here to carry the role check in its INSERT; un-journaled today, as those sites were. Stage 2 writes a link row." },
+  { key: `${P}lib/link-roles.server.ts|insertRaw|descriptionPlaces`, count: 1, reason: "Every new place link of the description page and the place page, written here to carry the role check in its INSERT; un-journaled today, as those sites were. Stage 2 writes a link row." },
+  { key: `${P}lib/link-roles.server.ts|insert|descriptionEntities`, count: 1, reason: "A decision's evidence link to an entity, in the ruling's batch, which the insert fails when its role is not approved; un-journaled today, as linking is product-wide. Stage 2 writes a link row." },
+  { key: `${P}lib/link-roles.server.ts|insert|descriptionPlaces`, count: 1, reason: "A decision's evidence link to a place, in the ruling's batch, which the insert fails when its role is not approved; un-journaled today, as linking is product-wide. Stage 2 writes a link row." },
+  { key: `${P}routes/_auth.admin.descriptions.$id.tsx|update|descriptionEntities`, count: 2, reason: "Manual entity-link reorder (sequence); un-journaled today. Stage 2." },
+  { key: `${P}lib/relation-sides.server.ts|update|descriptionEntities`, count: 1, reason: "The manual link edit of the description and entity pages, which moved here to carry the relation condition in its UPDATE; un-journaled today, as those sites were. Stage 2." },
+  { key: `${P}lib/relation-sides.server.ts|delete|descriptionEntities`, count: 1, reason: "The manual unlink of the description and entity pages, which moved here to carry the relation condition in its DELETE; un-journaled today, as those sites were. Stage 2 writes an unlink row." },
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|update|descriptionPlaces`, count: 1, reason: "Manual place-link edit; un-journaled today. Stage 2." },
   { key: `${P}routes/_auth.admin.descriptions.$id.tsx|delete|descriptionPlaces`, count: 1, reason: "Manual place unlink; recorded nowhere today. Stage 2 writes an unlink row." },
 
@@ -168,14 +171,13 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   //     the product today (see the manual link sites above), so these
   //     close with the rest of linking in stage 2 rather than making
   //     one accept path claim a completeness the ledger does not have.
-  { key: `${P}lib/pending-decisions.server.ts|insert|descriptionEntities`, count: 1, reason: "Link-on-accept for an entity proposal; linking is un-journaled product-wide. Stage 2 writes a link row." },
-  { key: `${P}lib/pending-decisions.server.ts|insert|descriptionPlaces`, count: 1, reason: "Link-on-accept for a place proposal; linking is un-journaled product-wide. Stage 2 writes a link row." },
 
   // --- Description list/tree bulk operations (move, reorder, bulk
   //     publish, bulk delete). Hierarchy + status mutations; structural
   //     cache recompute is derived, not journaled content.
   { key: `${P}routes/_auth.admin.descriptions.tsx|update|descriptions`, count: 6, reason: "Tree move/reorder/bulk-publish field + position updates. Stage 2 (bulk edits become runs, spec §5 stage 4)." },
   { key: `${P}routes/_auth.admin.descriptions.tsx|delete|descriptions`, count: 1, reason: "Bulk/tree delete; traceless today. Stage 2." },
+  { key: `${P}lib/duplicate-recheck.server.ts|updateRaw|entities`, count: 1, reason: "The recheck job's write of name_key, the normalised display name it groups records by - a derived index key, NOT journaled content." },
   { key: `${P}routes/_auth.admin.descriptions.tsx|updateRaw|descriptions`, count: 1, reason: "Raw recursive-CTE UPDATE of root_description_id/depth on move - structural cache, deterministically derived, NOT journaled content (spec §3 updated_at/cache discipline)." },
 
   // --- New-description create path.
@@ -187,9 +189,6 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   //     field/link effects are the journal's stage-2 remit.
   { key: `${P}routes/_auth.admin.entities.$id.tsx|update|entities`, count: 1, reason: "Entity hand-edit save; legacy createChangelogEntry, non-atomic. Stage 2." },
   { key: `${P}routes/_auth.admin.entities.$id.tsx|delete|entities`, count: 1, reason: "Entity delete; authority_operations ledger records the structural event, journal delete row is stage 2." },
-  { key: `${P}routes/_auth.admin.entities.$id.tsx|insert|descriptionEntities`, count: 1, reason: "Link a description to this entity; un-journaled today. Stage 2 link row." },
-  { key: `${P}routes/_auth.admin.entities.$id.tsx|update|descriptionEntities`, count: 1, reason: "Edit an entity link; un-journaled today. Stage 2." },
-  { key: `${P}routes/_auth.admin.entities.$id.tsx|delete|descriptionEntities`, count: 1, reason: "Unlink a description from this entity; un-journaled today. Stage 2 unlink row." },
   { key: `${P}routes/_auth.admin.entities.new.tsx|insert|entities`, count: 1, reason: "Entity create; no create row today (no created_by columns, survey §2). Stage 2." },
   { key: `${P}routes/_auth.admin.entities.$id.merge.tsx|update|entities`, count: 2, reason: "Merge: winner update + loser tombstone. authority_operations ledger records it; junction moves are stage 2." },
   { key: `${P}routes/_auth.admin.entities.$id.merge.tsx|update|descriptionEntities`, count: 1, reason: "Merge relinks junctions to the winner; captured in the ledger's movedLinks detail, not the journal. Stage 2." },
@@ -197,11 +196,11 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   { key: `${P}routes/_auth.admin.entities.$id.split.tsx|insert|entities`, count: 1, reason: "Split mints a new entity; authority_operations ledger records it. Stage 2 create row." },
   { key: `${P}routes/_auth.admin.entities.$id.split.tsx|update|entities`, count: 1, reason: "Split updates the parent entity; ledger-recorded. Stage 2." },
   { key: `${P}routes/_auth.admin.entities.$id.split.tsx|update|descriptionEntities`, count: 1, reason: "Split moves junctions to the new entity; ledger movedLinks. Stage 2." },
+  { key: `${P}lib/entity-functions.server.ts|update|entities`, count: 2, reason: "Moves an entity's updated_at with a replacement of its entity_functions rows, or with the return of a merge's moved rows (both out of the journal's scope), so the publish export sees the change; the saving route records the edit, and the merge's ledger row names the rows returned. Stage 2." },
 
   // --- Place authority editor + create/merge/split (mirror of entities).
   { key: `${P}routes/_auth.admin.places.$id.tsx|update|places`, count: 1, reason: "Place hand-edit save; legacy createChangelogEntry, non-atomic. Stage 2." },
   { key: `${P}routes/_auth.admin.places.$id.tsx|delete|places`, count: 1, reason: "Place delete; authority_operations ledger records the structural event. Stage 2 delete row." },
-  { key: `${P}routes/_auth.admin.places.$id.tsx|insert|descriptionPlaces`, count: 1, reason: "Link a description to this place; un-journaled today. Stage 2 link row." },
   { key: `${P}routes/_auth.admin.places.$id.tsx|update|descriptionPlaces`, count: 1, reason: "Edit a place link; un-journaled today. Stage 2." },
   { key: `${P}routes/_auth.admin.places.$id.tsx|delete|descriptionPlaces`, count: 1, reason: "Unlink a description from this place; un-journaled today. Stage 2 unlink row." },
   { key: `${P}routes/_auth.admin.places.new.tsx|insert|places`, count: 1, reason: "Place create; no create row today. Stage 2." },
@@ -222,7 +221,8 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   //     under the unified decisions route, so the key follows the file;
   //     the site and its justification are unchanged.
   { key: `${P}routes/_auth.admin.decisions.vocabulary.tsx|update|entities`, count: 1, reason: "Vocab review remaps entity primary_function on term merge; ledger-adjacent. Stage 2." },
-  { key: `${P}routes/_auth.admin.vocabularies.functions.$id.tsx|update|entities`, count: 2, reason: "Function-vocabulary rename cascades to entity function fields; legacy createChangelogEntry. Stage 2." },
+  { key: `${P}routes/_auth.admin.vocabularies.functions.$id.tsx|update|entities`, count: 3, reason: "Function-vocabulary merge and split reassign entities' primary function, and a save that renames the term moves its entities' versions (no entity field is written); legacy createChangelogEntry. Stage 2." },
+  { key: `${P}routes/_auth.admin.vocabularies.functions.tsx|update|entities`, count: 1, reason: "A rename from the term list moves the versions of the entities whose primary function is the term; no entity field is written, so there is no diff to journal." },
 
   // --- Promote pipeline: crowdsourced entry -> published description.
   //     A bulk write path that predates the journal; folds into the
@@ -230,9 +230,20 @@ const ALLOWLIST: ReadonlyArray<AllowlistEntry> = [
   { key: `${P}lib/promote/promote.server.ts|insert|descriptions`, count: 1, reason: "Promote creates a published description from a crowdsourced entry; no create row today. Stage 4 (becomes a run)." },
   { key: `${P}lib/promote/promote.server.ts|update|descriptions`, count: 1, reason: "Promote back-links the source entry / structural fixup; un-journaled today. Stage 4." },
 
-  // --- Export: METS emission stamps last_exported_at. Housekeeping
-  //     write, not editorial content - not journaled by design.
-  { key: `${P}lib/export/mets-export.server.ts|update|descriptions`, count: 1, reason: "Stamps last_exported_at after a successful export; housekeeping metadata, not editorial content - not journaled by design." },
+  // --- Export: the fonds descriptions step writes last_exported_at.
+  //     Housekeeping write, not editorial content - not journaled by design.
+  { key: `${P}lib/export/pipeline.server.ts|update|descriptions`, count: 2, reason: "The fonds descriptions step marks the published descriptions it exported and clears the marks of unpublished ones (last_exported_at); housekeeping metadata, not editorial content - not journaled by design." },
+
+  // --- Version moves that follow a write to another record. No field of
+  //     the moved rows is written, so there is no diff to journal.
+  { key: `${P}lib/description-versions.server.ts|update|descriptions`, count: 2, reason: "Moves a parent's updated_at after a child's level or publication changes, in the child's batch: one parent named through the child (editor), or a set of parents at the end of a batch (import, revert); no parent field is written." },
+  { key: `${P}lib/export/former-codes.server.ts|update|descriptions`, count: 1, reason: "Moves the updated_at of descriptions recording a reference code as a former one, in the batch that creates or deletes the description holding that code; no description field is written." },
+  { key: `${P}routes/_auth.admin.repositories.$id.tsx|update|descriptions`, count: 1, reason: "Moves the updated_at of a repository's descriptions in the batch of a save that changes a field they publish; no description field is written." },
+  { key: `${P}routes/_operator.tenants.$slug.tsx|update|descriptions`, count: 1, reason: "Moves the updated_at of a tenant's descriptions in the batch that changes its METS base URL; no description field is written." },
+
+  // --- OCR ingest: the batch that replaces a description's pages moves
+  //     its version. Page text is outside the journal by design.
+  { key: `${P}lib/ocr/ingest.server.ts|update|descriptions`, count: 1, reason: "Moves a description's updated_at in the batch that replaces its ocr_pages rows (outside the journal's scope), so the publish export sees the change; no description field is written, so there is no diff to journal." },
 ];
 
 interface Violation {
@@ -639,3 +650,5 @@ describe("scanner unit tests (synthetic fixtures)", () => {
     expect(violations).toEqual([]);
   });
 });
+
+// @version v0.9.0

@@ -3,11 +3,13 @@
  *
  * This locale namespace carries the Spanish strings for the
  * repositories admin surface — the list page, the create/edit form,
- * and the destructive actions. Repositories are the top-level
+ * the destructive actions, and the fields of the repository's
+ * simplified ISDIAH record. Repositories are the top-level
  * institutional anchors the description tree hangs off, so the
- * labels follow ISAAR(CPF)'s phrasing for archival institutions.
+ * labels follow ISAAR(CPF)'s phrasing for archival institutions,
+ * and the record's fields follow ISDIAH's element names.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   title: "Repositorios",
@@ -23,7 +25,7 @@ export default {
   delete_modal_title: "Eliminar repositorio",
   delete_modal_body:
     "¿Estás seguro de que deseas eliminar {{name}}? Esta acción no se puede deshacer.",
-  delete_modal_confirm_label: 'Escribe "{{code}}" para confirmar',
+  delete_modal_confirm_label: 'Escribe “{{code}}” para confirmar',
   delete_blocked:
     "No se puede eliminar — {{count}} descripciones vinculadas",
   cascade_warning:
@@ -46,7 +48,7 @@ export default {
   success_created: "Repositorio creado.",
   success_updated: "Repositorio actualizado.",
   success_deleted: "Repositorio eliminado.",
-  section_identity: "Área de identidad",
+  section_identity: "Área de identificación",
   section_contact: "Área de contacto",
   section_admin: "Administrativo",
   "field.code": "Código",
@@ -66,7 +68,7 @@ export default {
   website_help: "Se muestra en la página del repositorio en el sitio publicado.",
   notes_help: "Notas internas de este espacio de trabajo: nunca se publican ni se exportan.",
   rights_text_help:
-    "La declaración de derechos de los registros digitalizados: se incluye en sus exportaciones METS (el formato estándar para empaquetar objetos digitales) y aparece en el sitio publicado como texto de reproducción de imágenes.",
+    "Un texto breve sobre la reproducción de las imágenes digitalizadas. Aparece tal como lo escribas en el sitio publicado.",
   enabled_help:
     "Un repositorio deshabilitado desaparece de los selectores de registros, de las confirmaciones de importación y del índice publicado de repositorios; sus registros existentes se conservan.",
   last_repository_note:
@@ -76,11 +78,52 @@ export default {
   "field.address": "Dirección",
   "field.website": "Sitio web",
   "field.notes": "Notas",
-  "field.rightsText": "Texto de derechos (METS)",
+  "field.rightsText": "Texto sobre la reproducción de imágenes",
   "field.manifestRights": "URI de derechos (manifiesto IIIF)",
   "field.attributionEn": "Atribución en inglés (manifiesto IIIF)",
   "field.attributionEs": "Atribución en español (manifiesto IIIF)",
+  "field.creditStatementEs": "Créditos (español)",
+  "field.creditStatementEn": "Créditos (inglés)",
+  credit_statement_help:
+    "Indica quién digitalizó los materiales, con quién y con qué apoyo. El texto aparece tal como lo escribas en la línea de atribución de las imágenes del sitio publicado, entre el lugar y la licencia.",
   "field.enabled": "Estado",
+
+  // Institution record (ISDIAH)
+  section_description: "Área de descripción",
+  section_access: "Área de acceso",
+  section_services: "Área de servicios",
+  section_control: "Área de control",
+  "field.otherNames": "Otras formas del nombre",
+  other_names_help: "Un nombre por línea.",
+  "field.institutionType": "Tipo de institución",
+  "field.region": "Región",
+  region_help: "Departamento, estado o provincia.",
+  "field.postalCode": "Código postal",
+  "field.telephone": "Teléfono",
+  "field.email": "Correo electrónico",
+  "field.holdingsEs": "Fondos y colecciones (español)",
+  "field.holdingsEn": "Fondos y colecciones (inglés)",
+  "field.historyEs": "Historia de la institución (español)",
+  "field.historyEn": "Historia de la institución (inglés)",
+  "field.openingTimesEs": "Horarios de apertura (español)",
+  "field.openingTimesEn": "Horarios de apertura (inglés)",
+  "field.accessConditionsEs": "Condiciones de acceso (español)",
+  "field.accessConditionsEn": "Condiciones de acceso (inglés)",
+  "field.accessibilityEs": "Accesibilidad (español)",
+  "field.accessibilityEn": "Accesibilidad (inglés)",
+  "field.reproductionServicesEs": "Servicios de reproducción (español)",
+  "field.reproductionServicesEn": "Servicios de reproducción (inglés)",
+  markdown_help:
+    "Puedes usar Markdown para párrafos, listas y enlaces. El sitio publicado no muestra el HTML que escribas aquí.",
+  "field.descriptionLanguage": "Lengua de la descripción",
+  description_language_help:
+    "La lengua en que está escrita la descripción de la institución, en código de tres letras (p. ej., spa).",
+  "field.catalogueLicenceUri": "URI de la licencia del catálogo",
+  catalogue_licence_help:
+    "La licencia que rige las descripciones de este repositorio. El nombre de la licencia se toma del URI.",
+  "field.homeOrder": "Orden en la página de inicio",
+  home_order_help:
+    "Número que fija la posición de la tarjeta de este repositorio en la página de inicio del sitio publicado: los números menores van primero. Los repositorios sin número aparecen después de los demás, en orden alfabético.",
 
   // Linked descriptions
   linked_descriptions: "Descripciones vinculadas",
@@ -92,7 +135,8 @@ export default {
   display_title_label: "Título de visualización",
   display_title_helper:
     "Reemplaza el nombre en la interfaz pública. Dejar en blanco para usar el nombre.",
-  subtitle_label: "Subtítulo",
+  subtitle_label: "Subtítulo (español)",
+  subtitle_en_label: "Subtítulo (inglés)",
   subtitle_helper: "Se muestra debajo del título en la interfaz pública",
   hero_image_url_label: "URL de imagen principal",
   hero_image_url_helper:
@@ -110,4 +154,4 @@ export default {
   overwrite_cancel: "Cancelar",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

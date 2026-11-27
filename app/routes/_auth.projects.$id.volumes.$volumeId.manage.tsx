@@ -14,7 +14,7 @@
  * rejected by the project-role guard before the UI renders, so the page
  * can assume it is always running as a lead.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -26,6 +26,7 @@ import type { Route } from "./+types/_auth.projects.$id.volumes.$volumeId.manage
 import type { VolumeStatus, WorkflowRole } from "../lib/workflow";
 import { QcFlagCard, type QcFlagCardData } from "../components/qc-flags/qc-flag-card";
 import { ResolveQcFlagDialog } from "../components/qc-flags/resolve-qc-flag-dialog";
+import { pageMeta, heading, projectName } from "../lib/page-title";
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
   unstarted: "bg-stone-200 text-stone-500",
@@ -35,6 +36,16 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
   approved: "bg-verdigris-tint text-verdigris",
   sent_back: "bg-indigo-tint text-indigo",
 };
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.volume?.name,
+    heading("project:tab.volumes"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -855,4 +866,4 @@ export default function VolumeManagePage({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

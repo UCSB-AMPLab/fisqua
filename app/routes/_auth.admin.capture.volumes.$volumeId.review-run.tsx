@@ -11,10 +11,12 @@
  * digitization capability then gets a bare 404; the route then hands
  * the request to `reviewRunAction`, which lets through only the
  * tenant's digitization admins and the federation's stewards (anyone else gets a
- * bare 403) and answers with the run started, `review_run_open`, or
- * `review_not_applicable` with its reason. GET answers 405.
+ * bare 403) and answers with the run started, `review_run_open`,
+ * `review_capacity_full` when the most review runs allowed at a time
+ * are already active, or `review_not_applicable` with its reason. GET
+ * answers 405.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 import type { Route } from "./+types/_auth.admin.capture.volumes.$volumeId.review-run";
 import { tenantContext, userContext } from "../context";
@@ -34,4 +36,4 @@ export async function loader() {
   return new Response(null, { status: 405, headers: { Allow: "POST" } });
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

@@ -40,7 +40,7 @@
  * user is a lead-tenant admin, i.e. a federation steward, so the
  * requireFederationSteward gate on every mutation passes.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -48,6 +48,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { and, eq } from "drizzle-orm";
 import { RouterContextProvider } from "react-router";
 import * as schema from "../../app/db/schema";
+import { attributesJson } from "../../app/lib/link-attributes.server";
 import {
   applyMigrations,
   cleanDatabase,
@@ -71,6 +72,7 @@ import "../../app/routes/_auth.admin.places.$id.merge";
 import "../../app/routes/_auth.admin.places.$id.split";
 import "../../app/routes/_auth.admin.vocabularies.functions.$id";
 import "../../app/routes/_auth.admin.decisions.vocabulary";
+import { withEvidence } from "../helpers/merge-evidence";
 
 function buildContext(user: User): any {
   const ctx = new RouterContextProvider();
@@ -146,9 +148,7 @@ describe("authority_operations — entities", () => {
       createdAt: Date.now(),
     });
 
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     const res = (await action({
       request: form({
         _action: "merge",
@@ -200,7 +200,7 @@ describe("authority_operations — entities", () => {
       roleNote: "verbatim source note",
       sequence: 3,
       honorific: "Don",
-      function: "escribano",
+      attributes: attributesJson("escribano"),
       nameAsRecorded: "Juan el viejo",
       createdAt: Date.now(),
     });
@@ -214,9 +214,7 @@ describe("authority_operations — entities", () => {
       createdAt: Date.now(),
     });
 
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     await action({
       request: form({
         _action: "merge",
@@ -239,7 +237,7 @@ describe("authority_operations — entities", () => {
     expect(dropped.roleNote).toBe("verbatim source note");
     expect(dropped.sequence).toBe(3);
     expect(dropped.honorific).toBe("Don");
-    expect(dropped.function).toBe("escribano");
+    expect(dropped.attributes).toBe('{"office":"escribano"}');
     expect(dropped.nameAsRecorded).toBe("Juan el viejo");
 
     // The colliding source row is gone from the junction table.
@@ -433,9 +431,7 @@ describe("authority_operations — entities", () => {
     });
     await createTestEntity({ id: "ent-lw", entityCode: "ne-lw0001", displayName: "Winner" });
 
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
 
     // Stale value — rejected with the conflict shape, no ledger row.
     const stale = (await action({

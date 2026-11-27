@@ -13,17 +13,23 @@
  *   - `isWorkspaceAdmin` reads `isAdmin` alone;
  *   - the machine-readable export rule per record class: workspace and
  *     super admins, the class's area admin (records for records,
- *     authorities for entities and places) and the imports admin.
+ *     authorities for entities and places) and the imports admin;
+ *   - the work check (`canWorkInArea`, `requireAreaWork`): whoever
+ *     administers an area works in it, a federation staff grant
+ *     (`worksInEveryArea`) works in every area and administers none,
+ *     and takes no machine-readable export.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import {
   AREA_ADMIN_FLAGS,
   canAdministerArea,
+  canWorkInArea,
   isWorkspaceAdmin,
   mayExportMachineReadable,
   requireArea,
+  requireAreaWork,
   type AccessArea,
   type AccessUser,
   type AreaFlag,
@@ -135,3 +141,45 @@ describe("mayExportMachineReadable", () => {
     }
   }
 });
+
+describe("canWorkInArea and requireAreaWork", () => {
+  it("an area admin works in their own area and no other", () => {
+    for (const flag of FLAGS) {
+      for (const area of AREAS) {
+        const own = AREA_ADMIN_FLAGS[area] === flag;
+        expect(canWorkInArea(user({ [flag]: true }), area)).toBe(own);
+        expect(status(() => requireAreaWork(user({ [flag]: true }), area))).toBe(own ? null : 403);
+      }
+    }
+  });
+
+  it("a workspace admin and a super admin work in every area", () => {
+    for (const area of AREAS) {
+      expect(canWorkInArea(user({ isAdmin: true }), area)).toBe(true);
+      expect(canWorkInArea(user({ isSuperAdmin: true }), area)).toBe(true);
+    }
+  });
+
+  it("a staff grant works in every area and administers none", () => {
+    const staff = user({ worksInEveryArea: true });
+    for (const area of AREAS) {
+      expect(canWorkInArea(staff, area)).toBe(true);
+      expect(status(() => requireAreaWork(staff, area))).toBeNull();
+      expect(canAdministerArea(staff, area)).toBe(false);
+      expect(status(() => requireArea(staff, area))).toBe(403);
+    }
+    expect(isWorkspaceAdmin({ isAdmin: false })).toBe(false);
+    for (const recordClass of EXPORT_RECORD_CLASSES) {
+      expect(mayExportMachineReadable(staff, recordClass)).toBe(false);
+    }
+  });
+
+  it("a user with no flag works in no area", () => {
+    for (const area of AREAS) {
+      expect(canWorkInArea(user(), area)).toBe(false);
+      expect(status(() => requireAreaWork(user(), area))).toBe(403);
+    }
+  });
+});
+
+// @version v0.9.0

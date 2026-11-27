@@ -29,7 +29,7 @@
  * It refuses a tenant whose federation has no complete storage record,
  * and reads the tenant and the record from D1 through wrangler, read
  * only. The key is named `fisqua-{slug}[-staging]-appliance-{id}`, from
- * the tenant's slug and the appliance's short id (lowercase letters,
+ * the tenant's slug and the appliance id (lowercase letters,
  * digits and hyphens, 1 to 32 characters, not ending in `-read`). After issuing the key it
  * reads it back from B2 and stops unless B2 reports exactly those
  * capabilities, that bucket and that prefix. A key of that name already
@@ -60,7 +60,7 @@
  * `--target` picks the database and the key's name: `staging`
  * (`--env staging`, `-staging` in the name) or `production`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { pathToFileURL } from "node:url";
@@ -166,4 +166,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -14,16 +14,18 @@
  * Two things ride along with an acceptance and are pinned here too.
  * The EVIDENCE LINK: a proposal citing a reference code turns, on
  * acceptance, into one description_entities or description_places row
- * under a role validated against the enum the ruled type owns —
+ * under a role the federation's list for the ruled type holds approved —
  * best-effort against the reference (absent, unresolvable, or another
  * tenant's code all leave the mint standing with `linkedRef: null`) and
- * strict about the role (a value outside the enum is a 400 with the
- * question still open and nothing minted). The EXTERNAL MATCH: only a
+ * strict about the role (no role, or a role outside the list, is a 400
+ * with the question still open and nothing minted; no role is assumed). The EXTERNAL MATCH: only a
  * candidate the payload already proposed reaches
  * external_authority_links, stamped `reconciled-confirmed` and carrying
  * the decision that confirmed it; anything else is a 400 before the
  * mint, and a topic ruling — which has no record to attach — ignores
- * the field entirely.
+ * the field entirely. Attaching a match to an existing record is a
+ * mutation of that record: on a shared link target it needs a steward,
+ * so a federation staff grant may accept the link but not the match.
  *
  * FIXTURES mirror `tests/admin/authority-ownership.test.ts`: a lead
  * tenant (Neogranadina, federation steward via the lead-tenant-admin
@@ -37,7 +39,7 @@
  * nothing, so they isolate the DECISION-ownership gate from the
  * mint-owner gate entirely.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -45,6 +47,8 @@ import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
 import { applyMigrations, cleanDatabase } from "../helpers/db";
+import { roleSetRows, seedRoleLists } from "../helpers/vocabulary";
+import { NEOGRANADINA_ROLES } from "../../scripts/data/vocabularies/neogranadina-roles";
 import {
   NEOGRANADINA_TENANT_ID,
   NEOGRANADINA_FEDERATION_ID,
@@ -1109,7 +1113,11 @@ describe("pending decisions — server core", () => {
   // ---------------------------------------------------------------------
 
   describe("the evidence link on acceptance", () => {
-    it("an evidenceRef that resolves in-tenant becomes one description_entities row, role 'mentioned'", async () => {
+    beforeEach(async () => {
+      await seedRoleLists(NEOGRANADINA_FEDERATION_ID, roleSetRows(NEOGRANADINA_ROLES));
+    });
+
+    it("an evidenceRef that resolves in-tenant becomes one description_entities row under the chosen role", async () => {
       const db = drizzle(env.DB, { schema });
       await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
       const alpha = await loadTenant(ALPHA_TENANT_ID);
@@ -1128,22 +1136,164 @@ describe("pending decisions — server core", () => {
 
       const result = await ruleAuthorityProposal(db, admin, alpha, id, {
         ruling: "accepted",
+        linkRole: "mentioned",
       });
       expect(result.resultId).toBeTruthy();
       expect(result.linkedRef).toBe("CMD 2928");
+      expect(result.linkedRole).toBe("mentioned");
 
       const links = await db.select().from(schema.descriptionEntities).all();
       expect(links).toHaveLength(1);
       expect(links[0].descriptionId).toBe(descriptionId);
       expect(links[0].entityId).toBe(result.resultId);
-      // Nothing was asserted beyond appearance: the weakest claim the
-      // enum can make is the default.
       expect(links[0].role).toBe("mentioned");
       expect(links[0].roleNote).toBeNull();
 
       // A person mint never touches the place junction.
       const placeLinks = await db.select().from(schema.descriptionPlaces).all();
       expect(placeLinks).toHaveLength(0);
+    });
+
+    it("an acceptance that would link with no role, or with a proposed role the list does not hold, is a 400 with nothing written", async () => {
+      const db = drizzle(env.DB, { schema });
+      await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const admin = makeUser({ id: ALPHA_ADMIN_ID, tenantId: ALPHA_TENANT_ID, isAdmin: true });
+      await seedDescription(ALPHA_TENANT_ID, "CMD 2928");
+
+      const noRole = crypto.randomUUID();
+      await seedProposal({ id: noRole, tenantId: ALPHA_TENANT_ID, payload: mintPayload({ evidenceRef: "CMD 2928" }) });
+      await expect(ruleAuthorityProposal(db, admin, alpha, noRole, { ruling: "accepted" })).rejects.toMatchObject({ status: 400 });
+
+      const unheld = crypto.randomUUID();
+      await seedProposal({
+        id: unheld,
+        tenantId: ALPHA_TENANT_ID,
+        payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: "deponent" }),
+      });
+      await expect(ruleAuthorityProposal(db, admin, alpha, unheld, { ruling: "accepted" })).rejects.toMatchObject({ status: 400 });
+
+      expect(await db.select().from(schema.entities).all()).toHaveLength(0);
+      expect(await db.select().from(schema.descriptionEntities).all()).toHaveLength(0);
+      const rows = await db.select().from(schema.pendingDecisions).where(eq(schema.pendingDecisions.kind, "authority-proposal")).all();
+      expect(rows.every((r) => r.status === "open")).toBe(true);
+
+      // Choosing a role the list holds accepts it; skipping the link needs none.
+      const chosen = await ruleAuthorityProposal(db, admin, alpha, unheld, { ruling: "accepted", linkRole: "witness" });
+      expect(chosen.linkedRole).toBe("witness");
+      const skipped = await ruleAuthorityProposal(db, admin, alpha, noRole, { ruling: "accepted", skipLink: true });
+      expect(skipped.linkedRef).toBeNull();
+      expect(await db.select().from(schema.descriptionEntities).all()).toHaveLength(1);
+    });
+
+    it("a role submitted as empty decides: the proposed role is not written in its place", async () => {
+      const db = drizzle(env.DB, { schema });
+      await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const admin = makeUser({ id: ALPHA_ADMIN_ID, tenantId: ALPHA_TENANT_ID, isAdmin: true });
+      await seedDescription(ALPHA_TENANT_ID, "CMD 2928");
+      const id = crypto.randomUUID();
+      await seedProposal({
+        id,
+        tenantId: ALPHA_TENANT_ID,
+        payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: "witness" }),
+      });
+      await expect(
+        ruleAuthorityProposal(db, admin, alpha, id, { ruling: "accepted", linkRole: "" }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(await db.select().from(schema.entities).all()).toHaveLength(0);
+      expect(await db.select().from(schema.descriptionEntities).all()).toHaveLength(0);
+    });
+
+    it("a role deprecated between the check and the write refuses the accept whole: nothing minted, nothing linked, the question open", async () => {
+      const db = drizzle(env.DB, { schema });
+      await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const admin = makeUser({ id: ALPHA_ADMIN_ID, tenantId: ALPHA_TENANT_ID, isAdmin: true });
+      await seedDescription(ALPHA_TENANT_ID, "CMD 2928");
+      await seedDescription(ALPHA_TENANT_ID, "CMD 3100");
+      const targetId = crypto.randomUUID();
+      await seedPlace(targetId, ALPHA_TENANT_ID);
+
+      // The role passes the ruling's check, and is deprecated just before
+      // the ruling's writes go to the database.
+      const raced = (code: string, list: string) =>
+        new Proxy(db, {
+          get(target, prop) {
+            if (prop === "batch") {
+              return async (items: unknown[]) => {
+                await env.DB.prepare(
+                  "UPDATE vocabulary_values SET status = 'deprecated' WHERE federation_id = ? AND list = ? AND code = ?",
+                ).bind(NEOGRANADINA_FEDERATION_ID, list, code).run();
+                return (target.batch as (i: unknown[]) => Promise<unknown>)(items);
+              };
+            }
+            const value = Reflect.get(target, prop);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }) as typeof db;
+
+      const mint = crypto.randomUUID();
+      await seedProposal({ id: mint, tenantId: ALPHA_TENANT_ID, payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: "witness" }) });
+      await expect(ruleAuthorityProposal(raced("witness", "entity_role"), admin, alpha, mint, { ruling: "accepted" }))
+        .rejects.toMatchObject({ status: 400 });
+
+      const link = crypto.randomUUID();
+      await seedProposal({
+        id: link,
+        tenantId: ALPHA_TENANT_ID,
+        payload: linkPayload({ type: "place", id: targetId }, { evidenceRef: "CMD 3100", proposedRole: "venue" }),
+      });
+      await expect(ruleAuthorityProposal(raced("venue", "place_role"), admin, alpha, link, { ruling: "accepted" }))
+        .rejects.toMatchObject({ status: 400 });
+
+      expect(await db.select().from(schema.entities).all()).toHaveLength(0);
+      expect((await db.select().from(schema.changelog).all()).filter((r) => r.kind === "create")).toHaveLength(0);
+      expect(await db.select().from(schema.descriptionEntities).all()).toHaveLength(0);
+      expect(await db.select().from(schema.descriptionPlaces).all()).toHaveLength(0);
+      const rows = await db.select().from(schema.pendingDecisions).where(eq(schema.pendingDecisions.kind, "authority-proposal")).all();
+      expect(rows.map((r) => r.status)).toEqual(["open", "open"]);
+    });
+
+    it("a proposed role with surrounding spaces is trimmed, then matched exactly", async () => {
+      const db = drizzle(env.DB, { schema });
+      await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const admin = makeUser({ id: ALPHA_ADMIN_ID, tenantId: ALPHA_TENANT_ID, isAdmin: true });
+      await seedDescription(ALPHA_TENANT_ID, "CMD 2928");
+      const padded = crypto.randomUUID();
+      await seedProposal({ id: padded, tenantId: ALPHA_TENANT_ID, payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: " witness " }) });
+      expect((await ruleAuthorityProposal(db, admin, alpha, padded, { ruling: "accepted" })).linkedRole).toBe("witness");
+      const cased = crypto.randomUUID();
+      await seedProposal({
+        id: cased,
+        tenantId: ALPHA_TENANT_ID,
+        payload: mintPayload({ heading: "Ana Ruiz", proposedName: "Ana Ruiz", evidenceRef: "CMD 2928", proposedRole: "Witness" }),
+      });
+      await expect(ruleAuthorityProposal(db, admin, alpha, cased, { ruling: "accepted" })).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("an acceptance in a federation with no role lists is refused with nothing written", async () => {
+      const db = drizzle(env.DB, { schema });
+      await env.DB.prepare("DELETE FROM vocabulary_values").run();
+      await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const admin = makeUser({ id: ALPHA_ADMIN_ID, tenantId: ALPHA_TENANT_ID, isAdmin: true });
+      await seedDescription(ALPHA_TENANT_ID, "CMD 2928");
+      const id = crypto.randomUUID();
+      await seedProposal({
+        id,
+        tenantId: ALPHA_TENANT_ID,
+        payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: "mentioned" }),
+      });
+      await expect(ruleAuthorityProposal(db, admin, alpha, id, { ruling: "accepted" })).rejects.toMatchObject({ status: 400 });
+      await expect(
+        ruleAuthorityProposal(db, admin, alpha, id, { ruling: "accepted", linkRole: "mentioned" }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(await db.select().from(schema.entities).all()).toHaveLength(0);
+      expect(await db.select().from(schema.descriptionEntities).all()).toHaveLength(0);
+      const row = await db.select().from(schema.pendingDecisions).where(eq(schema.pendingDecisions.id, id)).get();
+      expect(row?.status).toBe("open");
     });
 
     it("the payload's proposedRole carries when the ruling names none, and an explicit linkRole overrides it", async () => {
@@ -1278,7 +1428,7 @@ describe("pending decisions — server core", () => {
       expect(places).toHaveLength(1);
     });
 
-    it("a role outside the ruled type's enum is a 400 — the question stays open and nothing is minted", async () => {
+    it("a role outside the ruled type's list is a 400 — the question stays open and nothing is minted", async () => {
       const db = drizzle(env.DB, { schema });
       await setAuthorityCodePrefixes(ALPHA_TENANT_ID, "al-e", "al-p");
       const alpha = await loadTenant(ALPHA_TENANT_ID);
@@ -1289,7 +1439,7 @@ describe("pending decisions — server core", () => {
       });
       await seedDescription(ALPHA_TENANT_ID, "CMD 3200");
 
-      // "creator" is an ENTITY_ROLES member; a place link cannot carry it.
+      // "creator" is a document role; a place link cannot carry it.
       const placeId = crypto.randomUUID();
       await seedProposal({
         id: placeId,
@@ -1307,7 +1457,7 @@ describe("pending decisions — server core", () => {
         }),
       ).rejects.toMatchObject({ status: 400 });
 
-      // The mirror: "venue" is PLACE_ROLES only, so an entity mint
+      // The mirror: "venue" is a place role only, so an entity mint
       // cannot carry it either.
       const entityId = crypto.randomUUID();
       await seedProposal({
@@ -1456,7 +1606,7 @@ describe("pending decisions — server core", () => {
       await seedProposal({
         id,
         tenantId: ALPHA_TENANT_ID,
-        payload: mintPayload({ evidenceRef: "CMD 2928" }),
+        payload: mintPayload({ evidenceRef: "CMD 2928", proposedRole: "mentioned" }),
       });
 
       await expect(
@@ -1632,6 +1782,79 @@ describe("pending decisions — server core", () => {
     });
   });
 
+  describe("a confirmed external match on a shared link target", () => {
+    const CANDIDATE = { scheme: "lcnaf" as const, id: "no2026000001", label: "Test heading" };
+    const staffOf = () =>
+      makeUser({
+        id: ALPHA_STAFF_ID,
+        tenantId: BETA_TENANT_ID,
+        isCataloguer: true,
+        worksInEveryArea: true,
+      });
+
+    it("refuses a federation staff grant, writing nothing and leaving the question open", async () => {
+      const db = drizzle(env.DB, { schema });
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const shared = crypto.randomUUID();
+      await seedEntity(shared, null);
+      const id = crypto.randomUUID();
+      await seedProposal({
+        id,
+        tenantId: ALPHA_TENANT_ID,
+        payload: linkPayload({ type: "entity", id: shared }, { externalCandidates: [CANDIDATE] }),
+      });
+
+      await expect(
+        ruleAuthorityProposal(db, staffOf(), alpha, id, {
+          ruling: "accepted",
+          confirmedExternal: { scheme: CANDIDATE.scheme, externalId: CANDIDATE.id },
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(await db.select().from(schema.externalAuthorityLinks).all()).toHaveLength(0);
+      const row = await db.select().from(schema.pendingDecisions).where(eq(schema.pendingDecisions.id, id)).get();
+      expect(row?.status).toBe("open");
+    });
+
+    it("lets a federation staff grant accept the same link without the external match", async () => {
+      const db = drizzle(env.DB, { schema });
+      const alpha = await loadTenant(ALPHA_TENANT_ID);
+      const shared = crypto.randomUUID();
+      await seedEntity(shared, null);
+      const id = crypto.randomUUID();
+      await seedProposal({
+        id,
+        tenantId: ALPHA_TENANT_ID,
+        payload: linkPayload({ type: "entity", id: shared }, { externalCandidates: [CANDIDATE] }),
+      });
+
+      await expect(
+        ruleAuthorityProposal(db, staffOf(), alpha, id, { ruling: "accepted" }),
+      ).resolves.toMatchObject({ ruling: "accepted", resultId: shared });
+      expect(await db.select().from(schema.externalAuthorityLinks).all()).toHaveLength(0);
+    });
+
+    it("lets a federation steward attach the match to the shared record", async () => {
+      const db = drizzle(env.DB, { schema });
+      const lead = await loadTenant(NEOGRANADINA_TENANT_ID);
+      const leadAdmin = makeUser({ id: LEAD_ADMIN_ID, tenantId: NEOGRANADINA_TENANT_ID, isAdmin: true });
+      const shared = crypto.randomUUID();
+      await seedEntity(shared, null);
+      const id = crypto.randomUUID();
+      await seedProposal({
+        id,
+        tenantId: NEOGRANADINA_TENANT_ID,
+        payload: linkPayload({ type: "entity", id: shared }, { externalCandidates: [CANDIDATE] }),
+      });
+
+      await ruleAuthorityProposal(db, leadAdmin, lead, id, {
+        ruling: "accepted",
+        confirmedExternal: { scheme: CANDIDATE.scheme, externalId: CANDIDATE.id },
+      });
+      const rows = await db.select().from(schema.externalAuthorityLinks).all();
+      expect(rows.map((r) => [r.recordId, r.externalId])).toEqual([[shared, CANDIDATE.id]]);
+    });
+  });
+
   // ---------------------------------------------------------------------
   // 8. Decision comments (unified comments table, migration 0071)
   // ---------------------------------------------------------------------
@@ -1755,3 +1978,5 @@ describe("pending decisions — server core", () => {
     });
   });
 });
+
+// @version v0.9.0

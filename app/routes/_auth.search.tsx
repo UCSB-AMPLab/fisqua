@@ -206,7 +206,17 @@
  * vocabulary cannot drift between the section and the search result
  * that points at it.
  *
- * @version v0.8.0
+ * On a workspace with the digitization capability, someone who works in
+ * capture (`canQueue`) also gets "Add to digitization queue" in the
+ * Records tab's selection bar. For ticked rows it posts their ids. For
+ * the whole matching set it reads "Add the N results to the
+ * digitization queue" and posts the query with N (`queueAll`); the
+ * action resolves the set as a handlist save does and adds it only
+ * when it still numbers N. Like "add everything below this", it is
+ * offered for at most `queueAllLimit` results (`MAX_RESULTS`, 50), and
+ * a larger set is added by narrowing the search or ticking rows.
+ *
+ * @version v0.9.0
  */
 
 import { useRef, useState } from "react";
@@ -235,6 +245,7 @@ import {
 } from "lucide-react";
 import { Pager } from "~/components/ui/pager";
 import { HandlistPicker } from "~/components/handlists/handlist-picker";
+import { AddToQueueButton } from "~/components/capture/add-to-queue";
 // The chooser's rows say how much a handlist holds in exactly the
 // words the handlists index says it in — borrowed through the shared
 // key map rather than restated in this namespace.
@@ -286,6 +297,7 @@ import type {
 } from "~/lib/global-search.server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { Route } from "./+types/_auth.search";
+import { pageMeta, heading } from "../lib/page-title";
 
 /**
  * The categories this page has tabs for. The search module also
@@ -935,6 +947,13 @@ async function readHandlistChoices(
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("search:title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { asc, eq } = await import("drizzle-orm");
@@ -953,14 +972,26 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // area the Entities and Places tabs simply do not exist — the same
   // degrade a tenant without the capability gets, and the same branch
   // of every read.
-  const { canAdministerArea } = await import("~/lib/user-access.server");
+  const { canWorkInArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const includeAuthorities =
-    hasCapability(tenant, "authorities") && canAdministerArea(user, "authorities");
+    hasCapability(tenant, "authorities") && canWorkInArea(user, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
   const sp = new URL(request.url).searchParams;
+
+  // The digitization queue's add button: the capability, then capture management.
+  // `queueAllLimit` is how many results "add every result" may add.
+  let canQueue = false;
+  let queueAllLimit = 0;
+  if (hasCapability(tenant, "digitization")) {
+    const { captureAccess } = await import("~/lib/capture/screens.server");
+    canQueue = (await captureAccess(db, tenant, user)).worker;
+    if (canQueue) {
+      queueAllLimit = (await import("~/lib/capture/queue.server")).MAX_RESULTS;
+    }
+  }
 
   // The tenant's repositories are the allowlist a `repoId` is checked
   // against, and the source of a repository pill's name. In the default
@@ -1098,6 +1129,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     namedCategory,
     page,
     includeAuthorities,
+    canQueue,
+    queueAllLimit,
     counts: result.counts,
     facetCounts: result.facetCounts,
     mode: result.mode,
@@ -1153,17 +1186,17 @@ export async function action({ request, context }: Route.ActionArgs) {
   // authorities area gate, so no one outside the area can carry or
   // materialise an entities/places scope this surface would not have
   // shown them.
-  const { canAdministerArea } = await import("~/lib/user-access.server");
+  const { canWorkInArea } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
   const tenant = context.get(tenantContext);
   const includeAuthorities =
-    hasCapability(tenant, "authorities") && canAdministerArea(user, "authorities");
+    hasCapability(tenant, "authorities") && canWorkInArea(user, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
   const formData = await request.formData();
 
   const intent = (formData.get("_action") as string) || "";
-  if (intent !== "carry" && intent !== "handlistIds") {
+  if (intent !== "carry" && intent !== "handlistIds" && intent !== "queueAll") {
     throw new Response("Unknown action", { status: 400 });
   }
 
@@ -1265,6 +1298,79 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json({ ok: true, ids: matched });
   }
 
+  // Every result of a records search into the digitization queue. The
+  // gates are the add route's: the capability (a bare 404), then work
+  // in capture (a bare 403). The set is resolved here, as a handlist
+  // save resolves it, and added whole or not at all: refused past
+  // `MAX_RESULTS`, and refused when its size differs from the count the
+  // button showed (`expected`), so a click adds exactly the set that
+  // count describes.
+  if (intent === "queueAll") {
+    if (!hasCapability(tenant, "digitization")) {
+      throw new Response(null, { status: 404 });
+    }
+    const { captureAccess } = await import("~/lib/capture/screens.server");
+    if (!(await captureAccess(db, tenant, user)).worker) {
+      throw new Response(null, { status: 403 });
+    }
+    if (recordType !== "records") {
+      return Response.json({ ok: false, error: "invalid" }, { status: 400 });
+    }
+    const expected = Number(formData.get("expected"));
+    if (!Number.isInteger(expected) || expected < 1) {
+      return Response.json({ ok: false, error: "invalid" }, { status: 400 });
+    }
+    const { selectMatchingIds } = await import("~/lib/global-search.server");
+    const { addToQueue, MAX_RESULTS, QueueError } = await import(
+      "~/lib/capture/queue.server"
+    );
+    // The record index, whatever `cat` says: the page has no transcripts
+    // tab, so the count on the button is always the record index's.
+    const { total, ids: matched } = await selectMatchingIds(
+      db,
+      searchScope,
+      askedQuery.input,
+      {
+        category: carryCategory(recordType, null),
+        facets: askedQuery.facets,
+        sort: askedQuery.sort,
+        limit: MAX_RESULTS + 1,
+      },
+    );
+    if (Math.max(total, matched.length) > MAX_RESULTS) {
+      return Response.json(
+        { ok: false, error: "results-limit" },
+        { status: 400 },
+      );
+    }
+    // The count and the ids are read in separate statements, so both
+    // must equal `expected`: a record removed between the two reads
+    // leaves the count right and the ids short.
+    if (total !== expected || matched.length !== expected) {
+      return Response.json(
+        { ok: false, error: "results-changed" },
+        { status: 409 },
+      );
+    }
+    try {
+      const result = await addToQueue(
+        { db, now: () => Date.now(), newId: () => crypto.randomUUID() },
+        tenant,
+        user,
+        matched,
+      );
+      return Response.json({ ok: true, ...result });
+    } catch (thrown) {
+      if (thrown instanceof QueueError) {
+        return Response.json(
+          { ok: false, error: thrown.code },
+          { status: thrown.code === "not-found" ? 404 : 400 },
+        );
+      }
+      throw thrown;
+    }
+  }
+
   const rawMode = (formData.get("mode") as string) || "";
   const mode: "ids" | "all" | null =
     rawMode === "ids" || rawMode === "all" ? rawMode : null;
@@ -1328,7 +1434,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   // The faceted total at carry time — the left-hand side of the pruned
-  // arithmetic («6 found − 1 unticked»). A ticked carry knows only its
+  // arithmetic ("6 found − 1 unticked"). A ticked carry knows only its
   // own count, so the found figure is re-asked of the same scoped
   // query the results page ran; without it a pruned set would read as
   // "all matches included", which the carried-scope card forbids.
@@ -2458,6 +2564,8 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
     namedCategory,
     page,
     includeAuthorities,
+    canQueue,
+    queueAllLimit,
     counts,
     facetCounts,
     mode,
@@ -3975,6 +4083,30 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
                     triggerClassName="inline-flex h-8 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 text-13 font-semibold text-stone-700 hover:bg-stone-50"
                     onOpen={() => startSaveFor(recordType)}
                   />
+                  {canQueue && recordType === "records" && !allMode ? (
+                    <AddToQueueButton
+                      target={{ descriptionIds: saveIdsFor("records") ?? [] }}
+                      label={t("dqueue.add_selection", { ns: "capture" })}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 text-13 font-semibold text-stone-700 hover:bg-stone-50 disabled:cursor-wait disabled:opacity-50"
+                    />
+                  ) : null}
+                  {canQueue &&
+                  recordType === "records" &&
+                  allMode &&
+                  activeTotal > 0 &&
+                  activeTotal <= queueAllLimit ? (
+                    <AddToQueueButton
+                      target={{
+                        searchQuery: location.search,
+                        expected: activeTotal,
+                      }}
+                      label={t("dqueue.add_results", {
+                        ns: "capture",
+                        count: activeTotal,
+                      })}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 text-13 font-semibold text-stone-700 hover:bg-stone-50 disabled:cursor-wait disabled:opacity-50"
+                    />
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => carryFor(recordType, null)}
@@ -4227,4 +4359,4 @@ export default function SearchPage({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// Version: v0.8.0
+// Version: v0.9.0

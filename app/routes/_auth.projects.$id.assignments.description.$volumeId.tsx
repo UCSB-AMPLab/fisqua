@@ -17,7 +17,7 @@
  * outline is being reshaped would only churn the workflow, so the
  * banner prompts the lead to resolve the request first.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -30,6 +30,7 @@ import {
 } from "../components/assignments/description-assignment-table";
 import type { MemberOption } from "../components/assignments/assignment-table";
 import type { Route } from "./+types/_auth.projects.$id.assignments.description.$volumeId";
+import { pageMeta, heading, projectName } from "../lib/page-title";
 
 /** Description status colours for progress bar segments */
 const DESC_STATUS_ORDER = [
@@ -51,6 +52,16 @@ const DESC_SEGMENT_COLORS: Record<string, string> = {
   approved: "bg-verdigris",
   sent_back: "bg-indigo",
 };
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.volume?.name,
+    heading("project:tab.assignments"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -332,4 +343,4 @@ export default function DescriptionVolumeAssignmentRoute({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -8,9 +8,11 @@
  * page's sections (Platform, Federation, Records management,
  * Authorities, Cataloguing, Digitization, Imports and exports); the
  * project and reviewed-volume tables; the access history; and the
- * notices, tooltips, errors and confirmations of both pages.
+ * notices, tooltips, errors and confirmations of both pages; and the
+ * list page's Language section, the workspace's default interface
+ * language.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   people_count_one: "{{count}} persona en este espacio de trabajo",
@@ -39,6 +41,7 @@ export default {
   federation_intro:
     "Trabajan aquí, pero pertenecen a otros espacios de trabajo de la federación. Sus perfiles se gestionan en su espacio de trabajo de origen.",
   col_home_workspace: "Espacio de trabajo de origen",
+  platform_admin: "Personas que administran la plataforma",
   col_access_here: "Acceso aquí",
   federation_role_steward: "Encargado de la federación",
   federation_role_staff: "Equipo de la federación",
@@ -105,7 +108,7 @@ export default {
   col_status: "Estado",
   no_reviewed_volumes: "No revisa ningún volumen.",
   reviewers_assigned_note:
-    "Los revisores se asignan en la pantalla «Revisión de capturas».",
+    "Los revisores se asignan en la pantalla “Revisión de capturas”.",
   self_warning:
     "Esta es tu propia cuenta. Los cambios de rol están deshabilitados para evitar una degradación accidental.",
   non_superadmin_notice:
@@ -159,6 +162,16 @@ export default {
   success_assigned: "Asignado al proyecto",
   success_role_updated: "Rol actualizado",
   success_removed: "Eliminado del proyecto",
+  // DRAFT: Spanish awaiting review (language_heading, language_help).
+  language_heading: "Idioma",
+  language_label: "Idioma predeterminado de la interfaz",
+  language_browser: "Según el navegador",
+  language_es: "Español",
+  language_en: "Inglés",
+  language_help:
+    "Quienes no hayan elegido un idioma ven este espacio de trabajo en el idioma que selecciones aquí. Si una persona elige un idioma con los enlaces EN / ES o lo guarda en su configuración, se respeta esa elección.",
+  language_submit: "Guardar idioma predeterminado",
+  language_saved: "Idioma predeterminado guardado.",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

@@ -4,9 +4,13 @@
  * This component is the capture QC viewer's right-hand rail. From the
  * top: the volume (its reference code, how many images and openings it
  * has, and its reviewer); the volume's progress as one bar of approved,
- * rejected and undecided openings with their counts; the current
- * opening, with its decision (for a rejection, the reason and, on an
- * opening with two images, the side to retake) and who made it, its
+ * rejected, excluded and undecided openings with their counts, and,
+ * when the handover says its calibration shots were skipped (contract
+ * 1.12), that the volume has none, with the reason given; the
+ * current opening, with its decision (for a rejection, the reason and,
+ * on an opening with two images, the side to retake; for an exclusion,
+ * that the opening is not a page and is left out of processing) and
+ * who made it, its
  * page keys, its status on the scanner and the rotation of each image,
  * marked "not saved yet" while a rotation on an undecided opening waits
  * for its decision; Clear decision, for a decision the unit has not yet
@@ -37,7 +41,7 @@
  * rail folds to a narrow strip with its Hide panel button; the live
  * region stays.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { ReactNode } from "react";
@@ -64,13 +68,15 @@ export interface CaptureQcRailProps {
   reviewerName: string | null;
   imageCount: number;
   openingCount: number;
-  counts: { approved: number; rejected: number; undecided: number };
+  counts: { approved: number; rejected: number; excluded: number; undecided: number };
   /** The volume waits only for retakes the unit owes (`awaitingRetakes`). */
   awaitingRetakes?: boolean;
   opening: ViewerOpening | null;
   state: OpeningState | null;
   handover: number;
   receivedAt: number;
+  /** What the handover says of its calibration shots; absent reads as no statement. */
+  calibration?: { status: "present" | "skipped" | null; skippedReason: string | null };
   canDecide: boolean;
   rejectOpen: boolean;
   /** Clears the opening's decision; without it the control is not offered. */
@@ -139,9 +145,17 @@ export function CaptureQcRail(props: CaptureQcRailProps) {
       ? "text-verdigris-deep"
       : decision?.decision === "rejected"
         ? "text-madder-deep"
-        : "text-stone-600";
+        : decision?.decision === "excluded"
+          ? "text-stone-700"
+          : "text-stone-600";
   const lineTone =
-    decision?.decision === "approved" ? "bg-verdigris" : decision?.decision === "rejected" ? "bg-madder" : "bg-stone-400";
+    decision?.decision === "approved"
+      ? "bg-verdigris"
+      : decision?.decision === "rejected"
+        ? "bg-madder"
+        : decision?.decision === "excluded"
+          ? "bg-stone-500"
+          : "bg-stone-400";
 
   return (
     <aside
@@ -183,14 +197,26 @@ export function CaptureQcRail(props: CaptureQcRailProps) {
             <DecisionBar
               approved={props.counts.approved}
               rejected={props.counts.rejected}
-              total={props.counts.approved + props.counts.rejected + props.counts.undecided}
+              excluded={props.counts.excluded}
+              total={props.counts.approved + props.counts.rejected + props.counts.excluded + props.counts.undecided}
             />
           </div>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-600">
             <Legend line="h-0.5 bg-verdigris" label={t("queue.legend_approved")} count={props.counts.approved} />
             <Legend line="h-0.5 bg-madder" label={t("queue.legend_rejected")} count={props.counts.rejected} />
+            <Legend line="h-0.5 bg-stone-500" label={t("queue.legend_excluded")} count={props.counts.excluded} />
             <Legend line="h-px bg-stone-400" label={t("queue.legend_undecided")} count={props.counts.undecided} />
           </ul>
+          {props.calibration?.status === "skipped" ? (
+            <div className="mt-2 rounded-md bg-saffron-tint px-3 py-2 text-xs text-saffron-deep">
+              <p>{t("viewer.rail.calibration_skipped")}</p>
+              {props.calibration.skippedReason ? (
+                <p className="mt-0.5">
+                  {t("viewer.rail.calibration_skipped_reason", { reason: props.calibration.skippedReason })}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {(props.changedByOther ?? []).map((n) => (
@@ -222,6 +248,9 @@ export function CaptureQcRail(props: CaptureQcRailProps) {
                   ? t("viewer.rail.by", { name: decision.decidedBy, date: formatDate(decision.decidedAt) })
                   : null}
               </p>
+            ) : null}
+            {decision?.decision === "excluded" ? (
+              <p className="mt-1 text-xs text-stone-600">{t("viewer.rail.excluded_gloss")}</p>
             ) : null}
             {decision?.note ? <p className="mt-1 font-serif text-sm text-stone-700">{decision.note}</p> : null}
             {props.canDecide && decision !== null && (decision.sentAt ?? null) === null && props.onClear ? (
@@ -302,7 +331,9 @@ export function CaptureQcRail(props: CaptureQcRailProps) {
                     <p className="font-serif text-sm text-stone-700">
                       {decision.decision === "approved"
                         ? t("viewer.history.approved")
-                        : decision.side
+                        : decision.decision === "excluded"
+                          ? t("viewer.history.excluded")
+                          : decision.side
                           ? t("viewer.history.rejected_side", {
                               reason: decision.reason ? t(`reason.${decision.reason}`) : "",
                               side: t(`side.${decision.side}`),
@@ -327,6 +358,7 @@ export function CaptureQcRail(props: CaptureQcRailProps) {
           <ul className="flex flex-wrap gap-x-3 gap-y-1 text-11 text-stone-600">
             <KeyHint keys={["A"]} label={t("viewer.keys.approve")} />
             <KeyHint keys={["R"]} label={t("viewer.keys.reject")} />
+            <KeyHint keys={["X"]} label={t("viewer.keys.exclude")} />
             <KeyHint keys={["[", "]"]} label={t("viewer.keys.rotate")} />
             <KeyHint keys={["J", "K"]} label={t("viewer.keys.next_previous")} />
             <KeyHint keys={["G"]} label={t("viewer.keys.sheet")} />
@@ -384,4 +416,4 @@ function KeyHint({ keys, label }: { keys: string[]; label: string }) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

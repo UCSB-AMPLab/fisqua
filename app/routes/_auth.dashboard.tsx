@@ -29,7 +29,7 @@
  *
  * The empty state on a tenant without crowdsourcing links to
  * Descriptions for the records area and to Imports for the imports
- * area. The area rule (`canAdministerArea`, `user-access.server.ts`)
+ * area. The area rule (`canWorkInArea`, `user-access.server.ts`)
  * is restated in the component as local booleans read from `user`,
  * since this module also renders in the browser. New project and the
  * project-lead view stay with the workspace admin (`isAdmin`).
@@ -41,7 +41,7 @@
  * server code. The Admin button does not depend on crowdsourcing; New
  * project does.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -92,12 +92,13 @@ import {
 } from "../db/schema";
 import { highestProjectRole } from "../lib/workflow";
 import { getLocale } from "../middleware/i18next";
+import { heading, pageMeta, titleLang } from "../lib/page-title";
 import type { PendingDecisionCounts } from "../lib/pending-decisions.server";
 
-export function meta({ data }: Route.MetaArgs) {
-  const lang = data?.lang === "es" ? "es" : "en";
+export function meta(args: Route.MetaArgs) {
+  const lang = titleLang(args);
   return [
-    { title: lang === "es" ? "Inicio" : "Home" },
+    ...pageMeta(args, heading("sidebar:home")),
     {
       name: "description",
       content:
@@ -124,7 +125,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     "../lib/pending-decisions.server"
   );
   const { canManageTenantUsers } = await import("../lib/permissions.server");
-  const { canAdministerArea } = await import("../lib/user-access.server");
+  const { canWorkInArea } = await import("../lib/user-access.server");
   const user = context.get(userContext);
   // The Admin button and the empty state's manage-users link both lead
   // to /admin/users, so they show under that page's own gate. Computed
@@ -154,9 +155,9 @@ export async function loader({ context }: Route.LoaderArgs) {
   // and the capability its tab sits behind: authority proposals the
   // authorities capability, vocabulary proposals the vocabulary hub.
   const authorityCounts =
-    canAdministerArea(user, "authorities") && tenant.authoritiesEnabled;
+    canWorkInArea(user, "authorities") && tenant.authoritiesEnabled;
   const vocabularyCounts =
-    canAdministerArea(user, "records") && tenant.vocabularyHubEnabled;
+    canWorkInArea(user, "records") && tenant.vocabularyHubEnabled;
   const pendingDecisions =
     authorityCounts || vocabularyCounts
       ? await loadPendingDecisionCounts(db, tenant).then((counts) => ({
@@ -1171,8 +1172,8 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
   // the two surfaces cannot drift apart.
   const { t: tSearch } = useTranslation("search");
   const [activeTab, setActiveTab] = useState<"segmentation" | "description">("segmentation");
-  // Who passes each area (see the file header).
-  const anyArea = user.isAdmin || user.isSuperAdmin;
+  // Who works in each area (see the file header).
+  const anyArea = user.isAdmin || user.isSuperAdmin || !!user.worksInEveryArea;
   const recordsArea = anyArea || user.isRecordsAdmin;
   const authoritiesArea = anyArea || user.isAuthoritiesAdmin;
   const importsArea = anyArea || user.isImportsAdmin;
@@ -1385,4 +1386,4 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -12,14 +12,17 @@
  * entry whose decision is null clears that opening's decision) and
  * answers with the set's new `decisionsId` and `revision`, or with a
  * refusal code (`revision_changed` when the body's `expectedRevision`
- * is no longer the set's).
+ * is no longer the set's). The save's audit row names the actor's home
+ * tenant, the federation grant's for a steward or staff grant and the
+ * user's own otherwise, and the impersonation session if any, both read
+ * from the request's context as the Scanner screen reads them.
  * A tenant without the digitization capability gets a bare 404 first.
  * GET answers 405.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 import type { Route } from "./+types/_auth.admin.capture.volumes.$volumeId.decisions";
-import { tenantContext, userContext } from "../context";
+import { grantContext, impersonationContext, tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -38,6 +41,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     params.volumeId,
     tenant,
     user,
+    {
+      homeTenantId: context.get(grantContext)?.homeTenantId ?? user.tenantId,
+      impersonationSessionId: context.get(impersonationContext)?.sessionId ?? null,
+    },
   );
 }
 
@@ -45,4 +52,4 @@ export async function loader() {
   return new Response(null, { status: 405, headers: { Allow: "POST" } });
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

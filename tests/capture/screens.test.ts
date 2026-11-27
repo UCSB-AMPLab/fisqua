@@ -12,6 +12,8 @@
  *     admins) and federation stewards only; the queue for them and for a volume's assigned reviewer, who
  *     sees only their own volumes and gets no reviewer candidates; a bare
  *     403 for anyone else; and `captureAccess`, which the sidebar reads;
+ *   - a federation `staff` grant: a worker but not a manager, who opens
+ *     Volumes and the whole queue, assigns, and decides on any volume;
  *   - tenant scoping: nothing of the second tenant's handovers, volumes,
  *     decisions or reviewers reaches the default tenant's screens;
  *   - the state mapping, for every link state, and the next step, and
@@ -24,11 +26,18 @@
  *   - the reviewer and decisions actions answering a bare 404, and
  *     writing nothing, when the capability is off;
  *   - a failed run showing the message the run recorded for the volume,
- *     while the status call keeps answering with the error's class only.
+ *     while the status call keeps answering with the error's class only;
+ *   - which volumes the queue holds (`queuedVolume`): a volume with
+ *     retakes requested while its delivery still has undecided openings,
+ *     and not once every opening is decided or it waits for retakes only;
+ *   - whether a queued volume is ready to review (`queueReadinessOf`),
+ *     from its review images when it has retakes requested
+ *     (`queueReadinessFor`), and the queue's order, ready volumes first
+ *     (`sortQueue`).
  *
  * Every value here is a test value: no real tenant, volume or person.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -43,7 +52,7 @@ import {
   SECOND_TEST_FEDERATION_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import { insertRow, seedReceivedVolumes, type ReceivedVolume } from "../helpers/media-pipeline";
 import { mintScannerToken } from "../../app/lib/capture/token";
@@ -51,7 +60,20 @@ import { handleVolumeStatus } from "../../app/lib/capture/link.server";
 import { tenantContext, userContext, type Tenant, type User } from "../../app/context";
 import { hasCapability, requireCapability } from "../../app/lib/tenant";
 import { CAPTURE_LINK_STATES, type CaptureLinkState } from "../../app/lib/validation/enums";
-import { inQueue, nextStepOf, REFUSAL_RULES, refusalKey, screenStateFor, screenStateOf, waitingDays } from "../../app/lib/capture/screens";
+import {
+  inQueue,
+  nextStepOf,
+  queuedVolume,
+  queueReadinessFor,
+  queueReadinessOf,
+  REFUSAL_RULES,
+  refusalKey,
+  screenStateFor,
+  screenStateOf,
+  sortQueue,
+  waitingDays,
+  type ReviewStep,
+} from "../../app/lib/capture/screens";
 import enCapture from "../../app/locales/en/capture";
 import esCapture from "../../app/locales/es/capture";
 import {
@@ -189,6 +211,8 @@ function loadQueue(user: User, tenant: Tenant) {
 interface World {
   admin: User;
   steward: User;
+  /** A federation staff grant into the default tenant, as the middleware hands it over. */
+  staff: User;
   reviewer: User;
   outsider: User;
   otherAdmin: User;
@@ -238,7 +262,9 @@ beforeEach(async () => {
   await decisionSet(SECOND_TEST_TENANT_ID, foreignDelivery, foreign.id, { openings: 4, approved: 1, rejected: 1 });
   await assignRow(SECOND_TEST_TENANT_ID, foreign.id, otherAdmin.id, otherAdmin.id);
 
-  world = { admin, steward, reviewer, outsider, otherAdmin, mine, open, foreign, mineDelivery };
+  const staff = await createGrantUser("staff", { name: "Test Staff" });
+
+  world = { admin, steward, staff, reviewer, outsider, otherAdmin, mine, open, foreign, mineDelivery };
 });
 
 // ---------------------------------------------------------------------------
@@ -279,21 +305,36 @@ describe("the digitization capability", () => {
 describe("access", () => {
   it("names admins and stewards as managers, and assigned reviewers as reviewers", async () => {
     const db = drizzle(env.DB);
-    expect(await captureAccess(db, on(), world.admin)).toEqual({ manager: true, reviewer: false });
-    expect(await captureAccess(db, on(), world.steward)).toEqual({ manager: true, reviewer: false });
-    expect(await captureAccess(db, on(), world.reviewer)).toEqual({ manager: false, reviewer: true });
-    expect(await captureAccess(db, on(), world.outsider)).toEqual({ manager: false, reviewer: false });
+    expect(await captureAccess(db, on(), world.admin)).toEqual({ manager: true, worker: true, reviewer: false });
+    expect(await captureAccess(db, on(), world.steward)).toEqual({ manager: true, worker: true, reviewer: false });
+    expect(await captureAccess(db, on(), world.reviewer)).toEqual({ manager: false, worker: false, reviewer: true });
+    expect(await captureAccess(db, on(), world.outsider)).toEqual({ manager: false, worker: false, reviewer: false });
+  });
+
+  it("names a federation staff grant a worker, not a manager", async () => {
+    const db = drizzle(env.DB);
+    expect(await captureAccess(db, on(), world.staff)).toEqual({ manager: false, worker: true, reviewer: false });
+  });
+
+  it("opens Volumes and the whole queue to a staff grant, with candidates to assign", async () => {
+    expect(await status(loadVolumes(world.staff, on()))).toBe(200);
+    const data = await loadQueue(world.staff, on());
+    expect(data.volumes.map((v) => v.referenceCode).sort()).toEqual(
+      [world.mine.referenceCode, world.open.referenceCode].sort(),
+    );
+    expect(data.canAssign).toBe(true);
+    expect(data.candidates).not.toBeNull();
   });
 
   it("names the digitization admin a manager, and no other area admin", async () => {
     const db = drizzle(env.DB);
     const digitizationAdmin = { ...world.outsider, isDigitizationAdmin: true };
-    expect(await captureAccess(db, on(), digitizationAdmin)).toEqual({ manager: true, reviewer: false });
+    expect(await captureAccess(db, on(), digitizationAdmin)).toEqual({ manager: true, worker: true, reviewer: false });
     expect(await status(loadVolumes(digitizationAdmin, on()))).toBe(200);
     expect(await status(loadQueue(digitizationAdmin, on()))).toBe(200);
     for (const flag of ["isRecordsAdmin", "isAuthoritiesAdmin", "isImportsAdmin"] as const) {
       const other = { ...world.outsider, [flag]: true };
-      expect(await captureAccess(db, on(), other)).toEqual({ manager: false, reviewer: false });
+      expect(await captureAccess(db, on(), other)).toEqual({ manager: false, worker: false, reviewer: false });
       expect(await status(loadVolumes(other, on()))).toBe(403);
     }
   });
@@ -302,7 +343,7 @@ describe("access", () => {
     const db = drizzle(env.DB);
     // otherAdmin reviews a volume of the second tenant only.
     const asVisitor = makeUserContext({ id: world.otherAdmin.id, tenantId: SECOND_TEST_TENANT_ID });
-    expect(await captureAccess(db, on(), asVisitor)).toEqual({ manager: false, reviewer: false });
+    expect(await captureAccess(db, on(), asVisitor)).toEqual({ manager: false, worker: false, reviewer: false });
   });
 
   it("opens Volumes to admins and stewards only", async () => {
@@ -327,6 +368,8 @@ describe("access", () => {
     expect(data.canAssign).toBe(true);
     expect(data.candidates).not.toBeNull();
     expect(data.federationName).toBe("Neogranadina");
+    // The test federation has no review-tiles bucket, so both are ready.
+    expect(data.volumes.map((v) => v.readiness)).toEqual(["ready", "ready"]);
   });
 
   it("shows an assigned reviewer only their own volumes, and nothing to assign with", async () => {
@@ -413,6 +456,14 @@ describe("state mapping", () => {
     expect(nextStepOf({ ...base, linkState: "refused" })).toBeNull();
   });
 
+  it("keeps review as the next step while a volume with retakes requested has undecided openings", () => {
+    const base = { registered: true, hasReviewer: false, hasEarlierDelivery: false, linkState: "retakes_requested" as const };
+    expect(nextStepOf({ ...base, openings: 4, decided: 1 })).toBe("assign_reviewer");
+    expect(nextStepOf({ ...base, openings: 4, decided: 1, hasReviewer: true })).toBe("continue_review");
+    expect(nextStepOf({ ...base, openings: 4, decided: 4, hasReviewer: true })).toBe("waiting_for_scanner");
+    expect(nextStepOf({ ...base, openings: 4, decided: 1, registered: false })).toBe("waiting_for_scanner");
+  });
+
   it("applies the review run: failed, no bucket, and the steps to prepare or retry", () => {
     expect(screenStateFor("registered", "failed")).toBe("review_failed");
     expect(screenStateFor("in_capture_qc", "failed")).toBe("review_failed");
@@ -430,6 +481,49 @@ describe("state mapping", () => {
 
   it("queues registered, preparing and in-review volumes only", () => {
     expect(CAPTURE_LINK_STATES.filter(inQueue)).toEqual(["registered", "preparing_review", "in_capture_qc"]);
+  });
+
+  it("says whether a queued volume is ready to review, from its screen state", () => {
+    expect(queueReadinessOf("in_capture_qc")).toBe("ready");
+    expect(queueReadinessOf("preparing_review")).toBe("preparing");
+    expect(queueReadinessOf("received")).toBe("not_prepared");
+    expect(queueReadinessOf("review_failed")).toBe("failed");
+  });
+
+  it("queues a volume with a rejection while its delivery still has undecided openings", () => {
+    const of = (linkState: CaptureLinkState, decided: number, openings = 4) => queuedVolume({ linkState, decided, openings });
+    expect(of("retakes_requested", 3)).toBe(true);
+    expect(of("retakes_requested", 4)).toBe(false);
+    // Waiting for retakes only: every opening approved, or none at all.
+    expect(of("retakes_requested", 0, 0)).toBe(false);
+    expect(of("registered", 0)).toBe(true);
+    expect(of("in_capture_qc", 4)).toBe(true);
+    expect(of("approved", 3)).toBe(false);
+    expect(of("queued", 3)).toBe(false);
+  });
+
+  it("says whether such a volume is ready to review, from its review images", () => {
+    const of = (reviewStep: ReviewStep) =>
+      queueReadinessFor({ linkState: "retakes_requested", state: "retakes_requested", reviewStep });
+    expect(of("ready")).toBe("ready");
+    expect(of("not_applicable")).toBe("ready");
+    expect(of("open")).toBe("preparing");
+    expect(of("failed")).toBe("failed");
+    expect(of("none")).toBe("not_prepared");
+    // Any other queued volume, from its screen state.
+    expect(queueReadinessFor({ linkState: "registered", state: "received", reviewStep: "ready" })).toBe("not_prepared");
+    expect(queueReadinessFor({ linkState: "in_capture_qc", state: "in_capture_qc", reviewStep: "none" })).toBe("ready");
+  });
+
+  it("puts the volumes ready to review first and keeps the order within each group", () => {
+    const rows = [
+      { referenceCode: "a", readiness: "preparing" as const },
+      { referenceCode: "b", readiness: "ready" as const },
+      { referenceCode: "c", readiness: "failed" as const },
+      { referenceCode: "d", readiness: "not_prepared" as const },
+      { referenceCode: "e", readiness: "ready" as const },
+    ];
+    expect(sortQueue(rows).map((r) => r.referenceCode)).toEqual(["b", "e", "a", "d", "c"]);
   });
 
   it("gives every refusal rule a sentence in both locales, and an unknown rule the generic one", () => {
@@ -557,6 +651,12 @@ describe("assignment", () => {
     expect(await status(post(world.reviewer, world.open.id, world.reviewer.id))).toBe(403);
   });
 
+  it("lets a staff grant assign a reviewer", async () => {
+    const res = (await post(world.staff, world.open.id, world.outsider.id)) as Response;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reviewerId: world.outsider.id });
+  });
+
   it("refuses a volume of another tenant", async () => {
     const res = (await post(world.admin, world.foreign.id, world.outsider.id)) as Response;
     expect(res.status).toBe(404);
@@ -569,7 +669,7 @@ describe("assignment", () => {
     expect(staff).not.toContain(world.steward.id);
     expect(staff).not.toContain(world.otherAdmin.id);
     expect(candidates.federationName).toBe("Neogranadina");
-    expect(candidates.federation.map((c) => c.id)).toEqual([world.steward.id]);
+    expect(candidates.federation.map((c) => c.id).sort()).toEqual([world.steward.id, world.staff.id].sort());
     // Every candidate is one the route accepts.
     for (const c of [...candidates.staff, ...candidates.federation]) {
       expect(((await post(world.admin, world.open.id, c.id)) as Response).status).toBe(200);
@@ -740,4 +840,4 @@ describe("a failed run's error", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

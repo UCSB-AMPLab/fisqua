@@ -13,7 +13,9 @@
  * Places move out of Records management into their own `Authorities`
  * section, gated on `authoritiesEnabled`. The assertions below track
  * that structure: Records management holds descriptions / repositories /
- * vocabularies / publish; Authorities holds entities / places.
+ * vocabularies; Authorities holds entities / places. Publish sits in
+ * Import and export, after Exports, for a superadmin on a tenant with
+ * the publish pipeline on.
  *
  * The `imports` capability (migration 0061) gates the Imports ITEM
  * inside the `Import and export` group (ruled 2026-08-15). The group
@@ -32,17 +34,20 @@
  *
  * The area-admin cases pin the split by area: a records admin sees
  * Records management, an authorities admin Authorities, an imports
- * admin Imports, and none of them another area's section.
+ * admin Imports, and none of them another area's section. A federation
+ * staff grant (`worksInEveryArea`) sees every working area's section and
+ * none of the administration items (Publish, All projects, Team).
  *
  * The digitization capability (migration 0098) gates the
  * `Digitization` section, placed after Authorities and before Import
- * and export. Inside it Volumes is for capture managers (those who pass
- * the digitization area, and federation stewards), and Capture QC and Retakes also for a
- * volume's assigned reviewer; Scanner, last, is for capture managers.
+ * and export. Inside it Volumes is for capture workers (those who pass
+ * the digitization area, federation stewards and staff grants), and
+ * Capture QC and Retakes also for a volume's assigned reviewer;
+ * Digitization queue and Scanner, last, are for capture workers.
  * The cases near the end pin the gate, the roles, the order, the
  * icons and the five sidebar keys in both locales.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -51,7 +56,7 @@ import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router";
 import { I18nextProvider } from "react-i18next";
 import { createInstance } from "i18next";
-import { BookOpen, Camera, ClipboardCheck, Repeat } from "lucide-react";
+import { BookOpen, Camera, ClipboardCheck, Repeat, ScanLine } from "lucide-react";
 import en from "../../locales/en/sidebar";
 import es from "../../locales/es/sidebar";
 import {
@@ -97,7 +102,7 @@ function makeUser(overrides: Partial<SidebarUser> = {}): SidebarUser {
     isAuthoritiesAdmin: false,
     isImportsAdmin: false,
     hasAnyProjectMembership: false,
-    isCaptureManager: false,
+    isCaptureWorker: false,
     isCaptureReviewer: false,
     ...overrides,
   };
@@ -158,7 +163,6 @@ describe("getSidebarSections", () => {
       "/admin/descriptions",
       "/admin/repositories",
       "/admin/vocabularies",
-      "/admin/publish",
     ]);
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
@@ -313,7 +317,6 @@ describe("getSidebarSections", () => {
     expect(paths(sections, "sidebar:records_management")).toEqual([
       "/admin/descriptions",
       "/admin/repositories",
-      "/admin/publish",
     ]);
     // Authorities is unaffected.
     expect(paths(sections, "sidebar:authorities")).toEqual([
@@ -329,7 +332,10 @@ describe("getSidebarSections", () => {
       makeTenant({ publishPipelineEnabled: false }),
     );
     expect(allPaths(sections)).not.toContain("/admin/publish");
-    // Records management still has its non-publish entries.
+    expect(paths(sections, "sidebar:import_and_export")).toEqual([
+      "/admin/exports",
+    ]);
+    // Records management keeps its entries.
     expect(paths(sections, "sidebar:records_management")).toEqual([
       "/admin/descriptions",
       "/admin/repositories",
@@ -368,7 +374,6 @@ describe("getSidebarSections", () => {
       "/admin/descriptions",
       "/admin/repositories",
       "/admin/vocabularies",
-      "/admin/publish",
     ]);
   });
 
@@ -394,9 +399,12 @@ describe("getSidebarSections", () => {
       makeTenant(),
     );
     // Default tenant has imports off — the Import and export group
-    // still renders, holding Exports alone.
+    // still renders, holding Exports and, for this superadmin, Publish.
     expect(allPaths(off)).not.toContain("/admin/imports");
-    expect(paths(off, "sidebar:import_and_export")).toEqual(["/admin/exports"]);
+    expect(paths(off, "sidebar:import_and_export")).toEqual([
+      "/admin/exports",
+      "/admin/publish",
+    ]);
 
     const on = getSidebarSections(
       makeUser({ isSuperAdmin: true }),
@@ -412,7 +420,33 @@ describe("getSidebarSections", () => {
     expect(paths(on, "sidebar:import_and_export")).toEqual([
       "/admin/imports",
       "/admin/exports",
+      "/admin/publish",
     ]);
+  });
+
+  it("puts Publish in Import and export, after Exports, for a superadmin only", () => {
+    const superAdmin = getSidebarSections(
+      makeUser({ isSuperAdmin: true }),
+      makeTenant({ importsEnabled: true }),
+    );
+    expect(paths(superAdmin, "sidebar:import_and_export")).toEqual([
+      "/admin/imports",
+      "/admin/exports",
+      "/admin/publish",
+    ]);
+    expect(paths(superAdmin, "sidebar:records_management")).not.toContain(
+      "/admin/publish",
+    );
+
+    const admin = getSidebarSections(
+      makeUser({ isAdmin: true }),
+      makeTenant({ importsEnabled: true }),
+    );
+    expect(paths(admin, "sidebar:import_and_export")).toEqual([
+      "/admin/imports",
+      "/admin/exports",
+    ]);
+    expect(allPaths(admin)).not.toContain("/admin/publish");
   });
 
   it("hides the Imports entry for a non-admin even when imports is on", () => {
@@ -464,7 +498,6 @@ describe("getSidebarSections", () => {
       "/admin/descriptions",
       "/admin/repositories",
       "/admin/vocabularies",
-      "/admin/publish",
     ]);
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
@@ -488,7 +521,6 @@ describe("getSidebarSections", () => {
       "/admin/repositories",
       "/admin/vocabularies",
       "/admin/decisions/vocabulary",
-      "/admin/publish",
     ]);
   });
 
@@ -608,7 +640,6 @@ describe("getSidebarSections", () => {
       "/admin/descriptions",
       "/admin/repositories",
       "/admin/vocabularies",
-      "/admin/publish",
     ]);
     expect(paths(sections, "sidebar:authorities")).toEqual([
       "/admin/entities",
@@ -689,6 +720,34 @@ describe("getSidebarSections: area admins", () => {
     expect(labels(sections)).not.toContain("sidebar:authorities");
   });
 
+  it("a federation staff grant sees every working area's section, and no administration item", () => {
+    const sections = getSidebarSections(
+      makeUser({ isCataloguer: true, worksInEveryArea: true, isCaptureWorker: true }),
+      tenant,
+    );
+    expect(paths(sections, "sidebar:records_management")).toEqual([
+      "/admin/descriptions",
+      "/admin/repositories",
+      "/admin/vocabularies",
+    ]);
+    expect(paths(sections, "sidebar:authorities")).toEqual([
+      "/admin/entities",
+      "/admin/places",
+      "/admin/decisions",
+    ]);
+    expect(paths(sections, "sidebar:digitization")).toEqual([
+      "/admin/capture/volumes",
+      "/admin/capture/qc",
+      "/admin/capture/retakes",
+      "/admin/capture/queue",
+      "/admin/capture/scanner",
+    ]);
+    expect(allPaths(sections)).toContain("/admin/imports");
+    for (const admin of ["/admin/publish", "/admin/cataloguing/projects", "/admin/cataloguing/team", "/admin/cataloguing/promote"]) {
+      expect(allPaths(sections)).not.toContain(admin);
+    }
+  });
+
   it("no area flag leaves both module sections and Imports hidden", () => {
     const sections = getSidebarSections(makeUser({ isCataloguer: true }), tenant);
     expect(labels(sections)).not.toContain("sidebar:records_management");
@@ -698,23 +757,24 @@ describe("getSidebarSections: area admins", () => {
 });
 
 describe("getSidebarSections: Digitization", () => {
-  const manager = makeUser({ isAdmin: true, isCaptureManager: true });
+  const manager = makeUser({ isAdmin: true, isCaptureWorker: true });
 
   it("omits the section when the digitization capability is off, whatever the role", () => {
-    for (const user of [manager, makeUser({ isCaptureReviewer: true }), makeUser({ isSuperAdmin: true, isCaptureManager: true })]) {
+    for (const user of [manager, makeUser({ isCaptureReviewer: true }), makeUser({ isSuperAdmin: true, isCaptureWorker: true })]) {
       const sections = getSidebarSections(user, makeTenant({ digitizationEnabled: false }));
       expect(labels(sections)).not.toContain("sidebar:digitization");
       expect(allPaths(sections).some((p) => p.startsWith("/admin/capture"))).toBe(false);
     }
   });
 
-  it("gives a capture manager Volumes, Capture QC, Retakes and Scanner, in that order, with their icons and keys", () => {
+  it("gives a capture manager Volumes, Capture QC, Retakes, Digitization queue and Scanner, in that order, with their icons and keys", () => {
     const sections = getSidebarSections(manager, makeTenant({ digitizationEnabled: true }));
     const section = sections.find((s) => s.labelKey === "sidebar:digitization");
     expect(section?.items.map((i) => [i.path, i.labelKey, i.icon])).toEqual([
       ["/admin/capture/volumes", "sidebar:capture_volumes", BookOpen],
       ["/admin/capture/qc", "sidebar:capture_qc", ClipboardCheck],
       ["/admin/capture/retakes", "sidebar:retakes", Repeat],
+      ["/admin/capture/queue", "sidebar:capture_queue", ScanLine],
       ["/admin/capture/scanner", "sidebar:scanner", Camera],
     ]);
   });
@@ -750,19 +810,21 @@ describe("getSidebarSections: Digitization", () => {
     ]);
   });
 
-  it("carries the section's five keys in both locales", () => {
-    expect([en.digitization, en.capture_volumes, en.capture_qc, en.retakes, en.scanner]).toEqual([
+  it("carries the section's six keys in both locales", () => {
+    expect([en.digitization, en.capture_volumes, en.capture_qc, en.retakes, en.capture_queue, en.scanner]).toEqual([
       "Digitization",
       "Volumes",
       "Capture QC",
       "Retakes",
+      "Digitization queue",
       "Scanner",
     ]);
-    expect([es.digitization, es.capture_volumes, es.capture_qc, es.retakes, es.scanner]).toEqual([
+    expect([es.digitization, es.capture_volumes, es.capture_qc, es.retakes, es.capture_queue, es.scanner]).toEqual([
       "Digitalización",
       "Volúmenes",
       "Revisión de capturas",
       "Capturas por repetir",
+      "Cola de digitalización",
       "Escáner",
     ]);
   });
@@ -775,7 +837,7 @@ describe("Sidebar: scrolling", () => {
     isSuperAdmin: true,
     isUserManager: true,
     isCollabAdmin: true,
-    isCaptureManager: true,
+    isCaptureWorker: true,
   });
 
   function render(collapsed: boolean) {
@@ -829,7 +891,7 @@ describe("Sidebar: scrolling", () => {
 
 describe("Sidebar: folding sections", () => {
   const tenant = makeTenant({ importsEnabled: true, digitizationEnabled: true });
-  const admin = makeUser({ isAdmin: true, isSuperAdmin: true, isCaptureManager: true });
+  const admin = makeUser({ isAdmin: true, isSuperAdmin: true, isCaptureWorker: true });
   const RECORDS = "sidebar:records_management";
 
   function view(opts: {
@@ -898,6 +960,7 @@ describe("Sidebar: folding sections", () => {
     expect(sectionHoldsPath(records, "/")).toBe(false);
     expect(sectionHoldsPath(records, "/admin/descriptionsX")).toBe(false);
     expect(sectionHoldsPath(records, "/admin/descriptions")).toBe(true);
+    expect(sectionHoldsPath(records, "/admin/publish")).toBe(false);
   });
 
   it("keeps a section open on pages in its route families", () => {
@@ -909,6 +972,7 @@ describe("Sidebar: folding sections", () => {
       ["sidebar:digitization", "/admin/media/volumes/v1/publish"],
       ["sidebar:import_and_export", "/admin/exports/runs/r1"],
       ["sidebar:import_and_export", "/admin/imports/runs/r1/report"],
+      ["sidebar:import_and_export", "/admin/publish/runs/r1"],
     ];
     for (const [key, path] of cases) {
       const html = view({ folded: [key], path });
@@ -970,4 +1034,4 @@ describe("Sidebar: folding sections", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

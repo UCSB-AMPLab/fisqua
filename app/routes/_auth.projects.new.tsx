@@ -17,7 +17,7 @@
  * subtypes, conventions, JSON settings blob) live on the per-project
  * settings page once the row exists.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { Form, redirect, useActionData, Link } from "react-router";
@@ -25,10 +25,13 @@ import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { getLocale } from "../middleware/i18next";
 import type { Route } from "./+types/_auth.projects.new";
+import { pageMeta, heading } from "../lib/page-title";
 
-export function meta({ data }: Route.MetaArgs) {
-  const lang = data?.lang === "es" ? "es" : "en";
-  return [{ title: lang === "es" ? "Nuevo proyecto" : "New project" }];
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:heading.create_project"),
+  );
 }
 
 export async function loader({ context }: Route.LoaderArgs) {

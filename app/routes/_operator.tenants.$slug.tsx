@@ -3,7 +3,7 @@
  *
  * This page renders GET `/operator/tenants/:slug` — the tenant
  * overview, the capabilities edit form, the manifest settings form,
- * the role-picker for
+ * the default interface language, the role-picker for
  * login-as, and the
  * danger-zone (soft-disable / re-enable). The platform tenant detail
  * page hides every editable surface; only the overview is shown — the
@@ -28,7 +28,22 @@
  *     column. A change writes a `set_capability` audit row whose
  *     details carry `settingsChanged='manifest_fields'` and the
  *     before and after of each changed field; no change writes
- *     nothing.
+ *     nothing. A change of the METS base URL moves, in the same batch,
+ *     the version of every description of the tenant, each of which
+ *     publishes its METS address under that base. The save writes only
+ *     while the manifest fields are as the action read them; one that
+ *     another save landed before writes nothing, audits nothing, and
+ *     answers `conflict`.
+ *   - `set_default_locale` — sets the language the workspace's pages
+ *     are shown in to a visitor who has not chosen one: `en`, `es`, or
+ *     an empty value for no default, where the browser's language
+ *     decides. Any other value is refused with a field error. A change
+ *     writes a `set_capability` audit row whose details carry
+ *     `settingsChanged='default_locale'` with `from` and `to`; no
+ *     change writes nothing. The rule, its write and its audit row are
+ *     `setDefaultLocale` (`default-locale.server.ts`), which the
+ *     workspace's own Users page also calls, so this arm holds no
+ *     `withAuditLog` of its own.
  *   - `soft_disable`   — confirmSlug must equal the URL slug (a
  *     simple anti-misclick guard); writes `disabled_at = now` + a
  *     `soft_disable_tenant` audit row. The platform tenant rejects
@@ -39,24 +54,35 @@
  *     `details.capabilityChanged='re_enable_tenant'` so audit-UI
  *     consumers can distinguish re-enable from a real capability flip.
  *
- * Each `case` arm wraps its DB writes in `withAuditLog` exactly once
- * — the audit-coverage CI keystone enforces this per-arm. Splitting
- * the work across multiple batches would defeat atomicity; a
- * single-batch arm with a wrapper is the only allowed shape.
+ * Each `case` arm wraps its DB writes in `withAuditLog` exactly once,
+ * or hands them to a helper that does (`set_default_locale`) — the
+ * audit-coverage CI keystone allows at most one wrapper per arm.
+ * Splitting the work across multiple batches would defeat atomicity; a
+ * single batch with its audit row is the only allowed shape.
+ *
+ * While the tenant's stored scanner keys are erased (after a Captua
+ * unit was revoked as compromised, or its keys were erased on their
+ * own), the page shows when they were erased and the names of the two
+ * B2 keys an operator must revoke in Backblaze B2, which Fisqua does
+ * not do. The loader reads the keys through `loadStoredKeys`, which
+ * never reads the sealed text, and names them with `applianceKeyNames`
+ * for the environment `CAPTURE_PAIRING_ENVIRONMENT` names. Nothing is
+ * shown while the keys are usable or none were stored.
  *
  * The role-picker form's POST target is
  * `/operator/tenants/:slug/login-as`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Form, useLoaderData, useActionData } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { useTranslation } from "react-i18next";
-import { tenants } from "../db/schema";
+import { descriptions, tenants } from "../db/schema";
 import { PLATFORM_TENANT_ID } from "../lib/tenant";
 import { withAuditLog } from "../lib/audit.server";
+import { nextVersionSql } from "../lib/record-version.server";
 import {
   SetCapabilitySchema,
   SoftDisableSchema,
@@ -66,10 +92,23 @@ import {
   readManifestFields,
   TENANT_MANIFEST_FIELDS,
 } from "../lib/validation/manifest-fields";
+import { setDefaultLocale } from "../lib/default-locale.server";
 import { isTenantDestinationComplete } from "../lib/pipeline/tenant-destination.server";
+import { applianceKeyNames, loadStoredKeys } from "../lib/capture/scanner-keys.server";
+import { pairingEnvironment } from "../lib/capture/appliance-key-names";
 import { userContext } from "../context";
 import { useFormatters } from "../lib/use-formatters";
 import type { Route } from "./+types/_operator.tenants.$slug";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.tenant?.name,
+    heading("operator:tenants_list.page_title"),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const env = (context as any).cloudflare.env;
@@ -100,7 +139,24 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     canImpersonate: !isPlatform && !isDisabled,
     canDisable: !isPlatform && !isDisabled,
     canReEnable: !isPlatform && isDisabled,
+    erasedScannerKeys: await erasedScannerKeys(db, tenant, env.CAPTURE_PAIRING_ENVIRONMENT),
   };
+}
+
+/**
+ * While the tenant's stored scanner keys are erased, when they were
+ * erased and the names of the two B2 keys to revoke; null while they are
+ * usable or none were stored. Read without the sealed text.
+ */
+async function erasedScannerKeys(
+  db: ReturnType<typeof drizzle>,
+  tenant: { id: string; slug: string },
+  environment: string | undefined,
+): Promise<{ erasedAt: number; writeKeyName: string; readKeyName: string } | null> {
+  const keys = await loadStoredKeys(db, tenant.id);
+  if (!keys || keys.usable || keys.erasedAt === null) return null;
+  const names = applianceKeyNames(tenant.slug, keys.applianceId, pairingEnvironment(environment));
+  return { erasedAt: keys.erasedAt, writeKeyName: names.write, readKeyName: names.read };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -231,31 +287,76 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return { manifestSaved: true, noop: true };
       }
       const now = Date.now();
-      await withAuditLog(
-        db,
-        {
-          action: "set_capability",
-          actorUserId: user.id,
-          actorUserIdText: user.email,
-          actorTenantId: PLATFORM_TENANT_ID,
-          targetTenantId: tenant.id,
-          targetObjectKind: "tenant",
-          targetObjectId: tenant.id,
-          details: { slug: tenant.slug, settingsChanged: "manifest_fields", changes },
-          now,
-        },
-        async (txDb) => {
-          const update = txDb
-            .update(tenants)
-            .set({ ...read.values, updatedAt: now })
-            .where(eq(tenants.id, tenant.id));
-          return {
-            workStatements: [update],
-            result: { manifestSaved: true, changes },
-          };
-        },
+      // The save holds only while the tenant's manifest fields are as the
+      // action read them. The batch opens with a guard that fails it whole
+      // (`json()` of text that is not JSON raises) when another save
+      // landed in between, so a stale form never writes back an old METS
+      // base URL; this save then answers with the conflict.
+      const asRead = and(
+        eq(tenants.id, tenant.id),
+        ...TENANT_MANIFEST_FIELDS.map((field) => sql`${tenants[field]} IS ${tenant[field] ?? null}`),
       );
+      const manifestAsRead = db
+        .select({
+          asRead: sql<number>`CASE WHEN EXISTS (SELECT 1 FROM ${tenants} WHERE ${asRead}) THEN 1 ELSE json('the tenant changed since it was read') END`,
+        })
+        .from(sql`(SELECT 1)`);
+      try {
+        await withAuditLog(
+          db,
+          {
+            action: "set_capability",
+            actorUserId: user.id,
+            actorUserIdText: user.email,
+            actorTenantId: PLATFORM_TENANT_ID,
+            targetTenantId: tenant.id,
+            targetObjectKind: "tenant",
+            targetObjectId: tenant.id,
+            details: { slug: tenant.slug, settingsChanged: "manifest_fields", changes },
+            now,
+          },
+          async (txDb) => {
+            const update = txDb
+              .update(tenants)
+              .set({ ...read.values, updatedAt: now })
+              .where(asRead);
+            // Every description of the tenant publishes its METS address
+            // under the METS base URL, so a change of it moves all their
+            // versions in the same batch.
+            const metsChanged = changes.some((c) => c.field === "metsBaseUrl");
+            const descriptionsFollow = txDb
+              .update(descriptions)
+              .set({ updatedAt: nextVersionSql(descriptions.updatedAt, now) })
+              .where(eq(descriptions.tenantId, tenant.id));
+            return {
+              workStatements: metsChanged
+                ? [manifestAsRead, update, descriptionsFollow]
+                : [manifestAsRead, update],
+              result: { manifestSaved: true, changes },
+            };
+          },
+        );
+      } catch (err) {
+        const [current] = await db.select().from(tenants).where(eq(tenants.id, tenant.id)).all();
+        const unchanged =
+          current !== undefined &&
+          TENANT_MANIFEST_FIELDS.every((field) => (current[field] ?? null) === (tenant[field] ?? null));
+        if (unchanged) throw err;
+        return { error: "conflict" };
+      }
       return { manifestSaved: true, noop: false };
+    }
+
+    case "set_default_locale": {
+      // The workspace's default interface language, read by the i18next
+      // middleware after `?lang=` and the `lang` cookie. The workspace's
+      // own Users page sets it through the same rule, which validates,
+      // writes and audits it (`setDefaultLocale`).
+      return setDefaultLocale(db, tenant, formData.get("defaultLocale"), {
+        userId: user.id,
+        email: user.email,
+        tenantId: PLATFORM_TENANT_ID,
+      });
     }
 
     case "soft_disable": {
@@ -360,6 +461,7 @@ const MANIFEST_FIELD_INPUTS = [
 interface ActionData {
   saved?: boolean;
   manifestSaved?: boolean;
+  localeSaved?: boolean;
   noop?: boolean;
   disabled?: boolean;
   reenabled?: boolean;
@@ -372,7 +474,7 @@ export default function TenantDetailPage() {
   const actionData = useActionData() as ActionData | undefined;
   const { t } = useTranslation("operator");
   const { formatDateTime } = useFormatters();
-  const { tenant, canEdit, canImpersonate, canDisable, canReEnable } = data;
+  const { tenant, canEdit, canImpersonate, canDisable, canReEnable, erasedScannerKeys } = data;
 
   return (
     <section className="max-w-3xl space-y-8">
@@ -414,6 +516,31 @@ export default function TenantDetailPage() {
           ) : null}
         </dl>
       </section>
+
+      {erasedScannerKeys ? (
+        <section className="space-y-2">
+          <h2 className="font-display text-lg font-semibold text-rust">
+            {t("tenant_detail.sections.scanner_keys_erased")}
+          </h2>
+          <p className="font-sans text-sm text-stone-700">
+            {t("tenant_detail.scanner_keys_erased.erased_at", {
+              date: formatDateTime(erasedScannerKeys.erasedAt),
+            })}
+          </p>
+          <p className="font-sans text-sm text-stone-700">
+            {t("tenant_detail.scanner_keys_erased.revoke")}
+          </p>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 font-sans text-sm">
+            <dt className="text-stone-500">{t("tenant_detail.scanner_keys_erased.write_key")}</dt>
+            <dd className="font-mono text-stone-900">{erasedScannerKeys.writeKeyName}</dd>
+            <dt className="text-stone-500">{t("tenant_detail.scanner_keys_erased.read_key")}</dt>
+            <dd className="font-mono text-stone-900">{erasedScannerKeys.readKeyName}</dd>
+          </dl>
+          <p className="font-sans text-xs text-stone-500">
+            {t("tenant_detail.scanner_keys_erased.pairing")}
+          </p>
+        </section>
+      ) : null}
 
       {canEdit ? (
         <section className="space-y-2">
@@ -576,6 +703,49 @@ export default function TenantDetailPage() {
         </section>
       ) : null}
 
+      {canEdit ? (
+        <section className="space-y-2">
+          <h2 className="font-display text-lg font-semibold text-stone-800">
+            {t("tenant_detail.sections.default_locale")}
+          </h2>
+          <Form method="post" className="space-y-3">
+            <input type="hidden" name="intent" value="set_default_locale" />
+            <div>
+              <label
+                htmlFor="defaultLocale"
+                className="block font-sans text-sm font-medium text-indigo"
+              >
+                {t("tenant_detail.default_locale_form.label")}
+              </label>
+              <select
+                id="defaultLocale"
+                name="defaultLocale"
+                defaultValue={tenant.defaultLocale ?? ""}
+                className="mt-1 block h-10 w-full rounded border border-stone-300 px-3 font-sans text-sm shadow-sm focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
+              >
+                <option value="">{t("tenant_detail.default_locale_form.browser")}</option>
+                <option value="es">{t("tenant_detail.default_locale_form.es")}</option>
+                <option value="en">{t("tenant_detail.default_locale_form.en")}</option>
+              </select>
+              <p className="mt-1 font-sans text-xs text-stone-500">
+                {t("tenant_detail.default_locale_form.help")}
+              </p>
+            </div>
+            <button
+              type="submit"
+              className="rounded bg-verdigris px-4 py-2 font-sans text-sm font-medium text-white hover:bg-verdigris/90"
+            >
+              {t("tenant_detail.default_locale_form.submit")}
+            </button>
+            {actionData?.localeSaved ? (
+              <p className="font-sans text-sm text-verdigris">
+                {t("tenant_detail.default_locale_form.success")}
+              </p>
+            ) : null}
+          </Form>
+        </section>
+      ) : null}
+
       {canImpersonate ? (
         <section className="space-y-2">
           <h2 className="font-display text-lg font-semibold text-stone-800">
@@ -690,4 +860,4 @@ export default function TenantDetailPage() {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

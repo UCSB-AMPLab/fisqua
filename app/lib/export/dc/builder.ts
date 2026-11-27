@@ -8,10 +8,8 @@
  * order. Future OAI-PMH endpoint (post-v0.5) streams these files
  * verbatim — no re-serialisation step.
  *
- * Element mapping reuses the line-anchored precedent at
- * `mets-builder.ts:161-173` (every one of the 15 mappings has an
- * analog there). The `el()` helper from `app/lib/export/xml/escape.ts`
- * handles null-safety (null/empty input emits no element) and XML
+ * The element mapping is `./crosswalk.ts`. The `el()` helper from
+ * `app/lib/export/xml/escape.ts` handles null-safety (null/empty input emits no element) and XML
  * escaping.
  *
  * Scope: descriptions only. Entities and places have no canonical
@@ -27,13 +25,20 @@
  * so the fifteen element assignments now live in `./crosswalk.ts` as
  * data and this builder renders them as the OAI-PMH document it always
  * did. It asks for the `oai-bulk` reading, which is the behaviour this
- * file shipped in v0.4 element for element: `dc:description` is scope
- * and content alone and `dc:rights` is the repository's licence
- * statement. The workspace export surface asks for the other reading;
- * neither can change without changing the crosswalk, which is the
- * point of moving it.
+ * file shipped in v0.4 element for element but one: `dc:description` is
+ * scope and content alone, and `dc:rights` is the repository's
+ * attribution line in the record's language, where it used to be the
+ * repository's rights text. The caller composes the line into each
+ * repository it passes. The workspace export surface asks for the
+ * other reading; neither can change without changing the crosswalk,
+ * which is the point of moving it.
  *
- * @version v0.8.0
+ * The document is also available in three pieces (`buildDcBulkOpen`,
+ * `buildDcBulkRecord`, `DC_BULK_CLOSE`) so the publish step can write a
+ * large fonds a batch of rows at a time; each record depends only on
+ * its own row and its repository.
+ *
+ * @version v0.9.0
  */
 
 import { escapeXml, el } from "../xml/escape";
@@ -60,10 +65,8 @@ const OAI_DC_SCHEMA_LOCATION =
 // Mappings
 //
 // `DC_TYPE_MAP`, the language map, the default rights string and the
-// identifier prefix moved to `./crosswalk.ts` in v0.7.0 so a second
-// serialisation of the same form could reach them. They were lifted
-// from mets-builder.ts:36-53 originally; nothing about them changed in
-// the move.
+// identifier prefix live in `./crosswalk.ts`, so a second
+// serialisation of the same form can reach them.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -78,7 +81,8 @@ const OAI_DC_SCHEMA_LOCATION =
  *                   Unpublished rows (`isPublished === false`) are skipped.
  * @param repos      Repository lookup keyed by `repositoryId`. Used for
  *                   `<dc:source>` (name + city) and `<dc:rights>`
- *                   (rightsText fallback to RIGHTS_DEFAULT).
+ *                   (the attribution line in the record's language,
+ *                   else `DC_RIGHTS_DEFAULT`).
  * @param fondsCode  Reference code of the fonds (kept on the signature for
  *                   diagnostics + future per-fonds wrapper attributes —
  *                   not currently embedded in the OAI envelope itself).
@@ -106,20 +110,40 @@ export function buildDcBulk(
 
   const published = fondsRows.filter((r) => r.isPublished);
 
+  let xml = buildDcBulkOpen();
+  for (const row of published) {
+    xml += buildDcBulkRecord(row, repos, datestamp);
+  }
+  xml += DC_BULK_CLOSE;
+  return xml;
+}
+
+/**
+ * The bulk file up to its first `<record>`. With `buildDcBulkRecord`
+ * and `DC_BULK_CLOSE` it lets the publish step write a fonds a batch of
+ * rows at a time; `buildDcBulk` is the three run over the whole fonds.
+ */
+export function buildDcBulkOpen(): string {
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += `<ListRecords xmlns="${NS_OAI}"\n`;
   xml += `             xmlns:oai_dc="${NS_OAI_DC}"\n`;
   xml += `             xmlns:dc="${NS_DC}"\n`;
   xml += `             xmlns:xsi="${NS_XSI}"\n`;
   xml += `             xsi:schemaLocation="${OAI_DC_SCHEMA_LOCATION}">\n`;
-
-  for (const row of published) {
-    xml += renderRecord(row, repos, datestamp);
-  }
-
-  xml += `</ListRecords>\n`;
   return xml;
 }
+
+/** One description's `<record>`. */
+export function buildDcBulkRecord(
+  row: EadInput,
+  repos: ReadonlyMap<string, EadRepository>,
+  datestamp: string,
+): string {
+  return renderRecord(row, repos, datestamp);
+}
+
+/** The closing tag after the last `<record>`. */
+export const DC_BULK_CLOSE = `</ListRecords>\n`;
 
 // ---------------------------------------------------------------------------
 // Helpers (private)
@@ -192,4 +216,4 @@ function elIndented(tag: string, text: string | null | undefined): string {
   return out.replace(/^    /, "        ");
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

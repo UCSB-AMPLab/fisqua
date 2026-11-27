@@ -60,7 +60,12 @@
  * `CanonicalLocatorError` (`manifest_inputs_unavailable`), for a caller
  * that has no manifests host to name.
  *
- * @version v0.8.0
+ * The signing helpers (`s3Client`, `s3Send`, `s3ObjectUrl`, `unquote`)
+ * are exported for the manifest attribution refresh, which reads and
+ * writes the same bucket with the same key and keeps each object's
+ * metadata, which these stores do not.
+ *
+ * @version v0.9.0
  */
 
 import { AwsClient } from "aws4fetch";
@@ -132,19 +137,19 @@ export class CanonicalStoreError extends Error {
 
 // The key goes into the URL path as it is, so a key that would sign a
 // different object from the one named is refused before anything is sent.
-function s3ObjectUrl(target: S3BucketTarget, key: string): string {
+export function s3ObjectUrl(target: S3BucketTarget, key: string): string {
   if (/[%\\?#]/.test(key) || key.split("/").includes("..")) {
     throw new CanonicalStoreError(`Object key ${JSON.stringify(key)} is not allowed`);
   }
   return `${target.endpoint.replace(/\/+$/, "")}/${target.bucket}/${key}`;
 }
 
-function unquote(etag: string | null): string | null {
+export function unquote(etag: string | null): string | null {
   if (etag === null) return null;
   return etag.replace(/^W\//, "").replace(/^"(.*)"$/, "$1");
 }
 
-function s3Client(target: S3BucketTarget): AwsClient {
+export function s3Client(target: S3BucketTarget): AwsClient {
   return new AwsClient({
     accessKeyId: target.keyId,
     secretAccessKey: target.secretKey,
@@ -153,7 +158,7 @@ function s3Client(target: S3BucketTarget): AwsClient {
   });
 }
 
-async function s3Send(
+export async function s3Send(
   client: AwsClient,
   fetchImpl: typeof fetch,
   url: string,

@@ -7,12 +7,23 @@
  * reassignment to the parent without touching the database directly —
  * commits flow through the surrounding form action.
  *
- * @version v0.3.0
+ * For an entity link the dialog sends back the link's relation as read
+ * (`relationAsRead`, the fields `relationAsReadFields` gives), and shows a
+ * refusal the action gives because of that relation under its own
+ * message (`link_error_<code>`).
+ *
+ * The role select offers `roleOptions`, the federation's approved roles
+ * for the record type with their labels; the caller adds the link's
+ * current code when the list does not offer it.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useFetcher } from "react-router";
 import type { TFunction } from "i18next";
+import { isRelationRefusal } from "~/lib/relation-as-read";
+import type { RoleOption } from "~/lib/role-options";
 
 interface EditDescriptionLinkDialogProps {
   isOpen: boolean;
@@ -26,7 +37,9 @@ interface EditDescriptionLinkDialogProps {
     function?: string | null;
     nameAsRecorded?: string | null;
   };
-  roles: readonly string[];
+  /** An entity link's relation as read, as form fields, sent back with the save. */
+  relationAsRead?: Record<string, string>;
+  roleOptions: RoleOption[];
   showEntityFields: boolean;
   t: TFunction;
 }
@@ -36,7 +49,8 @@ export function EditDescriptionLinkDialog({
   onClose,
   linkId,
   currentValues,
-  roles,
+  relationAsRead,
+  roleOptions,
   showEntityFields,
   t,
 }: EditDescriptionLinkDialogProps) {
@@ -94,6 +108,8 @@ export function EditDescriptionLinkDialog({
 
   if (!isOpen) return null;
 
+  const refusal = (fetcher.data as { error?: unknown } | undefined)?.error;
+
   function handleSave() {
     const data: Record<string, string> = {
       _action: "edit_description_link",
@@ -101,6 +117,7 @@ export function EditDescriptionLinkDialog({
       role,
       roleNote,
     };
+    if (relationAsRead) Object.assign(data, relationAsRead);
     if (showEntityFields) {
       data.sequence = String(sequence);
       data.honorific = honorific;
@@ -141,9 +158,9 @@ export function EditDescriptionLinkDialog({
               onChange={(e) => setRole(e.target.value)}
               className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
             >
-              {roles.map((r) => (
-                <option key={r} value={r}>
-                  {t(`role_${r}`)}
+              {roleOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </select>
@@ -213,6 +230,13 @@ export function EditDescriptionLinkDialog({
           )}
         </div>
 
+        {/* A refusal of the save because of the link's relation */}
+        {isRelationRefusal(refusal) && fetcher.state === "idle" && (
+          <p role="alert" className="mt-4 rounded border border-madder-soft bg-madder-tint px-3 py-2 text-sm text-madder-deep">
+            {t(`link_error_${refusal}`)}
+          </p>
+        )}
+
         {/* Actions */}
         <div className="mt-6 flex justify-end gap-3">
           <button
@@ -235,3 +259,5 @@ export function EditDescriptionLinkDialog({
     </div>
   );
 }
+
+/* @version v0.9.0 */

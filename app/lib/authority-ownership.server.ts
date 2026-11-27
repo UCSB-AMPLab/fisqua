@@ -84,7 +84,7 @@
  * for shared records, which is still every record in every federation
  * until one is explicitly claimed.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -185,7 +185,7 @@ export async function resolveMintOwner(
  *     not learn that a foreign record exists, so this outranks the other
  *     branches and is checked first.
  *   - every record owned by the request tenant -> the authorities area
- *     check (`requireArea(user, "authorities")`), no steward.
+ *     check (`requireAreaWork(user, "authorities")`), no steward.
  *   - otherwise (all shared, mixed shared/owned, or the ids match
  *     nothing in this federation) -> `requireFederationSteward`,
  *     unchanged.
@@ -201,7 +201,7 @@ export async function requireAuthorityMutation(
   recordType: AuthorityRecordType,
   recordIds: ReadonlyArray<string | null | undefined>,
 ): Promise<void> {
-  const { requireArea } = await import("./user-access.server");
+  const { requireAreaWork } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const ids = Array.from(
@@ -226,7 +226,7 @@ export async function requireAuthorityMutation(
   // Every record involved is this tenant's own: the authorities area
   // admits its admins.
   if (rows.length > 0 && rows.every((r) => r.tenantId === tenant.id)) {
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
     return;
   }
 
@@ -247,14 +247,16 @@ export async function requireAuthorityMint(
   user: User,
   tenant: Tenant,
 ): Promise<string | null> {
-  const { requireArea } = await import("./user-access.server");
+  const { requireAreaWork } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const owner = await resolveMintOwner(db, tenant);
   if (owner === null) {
     await requireFederationSteward(db, user, tenant);
   } else {
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
   }
   return owner;
 }
+
+// @version v0.9.0

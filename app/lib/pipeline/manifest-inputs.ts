@@ -8,9 +8,10 @@
  * holds: the description, its repository and the tenant. Nothing here
  * names an archive, a corpus or a site.
  *
- * `manifestResolver(baseUrl)` returns the resolver dispatch uses. For a
- * volume, its description, the description's repository and the tenant,
- * it builds:
+ * `manifestResolver(baseUrl, hosting)` returns the resolver dispatch
+ * uses, with the hosting statement of the tenant's federation (null when
+ * it has none). For a volume, its description, the description's
+ * repository and the tenant, it builds:
  *
  *   - `id`: `{baseUrl}/iiif/{reference_code}/manifest.json`, the volume's
  *     reference code under the tenant's manifest address (`manifestUrl`;
@@ -23,10 +24,15 @@
  *     left out when the tenant has no `publicSiteUrl`;
  *   - `rights`: the repository's `manifestRights`. A repository without
  *     it is refused with `repository_rights_unset`;
- *   - `required_statement`: the repository's English and Spanish
- *     attribution under the label "Attribution" / "Atribución"; null
- *     when both are empty, refused with
- *     `repository_attribution_incomplete` when only one is set;
+ *   - `required_statement`: the repository's attribution line, from
+ *     `repositoryAttribution` (`app/lib/export/attribution.ts`), the
+ *     function the export uses: the stored override in its own language,
+ *     else the line composed from the repository's name, place and
+ *     credit statement, the federation's hosting statement and the
+ *     licence label. Each language that has a line is written under the
+ *     label "Attribution" / "Atribución", and a language without one is
+ *     left out of both label and value rather than filled from the other;
+ *     null when neither language has a line;
  *   - `provider`: one Agent from the tenant's `providerName` and
  *     `providerUrl`, with the public site as its homepage when the
  *     tenant has both `publicSiteUrl` and `publicSiteName`; an empty
@@ -52,10 +58,23 @@
  * A refusal is a `ManifestInputsError` carrying its code and the
  * repository it concerns; dispatch turns it into a refusal of the run.
  *
- * @version v0.8.0
+ * `manifestRecordFields(description, tenant)` gives the three values
+ * that carry the record itself, `label`, `summary` and the homepage's
+ * label, with the homepage's address; `resolveManifestInputs` builds
+ * them with it, and the catalogue publish compares a stored manifest
+ * with them (`app/lib/export/own-manifests.server.ts`).
+ *
+ * `MANIFEST_DESCRIPTION_FIELDS` names the description's fields the
+ * block is made from, and `ManifestDescription` is made of exactly
+ * those, so a field read here must be added to it. Code that has to
+ * know whether a record's manifest is still the one built from it (the
+ * image command's checks before an upload) compares those fields.
+ *
+ * @version v0.9.0
  */
 
 import type { descriptions, repositories, tenants } from "../../db/schema";
+import { repositoryAttribution, type FederationHosting } from "../export/attribution";
 import { manifestObjectPath } from "../promote/manifest-builder";
 import { ManifestInputsError, type ManifestResolver, type RunSpecManifest } from "./run-spec";
 
@@ -66,20 +85,33 @@ import { ManifestInputsError, type ManifestResolver, type RunSpecManifest } from
  */
 export const DEFAULT_MANIFEST_BASE_URL = "https://manifests.zasqua.org";
 
-export type ManifestDescription = Pick<
-  typeof descriptions.$inferSelect,
-  | "referenceCode"
-  | "title"
-  | "dateExpression"
-  | "extent"
-  | "language"
-  | "accessConditions"
-  | "scopeContent"
->;
+/** The description's fields a manifest block is made from; `ManifestDescription` is these and no others. */
+export const MANIFEST_DESCRIPTION_FIELDS = [
+  "referenceCode",
+  "title",
+  "dateExpression",
+  "extent",
+  "language",
+  "accessConditions",
+  "scopeContent",
+] as const satisfies ReadonlyArray<keyof typeof descriptions.$inferSelect>;
+
+export type ManifestDescription = Pick<typeof descriptions.$inferSelect, (typeof MANIFEST_DESCRIPTION_FIELDS)[number]>;
 
 export type ManifestRepository = Pick<
   typeof repositories.$inferSelect,
-  "id" | "code" | "name" | "city" | "manifestRights" | "attributionEn" | "attributionEs"
+  | "id"
+  | "code"
+  | "name"
+  | "city"
+  | "region"
+  | "country"
+  | "countryCode"
+  | "manifestRights"
+  | "creditStatementEs"
+  | "creditStatementEn"
+  | "attributionEn"
+  | "attributionEs"
 >;
 
 export type ManifestTenant = Pick<
@@ -141,21 +173,23 @@ export function manifestMetadata(
   return out;
 }
 
-function requiredStatement(repository: ManifestRepository): RunSpecManifest["required_statement"] {
-  const en = repository.attributionEn;
-  const es = repository.attributionEs;
-  if (!nonEmpty(en) && !nonEmpty(es)) return null;
-  if (!nonEmpty(en) || !nonEmpty(es)) {
-    throw new ManifestInputsError(
-      `Repository ${repository.code} has an attribution in one language only`,
-      "repository_attribution_incomplete",
-      { repository_id: repository.id, repository_code: repository.code },
-    );
+function requiredStatement(
+  repository: ManifestRepository,
+  hosting: FederationHosting | null,
+): RunSpecManifest["required_statement"] {
+  const line = repositoryAttribution(repository, hosting);
+  if (line.en === null && line.es === null) return null;
+  const label: Record<string, string[]> = {};
+  const value: Record<string, string[]> = {};
+  if (line.en !== null) {
+    label.en = ["Attribution"];
+    value.en = [line.en];
   }
-  return {
-    label: { en: ["Attribution"], es: ["Atribución"] },
-    value: { en: [en], es: [es] },
-  };
+  if (line.es !== null) {
+    label.es = ["Atribución"];
+    value.es = [line.es];
+  }
+  return { label, value };
 }
 
 function provider(tenant: ManifestTenant): unknown[] {
@@ -178,6 +212,34 @@ function provider(tenant: ManifestTenant): unknown[] {
   return [agent];
 }
 
+/** The fields of a manifest that carry the record itself: its title and its scope and content. */
+export interface ManifestRecordFields {
+  /** `label`: the title, in Spanish. */
+  label: { es: string[] };
+  /** `summary`: the scope and content, null when it is not set. */
+  summary: { es: string[] } | null;
+  /** The homepage's address and label, null when the tenant has no public site. */
+  homepage: { id: string; label: { es: string[] } } | null;
+}
+
+/**
+ * The title, the scope and content and the homepage label, as a
+ * manifest built from the description carries them.
+ */
+export function manifestRecordFields(
+  description: Pick<ManifestDescription, "referenceCode" | "title" | "scopeContent">,
+  tenant: Pick<ManifestTenant, "publicSiteUrl">,
+): ManifestRecordFields {
+  const title = description.title;
+  return {
+    label: { es: [title] },
+    summary: nonEmpty(description.scopeContent) ? { es: [description.scopeContent] } : null,
+    homepage: nonEmpty(tenant.publicSiteUrl)
+      ? { id: `${trimSlashes(tenant.publicSiteUrl)}/${description.referenceCode}/`, label: { es: [title] } }
+      : null,
+  };
+}
+
 /**
  * The manifest block for one volume. `referenceCode` is the volume's,
  * which names the manifest's key; the description supplies everything
@@ -189,6 +251,7 @@ export function resolveManifestInputs(
   description: ManifestDescription,
   repository: ManifestRepository,
   tenant: ManifestTenant,
+  hosting: FederationHosting | null,
 ): RunSpecManifest {
   if (!nonEmpty(repository.manifestRights)) {
     throw new ManifestInputsError(
@@ -197,29 +260,29 @@ export function resolveManifestInputs(
       { repository_id: repository.id, repository_code: repository.code },
     );
   }
-  const statement = requiredStatement(repository);
-  const title = description.title;
+  const statement = requiredStatement(repository, hosting);
+  const record = manifestRecordFields(description, tenant);
 
   const manifest: RunSpecManifest = {
     id: manifestUrl(baseUrl, referenceCode),
-    label: { es: [title] },
+    label: record.label,
     rights: repository.manifestRights,
     required_statement: statement,
     provider: provider(tenant),
   };
-  if (nonEmpty(tenant.publicSiteUrl)) {
+  if (record.homepage !== null) {
     manifest.homepage = [
       {
-        id: `${trimSlashes(tenant.publicSiteUrl)}/${description.referenceCode}/`,
+        id: record.homepage.id,
         type: "Text",
-        label: { es: [title] },
+        label: record.homepage.label,
         format: "text/html",
       },
     ];
   }
   manifest.metadata = manifestMetadata(description, repository);
-  if (nonEmpty(description.scopeContent)) {
-    manifest.summary = { es: [description.scopeContent] };
+  if (record.summary !== null) {
+    manifest.summary = record.summary;
   }
   if (nonEmpty(tenant.metsBaseUrl)) {
     const slug = description.referenceCode.replace(/[?#]/g, "");
@@ -236,16 +299,16 @@ export function resolveManifestInputs(
   return manifest;
 }
 
-/** The resolver dispatch uses, with ids under `baseUrl`. */
-export function manifestResolver(baseUrl: string): ManifestResolver {
+/** The resolver dispatch uses, with ids under `baseUrl` and the federation's hosting statement. */
+export function manifestResolver(baseUrl: string, hosting: FederationHosting | null): ManifestResolver {
   return (volume, description, repository, tenant) => {
     if (description === null || repository === null) {
       throw new ManifestInputsError(
         `Volume ${volume.id} has no description or repository to build its manifest from`,
       );
     }
-    return resolveManifestInputs(baseUrl, volume.referenceCode, description, repository, tenant);
+    return resolveManifestInputs(baseUrl, volume.referenceCode, description, repository, tenant, hosting);
   };
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -38,13 +38,16 @@
  *     pixels, comma encoded, token in the query, lazy, contained and
  *     turned, and placeholders without access or token;
  *   - the purged banner, in English and Spanish;
+ *   - a handover whose calibration shots were skipped: the rail says the
+ *     volume has none, with the reason given, in English and Spanish, and
+ *     says nothing for one with shots or with no statement;
  *   - the top bar: the back link to the capture QC queue, and Lucide's
  *     arrow, undo and redo icons in place of inline paths, as the
  *     segmentation viewer now draws them too.
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -101,7 +104,7 @@ function volume(count: number, overrides: Partial<CaptureQcVolume> = {}): Captur
     reviewer: { id: "u-1", name: "Test Reviewer" },
     delivery: { manifestId: "delivery-1", handover: 1, receivedAt: T0, rejectedRecords: 0 },
     openings,
-    counts: { openings: count, images: openings.reduce((n, o) => n + o.images.length, 0), approved: 1, rejected: 1, decided: 2 },
+    counts: { openings: count, images: openings.reduce((n, o) => n + o.images.length, 0), approved: 1, rejected: 1, excluded: 0, decided: 2 },
     revision: 1,
     canDecide: true,
     locked: false,
@@ -187,7 +190,7 @@ describe("the openings", () => {
     expect(html).toContain("Left: none · Right: 90° right");
     expect(html).toContain("by Test Reviewer · ");
     expect(html).toContain("Received from the scanner in handover 1.");
-    expect(html).toContain("Processing waits until every opening is approved.");
+    expect(html).toContain("Processing waits until every opening is approved or excluded.");
     expect(html).toMatch(/aria-live="polite"[^>]*>Opening 1 of 4, Approved</);
     expect(html).not.toContain("Send to processing");
     expect(html).not.toContain("Request retakes");
@@ -202,10 +205,10 @@ describe("the openings", () => {
       volume(2, {
         delivery: { manifestId: "delivery-1", handover: 1, receivedAt: T0, rejectedRecords },
         openings: [approved(1), approved(3)],
-        counts: { openings: 2, images: 3, approved: 2, rejected: 0, decided: 2 },
+        counts: { openings: 2, images: 3, approved: 2, rejected: 0, excluded: 0, decided: 2 },
       });
     const held = await renderPage(allApproved(1));
-    expect(held).toMatch(/>Retakes requested<\/span> Processing waits until every opening is approved\./);
+    expect(held).toMatch(/>Retakes requested<\/span> Processing waits until every opening is approved or excluded\./);
     const es = await renderPage(allApproved(1), "", "es");
     expect(es).toMatch(/>Capturas por repetir<\/span> /);
     // No rejected record, or openings still undecided: the sentence alone.
@@ -238,12 +241,54 @@ describe("the openings", () => {
     expect(html).toMatch(/>Glare\/reflection<\/span><span class="text-madder-deep">Left<\/span>/);
   });
 
+  it("draws an excluded opening with its badge and Exclude pressed, with no turn, and says why in the rail", async () => {
+    const data = volume(4);
+    data.openings[0] = {
+      ...data.openings[0],
+      decision: { decision: "excluded", reason: null, side: null, note: "Test shot", decidedBy: "Test Reviewer", decidedAt: T0 },
+      rotations: [],
+    };
+    const html = await renderPage(data, "?opening=1");
+    expect(html).toContain('aria-label="Opening 1, Excluded"');
+    expect(html).toMatch(/aria-pressed="true"[^>]*aria-label="Exclude opening 1"/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*aria-label="Exclude opening 4"/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*aria-label="Approve opening 1"/);
+    expect(html).not.toContain('aria-label="Rotate the left page of opening 1"');
+    expect(html).not.toContain('aria-label="Rotate the right page of opening 1"');
+    expect(html).toContain('aria-label="Rotate the left page of opening 4"');
+    expect(html).toMatch(/>Excluded<\/span><span class="[^"]*rounded-full bg-stone-500/);
+    expect(html).toContain("Not a page. It is left out of processing and publication.");
+    expect(html).toContain("Excluded: not a page. Test shot");
+    expect(html).toMatch(/aria-live="polite"[^>]*>Opening 1 of 4, Excluded</);
+    expect(html).toContain(">Excluded <span class=\"tabular-nums\">1</span>");
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Excluded<\/button>/);
+
+    const sheet = await renderPage(data, "?view=sheet");
+    expect(sheet).toContain('<span class="text-stone-600">Excluded</span>');
+
+    const es = await renderPage(data, "?opening=1", "es");
+    expect(es).toContain('aria-label="Par de páginas 1, Excluido"');
+    expect(es).toContain('aria-label="Excluir el par de páginas 1"');
+    expect(es).toContain("Excluido: no es una página. Test shot");
+  });
+
+  it("shows only the excluded openings under the Excluded filter", async () => {
+    const data = volume(4);
+    data.openings[3] = {
+      ...data.openings[3],
+      decision: { decision: "excluded", reason: null, side: null, note: null, decidedBy: "Test Reviewer", decidedAt: T0 },
+    };
+    const html = await renderPage(data, "?show=excluded");
+    expect(mounted(html)).toEqual([4]);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Excluded<\/button>/);
+  });
+
   it("speaks Spanish", async () => {
     const html = await renderPage(volume(4), "?opening=2", "es");
     expect(html).toContain("Par de páginas 2 de 4");
     expect(html).toContain('aria-label="Par de páginas 2, Rechazado para repetir"');
     expect(html).toContain("Volver a Revisión de capturas");
-    expect(html).toContain("Este volumen no tiene imágenes para revisión. Aun así, puedes aprobar o rechazar los pares de páginas.");
+    expect(html).toContain("Este volumen no tiene imágenes para revisión. Aun así, puedes aprobar, rechazar o excluir los pares de páginas.");
   });
 });
 
@@ -390,7 +435,7 @@ describe("the reject form", () => {
         reviewerName: "Test Reviewer",
         imageCount: 2,
         openingCount: 1,
-        counts: { approved: 0, rejected: 1, undecided: 0 },
+        counts: { approved: 0, rejected: 1, excluded: 0, undecided: 0 },
         opening: legacy,
         state: initialState(legacy),
         handover: 1,
@@ -458,7 +503,7 @@ describe("clearing a decision", () => {
           reviewerName: "Test Reviewer",
           imageCount: 2,
           openingCount: 1,
-          counts: { approved: 0, rejected: 0, undecided: 1 },
+          counts: { approved: 0, rejected: 0, excluded: 0, undecided: 1 },
           opening: o,
           state: { decision: null, turns: { "right:cap-1": 1 } },
           handover: 1,
@@ -649,4 +694,32 @@ describe("the top bar", () => {
   });
 });
 
-// @version v0.8.0
+describe("a handover without calibration shots", () => {
+  const withCalibration = (calibration: CaptureQcVolume["delivery"]["calibration"]) =>
+    volume(3, { delivery: { manifestId: "delivery-1", handover: 1, receivedAt: T0, rejectedRecords: 0, calibration } });
+
+  it("says so in the rail when the shots were skipped, with the reason given", async () => {
+    const html = await renderPage(withCalibration({ status: "skipped", skippedReason: "Card left at the office", shots: 0 }));
+    expect(html).toContain("No calibration shots. They were skipped on the scanner for this volume.");
+    expect(html).toContain("Reason given: Card left at the office");
+  });
+
+  it("says so in Spanish", async () => {
+    const html = await renderPage(withCalibration({ status: "skipped", skippedReason: null, shots: 0 }), "", "es");
+    expect(html).toContain("Este volumen no tiene tomas de calibración: se omitieron en el escáner.");
+    expect(html).not.toContain("Motivo indicado");
+  });
+
+  it("says nothing for a handover with shots or with no statement", async () => {
+    for (const calibration of [
+      { status: "present" as const, skippedReason: null, shots: 4 },
+      { status: null, skippedReason: null, shots: 0 },
+      undefined,
+    ]) {
+      const html = await renderPage(withCalibration(calibration));
+      expect(html).not.toContain("calibration");
+    }
+  });
+});
+
+// @version v0.9.0

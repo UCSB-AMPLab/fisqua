@@ -33,6 +33,8 @@
  * passes all four. `app/lib/user-access.server.ts` holds the checks.
  * They are not role flags in the sense above: operators do not
  * impersonate them and a federation grant sets them all to false.
+ * `worksInEveryArea` is set only by a federation grant: the holder does
+ * the work of every area without administering one.
  *
  * Plus `githubId` for users who signed in with GitHub OAuth, so the
  * profile UI can show the link and prevent accidental duplicate accounts.
@@ -48,7 +50,9 @@
  * `context.get(userContext)` and `context.get(tenantContext)`. The
  * attachment point is `app/middleware/auth.server.ts`, which
  * resolves the tenant from the request `Host` header right after
- * the user lookup.
+ * the user lookup. `requestTenantContext` holds that lookup for the
+ * whole request, so a tenant the i18next middleware already read for
+ * its default language is not read twice.
  *
  * `impersonationContext` is a third typed slot that carries the
  * operator's impersonation state (role being impersonated, the handoff
@@ -68,7 +72,13 @@
  * that must know a request is cross-tenant (a grant banner, the
  * steward-gate helpers, grant-write audit).
  *
- * @version v0.8.0
+ * `d1OverloadedContext` records that the error that failed the request
+ * was a D1 overload refusal, and `d1FailedReadsContext` names the reads
+ * D1 refused after their retries in this request, so the root
+ * `serviceBusyMiddleware` can answer that request's 500 with a 503 and
+ * name the reads in its log line.
+ *
+ * @version v0.9.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
@@ -91,6 +101,12 @@ export type User = {
   isAuthoritiesAdmin: boolean;
   isImportsAdmin: boolean;
   isDigitizationAdmin: boolean;
+  /**
+   * Set only on the effective user of a federation grant: the holder
+   * works in every area of the member workspace without administering
+   * any (`canWorkInArea`). Never read from or written to `users`.
+   */
+  worksInEveryArea?: boolean;
   lastActiveAt: number | null;
   githubId: string | null;
 };
@@ -109,6 +125,36 @@ export type Tenant = typeof tenants.$inferSelect;
 
 export const userContext = createContext<User>();
 export const tenantContext = createContext<Tenant>();
+
+/**
+ * The request's tenant lookup, shared by everything that resolves the
+ * tenant from the `Host` header during one request. The i18next
+ * middleware runs at the root and reads the tenant's default language
+ * only when neither `?lang=` nor the `lang` cookie names one; the auth
+ * middleware and the sign-in loader then take the same lookup through
+ * `resolveRequestTenant` (`app/lib/tenant.ts`) instead of reading the
+ * row again. `null` until something has resolved the tenant. A lookup
+ * that failed is kept as the rejected promise, so every caller gets the
+ * resolver's bare 404.
+ */
+export const requestTenantContext = createContext<Promise<Tenant> | null>(null);
+
+/**
+ * True once the router's error handling (`handleError` in
+ * `app/entry.server.tsx`) has been given a D1 overload refusal for this
+ * request: the error that failed the request was itself an overload. An
+ * overload a caller caught and absorbed never reaches it. Set through
+ * `noteD1Overload`; read by `serviceBusyMiddleware`.
+ */
+export const d1OverloadedContext = createContext<boolean>(false);
+
+/**
+ * The names of the reads and writes D1 refused as overloaded in this
+ * request after their retries, absorbed or not, for the
+ * `service_busy_503` log line. Set through `retryD1Read` and
+ * `runD1Write` (`app/lib/d1-overload.ts`).
+ */
+export const d1FailedReadsContext = createContext<readonly string[]>([]);
 
 /**
  * Operator impersonation envelope state.
@@ -150,4 +196,4 @@ export type GrantState = {
 
 export const grantContext = createContext<GrantState | null>();
 
-// @version v0.8.0
+// @version v0.9.0

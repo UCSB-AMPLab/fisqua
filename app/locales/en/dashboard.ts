@@ -7,7 +7,7 @@
  * the per-section headings on the dashboard surface, including the
  * admin-only "Pending decisions" card (`pending_decisions`).
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   nav: {
@@ -123,8 +123,8 @@ export default {
   vol_abbr: "vol.",
   item_abbr: "items",
   attention: {
-    reseg_flag: "Re-segmentation pending on \"{{volume}}\"",
-    unassigned_volumes: "{{volumes}} unassigned in \"{{project}}\"",
+    reseg_flag: "Re-segmentation pending on “{{volume}}”",
+    unassigned_volumes: "{{volumes}} unassigned in “{{project}}”",
     inactive_member: "{{name}} — {{days}} inactive",
   },
   activity: {

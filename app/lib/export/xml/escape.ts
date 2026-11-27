@@ -1,20 +1,19 @@
 /**
  * XML Emit and R2 Key Helpers
  *
- * This module deals with the shared XML utilities factored out of
- * `mets-builder.ts` so the METS, EAD3, and Dublin Core builders use
- * one source of truth for escaping, single-element emission, and
- * reference-code-to-R2-key sanitation. The string-replace approach is
- * deliberately the same as the original — a small Worker bundle is
+ * This module deals with the shared XML utilities, so the EAD3 and
+ * Dublin Core builders use one source of truth for escaping,
+ * single-element emission, and reference-code-to-R2-key sanitation.
+ * Escaping is plain string replacement — a small Worker bundle is
  * the design constraint that motivates not pulling in an XML library.
  *
- * Every interpolated value flowing into `mets-builder.ts`,
- * `app/lib/export/ead/builder.ts`, and `app/lib/export/dc/builder.ts`
+ * Every interpolated value flowing into
+ * `app/lib/export/ead/builder.ts` and `app/lib/export/dc/builder.ts`
  * passes through `escapeXml` before concatenation.
  * Reference-code-derived R2 keys pass through `sanitiseRefForKey` to
  * close the path-traversal vector.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 
 /**

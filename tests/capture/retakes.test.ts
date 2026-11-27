@@ -23,21 +23,25 @@
  *     the record back and it is approved; the file route
  *     carries as the link does;
  *     a volume of 1,000 openings carries within D1's limits on both
- *     routes;
+ *     routes; an unchanged exclusion is carried as an approval is, and
+ *     a retake whose openings are all approved or excluded is approved;
  *   - the fetch record: each decisionsId the unit reads, first and last,
  *     only when the answer is the set, with the answer unchanged;
  *   - each retake state, from the pure rule and from the loader:
  *     requested, sent to scanner from the first fetch carrying the
  *     rejection, requested again once the rejection changes, replaced
  *     once a new delivery brings the opening back, reshot or turned
- *     another way, and gone once it is approved there;
- *   - the screen: the capability's bare 404, who sees it (managers,
- *     a volume's assigned reviewer for their own volumes only, a bare
- *     403 for anyone else) and tenant scoping.
+ *     another way, and gone once it is approved there; an excluded
+ *     opening is never a retake, and a record a new manifest gives as
+ *     excluded clears an earlier rejection of it;
+ *   - the screen: the capability's bare 404, who sees it (managers and
+ *     federation staff grants every volume, a volume's assigned reviewer
+ *     their own volumes only, a bare 403 for anyone else) and tenant
+ *     scoping.
  *
  * Every value here is a test value: no real tenant, bucket, key or person.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -57,7 +61,7 @@ import {
 } from "../helpers/db";
 import { createTestDescription } from "../helpers/descriptions";
 import { createTestRepository } from "../helpers/repositories";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import { fakeS3, type FakeS3 } from "../helpers/fake-s3";
 import {
@@ -269,7 +273,7 @@ async function status(ref: string) {
 async function setsOf(volumeId: string) {
   return sqlRows(
     `SELECT s.delivery_id, s.decisions_id, s.carried_from, s.opening_count, s.decided_count, s.approved_count,
-       s.rejected_count, s.notes_bytes, s.state, s.revision
+       s.rejected_count, s.excluded_count, s.notes_bytes, s.state, s.revision
      FROM capture_qc_sets s JOIN capture_deliveries d ON d.tenant_id = s.tenant_id AND d.id = s.delivery_id
      WHERE s.pipeline_volume_id = ? ORDER BY d.seq`,
     volumeId,
@@ -433,6 +437,42 @@ describe("carrying approvals over on a retake", () => {
           rotations: [{ captureId: `cap-${CODE}-img_0001_c0`, role: "single", quarterTurns: 2 }],
         },
       ],
+    });
+  });
+
+  it("carries an unchanged exclusion with its note, and approves a retake whose openings all came back approved or excluded", async () => {
+    const first = await deliver(manifest([volume(CODE)]));
+    await decide(first.volumeId, [
+      FIRST_DECISIONS[0],
+      { captuaRecordId: 12, decision: "excluded", note: "Test shot of the rig" },
+      { captuaRecordId: 14, decision: "rejected", reason: "framing", note: "Bottom margin cut" },
+    ]);
+
+    // The retake reshoots 14 only: 11 stays approved and 12 excluded.
+    world.clock.now = T0 + DAY;
+    const retake = await deliver(manifest([volume(CODE, [14])]));
+    expect(await decisionsOf(retake.manifestId)).toEqual([
+      { captua_record_id: 11, decision: "approved", reason: null, note: null, decided_by: world.admin.id, decided_by_name: "Test Admin", decided_at: T0 },
+      { captua_record_id: 12, decision: "excluded", reason: null, note: "Test shot of the rig", decided_by: world.admin.id, decided_by_name: "Test Admin", decided_at: T0 },
+    ]);
+    const [, carried] = await setsOf(first.volumeId);
+    expect(carried).toMatchObject({ decided_count: 2, approved_count: 1, rejected_count: 0, excluded_count: 1, state: "in_capture_qc" });
+
+    await decide(first.volumeId, [{ captuaRecordId: 14, decision: "approved" }]);
+    expect((await setsOf(first.volumeId))[1]).toMatchObject({ approved_count: 2, excluded_count: 1, state: "approved" });
+    expect(await readCaptureQcPending(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, [first.volumeId])).toEqual([]);
+  });
+
+  it("carries a set whose only carried decision is an exclusion", async () => {
+    const first = await deliver(manifest([volume(CODE)]));
+    await decide(first.volumeId, [{ captuaRecordId: 11, decision: "excluded" }]);
+    const retake = await deliver(manifest([volume(CODE, [12, 14])]));
+    expect((await setsOf(first.volumeId))[1]).toMatchObject({
+      delivery_id: retake.manifestId,
+      decided_count: 1,
+      approved_count: 0,
+      excluded_count: 1,
+      state: "in_capture_qc",
     });
   });
 
@@ -902,6 +942,14 @@ describe("retake states, the rule", () => {
     expect(retakeStateOf({ ...none, earlier: { decision: "approved", setRevision: 1, sameImages: false, fetches } })).toBeNull();
     expect(retakeStateOf({ ...none, inCurrent: false, earlier: { decision: "approved", setRevision: 1, sameImages: false, fetches } })).toBeNull();
     expect(retakeStateOf(none)).toBeNull();
+    // An excluded opening asks for no retake, now or from an earlier delivery.
+    expect(retakeStateOf({ ...none, current: { decision: "excluded", setRevision: 1 } })).toBeNull();
+    expect(retakeStateOf({ ...none, current: { decision: "excluded", setRevision: 1 }, earlier: earlier(true) })).toBeNull();
+    expect(retakeStateOf({ ...none, earlier: { decision: "excluded", setRevision: 1, sameImages: true, fetches } })).toBeNull();
+    expect(retakeStateOf({ ...none, inCurrent: false, earlier: { decision: "excluded", setRevision: 1, sameImages: false, fetches } })).toBeNull();
+    // A record the current manifest gives as excluded is not a page: an earlier rejection of it no longer stands.
+    expect(retakeStateOf({ ...none, inCurrent: false, excludedNow: true, earlier: earlier(false) })).toBeNull();
+    expect(retakeStateOf({ ...none, inCurrent: false, excludedNow: true, earlier: earlier(true) })).toBeNull();
   });
 
   it("orders by revision, not by the clock: a rejection committed after the fetch is still requested", () => {
@@ -983,6 +1031,27 @@ describe("retake states, as the screen reads them", () => {
 
     // Approved: no retake left, and the volume leaves the screen.
     await decide(first.volumeId, [{ captuaRecordId: 14, decision: "approved" }]);
+    expect(await retakes()).toEqual([]);
+  });
+
+  it("never lists an excluded opening, and lists it once it is rejected", async () => {
+    const { volumeId } = await deliver(manifest([volume(CODE)]));
+    await decide(volumeId, [
+      { captuaRecordId: 11, decision: "excluded", note: "Duplicate of 12" },
+      { captuaRecordId: 14, decision: "rejected", reason: "blur" },
+    ]);
+    let [card] = await retakes();
+    expect(card.rows.map((r: Json) => r.captuaRecordId)).toEqual([14]);
+
+    await decide(volumeId, [{ captuaRecordId: 11, decision: "rejected", reason: "glare" }]);
+    [card] = await retakes();
+    expect(card.rows.map((r: Json) => r.captuaRecordId)).toEqual([11, 14]);
+
+    // Excluded again, and 14 approved: no retake is left, and the volume leaves the screen.
+    await decide(volumeId, [
+      { captuaRecordId: 11, decision: "excluded" },
+      { captuaRecordId: 14, decision: "approved" },
+    ]);
     expect(await retakes()).toEqual([]);
   });
 
@@ -1068,6 +1137,19 @@ describe("retake states, as the screen reads them", () => {
     expect((await retakes())[0].rows.map((r) => r.state)).toEqual(["missing"]);
   });
 
+  it("drops an earlier rejection of a record the new manifest gives as excluded", async () => {
+    const first = await deliver(manifest([volume(CODE)]));
+    await decide(first.volumeId, FIRST_DECISIONS);
+    expect((await retakes())[0].rows.map((r) => r.captuaRecordId)).toEqual([14]);
+
+    // The unit hands the volume over again with 14 excluded on the device (contract 1.6).
+    const next = volume(CODE);
+    next.records = next.records.map((r: Json) => (r.captuaRecordId === 14 ? { ...r, status: "excluded" } : r));
+    world.clock.now = T0 + DAY;
+    await deliver(manifest([next]));
+    expect(await retakes()).toEqual([]);
+  });
+
   it("lists a spread's page keys left then right, with the image to retake", async () => {
     const { volumeId } = await deliver(manifest([volume(CODE)]));
     await decide(volumeId, [{ captuaRecordId: 12, decision: "rejected", reason: "glare", side: "left" }]);
@@ -1108,7 +1190,7 @@ describe("the Retakes screen", () => {
     expect(await settle(loadScreen(world.outsider))).toBe(403);
   });
 
-  it("shows a reviewer only the volumes assigned to them", async () => {
+  it("shows a federation staff grant every volume, and a reviewer only the volumes assigned to them", async () => {
     await seedRetake();
     const code = "co-test-002";
     await createTestDescription({ tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: world.repositoryId, descriptionLevel: "volume", referenceCode: code });
@@ -1117,6 +1199,8 @@ describe("the Retakes screen", () => {
 
     const all = await loadScreen(world.admin);
     expect(all.volumes.map((v) => v.referenceCode)).toEqual([CODE, code]);
+    const staff = await createGrantUser("staff", { name: "Test Staff" });
+    expect((await loadScreen(staff)).volumes.map((v) => v.referenceCode)).toEqual([CODE, code]);
     const mine = await loadScreen(world.reviewer);
     expect(mine.volumes.map((v) => v.referenceCode)).toEqual([CODE]);
   });
@@ -1234,4 +1318,4 @@ describe("the Retakes screen", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

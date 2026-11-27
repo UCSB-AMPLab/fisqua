@@ -14,7 +14,7 @@
  * type level, while `documentSubtypes` owns its own dedicated form
  * and action handler.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { useState } from "react";
 import { Form, useActionData, useNavigate, useNavigation } from "react-router";
@@ -22,6 +22,15 @@ import { useTranslation } from "react-i18next";
 import { Loader2, GripVertical, Plus, X } from "lucide-react";
 import { userContext, tenantContext } from "../context";
 import type { Route } from "./+types/_auth.projects.$id.settings";
+import { pageMeta, heading, projectName } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:settings.heading"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -602,4 +611,4 @@ export default function ProjectSettings({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

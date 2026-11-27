@@ -10,14 +10,16 @@
  *     active / suspended (federation and tenant) - invariant I2.
  *   - grantEffectiveRoleFlags / applyGrantEffectiveRole - staff never
  *     confers administration, steward is admin-equivalent (invariant I6),
- *     and neither carries a home area-admin flag into the member tenant.
+ *     and neither carries a home area-admin flag into the member tenant;
+ *     a staff grant works in every area (`canWorkInArea`) without
+ *     administering one.
  *   - requireTenantUser's grant branch (unit) - home / matching-grant /
  *     mismatched-federation-grant / none.
  *   - isFederationSteward / requireFederationSteward - the authority
  *     mutation gate: lead admin (home) allowed, member admin denied,
  *     steward grant allowed, staff grant denied (ruled 2026-07-08 + I6).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -44,7 +46,7 @@ import {
   type Federation,
 } from "../../app/lib/federation.server";
 import type { Tenant, User } from "../../app/context";
-import { canAdministerArea, requireArea } from "../../app/lib/user-access.server";
+import { canAdministerArea, canWorkInArea, requireArea } from "../../app/lib/user-access.server";
 
 // A member tenant inside the Neogranadina federation (its lead is the
 // neogranadina tenant). This is the tenant grant-holders reach into.
@@ -296,6 +298,22 @@ describe("federation grants + steward authorization", () => {
       expect(() => requireArea(effective, "records")).toThrow(Response);
     });
 
+    it("a staff grant works in every area and administers none", () => {
+      const effective = applyGrantEffectiveRole(
+        makeUser({ id: STAFF_GRANT_ID, tenantId: NEOGRANADINA_TENANT_ID, isAdmin: true }),
+        {
+          role: "staff",
+          federationId: NEOGRANADINA_FEDERATION_ID,
+          homeTenantId: NEOGRANADINA_TENANT_ID,
+        },
+      );
+      expect(effective.worksInEveryArea).toBe(true);
+      for (const area of ["records", "authorities", "imports", "digitization"] as const) {
+        expect(canWorkInArea(effective, area)).toBe(true);
+        expect(canAdministerArea(effective, area)).toBe(false);
+      }
+    });
+
     it("a steward grant passes every area as a workspace admin", () => {
       const effective = applyGrantEffectiveRole(
         makeUser({ id: STEWARD_GRANT_ID, tenantId: NEOGRANADINA_TENANT_ID }),
@@ -404,3 +422,5 @@ describe("federation grants + steward authorization", () => {
     });
   });
 });
+
+// @version v0.9.0

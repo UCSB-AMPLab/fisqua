@@ -9,12 +9,22 @@
  * names; and linked descriptions are divided by rich context card,
  * grouped by description. The original is updated in place, a new
  * record is inserted, and the required reason lands in the ledger row's
- * `detail.reason`.
+ * `detail.reason`. The original takes a version past the one read,
+ * whatever the clock (`nextVersion`), so a save that read it before the
+ * split fails after it. The batch opens with a guard that the original
+ * is still unmerged and holds the version read, and the original's
+ * update is conditioned on that version: a merge or a save that lands
+ * between the reads and the batch fails it whole, and the split returns
+ * the conflict. A record already merged away is not split.
  *
- * @version v0.8.0
+ * The loader reads the federation's role lists once (`readRolePickers`),
+ * and the cards show its labels for the place roles.
+ *
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
+import { placeRoleLabel } from "~/lib/role-options";
 import { redirect, useActionData } from "react-router";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
@@ -23,12 +33,23 @@ import {
   type SplitFieldRow,
 } from "~/components/admin/split-workbench";
 import type { Route } from "./+types/_auth.admin.places.$id.split";
+import { pageMeta, heading } from "../lib/page-title";
 
 type Choice = "original" | "both" | "new";
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.place?.label,
+    heading("authorities:splitHeading"),
+    heading("places:title"),
+  );
+}
+
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { places } = await import("~/db/schema");
@@ -37,7 +58,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -58,14 +79,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     tenantId: tenant.id,
   });
 
-  return { place, cards };
+  // The role labels come from the federation's lists.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
+
+  return { place, cards, roles };
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
@@ -75,7 +100,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -119,6 +144,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const formUpdatedAt = formData.get("_updatedAt") as string;
   const forceOverwrite = formData.get("_force") === "true";
   if (!forceOverwrite && formUpdatedAt && String(source.updatedAt) !== formUpdatedAt) {
+    return { ok: false as const, error: "conflict" as const, modifiedAt: source.updatedAt };
+  }
+  // A record merged away is not split: its links live on its survivor.
+  if (source.mergedInto !== null) {
     return { ok: false as const, error: "conflict" as const, modifiedAt: source.updatedAt };
   }
 
@@ -212,8 +241,32 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
   const newId = crypto.randomUUID();
   const timestamp = Date.now();
+  const { nextVersion } = await import("~/lib/record-version.server");
+  const { sql } = await import("drizzle-orm");
+  // The batch runs only while the original is unmerged and holds the
+  // version read, and each link the split moves still points at it: a
+  // merge or a save that lands between these reads and the batch, or an
+  // unlink of a link chosen to move (which leaves the place's version
+  // alone), fails it whole (`json()` of text that is not JSON raises),
+  // and the split returns the conflict. The link ids go as one JSON
+  // parameter.
+  const unmergedAtVersion = sql`EXISTS (SELECT 1 FROM ${places} WHERE ${places.id} = ${id} AND ${places.updatedAt} = ${source.updatedAt} AND ${places.mergedInto} IS NULL)`;
+  const linksStillOnPlace = sql`NOT EXISTS (
+    SELECT 1 FROM json_each(${JSON.stringify(verifiedLinkIds)}) r
+    WHERE NOT EXISTS (
+      SELECT 1 FROM ${descriptionPlaces}
+      WHERE ${descriptionPlaces.id} = r.value AND ${descriptionPlaces.placeId} = ${id}
+    )
+  )`;
+  const stillAsRead = sql`${unmergedAtVersion} AND ${linksStillOnPlace}`;
+  const asRead = db
+    .select({
+      asRead: sql<number>`CASE WHEN ${stillAsRead} THEN 1 ELSE json('the place or its links changed since they were read') END`,
+    })
+    .from(sql`(SELECT 1)`);
 
-  await db.batch([
+  const batch = [
+    asRead,
     db.insert(places).values({
       federationId: tenant.federationId,
       // The sibling inherits the source's ownership rather than the
@@ -249,9 +302,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         tgnId: choices.tgnId === "original" ? source.tgnId : null,
         hgisId: choices.hgisId === "original" ? source.hgisId : null,
         whgId: choices.whgId === "original" ? source.whgId : null,
-        updatedAt: timestamp,
+        // Past the version read, whatever the clock, so a save that read
+        // the original before the split fails after it.
+        updatedAt: nextVersion(source.updatedAt, timestamp),
       })
-      .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id))),
+      .where(
+        and(
+          authorityScope(places, tenant.federationId, tenant.id),
+          eq(places.id, id),
+          eq(places.updatedAt, source.updatedAt),
+        ),
+      ),
     ...verifiedLinkIds.map((linkId) =>
       db
         .update(descriptionPlaces)
@@ -272,7 +333,27 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       userId: user.id,
       detail: { reason, choices, movedLinks: verifiedLinkIds.length, nameA, nameB },
     }),
-  ] as any);
+  ];
+
+  try {
+    await db.batch(batch as any);
+  } catch (err) {
+    const check = await db
+      .select({ asRead: sql<number>`CASE WHEN ${stillAsRead} THEN 1 ELSE 0 END` })
+      .from(sql`(SELECT 1)`)
+      .get();
+    if (check?.asRead === 1) throw err;
+    const current = await db
+      .select({ updatedAt: places.updatedAt })
+      .from(places)
+      .where(eq(places.id, id))
+      .get();
+    return {
+      ok: false as const,
+      error: "conflict" as const,
+      modifiedAt: current?.updatedAt ?? source.updatedAt,
+    };
+  }
 
   return redirect(`/admin/places/${id}`);
 }
@@ -281,7 +362,7 @@ export default function PlaceSplitWorkbench({ loaderData }: Route.ComponentProps
   const { t } = useTranslation("authorities");
   const { t: tp } = useTranslation("places");
   const actionData = useActionData<typeof action>();
-  const { place, cards } = loaderData;
+  const { place, cards, roles } = loaderData;
 
   const coordValue =
     place.latitude != null && place.longitude != null
@@ -320,8 +401,8 @@ export default function PlaceSplitWorkbench({ loaderData }: Route.ComponentProps
       recordCode={place.placeCode ?? ""}
       cards={cards}
       showAsRecorded={false}
-      roleLabel={(role) => tp(`role_${role}`, role)}
-      placeRoleLabel={(role) => tp(`role_${role}`, role)}
+      roleLabel={(role) => placeRoleLabel(roles.labels, role)}
+      placeRoleLabel={(role) => placeRoleLabel(roles.labels, role)}
       fieldRows={fieldRows}
       nameVariantRows={nameVariantRows}
       initialName={place.displayName}
@@ -332,3 +413,5 @@ export default function PlaceSplitWorkbench({ loaderData }: Route.ComponentProps
     />
   );
 }
+
+// @version v0.9.0

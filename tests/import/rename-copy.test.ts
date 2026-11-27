@@ -16,16 +16,21 @@
  *     not of the contract's form, a repeated source or destination key,
  *     a repeated ordinal, camera and kind, and a file over 5 GB refuse it
  *     whole;
- *   - the dry run: each entry is `[copy]`, `[exists]`, `[conflict]` or
+ *   - the plan: each entry is `[copy]`, `[exists]`, `[conflict]` or
  *     `[missing]`, nothing is copied, and the report carries every entry
  *     with the map's fields unchanged; a hidden file or an earlier
  *     version at the destination is a conflict;
- *   - `--apply`: copies only `[copy]` entries and checks each copy; any
+ *   - an apply: copies only `[copy]` entries and checks each copy; any
  *     conflict or missing entry stops it before a copy; a copy whose
  *     check fails stops it and is reported, as does a second version at
  *     the key from an overlapping run; once a copy fails, an entry whose
  *     lookup was still pending is not copied; a rerun after a partial
  *     run skips what is done;
+ *   - the verb's run (`fisqua capture copy-renamed`, through which every
+ *     run here goes): every apply needs `--confirm-production`, whichever
+ *     storage record it reads, checked before D1 or B2 is called; a plan
+ *     needs no flag; and each run
+ *     writes its report under its own name;
  *   - the B2 client: the details listing reads ids and SHA1s, including
  *     `large_file_sha1` for a file uploaded in parts, the versions
  *     listing pages by name and id and keeps hide markers, and the copy
@@ -33,21 +38,19 @@
  *
  * Every value here is a test value: no real tenant, bucket, key or file.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
 import { b2Client, sha1Of, type DestinationValues } from "../../scripts/lib/tenant-storage";
 import {
   checkRenameMap,
-  copyRenamedCaptures,
   parseRenameMap,
-  reportPath,
   type RenameCopyProviders,
   type RenameCopyReport,
   type RenameMap,
 } from "../../scripts/lib/rename-copy";
-import { parseArgs } from "../../scripts/commands/copy-renamed-captures";
+import { runCaptureCopyRenamed } from "../../scripts/lib/capture-cli/copy-renamed";
 import { fakeWorld, FAKE_B2_DOWNLOAD, FAKE_B2_S3, FAKE_R2_S3, type FakeB2File, type FakeOptions } from "./tenant-storage-fakes";
 
 const SLUG = "sbmal";
@@ -139,8 +142,19 @@ function setup(map: Record<string, any>, fakeOptions: FakeOptions = {}) {
   return { world, rc, written };
 }
 
+const NOW = Date.UTC(2026, 10, 20, 12, 0, 0);
+const RUN_ID = "0f1e2d3c-0000-4000-8000-000000000000";
+/** The report of a run with the fixed clock and id, read from staging's record. */
+const REPORT = ".import/capture-copy-renamed_staging_20261120T120000Z-0f1e2d3c.json";
+
+/** Runs `fisqua capture copy-renamed` with the fixed clock and id, reading the storage record from staging. */
 async function run(map: Record<string, any>, rc: RenameCopyProviders, apply: boolean, lines: string[] = []) {
-  return copyRenamedCaptures(parseRenameMap(map), { slug: SLUG, apply }, rc, (l) => lines.push(l));
+  return runCaptureCopyRenamed(
+    { file: "map.json", raw: map },
+    { tenant: SLUG, sourceRecord: "staging", apply, confirmProduction: apply },
+    { ...rc, newId: () => RUN_ID, now: () => NOW },
+    (l) => lines.push(l),
+  );
 }
 
 async function refusal(fn: () => unknown): Promise<string> {
@@ -288,8 +302,8 @@ describe("the dry run", () => {
     expect(text).toMatch(/copy: 1 objects, \d+ bytes/);
     expect(text).toMatch(/map: 6 objects, \d+ bytes/);
 
-    const saved = JSON.parse(written.get(reportPath(MAP_ID))!) as RenameCopyReport;
-    expect(reportPath(MAP_ID)).toBe(`.import/rename-copy_${MAP_ID}.json`);
+    const saved = JSON.parse(written.get(REPORT)!) as RenameCopyReport;
+    expect([...written.keys()]).toEqual([REPORT]);
     expect(saved.entries).toHaveLength(6);
     expect(saved.entries[0]).toMatchObject({
       captureId: entries[0].captureId,
@@ -398,7 +412,7 @@ describe("--apply", () => {
     expect(masters).toHaveLength(3);
     expect(masters.find((f) => f.fileName === `${SLUG}/${raw.entries[0].destinationKey}`)?.contentSha1).toBe(raw.entries[0].sha1);
     expect(world.b2.files.get(SOURCE_ID)).toHaveLength(3);
-    expect(JSON.parse(written.get(reportPath(MAP_ID))!).totals.copied).toEqual({
+    expect(JSON.parse(written.get(REPORT)!).totals.copied).toEqual({
       objects: 2,
       bytes: raw.entries[0].bytes + raw.entries[2].bytes,
     });
@@ -417,7 +431,7 @@ describe("--apply", () => {
       }
       expect(await refusal(() => run(raw, rc, true))).toMatch(/1 entry is in conflict or missing; nothing was copied/);
       expect(world.calls.some((c) => c.startsWith("b2.copyFile"))).toBe(false);
-      const saved = JSON.parse(written.get(reportPath(MAP_ID))!) as RenameCopyReport;
+      const saved = JSON.parse(written.get(REPORT)!) as RenameCopyReport;
       expect(saved.applied).toBe(false);
       expect(saved.entries.map((e) => e.outcome)).toContain(kind);
     }
@@ -428,7 +442,7 @@ describe("--apply", () => {
     raw.volume.counterAfter = 1;
     const { world, rc, written } = setup(raw, { onCopy: (f) => ({ ...f, contentSha1: sha1("corrupt") }) });
     expect(await refusal(() => run(raw, rc, true))).toMatch(/1 copy failed; see the report\. Nothing was deleted/);
-    const saved = JSON.parse(written.get(reportPath(MAP_ID))!) as RenameCopyReport;
+    const saved = JSON.parse(written.get(REPORT)!) as RenameCopyReport;
     expect(saved.entries[0]).toMatchObject({ applied: "failed", destination: { sha1: sha1("corrupt") } });
     expect(saved.entries[0].appliedReason).toContain(`the copy's SHA1 is ${sha1("corrupt")}`);
     expect(world.b2.files.get(MASTERS_ID)).toHaveLength(1);
@@ -493,7 +507,7 @@ describe("--apply", () => {
     expect(await refusal(() => run(raw, rc, true))).toMatch(/1 copy failed/);
     expect(world.calls).toContain(`b2.listFileVersions:${b}`);
     expect(world.calls.filter((c) => c.startsWith("b2.copyFile"))).toEqual([`b2.copyFile:${a}`]);
-    const saved = JSON.parse(written.get(reportPath(MAP_ID))!) as RenameCopyReport;
+    const saved = JSON.parse(written.get(REPORT)!) as RenameCopyReport;
     expect(saved.entries.map((e) => e.applied)).toEqual(["failed", "not-started"]);
     expect(world.b2.files.get(MASTERS_ID)).toEqual([]);
   });
@@ -505,7 +519,7 @@ describe("--apply", () => {
       afterCopy: (made, files) => files.push({ ...made, fileId: "FAKE-OTHER-RUN" }),
     });
     expect(await refusal(() => run(raw, rc, true))).toMatch(/1 copy failed; see the report\. Nothing was deleted/);
-    const saved = JSON.parse(written.get(reportPath(MAP_ID))!) as RenameCopyReport;
+    const saved = JSON.parse(written.get(REPORT)!) as RenameCopyReport;
     expect(saved.entries[0]).toMatchObject({
       applied: "failed",
       appliedReason: "another version is at the destination besides this copy; nothing was deleted",
@@ -585,15 +599,65 @@ describe("--apply", () => {
   });
 });
 
-describe("arguments", () => {
-  it("reads --map, --tenant and --apply, and nothing else", () => {
-    expect(parseArgs(["--map", "m.json", "--tenant", SLUG])).toEqual({ map: "m.json", tenant: SLUG, apply: false, sourceRecord: "production" });
-    expect(parseArgs(["--map", "m.json", "--tenant", SLUG, "--source-record", "staging"]).sourceRecord).toBe("staging");
-    expect(() => parseArgs(["--map", "m.json", "--tenant", SLUG, "--source-record", "local"])).toThrow(/production or staging/);
-    expect(parseArgs(["--map", "m.json", "--tenant", SLUG, "--apply"]).apply).toBe(true);
-    expect(() => parseArgs(["--tenant", SLUG])).toThrow(/--map is required/);
-    expect(() => parseArgs(["--map", "m.json"])).toThrow(/--tenant is required/);
-    expect(() => parseArgs(["--map", "m.json", "--tenant", SLUG, "--target", "production"])).toThrow(/Unknown argument/);
+describe("the verb's run", () => {
+  it("needs --confirm-production to apply with production's record, checked before anything is read", async () => {
+    const raw = rawMap();
+    const { rc, world, written } = setup(raw);
+    const calls = world.calls.length;
+    const message = await refusal(() =>
+      runCaptureCopyRenamed(
+        { file: "map.json", raw },
+        { tenant: SLUG, sourceRecord: "production", apply: true, confirmProduction: false },
+        { ...rc, newId: () => RUN_ID, now: () => NOW },
+        () => {},
+      ),
+    );
+    expect(message).toBe("Applying a copy into the masters bucket also needs --confirm-production");
+    expect(world.calls.length).toBe(calls);
+    expect(written.size).toBe(0);
+    const planned = await runCaptureCopyRenamed(
+      { file: "map.json", raw },
+      { tenant: SLUG, sourceRecord: "production", apply: false, confirmProduction: false },
+      { ...rc, newId: () => RUN_ID, now: () => NOW },
+      () => {},
+    );
+    expect(planned.applied).toBe(false);
+    expect([...written.keys()]).toEqual([".import/capture-copy-renamed_production_20261120T120000Z-0f1e2d3c.json"]);
+  });
+
+  it("needs --confirm-production to apply with staging's record too, since the copy writes the same masters bucket", async () => {
+    const raw = rawMap();
+    const { rc, world, written } = setup(raw);
+    const calls = world.calls.length;
+    const message = await refusal(() =>
+      runCaptureCopyRenamed(
+        { file: "map.json", raw },
+        { tenant: SLUG, sourceRecord: "staging", apply: true, confirmProduction: false },
+        { ...rc, newId: () => RUN_ID, now: () => NOW },
+        () => {},
+      ),
+    );
+    expect(message).toBe("Applying a copy into the masters bucket also needs --confirm-production");
+    expect(world.calls.length).toBe(calls);
+    expect(written.size).toBe(0);
+  });
+
+  it("writes each run's report under its own name", async () => {
+    const raw = rawMap();
+    const { rc, written } = setup(raw);
+    const ids = ["aaaaaaaa-0000-4000-8000-000000000000", "bbbbbbbb-0000-4000-8000-000000000000"];
+    for (const id of ids) {
+      await runCaptureCopyRenamed(
+        { file: "map.json", raw },
+        { tenant: SLUG, sourceRecord: "staging", apply: false, confirmProduction: false },
+        { ...rc, newId: () => id, now: () => NOW },
+        () => {},
+      );
+    }
+    expect([...written.keys()]).toEqual([
+      ".import/capture-copy-renamed_staging_20261120T120000Z-aaaaaaaa.json",
+      ".import/capture-copy-renamed_staging_20261120T120000Z-bbbbbbbb.json",
+    ]);
   });
 });
 
@@ -690,4 +754,4 @@ describe("the B2 client", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

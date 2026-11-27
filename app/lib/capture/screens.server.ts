@@ -8,12 +8,18 @@
  * Assigning a reviewer stays with `assignReviewerAction` (`qc.server.ts`),
  * which the queue posts to.
  *
- * `captureAccess` answers who the user is to capture work on the tenant:
- * a manager (whoever passes the digitization area, or a steward of the
- * tenant's federation,
- * the people `qc.server.ts` lets assign) and whether they are the
- * assigned reviewer of any of the tenant's volumes. The Volumes screen
- * is for managers; the queue for managers and reviewers.
+ * `captureAccess` answers who the user is to capture work on the tenant.
+ * A manager administers it: whoever passes the digitization area, or a
+ * steward of the tenant's federation; only a manager makes, replaces or
+ * revokes the scanner token. A worker does the
+ * work: every manager, and a federation staff grant (`canWorkInArea`).
+ * Workers open Volumes, the whole capture QC queue, Retakes, the
+ * digitization queue and the Scanner screen, decide on and assign any
+ * volume, start its review run (`isQcWorker` in `qc.server.ts`). `reviewer` says whether the
+ * user is the assigned reviewer of any of the tenant's volumes, who
+ * opens the queue and Retakes for their own volumes only. Its reads are
+ * retried while D1 refuses them as overloaded (`retryD1Read`); the
+ * assignment read is logged as `capture_reviewer_assignment`.
  *
  * `loadCaptureVolumes` lists one row per reference code the tenant's
  * scanner (or the registration command) handed over, each with the
@@ -39,15 +45,30 @@
  * detail page uses it for the volumes one person reviews. Both readers
  * share `readStatusDeliveries`, `readHolderSets` and
  * `deriveScreenState`, so the two cannot disagree on a volume's state.
+ * `loadReferenceScreenStates` does the same for reference codes, with
+ * when the reported delivery was received; the digitization queue reads
+ * its entries' states through it, including a ref whose only handover
+ * has no pipeline volume.
  *
- * `loadCaptureQueue` keeps the volumes waiting for capture review
- * (`inQueue`) that have a pipeline volume to review; a user who is not a
- * manager sees only the volumes assigned to them. `loadReviewerCandidates`
+ * `loadCaptureQueue` keeps the volumes waiting for capture review that
+ * have a pipeline volume to review (`queuedVolume`): those registered,
+ * preparing review images or in capture QC, and those with retakes
+ * requested whose holding delivery still has undecided openings, which
+ * stay under review while the unit is already asked for the retakes. A
+ * volume with retakes requested and every opening decided is on Retakes
+ * only. A user who is not a worker sees only the volumes assigned to
+ * them. Each row carries whether it can be reviewed now
+ * (`queueReadinessFor`): from its screen state, or, with retakes
+ * requested, from its holding delivery's review images, as for a volume
+ * in capture QC. The ready rows come first (`sortQueue`), newest
+ * handover first within each group. `loadCaptureVolumes` gives each row
+ * that review step for the queue to read.
+ * `loadReviewerCandidates`
  * lists who may be assigned, as `assignReviewerAction` allows: the
  * tenant's own users (archive staff), then the other people holding a
  * membership in its federation, under the federation's name.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
@@ -66,11 +87,22 @@ import {
 import type { Tenant, User } from "../../context";
 import type { CaptureDeliveryState, CaptureLinkState } from "../validation/enums";
 import { isFederationSteward } from "../federation.server";
-import { canAdministerArea } from "../user-access.server";
+import { retryD1Read, type D1Site } from "../d1-overload";
+import { canAdministerArea, canWorkInArea } from "../user-access.server";
 import { readLatestRuns, readProblems, statusRows, type StatusRow } from "./link.server";
 import { countUnchangedRejections } from "./retakes.server";
 import { captureLinkState, type StatusRun } from "./status";
-import { inQueue, nextStepOf, screenStateFor, type NextStep, type ReviewStep, type ScreenState } from "./screens";
+import {
+  nextStepOf,
+  queuedVolume,
+  queueReadinessFor,
+  screenStateFor,
+  sortQueue,
+  type NextStep,
+  type QueueReadiness,
+  type ReviewStep,
+  type ScreenState,
+} from "./screens";
 import { federationHasReviewBucket, readLatestReviewRuns, type LatestReviewRun } from "./review-run.server";
 
 /** Ids per `IN (...)` read, under D1's 100 bound parameters. */
@@ -83,22 +115,36 @@ function chunks<T>(values: T[], size: number): T[][] {
 }
 
 export interface CaptureAccess {
-  /** Passes the digitization area, or is a steward of the tenant's federation. */
+  /** Administers capture work: passes the digitization area, or is a steward of the tenant's federation. */
   manager: boolean;
+  /** Does capture work: every manager, and a federation staff grant. */
+  worker: boolean;
   /** The assigned reviewer of at least one of the tenant's volumes. */
   reviewer: boolean;
 }
 
-export async function captureAccess(db: DrizzleD1Database<any>, tenant: Tenant, user: User): Promise<CaptureAccess> {
+export async function captureAccess(
+  db: DrizzleD1Database<any>,
+  tenant: Tenant,
+  user: User,
+  site: Omit<D1Site, "read"> = {},
+): Promise<CaptureAccess> {
   const manager =
-    canAdministerArea(user, "digitization") || (await isFederationSteward(db, user, tenant));
-  const assigned = await db
-    .select({ id: captureQcReviewers.pipelineVolumeId })
-    .from(captureQcReviewers)
-    .where(and(eq(captureQcReviewers.tenantId, tenant.id), eq(captureQcReviewers.reviewerId, user.id)))
-    .limit(1)
-    .all();
-  return { manager, reviewer: assigned.length > 0 };
+    canAdministerArea(user, "digitization") || (await isFederationSteward(db, user, tenant, site));
+  const worker = manager || canWorkInArea(user, "digitization");
+  const assigned = await retryD1Read(
+    () =>
+      db
+        .select({ id: captureQcReviewers.pipelineVolumeId })
+        .from(captureQcReviewers)
+        .where(and(eq(captureQcReviewers.tenantId, tenant.id), eq(captureQcReviewers.reviewerId, user.id)))
+        .limit(1)
+        .all(),
+    undefined,
+    undefined,
+    { ...site, read: "capture_reviewer_assignment" },
+  );
+  return { manager, worker, reviewer: assigned.length > 0 };
 }
 
 export interface CaptureVolumeRow {
@@ -124,6 +170,7 @@ export interface CaptureVolumeRow {
   /** The holding delivery's decisions. */
   approved: number;
   rejected: number;
+  excluded: number;
   decided: number;
   /**
    * On a retake whose approvals were carried over, the openings it
@@ -133,13 +180,19 @@ export interface CaptureVolumeRow {
   reviewAgain: number | null;
 }
 
+/**
+ * A Volumes row with its holding delivery's review step (`deriveScreenState`),
+ * which the queue reads its readiness from.
+ */
+export type CaptureVolumeReviewRow = CaptureVolumeRow & { reviewStep: ReviewStep };
+
 type DeliveryLight = StatusRow;
 
 export async function loadCaptureVolumes(
   db: DrizzleD1Database<any>,
   tenantId: string,
   now: number,
-): Promise<CaptureVolumeRow[]> {
+): Promise<CaptureVolumeReviewRow[]> {
   const deliveryRows = await readStatusDeliveries(db, tenantId, null);
   const byRef = new Map<string, DeliveryLight[]>();
   for (const r of deliveryRows) {
@@ -216,7 +269,7 @@ export async function loadCaptureVolumes(
     .all();
   const retaken = new Set(earlier.map((r) => r.volumeId as string));
 
-  const out: CaptureVolumeRow[] = [];
+  const out: CaptureVolumeReviewRow[] = [];
   for (const [ref, rows] of byRef) {
     const chosen = statusRows(rows);
     if (!chosen) continue;
@@ -269,12 +322,15 @@ export async function loadCaptureVolumes(
         hasReviewer: reviewer !== null,
         hasEarlierDelivery,
         review: reviewStep,
+        openings: d.openings,
+        decided: set?.decidedCount ?? 0,
       }),
       problem,
       reviewer,
       hasEarlierDelivery,
       approved: set?.approvedCount ?? 0,
       rejected: set?.rejectedCount ?? 0,
+      excluded: set?.excludedCount ?? 0,
       decided: set?.decidedCount ?? 0,
       reviewAgain:
         set?.carriedFrom && v
@@ -283,6 +339,7 @@ export async function loadCaptureVolumes(
               d.openings - set.decidedCount - (await countUnchangedRejections(db, tenantId, d.id, v.id, now)),
             )
           : null,
+      reviewStep,
     });
   }
   out.sort((a, b) => b.handedOverAt - a.handedOverAt || a.referenceCode.localeCompare(b.referenceCode));
@@ -332,6 +389,7 @@ interface HolderSet {
   stateEnteredAt: number;
   approvedCount: number;
   rejectedCount: number;
+  excludedCount: number;
   decidedCount: number;
   carriedFrom: string | null;
 }
@@ -351,6 +409,7 @@ async function readHolderSets(
         stateEnteredAt: captureQcSets.stateEnteredAt,
         approvedCount: captureQcSets.approvedCount,
         rejectedCount: captureQcSets.rejectedCount,
+        excludedCount: captureQcSets.excludedCount,
         decidedCount: captureQcSets.decidedCount,
         carriedFrom: captureQcSets.carriedFrom,
       })
@@ -477,6 +536,69 @@ export async function loadVolumeScreenStates(
   return out;
 }
 
+/**
+ * The Volumes screen's state of each of `refs` that has a handover, with
+ * when the reported delivery was received, read as
+ * `loadVolumeScreenStates` reads it.
+ */
+export async function loadReferenceScreenStates(
+  db: DrizzleD1Database<any>,
+  tenantId: string,
+  refs: string[],
+  now: number,
+): Promise<Map<string, { state: ScreenState; receivedAt: number }>> {
+  const out = new Map<string, { state: ScreenState; receivedAt: number }>();
+  const unique = [...new Set(refs)];
+  if (unique.length === 0) return out;
+
+  const deliveryRows = await readStatusDeliveries(db, tenantId, unique);
+  if (deliveryRows.length === 0) return out;
+  const byRef = new Map<string, DeliveryLight[]>();
+  for (const r of deliveryRows) {
+    const list = byRef.get(r.referenceCode as string) ?? [];
+    list.push(r);
+    byRef.set(r.referenceCode as string, list);
+  }
+  const volumes = new Map<string, VolumeLight>();
+  for (const part of chunks([...byRef.keys()], READ_CHUNK)) {
+    const rows = await db
+      .select({
+        id: pipelineVolumes.id,
+        referenceCode: pipelineVolumes.referenceCode,
+        state: pipelineVolumes.state,
+        createdAt: pipelineVolumes.createdAt,
+        updatedAt: pipelineVolumes.updatedAt,
+        heldByRunId: pipelineVolumes.heldByRunId,
+      })
+      .from(pipelineVolumes)
+      .where(and(eq(pipelineVolumes.tenantId, tenantId), inArray(pipelineVolumes.referenceCode, part)))
+      .all();
+    for (const v of rows) volumes.set(v.referenceCode, v);
+  }
+  const runs = await readLatestRuns(db, tenantId, [...volumes.values()].map((v) => v.id), now);
+  const reviewBucket = await federationHasReviewBucket(db, tenantId);
+  const holderIds = deliveryRows.filter((r) => r.state === "registered").map((r) => r.id);
+  const sets = await readHolderSets(db, tenantId, holderIds);
+  const reviews = await readLatestReviewRuns(db, tenantId, holderIds, now);
+
+  for (const [ref, rows] of byRef) {
+    const chosen = statusRows(rows);
+    if (!chosen) continue;
+    const delivery = chosen.reported as DeliveryLight;
+    const volume = volumes.get(ref) ?? null;
+    const { state } = deriveScreenState({
+      delivery,
+      volume,
+      run: volume ? runs.get(volume.id) ?? null : null,
+      sets,
+      reviews,
+      reviewBucket,
+    });
+    if (state !== null) out.set(ref, { state, receivedAt: delivery.receivedAt });
+  }
+  return out;
+}
+
 /** The `message` of a recorded error (JSON `{ class, message }`), or its class when it has none. */
 function errorMessageOf(error: string | null): string | null {
   if (!error) return null;
@@ -521,21 +643,27 @@ export async function readRunError(
 }
 
 /**
- * The volumes waiting for capture review that have a pipeline volume to
- * review. A user who is not a manager sees only those assigned to them.
+ * The volumes waiting for capture review (`queuedVolume`) that have a
+ * pipeline volume to review. A user who is not a worker sees only those
+ * assigned to them.
  */
 export async function loadCaptureQueue(
   db: DrizzleD1Database<any>,
   tenantId: string,
   user: Pick<User, "id">,
-  manager: boolean,
+  worker: boolean,
   now: number,
-): Promise<CaptureVolumeRow[]> {
+): Promise<CaptureQueueRow[]> {
   const rows = await loadCaptureVolumes(db, tenantId, now);
-  return rows.filter(
-    (r) => r.volumeId !== null && inQueue(r.linkState) && (manager || r.reviewer?.id === user.id),
+  return sortQueue(
+    rows
+      .filter((r) => r.volumeId !== null && queuedVolume(r) && (worker || r.reviewer?.id === user.id))
+      .map(({ reviewStep, ...r }) => ({ ...r, readiness: queueReadinessFor({ ...r, reviewStep }) })),
   );
 }
+
+/** A queued volume, with whether it can be reviewed now. */
+export type CaptureQueueRow = CaptureVolumeRow & { readiness: QueueReadiness };
 
 export interface ReviewerCandidates {
   /** The tenant's own users. */
@@ -583,4 +711,4 @@ export function personName(name: string | null, email: string): string {
   return trimmed.length > 0 ? trimmed : email;
 }
 
-// @version v0.8.0
+// @version v0.9.0

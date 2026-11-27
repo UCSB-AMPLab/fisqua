@@ -6,7 +6,10 @@
  * long and expands on click; each row deep-links into the description
  * detail page.
  *
- * @version v0.3.0
+ * The role chip shows `roleLabel`, the label the caller takes from the
+ * federation's lists for the link's role.
+ *
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -20,6 +23,8 @@ interface LinkedDescriptionCardProps {
   referenceCode: string;
   descriptionLevel: string;
   role: string;
+  /** The role's label, from the federation's lists. */
+  roleLabel: string;
   roleNote?: string | null;
   sequence?: number;
   honorific?: string | null;
@@ -35,7 +40,7 @@ export function LinkedDescriptionsCard({
   descriptionId,
   descriptionTitle,
   referenceCode,
-  role,
+  roleLabel,
   roleNote,
   onEdit,
   onRemove,
@@ -55,7 +60,7 @@ export function LinkedDescriptionsCard({
             {referenceCode}
           </span>
           <span className="whitespace-nowrap rounded-full bg-indigo-tint px-2 py-0.5 text-xs font-medium text-indigo-deep">
-            {t(`role_${role}`)}
+            {roleLabel}
           </span>
         </div>
         <div className="flex shrink-0 gap-1">
@@ -83,3 +88,5 @@ export function LinkedDescriptionsCard({
     </div>
   );
 }
+
+/* @version v0.9.0 */

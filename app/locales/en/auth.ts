@@ -12,7 +12,7 @@
  * `/auth/github`). The verbatim copy, divider, and error strings are
  * unchanged.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   email_label: "Email address",
@@ -22,6 +22,8 @@ export default {
   or_divider: "or",
   error: {
     expired_link: "This link has expired. Request a new one.",
+    sign_in_busy:
+      "Your sign-in link couldn't be sent just now. Try again in a few seconds.",
     invalid_link: "This link is not valid. Request a new one.",
     invalid_email: "Enter a valid email address.",
     oauth_failed: "GitHub login failed. Please try again.",
@@ -35,11 +37,11 @@ export default {
   login: {
     no_account: "No account found for this email.",
   },
-  page_title: "Log in | Fisqua",
+  page_title: "Sign in",
   footer_note:
     "Log in with GitHub or the email address on your account.",
   wrong_workspace: {
-    page_title: "Wrong workspace | Fisqua",
+    page_title: "Wrong workspace",
     eyebrow: "Wrong workspace",
     title: "You're in the wrong place",
     body: "It looks like you signed in from the wrong subdomain. Your account belongs to a different workspace.",

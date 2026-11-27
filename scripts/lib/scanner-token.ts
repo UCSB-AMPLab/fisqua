@@ -14,7 +14,7 @@
  *
  * A tenant has one scanner (ruled for now; the table keeps it a row of
  * its own so that several per tenant later means lifting a unique
- * index), named with the unit's short id, the one its bucket keys
+ * index), named with the unit's appliance id, the one its bucket keys
  * carry. The token is 32 random bytes as 64 lowercase hex characters
  * (`mintScannerToken`, shared with the Worker). Fisqua keeps only its
  * SHA-256; the token is printed once, after the write has been read
@@ -47,7 +47,7 @@
  * A dry run, the default, reads and prints what it would do; it mints
  * nothing and writes nothing.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { escapeSql } from "./sql";
@@ -75,7 +75,7 @@ export interface ScannerTokenOptions {
   action: ScannerTokenAction;
   /** The tenant's slug. */
   slug: string;
-  /** The unit's short id; required for `make`. */
+  /** The unit's appliance id; required for `make`. */
   appliance: string | null;
   target: Target;
   apply: boolean;
@@ -154,7 +154,7 @@ export async function runScannerToken(
 ): Promise<ScannerTokenResult> {
   const { action, apply } = options;
   if (options.appliance !== null) checkScannerName(options.appliance);
-  if (action === "make" && options.appliance === null) throw new ProvisionStop("make needs --appliance, the unit's short id");
+  if (action === "make" && options.appliance === null) throw new ProvisionStop("make needs --appliance, the unit's appliance id");
   const tenant = await providers.d1.tenant(options.slug);
   if (!tenant) throw new ProvisionStop(`No tenant has the slug ${options.slug}`);
   const rows = (await providers.rows(inlineSql(scannerQuery(tenant.id)))).map(rowOfScanner);
@@ -222,4 +222,4 @@ export async function runScannerToken(
   return { action, step, applied: true, scannerId };
 }
 
-// @version v0.8.0
+// @version v0.9.0

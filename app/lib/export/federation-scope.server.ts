@@ -35,7 +35,7 @@
  * scope, its own slug. That path is preserved below and is what every
  * pre-step-8 caller still gets.)
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import { eq } from "drizzle-orm";
@@ -71,7 +71,7 @@ import type { ExportTenant } from "./types";
  *   - `authoritiesEnabled` — the triggering tenant's `authorities` capability.
  *                         When off, the entities.json/places.json steps are
  *                         skipped (spec §6); the display-field-only renderers
- *                         (descriptions/EAD3/DC/METS) are unaffected.
+ *                         (descriptions/EAD3/DC) are unaffected.
  */
 export type ExportScope = {
   federationId: string;

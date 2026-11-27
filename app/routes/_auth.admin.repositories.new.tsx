@@ -20,7 +20,7 @@
  * open-redirect guard (`safeReturnTo`: internal paths only), a successful
  * create redirects there instead of the new repository's edit page.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Form, useActionData, redirect, Link, useSearchParams } from "react-router";
@@ -35,6 +35,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import type { Route } from "./+types/_auth.admin.repositories.new";
+import { pageMeta, heading } from "../lib/page-title";
 
 /**
  * Create is capability-gated at the OPERATION (never mere visibility): a
@@ -58,11 +59,19 @@ async function canCreateRepository(
   return count === 0;
 }
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("repositories:create_title"),
+    heading("repositories:title"),
+  );
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   const db = drizzle(context.cloudflare.env.DB);
   if (!(await canCreateRepository(db, tenant))) {
@@ -73,7 +82,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { repositories } = await import("~/db/schema");
   const { createRepositorySchema } = await import(
@@ -81,7 +90,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -473,4 +482,4 @@ function FieldTextarea({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -22,7 +22,10 @@
  * writers and bases each write only to their own bucket, and each
  * description's manifest URL sits under its own base.
  *
- * @version v0.8.0
+ * The parent's version moves strictly past the one it holds, even when
+ * that one is ahead of the clock.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
@@ -30,7 +33,13 @@ import {
   getPromotableEntries,
   getVolumesWithPromotableEntries,
 } from "../../app/lib/promote/promote.server";
-import { DEFAULT_TEST_TENANT_ID, SECOND_TEST_TENANT_ID } from "../helpers/db";
+import { env } from "cloudflare:test";
+import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
+import { descriptions } from "../../app/db/schema";
+import { applyMigrations, cleanDatabase, DEFAULT_TEST_TENANT_ID, SECOND_TEST_TENANT_ID } from "../helpers/db";
+import { createTestRepository } from "../helpers/repositories";
+import { createTestDescription } from "../helpers/descriptions";
 import { fakeS3 } from "../helpers/fake-s3";
 import { s3ManifestWriter } from "../../app/lib/pipeline/canonical.server";
 
@@ -200,6 +209,7 @@ function createMockDb(options: {
   const insertedDescriptions: any[] = [];
   const updatedEntries: any[] = [];
   let parentChildCountDelta = 0;
+  const parentSets: any[] = [];
 
   // Track which table is being queried to return appropriate mock data
   const db = {
@@ -278,6 +288,7 @@ function createMockDb(options: {
           }
           if (vals.childCount) {
             parentChildCountDelta++;
+            parentSets.push(vals);
           }
           return Promise.resolve();
         }),
@@ -287,6 +298,7 @@ function createMockDb(options: {
     _inserted: insertedDescriptions,
     _updatedEntries: updatedEntries,
     _parentChildCountDelta: () => parentChildCountDelta,
+    _parentSets: parentSets,
   };
 
   return db as any;
@@ -464,6 +476,50 @@ describe("promoteEntries", () => {
     ]);
     const second = JSON.parse(s3.text("second-manifests", "iiif/AHRB-001-d001/manifest.json")!);
     expect(second.id).toBe("https://manifests.second.example.test/iiif/AHRB-001-d001/manifest.json");
+  });
+
+  // The parent's version ahead of the clock, as a save that moved it past
+  // the clock leaves it. The update the promotion sends the parent is
+  // applied to a real row holding such a version.
+  it("moves the parent's version strictly past one ahead of the clock", async () => {
+    const db = createMockDb({
+      entries: [makeEntryRow({ id: "e1", dateExpression: "1650" })],
+      volumes: [makeVolume()],
+      parentDescription: makeParentDescription({
+        id: "11111111-1111-4111-8111-111111111111",
+        repositoryId: "22222222-2222-4222-8222-222222222222",
+        rootDescriptionId: "33333333-3333-4333-8333-333333333333",
+      }),
+      volumePages: [makeVolumePageRow(1)],
+    });
+    const result = await promoteEntries({
+      db,
+      manifestsBucket: bucket,
+      entries: [{ entryId: "e1", referenceCode: "AHRB-001-d001" }],
+      volumeId: "vol-001",
+      userId: "44444444-4444-4444-8444-444444444444",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      standard: "isadg",
+      manifestBaseUrl: "https://manifests.zasqua.org",
+    });
+    expect(result.errors).toEqual([]);
+    const [parentSet] = db._parentSets;
+    expect(parentSet).toBeDefined();
+    // The insert batch carries the new rows and the statement that moves
+    // the descriptions recording a new code as a former one.
+    const insertBatch = db.batch.mock.calls[0][0];
+    expect(insertBatch).toHaveLength(2);
+
+    await applyMigrations();
+    await cleanDatabase();
+    const repo = await createTestRepository({ tenantId: DEFAULT_TEST_TENANT_ID });
+    const row = await createTestDescription({ tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: repo.id });
+    const real = drizzle(env.DB);
+    const ahead = Date.now() + 10_000;
+    await real.update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, row.id));
+    await real.update(descriptions).set({ updatedAt: parentSet.updatedAt }).where(eq(descriptions.id, row.id));
+    const after = (await real.select({ v: descriptions.updatedAt }).from(descriptions).where(eq(descriptions.id, row.id)).get())!;
+    expect(after.v).toBeGreaterThan(ahead);
   });
 
   it("rejects entries with type other than item", async () => {

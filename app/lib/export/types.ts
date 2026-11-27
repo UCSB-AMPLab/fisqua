@@ -22,10 +22,11 @@
  * `app/lib/export/ead/profiles/registry.ts` resolves a tenant's
  * `descriptiveStandard` to the right profile.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { Standard, DescriptionLevel } from "../standards/types";
+import type { Bilingual } from "./attribution";
 
 /**
  * Resolved tenant context threaded through every export step. The
@@ -70,7 +71,7 @@ export interface ExportDescription {
   children_level: string | null;
   has_digital: boolean;
   iiif_manifest_url: string;
-  mets_url?: string;
+  mets_url: string | null;
   /** Reference codes this description was published under before; omitted when none. */
   former_reference_codes?: string[];
   scope_content: string | null;
@@ -94,25 +95,8 @@ export interface ExportDescription {
   pages: string | null;
   creator_display: string | null;
   place_display: string | null;
-}
-
-/** Repository record in repositories.json, with nested root_descriptions */
-export interface ExportRepository {
-  id: string;
-  code: string;
-  name: string;
-  short_name: string | null;
-  country_code: string | null;
-  country: string | null;
-  city: string | null;
-  address: string | null;
-  website: string | null;
-  description_count: number;
-  image_reproduction_text: string;
-  display_title: string | null;
-  subtitle: string | null;
-  hero_image_url: string | null;
-  root_descriptions: Omit<ExportDescription, "ocr_text">[];
+  /** UTC date (YYYY-MM-DD) of the last modification; omitted when unknown. */
+  modified_at?: string;
 }
 
 /** Entity record in entities.json */
@@ -139,8 +123,18 @@ export interface ExportEntity {
   sources: string | null;
   wikidata_id: string | null;
   viaf_id: string | null;
+  /** Diccionario Biográfico Español number, or null. */
+  dbe_id: number | null;
+  /** A code of the federation's `gender` list, or null when not recorded. */
+  gender: string | null;
+  /** True for a person recorded only because a relation names them. */
+  known_only_from_relation: boolean;
+  /** A stored name that tells apart a person known by a given name alone, or null. */
+  qualified_name: string | null;
   /** Codes zasqua.org published this entity under before; omitted when none. */
   former_codes?: string[];
+  /** UTC date (YYYY-MM-DD) of the last modification; omitted when unknown. */
+  modified_at?: string;
 }
 
 /** Place record in places.json */
@@ -168,6 +162,8 @@ export interface ExportPlace {
   wikidata_id: string | null;
   /** Codes zasqua.org published this place under before; omitted when none. */
   former_codes?: string[];
+  /** UTC date (YYYY-MM-DD) of the last modification; omitted when unknown. */
+  modified_at?: string;
 }
 
 /** Entry in children/{referenceCode}.json */
@@ -268,10 +264,16 @@ export type EadInput = {
   physicalCharacteristics?: string | null;
 };
 
-/** Repository information consumed by the EAD3 builder for `<repository>` and rights default. */
+/**
+ * Repository information consumed by the EAD3 builder for `<repository>`
+ * and by the Dublin Core builder for `dc:source` and `dc:rights`, whose
+ * bulk reading carries the repository's attribution line.
+ */
 export type EadRepository = {
   name: string;
   city: string;
   code: string;
-  rightsText: string | null;
+  attribution: Bilingual;
 };
+
+// @version v0.9.0

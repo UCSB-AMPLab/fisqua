@@ -18,10 +18,29 @@
  * Linked descriptions render as rich context cards grouped by
  * description; a multi-role description is routed as one unit.
  *
- * @version v0.8.0
+ * The new record gets a copy of the source's `entity_functions` rows,
+ * in their order, in the same batch; the source keeps its own. A row
+ * of a function an earlier row holds, case and spacing aside, is not
+ * copied: its empty fields' values go to the earlier row's copy
+ * (`copiedEntityFunctions`). The
+ * `entities.functions` column is not written. The original takes a new
+ * `updated_at` past the version read even when the clock has not passed
+ * it (`nextVersion`), so a save that read it before the split fails
+ * after it. The batch opens with `entitiesAsReadGuard`: it runs only
+ * while the original is unmerged and holds the version and the function
+ * rows the split read, so a merge or save that lands between the reads
+ * and the batch fails it whole and the split returns the conflict. A
+ * record already merged away is not split.
+ *
+ * The loader reads the federation's role lists once (`readRolePickers`),
+ * and the cards show its labels for the document and place roles, a
+ * relation side's from the relation roles.
+ *
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
+import { entityRoleLabel, placeRoleLabel } from "~/lib/role-options";
 import { redirect, useActionData } from "react-router";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
@@ -31,12 +50,23 @@ import {
   type SplitFieldRow,
 } from "~/components/admin/split-workbench";
 import type { Route } from "./+types/_auth.admin.entities.$id.split";
+import { pageMeta, heading } from "../lib/page-title";
 
 type Choice = "original" | "both" | "new";
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.entity?.displayName,
+    heading("authorities:splitHeading"),
+    heading("entities:title"),
+  );
+}
+
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { entities } = await import("~/db/schema");
@@ -45,7 +75,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -66,14 +96,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     tenantId: tenant.id,
   });
 
-  return { entity, cards };
+  // The role labels come from the federation's lists.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
+
+  return { entity, cards, roles };
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { entities, descriptionEntities, descriptions } = await import("~/db/schema");
@@ -83,7 +117,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -129,6 +163,11 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const formUpdatedAt = formData.get("_updatedAt") as string;
   const forceOverwrite = formData.get("_force") === "true";
   if (!forceOverwrite && formUpdatedAt && String(source.updatedAt) !== formUpdatedAt) {
+    return { ok: false as const, error: "conflict" as const, modifiedAt: source.updatedAt };
+  }
+  // A record merged away is not split: its functions and links live on
+  // its survivor.
+  if (source.mergedInto !== null) {
     return { ok: false as const, error: "conflict" as const, modifiedAt: source.updatedAt };
   }
 
@@ -224,12 +263,35 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
   const newId = crypto.randomUUID();
   const timestamp = Date.now();
+  // The new record gets a copy of the source's function rows, in order;
+  // the source keeps its own.
+  const {
+    readEntityFunctionRows,
+    copiedEntityFunctions,
+    nextVersion,
+    entitiesAsReadGuard,
+    entitiesStillAsRead,
+  } = await import("~/lib/entity-functions.server");
+  const sourceFunctions = await readEntityFunctionRows(db, id);
+  // The batch runs only while the original is unmerged and holds the
+  // version and the function rows read: a merge or a save that lands
+  // between these reads and the batch fails it whole, and the split
+  // returns the conflict.
+  const asRead = [
+    {
+      id,
+      version: source.updatedAt,
+      unmerged: true,
+      functionIds: sourceFunctions.map((r) => r.id),
+    },
+  ];
   // The provenance line's date is the acting member's calendar day.
   const now = formatIsoDateTime(timestamp, requestTimeZone(request)).slice(0, 10);
   const splitFromNote = `Split from ${source.displayName} (${source.entityCode}) on ${now}`;
   const splitIntoNote = `Split into ${nameB} (${newCode}) on ${now}`;
 
-  await db.batch([
+  const batch = [
+    entitiesAsReadGuard(db, asRead),
     // New record: identity fields clone; assignable fields follow choices.
     db.insert(entities).values({
       federationId: tenant.federationId,
@@ -255,7 +317,6 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       dateStart: toNew("datesOfExistence") ? source.dateStart : null,
       dateEnd: toNew("datesOfExistence") ? source.dateEnd : null,
       history: toNew("history") ? source.history : null,
-      functions: source.functions,
       sources: splitFromNote,
       mergedInto: null,
       wikidataId: choices.wikidataId === "new" ? source.wikidataId : null,
@@ -264,6 +325,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       createdAt: timestamp,
       updatedAt: timestamp,
     }),
+    ...copiedEntityFunctions(db, newId, sourceFunctions, timestamp),
     // Original record: rename; keep only fields whose choice assigns
     // them to the original (or both).
     db
@@ -279,9 +341,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         viafId: choices.viafId === "original" ? source.viafId : null,
         dbeId: choices.dbeId === "original" ? source.dbeId : null,
         sources: source.sources ? `${source.sources}\n${splitIntoNote}` : splitIntoNote,
-        updatedAt: timestamp,
+        // Past the version read, whatever the clock, so a save that read
+        // the original before the split fails after it.
+        updatedAt: nextVersion(source.updatedAt, timestamp),
       })
-      .where(and(authorityScope(entities, tenant.federationId, tenant.id), eq(entities.id, id))),
+      .where(
+        and(
+          authorityScope(entities, tenant.federationId, tenant.id),
+          eq(entities.id, id),
+          eq(entities.updatedAt, source.updatedAt),
+        ),
+      ),
     ...verifiedLinkIds.map((linkId) =>
       db
         .update(descriptionEntities)
@@ -302,7 +372,23 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       userId: user.id,
       detail: { reason, choices, movedLinks: verifiedLinkIds.length, nameA, nameB },
     }),
-  ] as any);
+  ];
+
+  try {
+    await db.batch(batch as any);
+  } catch (err) {
+    if (await entitiesStillAsRead(db, asRead)) throw err;
+    const current = await db
+      .select({ updatedAt: entities.updatedAt })
+      .from(entities)
+      .where(eq(entities.id, id))
+      .get();
+    return {
+      ok: false as const,
+      error: "conflict" as const,
+      modifiedAt: current?.updatedAt ?? source.updatedAt,
+    };
+  }
 
   return redirect(`/admin/entities/${id}`);
 }
@@ -310,9 +396,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 export default function EntitySplitWorkbench({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("authorities");
   const { t: te } = useTranslation("entities");
-  const { t: tp } = useTranslation("places");
   const actionData = useActionData<typeof action>();
-  const { entity, cards } = loaderData;
+  const { entity, cards, roles } = loaderData;
 
   const fieldRows: SplitFieldRow[] = [
     { key: "datesOfExistence", label: te("field.datesOfExistence"), value: entity.datesOfExistence, mode: "three" },
@@ -347,8 +432,8 @@ export default function EntitySplitWorkbench({ loaderData }: Route.ComponentProp
       recordCode={entity.entityCode ?? ""}
       cards={cards}
       showAsRecorded
-      roleLabel={(role) => te(`role_${role}`, role)}
-      placeRoleLabel={(role) => tp(`role_${role}`, role)}
+      roleLabel={(role, relationSide) => entityRoleLabel(roles.labels, role, relationSide)}
+      placeRoleLabel={(role) => placeRoleLabel(roles.labels, role)}
       fieldRows={fieldRows}
       nameVariantRows={nameVariantRows}
       initialName={entity.displayName}
@@ -360,4 +445,4 @@ export default function EntitySplitWorkbench({ loaderData }: Route.ComponentProp
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -11,7 +11,7 @@
  * deployment's allowlist of manifest hosts and from the manifest host of
  * any federation's storage destination.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -20,6 +20,7 @@ import { useTranslation, Trans } from "react-i18next";
 import { userContext, tenantContext } from "../context";
 import { VolumeCard } from "../components/volumes/volume-card";
 import type { Route } from "./+types/_auth.projects.$id.volumes";
+import { pageMeta, heading, projectName } from "../lib/page-title";
 
 type AddResult = {
   url: string;
@@ -28,6 +29,14 @@ type AddResult = {
   volumeName?: string;
   pageCount?: number;
 };
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:tab.volumes"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -317,4 +326,4 @@ export default function ProjectVolumes({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -84,7 +84,7 @@
  * left in the database for migration purity and should be treated as
  * legacy for any future schema work.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { sql } from "drizzle-orm";
@@ -97,16 +97,20 @@ import {
   uniqueIndex,
   unique,
   primaryKey,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import {
   DESCRIPTION_LEVELS,
   RESOURCE_TYPES,
   ENTITY_TYPES,
   CERTAINTY_LEVELS,
+  RELATION_CERTAINTIES,
   PLACE_TYPES,
   ENTITY_ROLES,
   PLACE_ROLES,
   VOCABULARY_STATUSES,
+  VOCABULARY_LISTS,
+  FEDERATION_CREDIT_ROLES,
   VOLUME_STATUSES,
   ENTRY_TYPES,
   RESOURCE_TYPES_ES,
@@ -139,6 +143,11 @@ import {
   CAPTURE_QC_REASONS,
   CAPTURE_QC_SET_STATES,
   CAPTURE_QC_SIDES,
+  CAPTURE_QUEUE_ACTIONS,
+  CAPTURE_QUEUE_ORIGINS,
+  CAPTURE_OPERATOR_ROLES,
+  CAPTURE_SCANNER_MODES,
+  CAPTURE_PAIRING_STATES,
 } from "../lib/validation/enums";
 // AUDIT_LOG_ACTIONS lives in a tiny constants module so
 // `app/lib/audit.server.ts` (which imports the auditLog table from
@@ -248,6 +257,12 @@ export const tenants = sqliteTable(
     providerName: text("provider_name"),
     providerUrl: text("provider_url"),
     metsBaseUrl: text("mets_base_url"),
+    // The language the workspace's pages are shown in to a visitor who
+    // has not chosen one (migration 0113). It ranks below `?lang=` and
+    // the `lang` cookie and above Accept-Language
+    // (`app/middleware/i18next.ts`). NULL means no default: the
+    // browser's language decides.
+    defaultLocale: text("default_locale", { enum: ["en", "es"] }),
   },
   (table) => [
     uniqueIndex("tenants_slug_idx").on(table.slug),
@@ -335,10 +350,68 @@ export const federations = sqliteTable(
     // without it is still a complete destination, and its volumes skip
     // the review run.
     pipelineReviewTilesBucket: text("pipeline_review_tiles_bucket"),
+    // Who publishes the federation's records, as its METS creator agent
+    // names it (migration 0118): the organisation, its tax or
+    // registration number as printed, where it is, and its web address.
+    // A null name falls back to the lead tenant's provider name, then
+    // the federation name.
+    publisherName: text("publisher_name"),
+    publisherTaxId: text("publisher_tax_id"),
+    publisherLocation: text("publisher_location"),
+    publisherUrl: text("publisher_url"),
+    // The rest of the publisher record (migrations 0119 and 0120). `name`
+    // above is the display name. The email is the publisher's contact
+    // address; the logo key is an object key in the federation's manifests
+    // bucket, under `institutions/`. Prose is an es/en pair, either of
+    // which may be null. The site citation template is used for the
+    // colophon, the record template on description pages. The catalogue
+    // licence is held per repository. All nullable.
+    publisherEmail: text("publisher_email"),
+    publisherLogoKey: text("publisher_logo_key"),
+    descriptionEs: text("description_es"),
+    descriptionEn: text("description_en"),
+    termsOfUseEs: text("terms_of_use_es"),
+    termsOfUseEn: text("terms_of_use_en"),
+    privacyEs: text("privacy_es"),
+    privacyEn: text("privacy_en"),
+    takedownEs: text("takedown_es"),
+    takedownEn: text("takedown_en"),
+    citationTemplateSiteEs: text("citation_template_site_es"),
+    citationTemplateSiteEn: text("citation_template_site_en"),
+    citationTemplateRecordEs: text("citation_template_record_es"),
+    citationTemplateRecordEn: text("citation_template_record_en"),
+    // Where the federation's materials are hosted (migration 0122), free
+    // text in each language, used as written in every member repository's
+    // attribution line after its credit statement. Nullable: a federation
+    // without one gets a line without it.
+    hostingStatementEs: text("hosting_statement_es"),
+    hostingStatementEn: text("hosting_statement_en"),
   },
   (table) => [
     uniqueIndex("federations_slug_idx").on(table.slug),
     index("federations_lead_tenant_idx").on(table.leadTenantId),
+  ],
+);
+
+// The partners, funders, developers and hosts a federation credits
+// (migration 0119), shown in `position` order. Part of the federation's
+// record: deleted with it (ON DELETE CASCADE). The logo key is an object
+// key in the federation's manifests bucket.
+export const federationCredits = sqliteTable(
+  "federation_credits",
+  {
+    id: text("id").primaryKey(),
+    federationId: text("federation_id")
+      .notNull()
+      .references(() => federations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    role: text("role", { enum: [...FEDERATION_CREDIT_ROLES] }).notNull(),
+    url: text("url"),
+    logoKey: text("logo_key"),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => [
+    index("federation_credits_federation_idx").on(table.federationId, table.position),
   ],
 );
 
@@ -392,6 +465,12 @@ export const users = sqliteTable("users", {
   isAuthoritiesAdmin: integer("is_authorities_admin", { mode: "boolean" }).notNull().default(false),
   isImportsAdmin: integer("is_imports_admin", { mode: "boolean" }).notNull().default(false),
   isDigitizationAdmin: integer("is_digitization_admin", { mode: "boolean" }).notNull().default(false),
+  // Platform admin (0114): at home in every live workspace (kind
+  // `tenant`, not disabled) with every role flag on, whatever
+  // `tenantId` holds (app/lib/platform-admin.server.ts). Not a role
+  // flag: the users screens never write it; only the operator command
+  // scripts/commands/set-platform-admin.ts does.
+  isPlatformAdmin: integer("is_platform_admin", { mode: "boolean" }).notNull().default(false),
   // Notification and language preferences (0074). `lastDigestAt` is the
   // sweep's per-user clock: due when now - lastDigestAt >= interval,
   // drift-based rather than wall-clock-anchored. `locale` is persisted
@@ -966,12 +1045,75 @@ export const repositories = sqliteTable(
     manifestRights: text("manifest_rights"),
     attributionEn: text("attribution_en"),
     attributionEs: text("attribution_es"),
+    // The English subtitle (migration 0119); `subtitle` holds the Spanish.
+    subtitleEn: text("subtitle_en"),
+    // The ISDIAH record (migration 0119). Other names are a JSON list of
+    // strings (a CHECK refuses anything else); the logo key is an object
+    // key in the federation's manifests bucket. Contact fields sit beside
+    // `address`, `city`, `country` and `website` above. Prose is an es/en
+    // pair, either of which may be null. `descriptionLanguage` is the
+    // language the record is written in. All nullable.
+    otherNames: text("other_names"),
+    institutionType: text("institution_type"),
+    logoKey: text("logo_key"),
+    region: text("region"),
+    postalCode: text("postal_code"),
+    telephone: text("telephone"),
+    email: text("email"),
+    holdingsEs: text("holdings_es"),
+    holdingsEn: text("holdings_en"),
+    historyEs: text("history_es"),
+    historyEn: text("history_en"),
+    openingTimesEs: text("opening_times_es"),
+    openingTimesEn: text("opening_times_en"),
+    accessConditionsEs: text("access_conditions_es"),
+    accessConditionsEn: text("access_conditions_en"),
+    accessibilityEs: text("accessibility_es"),
+    accessibilityEn: text("accessibility_en"),
+    reproductionServicesEs: text("reproduction_services_es"),
+    reproductionServicesEn: text("reproduction_services_en"),
+    descriptionLanguage: text("description_language"),
+    // The licence on the metadata of this repository's holdings (migration
+    // 0120): a URI only, its label derived from it. Nullable.
+    catalogueLicenceUri: text("catalogue_licence_uri"),
+    // The position of this repository's card on a site's home page,
+    // ascending. Nullable: a repository without one sorts after the rest,
+    // by name.
+    homeOrder: integer("home_order"),
+    // The credit statement (migration 0121): who digitized the
+    // repository's materials, with whom and with whose support, as free
+    // text written per repository. The attribution line uses it as
+    // written, between the place and the licence. Nullable.
+    creditStatementEs: text("credit_statement_es"),
+    creditStatementEn: text("credit_statement_en"),
   },
   (table) => [
     // Per-tenant unique (migration 0043): repository codes are unique
     // within a tenant, not globally.
     uniqueIndex("repo_code_idx").on(table.tenantId, table.code),
   ]
+);
+
+// The funders and projects behind a repository's holdings (migration
+// 0119), shown in `position` order: the funder, its programme, the
+// project's identifier (for example 'EAP 1477') and a link. Part of the
+// repository's record: deleted with it (ON DELETE CASCADE).
+export const repositoryFunders = sqliteTable(
+  "repository_funders",
+  {
+    id: text("id").primaryKey(),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => repositories.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    programme: text("programme"),
+    projectId: text("project_id"),
+    url: text("url"),
+    position: integer("position").notNull().default(0),
+  },
+  (table) => [
+    index("repository_funders_repository_idx").on(table.repositoryId, table.position),
+  ],
 );
 
 // The canonical archival record. Crowdsourced description work does
@@ -1058,6 +1200,11 @@ export const descriptions = sqliteTable(
     hasDigital: integer("has_digital", { mode: "boolean" }).default(false),
     // Workflow
     isPublished: integer("is_published", { mode: "boolean" }).default(false),
+    // When a publish last wrote the description into its fonds' file
+    // (unix ms): the fonds descriptions step sets it, with the time it
+    // read the fonds, on every published description it exported, and
+    // clears it on the unpublished ones it left out. The publish badge
+    // compares it with `updated_at`.
     lastExportedAt: integer("last_exported_at"),
     // Union-schema additions: DACS-only and RAD-only fields landed as
     // nullable text columns. Per-standard mandatoriness is enforced at
@@ -1085,6 +1232,10 @@ export const descriptions = sqliteTable(
     uniqueIndex("desc_ref_code_idx").on(table.tenantId, table.referenceCode),
     index("desc_repo_idx").on(table.repositoryId),
     index("desc_local_id_idx").on(table.localIdentifier),
+    // 0112: the digitization queue's revision reads the latest edit.
+    index("descriptions_tenant_updated_idx").on(table.tenantId, table.updatedAt),
+    // 0116: the publish step reads a fonds' descriptions in id order.
+    index("descriptions_tenant_root_id_idx").on(table.tenantId, table.rootDescriptionId, table.id),
   ]
 );
 
@@ -1163,11 +1314,23 @@ export const entities = sqliteTable(
     internalNotes: text("internal_notes"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    // Relations (migration 0125). `gender` is a code of the federation's
+    // `gender` vocabulary list, or null when not recorded; Fisqua names
+    // no values. `knownOnlyFromRelation` marks a person recorded only
+    // because a relation names them. `qualifiedName` tells apart a
+    // person known by a given name alone ("María, hija de Pedro Díaz").
+    gender: text("gender"),
+    knownOnlyFromRelation: integer("known_only_from_relation", { mode: "boolean" }).notNull().default(false),
+    qualifiedName: text("qualified_name"),
+    // The normalised name the duplicate-candidate job groups records by
+    // (migration 0129). Empty until the job fills it.
+    nameKey: text("name_key"),
   },
   (table) => [
     // Codes are unique per FEDERATION (invariant I5), not global —
     // migration 0048 swapped this from UNIQUE(entity_code).
     uniqueIndex("entity_code_idx").on(table.federationId, table.entityCode),
+    index("entities_name_key_idx").on(table.federationId, table.nameKey),
     index("entity_sort_name_idx").on(table.sortName),
     index("entity_wikidata_idx").on(table.wikidataId),
     index("entity_pf_id_idx").on(table.primaryFunctionId),
@@ -1285,14 +1448,32 @@ export const descriptionEntities = sqliteTable(
     roleRaw: text("role_raw"),
     sequence: integer("sequence").notNull().default(0),
     honorific: text("honorific"), // documentary styling
-    function: text("function"), // documentary styling
     nameAsRecorded: text("name_as_recorded"), // documentary styling
     createdAt: integer("created_at").notNull(),
+    // Relations (migration 0125). On a relation side, `relatedTo` is the
+    // id of the other person's link in the same description (a foreign
+    // key to this table, ON DELETE NO ACTION: D1 refuses a write that
+    // would leave a link naming a link that is gone), and
+    // `relationCertainty` is null when the document states the relation.
+    // `attributes` is a JSON object from a `link_attribute` key to the
+    // value as written; the former `function` column is its `office`
+    // (see `app/lib/link-attributes.server.ts`).
+    relatedTo: text("related_to").references((): AnySQLiteColumn => descriptionEntities.id, { onDelete: "no action" }),
+    relationCertainty: text("relation_certainty", { enum: [...RELATION_CERTAINTIES] }),
+    attributes: text("attributes").notNull().default("{}"),
   },
   (table) => [
     index("de_desc_idx").on(table.descriptionId),
     index("de_entity_role_idx").on(table.entityId, table.role),
-    uniqueIndex("de_unique_idx").on(table.descriptionId, table.entityId, table.role),
+    // A document-role link and a relation side may share a role on one
+    // description; two links alike in all four may not (migration 0125).
+    uniqueIndex("de_unique_idx").on(
+      table.descriptionId,
+      table.entityId,
+      table.role,
+      sql`COALESCE(${table.relatedTo}, '')`,
+    ),
+    index("de_related_to_idx").on(table.relatedTo).where(sql`${table.relatedTo} IS NOT NULL`),
   ]
 );
 
@@ -1323,6 +1504,10 @@ export const drafts = sqliteTable(
   ]
 );
 
+/** The values of `changelog.acted_as` (migration 0127); NULL is a member or the app. */
+export const CHANGELOG_ACTED_AS = ["platform-admin", "lead-admin"] as const;
+export type ChangelogActedAs = (typeof CHANGELOG_ACTED_AS)[number];
+
 export const changelog = sqliteTable(
   "changelog",
   {
@@ -1345,6 +1530,10 @@ export const changelog = sqliteTable(
       .notNull()
       .default("update"),
     createdAt: integer("created_at").notNull(),
+    // How the actor acted (migration 0127): `platform-admin` or
+    // `lead-admin` for a command line run on a workspace they are not a
+    // user of; NULL for a user of the workspace and every app write.
+    actedAs: text("acted_as", { enum: CHANGELOG_ACTED_AS }),
   },
   (table) => [
     index("changelog_record_idx").on(table.recordId, table.recordType, table.createdAt),
@@ -1390,6 +1579,13 @@ export const exportRuns = sqliteTable(
     triggeredBy: text("triggered_by")
       .notNull()
       .references(() => users.id),
+    // The workspace the run was started in (migration 0115), the
+    // request tenant at insert. Every reader scopes on it, never on the
+    // triggering user's stored workspace: a platform admin's row is
+    // stored in one workspace and publishes from others. Nullable at
+    // the DB layer; the migration filled existing rows from the
+    // triggering user, and api.publish always sets it.
+    tenantId: text("tenant_id").references(() => tenants.id),
     status: text("status", {
       enum: ["pending", "running", "complete", "error"],
     }).notNull().default("pending"),
@@ -1414,6 +1610,10 @@ export const exportRuns = sqliteTable(
     totalSteps: integer("total_steps").notNull().default(0),
     // Results
     recordCounts: text("record_counts"), // JSON: { "descriptions:co-ahr-gob": 45000, ... }
+    // When each plan step started and completed (migration 0117): JSON
+    // { "<plan step id>": { startedAt, completedAt } }, unix ms; a link
+    // file's steps share its name. Null on runs before 0117.
+    stepLog: text("step_log"),
     // Workflows tracking — per-step heartbeats and the Cloudflare Workflow instance id
     workflowInstanceId: text("workflow_instance_id"),
     currentStepStartedAt: integer("current_step_started_at"),
@@ -1612,6 +1812,93 @@ export const vocabularyTerms = sqliteTable(
     // scope by federation_id.
     index("vt_federation_idx").on(table.federationId),
   ]
+);
+
+// A federation's own controlled lists (migration 0119): entity types,
+// place types, entity roles, place roles and role groups, one set per
+// federation. A code is unique within its federation and list. A role
+// names its group in `groupCode`, a code of the same federation's
+// `role_group` list (not a foreign key), and `position` orders roles
+// within a group and the groups themselves. A place type may carry an
+// external term: the scheme, the concept URI (for the AAT,
+// `http://vocab.getty.edu/aat/<id>`) and its label. Labels are an es/en
+// pair, either of which may be null. Values keep their federation from
+// being deleted (ON DELETE RESTRICT).
+export const vocabularyValues = sqliteTable(
+  "vocabulary_values",
+  {
+    id: text("id").primaryKey(),
+    federationId: text("federation_id")
+      .notNull()
+      .references(() => federations.id, { onDelete: "restrict" }),
+    list: text("list", { enum: [...VOCABULARY_LISTS] }).notNull(),
+    code: text("code").notNull(),
+    labelEs: text("label_es"),
+    labelEn: text("label_en"),
+    groupCode: text("group_code"),
+    position: integer("position").notNull().default(0),
+    externalScheme: text("external_scheme"),
+    externalUri: text("external_uri"),
+    externalLabel: text("external_label"),
+    status: text("status", { enum: [...VOCABULARY_STATUSES] }).notNull().default("approved"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    // Used by the `relation_role` and `link_attribute` lists only
+    // (migration 0125). `connectorEs`/`connectorEn`: the word between a
+    // relation's label and the other person's name (null: "de" / "of").
+    // `inverseCode`: the code on the other side (the same code for a
+    // symmetric relation). `hideWhenGroup`: on a link attribute, the
+    // relation group that hides it on Zasqua. The label forms, per
+    // language: female, male, unrecorded (gender not recorded) and alone
+    // (no name after it; null where it equals the unrecorded form).
+    connectorEs: text("connector_es"),
+    connectorEn: text("connector_en"),
+    inverseCode: text("inverse_code"),
+    hideWhenGroup: text("hide_when_group"),
+    labelEsFemale: text("label_es_female"),
+    labelEsMale: text("label_es_male"),
+    labelEsUnrecorded: text("label_es_unrecorded"),
+    labelEsAlone: text("label_es_alone"),
+    labelEnFemale: text("label_en_female"),
+    labelEnMale: text("label_en_male"),
+    labelEnUnrecorded: text("label_en_unrecorded"),
+    labelEnAlone: text("label_en_alone"),
+  },
+  (table) => [
+    uniqueIndex("vocabulary_values_federation_list_code_idx").on(
+      table.federationId,
+      table.list,
+      table.code,
+    ),
+    index("vocabulary_values_position_idx").on(table.federationId, table.list, table.position),
+  ],
+);
+
+// The external authority files a federation links its records to
+// (migration 0119): a key unique within the federation, es/en labels, a
+// URL template (for example `https://viaf.org/viaf/{id}`), the kinds of
+// record it applies to as a JSON list (a CHECK refuses anything else),
+// and a status. Sources keep their federation from being deleted (ON
+// DELETE RESTRICT).
+export const authoritySources = sqliteTable(
+  "authority_sources",
+  {
+    id: text("id").primaryKey(),
+    federationId: text("federation_id")
+      .notNull()
+      .references(() => federations.id, { onDelete: "restrict" }),
+    key: text("key").notNull(),
+    labelEs: text("label_es"),
+    labelEn: text("label_en"),
+    urlTemplate: text("url_template"),
+    appliesTo: text("applies_to"),
+    position: integer("position").notNull().default(0),
+    status: text("status", { enum: [...VOCABULARY_STATUSES] }).notNull().default("approved"),
+  },
+  (table) => [
+    uniqueIndex("authority_sources_federation_key_idx").on(table.federationId, table.key),
+    index("authority_sources_position_idx").on(table.federationId, table.position),
+  ],
 );
 
 // authority_operations (migration 0057) is the append-only ledger of
@@ -2401,7 +2688,11 @@ export const pipelineRunChunks = sqliteTable(
     reportedAt: integer("reported_at"),
     createdAt: integer("created_at").notNull(),
   },
-  (table) => [unique().on(table.runId, table.chunkIndex)]
+  (table) => [
+    unique().on(table.runId, table.chunkIndex),
+    // 0112: the digitization queue's revision counts a tenant's chunks by status.
+    index("pipeline_run_chunks_tenant_idx").on(table.tenantId, table.status),
+  ]
 );
 
 export const pipelineRunVolumes = sqliteTable(
@@ -2468,6 +2759,8 @@ export const pipelineRunVolumes = sqliteTable(
     index("pipeline_run_volumes_volume_idx").on(table.pipelineVolumeId, table.createdAt),
     index("pipeline_run_volumes_chunk_idx").on(table.runId, table.chunkIndex, table.status),
     index("pipeline_run_volumes_flags_idx").on(table.flagsTruncated, table.flagsIngestedAt),
+    // 0112: the digitization queue's revision counts a tenant's run volumes by status.
+    index("pipeline_run_volumes_tenant_idx").on(table.tenantId, table.status, table.reportedAt),
   ]
 );
 
@@ -2708,11 +3001,93 @@ export const captureScanners = sqliteTable(
     writeId: text("write_id"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    /** The mode the unit last reported with its user list, and when (0112); null until it reports one. */
+    mode: text("mode", { enum: [...CAPTURE_SCANNER_MODES] }),
+    modeReportedAt: integer("mode_reported_at"),
+    /** The unit's name and device id as reported when it paired (0123); null for a scanner registered before pairing. */
+    unitName: text("unit_name"),
+    deviceId: text("device_id"),
   },
   (table) => [
     uniqueIndex("capture_scanners_tenant_idx").on(table.tenantId),
     uniqueIndex("capture_scanners_token_idx").on(table.tokenSha256),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// Capture pairing (0.9.0, migration 0123)
+// The handshake by which a Captua unit is linked to a workspace by a
+// six-character code (contract 1.11). A `capturePairingCodes` row is one
+// code issued by a unit; only the SHA-256 of the code and of the secret
+// the unit collects with are kept. `state` is `waiting` until a manager
+// approves the code, `approved` until the unit collects, `collected`
+// after, and `void` when withdrawn or expired. `expiresAt` is the end of
+// the current step and `collectBy` the end of the collection window; the
+// two `...RevisionSeen` columns are the scanner and key revisions the
+// approver saw, which are checked at collection. `pollWindowStart` and
+// `pollWindowCalls` are the code's fixed one-minute poll counter.
+// `captureScannerKeys` holds the storage key sealed for a workspace's
+// unit, one row per tenant, with a `revision` raised by every write;
+// an erased row has `sealed` null, and `erasedBy` is plain text, not a
+// key to users. `capturePairingLimits` is the counter of the rate
+// limits no other table holds, one row per limit key. `expiresAt` and
+// `windowStart` are indexed for the live-code count and for the
+// deletion of rows more than a day old.
+// ---------------------------------------------------------------------------
+export const capturePairingCodes = sqliteTable(
+  "capture_pairing_codes",
+  {
+    id: text("id").primaryKey(),
+    codeSha256: text("code_sha256").notNull(),
+    collectSecretSha256: text("collect_secret_sha256").notNull(),
+    unitName: text("unit_name").notNull(),
+    deviceId: text("device_id").notNull(),
+    /** The workspace the unit reports it is currently linked to; never looked up. */
+    currentTenant: text("current_tenant"),
+    state: text("state", { enum: [...CAPTURE_PAIRING_STATES] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "restrict" }),
+    approvedBy: text("approved_by").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: integer("approved_at"),
+    collectBy: integer("collect_by"),
+    scannerRevisionSeen: integer("scanner_revision_seen"),
+    keysRevisionSeen: integer("keys_revision_seen"),
+    collectedAt: integer("collected_at"),
+    pollWindowStart: integer("poll_window_start"),
+    pollWindowCalls: integer("poll_window_calls").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("capture_pairing_codes_code_idx").on(table.codeSha256),
+    index("capture_pairing_codes_expires_idx").on(table.expiresAt),
+  ],
+);
+
+export const captureScannerKeys = sqliteTable("capture_scanner_keys", {
+  tenantId: text("tenant_id")
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: "restrict" }),
+  applianceId: text("appliance_id").notNull(),
+  bucket: text("bucket").notNull(),
+  /** The sealed key; null once erased. */
+  sealed: text("sealed"),
+  ageRecipient: text("age_recipient").notNull(),
+  /** Raised by every write. */
+  revision: integer("revision").notNull(),
+  storedAt: integer("stored_at").notNull(),
+  erasedAt: integer("erased_at"),
+  /** Plain text, not a key to users. */
+  erasedBy: text("erased_by"),
+});
+
+export const capturePairingLimits = sqliteTable(
+  "capture_pairing_limits",
+  {
+    key: text("key").primaryKey(),
+    windowStart: integer("window_start").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [index("capture_pairing_limits_window_idx").on(table.windowStart)],
 );
 
 export const captureDeliveries = sqliteTable(
@@ -2769,6 +3144,13 @@ export const captureDeliveries = sqliteTable(
      * or Retry clears it.
      */
     reviewDeclinedAt: integer("review_declined_at"),
+    /**
+     * What the manifest volume says of its calibration shots, `present` or
+     * `skipped` (contract §13, 0128); null when it says nothing.
+     */
+    calibrationStatus: text("calibration_status", { enum: ["present", "skipped"] }),
+    /** Why the shots were skipped, as the unit gave it; only with `skipped` (0128). */
+    calibrationSkippedReason: text("calibration_skipped_reason"),
   },
   (table) => [
     primaryKey({ columns: [table.tenantId, table.id] }),
@@ -2801,8 +3183,8 @@ export const captureImages = sqliteTable(
     previewKey: text("preview_key"),
     previewSha256: text("preview_sha256"),
     previewBytes: integer("preview_bytes"),
-    /** The status of the image's record in the manifest (0100); null where it could not be told. */
-    recordStatus: text("record_status", { enum: ["captured", "in_review", "approved", "rejected"] }),
+    /** The status of the image's record in the manifest (0100; `excluded` from 0111); null where it could not be told. */
+    recordStatus: text("record_status", { enum: ["captured", "in_review", "approved", "rejected", "excluded"] }),
     /**
      * The clockwise rotation, 0, 90, 180 or 270 degrees, that makes the
      * image the pipeline reads upright from its stored pixels, EXIF
@@ -2816,8 +3198,43 @@ export const captureImages = sqliteTable(
   ],
 );
 
+/**
+ * A delivery's calibration shots (contract §13, 0128): photographs of a
+ * colour reference card, never pages, kept apart from `captureImages` so
+ * nothing that reads a volume's images or openings meets them. `seq` is
+ * the shot's place in the manifest's list, from 1; `settings` is the JSON
+ * object the manifest gives, as given.
+ */
+export const captureCalibrationShots = sqliteTable(
+  "capture_calibration_shots",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    /** With `tenantId`, the delivery's key (a composite foreign key in 0128). */
+    deliveryId: text("delivery_id").notNull(),
+    seq: integer("seq").notNull(),
+    captureId: text("capture_id").notNull(),
+    filename: text("filename").notNull(),
+    camera: text("camera").notNull(),
+    /** ISO 8601, as the manifest gives it. */
+    capturedAt: text("captured_at").notNull(),
+    settings: text("settings").notNull(),
+    appliesFromCaptureId: text("applies_from_capture_id").notNull(),
+    captureKey: text("capture_key").notNull(),
+    captureSha256: text("capture_sha256").notNull(),
+    captureBytes: integer("capture_bytes"),
+    previewKey: text("preview_key"),
+    previewSha256: text("preview_sha256"),
+    previewBytes: integer("preview_bytes"),
+    rotateDeg: integer("rotate_deg"),
+  },
+  (table) => [uniqueIndex("capture_calibration_shots_delivery_idx").on(table.tenantId, table.deliveryId, table.seq)],
+);
+
 // ---------------------------------------------------------------------------
-// Capture QC (0.8.0, migrations 0094 and 0096)
+// Capture QC (0.8.0, migrations 0094 and 0096; excluded openings, 0111)
 // The decisions Fisqua makes on each opening a Captua unit delivered
 // (the Captua exchange contract's capture QC). A `captureQcSets` row is
 // the decision set of one delivery: decisions belong to the delivery
@@ -2827,7 +3244,9 @@ export const captureImages = sqliteTable(
 // supersedes (`carriedFrom`, migration 0100). `decisionsId` and
 // `decidedAt` change with every write; the counts and `state` are
 // recounted from the decisions in the same batch. A decision is one per
-// opening (Captua record), with its reason when rejected, an optional
+// opening (Captua record): approved, rejected for retake, or excluded
+// as not a page (a test shot, a duplicate), with its reason when
+// rejected, an optional
 // note (required for `other`), and who decided, by id and by the name
 // the unit is told. Rotations are per image of a decision, in
 // quarter-turns clockwise. An image is its capture id and its role
@@ -2854,6 +3273,8 @@ export const captureQcSets = sqliteTable(
     decidedCount: integer("decided_count").notNull().default(0),
     approvedCount: integer("approved_count").notNull().default(0),
     rejectedCount: integer("rejected_count").notNull().default(0),
+    /** Openings excluded as not pages (0111); approved, rejected and excluded add up to decided. */
+    excludedCount: integer("excluded_count").notNull().default(0),
     /** The bytes of every note of the set; capped at 1,000,000 by a CHECK. */
     notesBytes: integer("notes_bytes").notNull().default(0),
     state: text("state", { enum: [...CAPTURE_QC_SET_STATES] }).notNull(),
@@ -3003,4 +3424,156 @@ export const captureReviewRuns = sqliteTable(
   ],
 );
 
-// @version v0.8.0
+// ---------------------------------------------------------------------------
+// Digitization queue (0112)
+// A scanner's operators are the user list its Captua unit sends, kept
+// per scanner and replaced whole by each send; they are not Fisqua
+// accounts. A queue entry is one description the workspace wants
+// captured, one row per description per tenant, withdrawn rather than
+// deleted. `changedAt` is stamped by every write and strictly increases
+// across the tenant's entries, so its maximum orders the queue's
+// revisions; `withdrawnAt` carries the withdrawal's stamp. The unit's
+// acknowledgement is kept on the entry: applied (with its collection
+// id), skipped (with its reason), and the highest revision stamp it was
+// acknowledged under (`ackedRevision`). A volume with retakes
+// outstanding is in the queue without a row; `origin` 'retake' marks a
+// row written to hold its assignment, note or acknowledgement.
+// ---------------------------------------------------------------------------
+export const captureScannerOperators = sqliteTable(
+  "capture_scanner_operators",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    scannerId: text("scanner_id")
+      .notNull()
+      .references(() => captureScanners.id, { onDelete: "restrict" }),
+    username: text("username").notNull(),
+    displayName: text("display_name").notNull(),
+    role: text("role", { enum: [...CAPTURE_OPERATOR_ROLES] }).notNull(),
+    active: integer("active", { mode: "boolean" }).notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scannerId, table.username] }),
+    index("capture_scanner_operators_tenant_idx").on(table.tenantId, table.scannerId),
+  ],
+);
+
+export const captureQueueEntries = sqliteTable(
+  "capture_queue_entries",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    descriptionId: text("description_id")
+      .notNull()
+      .references(() => descriptions.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    /**
+     * 'retake' for a row written only to hold a retake volume's
+     * assignment, note or acknowledgement; its id is the pipeline
+     * volume's. 'queue' for a description someone added.
+     */
+    origin: text("origin", { enum: [...CAPTURE_QUEUE_ORIGINS] }).notNull().default("queue"),
+    action: text("action", { enum: [...CAPTURE_QUEUE_ACTIONS] }).notNull().default("full-digitisation"),
+    note: text("note"),
+    scannerId: text("scanner_id").references(() => captureScanners.id, { onDelete: "restrict" }),
+    /** An operator of `scannerId`, by the unit's username; needs the scanner. */
+    assigneeUsername: text("assignee_username"),
+    addedBy: text("added_by").references(() => users.id, { onDelete: "set null" }),
+    addedAt: integer("added_at").notNull(),
+    changedAt: integer("changed_at").notNull(),
+    withdrawnAt: integer("withdrawn_at"),
+    appliedAt: integer("applied_at"),
+    collectionId: text("collection_id"),
+    skippedAt: integer("skipped_at"),
+    skippedReason: text("skipped_reason"),
+    ackedRevision: integer("acked_revision"),
+    /** The stamp at which a withdrawn entry was added again; earlier revisions' acknowledgements do not count. */
+    revivedStamp: integer("revived_stamp"),
+  },
+  (table) => [
+    uniqueIndex("capture_queue_entries_description_idx").on(table.tenantId, table.descriptionId),
+    index("capture_queue_entries_position_idx").on(table.tenantId, table.position),
+    index("capture_queue_entries_scanner_idx").on(table.tenantId, table.scannerId),
+  ],
+);
+
+/**
+ * The queue revisions answered to each scanner (0112), with the stamp
+ * each was served at; an acknowledgement counts only under one of them.
+ */
+export const captureQueueServed = sqliteTable(
+  "capture_queue_served",
+  {
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    scannerId: text("scanner_id")
+      .notNull()
+      .references(() => captureScanners.id, { onDelete: "restrict" }),
+    revision: text("revision").notNull(),
+    stamp: integer("stamp").notNull(),
+    servedAt: integer("served_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scannerId, table.revision] }),
+    index("capture_queue_served_age_idx").on(table.tenantId, table.scannerId, table.servedAt),
+  ],
+);
+
+// Duplicate candidates (migration 0129). A scheduled job reads the marks in
+// `duplicate_recheck`, rechecks those records, and writes the pairs to
+// `duplicate_candidates`. The triggers in the migration write the marks;
+// the app writes none of these tables except through the job.
+
+// One row per record to look at again: an entity (`descriptionId` empty) or
+// an entity on one description. A record marked again gets a higher `seq`.
+export const duplicateRecheck = sqliteTable(
+  "duplicate_recheck",
+  {
+    seq: integer("seq").primaryKey({ autoIncrement: true }),
+    entityId: text("entity_id").notNull(),
+    descriptionId: text("description_id").notNull().default(""),
+    markedAt: integer("marked_at").notNull(),
+  },
+  (table) => [unique("duplicate_recheck_entity_description_unq").on(table.entityId, table.descriptionId)],
+);
+
+// The name-key deletion variants of each entity, for names one edit apart.
+export const duplicateNameDeletions = sqliteTable(
+  "duplicate_name_deletions",
+  {
+    federationId: text("federation_id").notNull(),
+    deletion: text("deletion").notNull(),
+    entityId: text("entity_id").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.federationId, table.deletion, table.entityId] }),
+    index("duplicate_name_deletions_entity_idx").on(table.entityId),
+  ],
+);
+
+// The candidate pairs. `idA` sorts before `idB`; `facts` is JSON.
+export const duplicateCandidates = sqliteTable(
+  "duplicate_candidates",
+  {
+    idA: text("id_a").notNull(),
+    idB: text("id_b").notNull(),
+    federationId: text("federation_id").notNull(),
+    tenantId: text("tenant_id").notNull(),
+    facts: text("facts").notNull(),
+    weight: integer("weight").notNull(),
+    computedAt: integer("computed_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.idA, table.idB] }),
+    index("duplicate_candidates_weight_idx").on(table.tenantId, sql`${table.weight} DESC`),
+    index("duplicate_candidates_id_a_idx").on(table.idA),
+    index("duplicate_candidates_id_b_idx").on(table.idB),
+  ],
+);
+
+// @version v0.9.0

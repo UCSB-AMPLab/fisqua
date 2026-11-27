@@ -11,7 +11,7 @@
  *   - the guarantee that internal_notes never appears in export output
  *     (the export formatters have no such column).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -350,7 +350,6 @@ describe("internal notes are never exported", () => {
       dateStart: null,
       dateEnd: null,
       history: null,
-      functions: null,
       sources: null,
       wikidataId: null,
       viafId: null,
@@ -360,3 +359,5 @@ describe("internal notes are never exported", () => {
     expect("notes" in out).toBe(false);
   });
 });
+
+// @version v0.9.0

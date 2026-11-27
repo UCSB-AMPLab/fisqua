@@ -14,8 +14,12 @@
  * its federation, or a federation grant into it; an operator inside an impersonation
  * envelope counts as staff too, so that path is unchanged. `reader`
  * holds the Reader flag and nothing else. `none` holds nothing at all.
- * `memberAccess` is the same rule with those reads done for it. A Reader who also holds a staff role is staff: the
- * Reader flag adds the `/records` pages and takes nothing away.
+ * `memberAccess` is the same rule with those reads done for it; each
+ * of its reads is retried while D1 refuses it as overloaded
+ * (`retryD1Read`), and a refusal that outlasts the retries fails the
+ * request, which the root `serviceBusyMiddleware` answers with 503. A
+ * Reader who also holds a staff role is staff: the Reader flag adds the
+ * `/records` pages and takes nothing away.
  *
  * WHERE A MEMBER MAY GO. `confineMemberAccess` is a middleware that
  * runs on the authenticated layout right after `authMiddleware`. Staff
@@ -43,10 +47,10 @@
  * Reader unpublished records.
  *
  * WHO MAY OPEN THE RECORDS PAGES. `canReadRecords` admits a Reader and
- * whoever passes the records area (`canAdministerArea`): a workspace
+ * whoever works in the records area (`canWorkInArea`): a workspace
  * admin (`isAdmin`, which a federation steward's grant also carries), a
- * super admin or a records admin; `requireRecordsReader` throws 403 for
- * anyone else.
+ * super admin, a records admin or a federation staff grant;
+ * `requireRecordsReader` throws 403 for anyone else.
  *
  * PUBLISHED ONLY. Every read below filters on
  * `descriptions.is_published = 1` and on the request tenant, in the
@@ -72,7 +76,9 @@
  * through `authorityScope` with the request tenant's federation and the
  * request tenant as owner, as every other authority read is: a link to
  * another federation's authority, or to an authority another member
- * tenant owns, is not shown.
+ * tenant owns, is not shown. Each entity link says whether it is a
+ * relation side (`relationSideSql`), so the page labels its role from
+ * the relation roles, and carries no id of the link it names.
  *
  * REFERENCE CODES ARE SHOWN WHOLE. A published record's reference code
  * is shown as stored, including any prefix it shares with an
@@ -86,7 +92,7 @@
  * repository), and its `childCount` is replaced by the count of
  * published children.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { redirect } from "react-router";
@@ -106,6 +112,8 @@ import {
   projects,
   repositories,
 } from "../db/schema";
+import { officeSql } from "./link-attributes.server";
+import { relationSideSql } from "./relation-sides.server";
 import {
   grantContext,
   impersonationContext,
@@ -114,10 +122,11 @@ import {
   type User,
 } from "../context";
 import { NEVER_RENDERED } from "./export/finding-aid.server";
+import { retryD1Read, type D1Site } from "./d1-overload";
 import { authorityScope } from "./authority-ownership.server";
 import {
   AREA_ADMIN_FLAGS,
-  canAdministerArea,
+  canWorkInArea,
   type AccessUser,
   type AreaFlag,
 } from "./user-access.server";
@@ -193,13 +202,16 @@ export function memberAccessFrom(
  * steward or staff, in its federation. The last covers a member reached
  * on their home tenant, where no grant is resolved but a steward
  * membership still makes them a capture manager and a federation
- * steward.
+ * steward. Each read is retried while D1 refuses it as overloaded,
+ * logged as `member_project_membership`, `member_capture_review` and
+ * `member_federation_membership` with `site`'s request and context.
  */
 export async function memberAccess(
   db: DrizzleD1Database<any>,
   tenant: { id: string; federationId: string; digitizationEnabled: boolean },
   user: User,
   held: { hasGrant: boolean; isImpersonating: boolean },
+  site: Omit<D1Site, "read"> = {},
 ): Promise<MemberAccess> {
   const withoutReads = memberAccessFrom(user, {
     ...held,
@@ -208,38 +220,46 @@ export async function memberAccess(
     hasFederationMembership: false,
   });
   if (withoutReads === "staff") return "staff";
+  const read = <T>(name: string, run: () => Promise<T>): Promise<T> =>
+    retryD1Read(run, undefined, undefined, { ...site, read: name });
   const [membership, review, federation] = await Promise.all([
-    db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-      .where(and(eq(projectMembers.userId, user.id), eq(projects.tenantId, tenant.id)))
-      .limit(1)
-      .all(),
+    read("member_project_membership", () =>
+      db
+        .select({ id: projectMembers.id })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+        .where(and(eq(projectMembers.userId, user.id), eq(projects.tenantId, tenant.id)))
+        .limit(1)
+        .all(),
+    ),
     tenant.digitizationEnabled
-      ? db
-          .select({ id: captureQcReviewers.pipelineVolumeId })
-          .from(captureQcReviewers)
-          .where(
-            and(
-              eq(captureQcReviewers.tenantId, tenant.id),
-              eq(captureQcReviewers.reviewerId, user.id),
-            ),
-          )
-          .limit(1)
-          .all()
+      ? read("member_capture_review", () =>
+          db
+            .select({ id: captureQcReviewers.pipelineVolumeId })
+            .from(captureQcReviewers)
+            .where(
+              and(
+                eq(captureQcReviewers.tenantId, tenant.id),
+                eq(captureQcReviewers.reviewerId, user.id),
+              ),
+            )
+            .limit(1)
+            .all(),
+        )
       : Promise.resolve([]),
-    db
-      .select({ id: federationMemberships.id })
-      .from(federationMemberships)
-      .where(
-        and(
-          eq(federationMemberships.userId, user.id),
-          eq(federationMemberships.federationId, tenant.federationId),
-        ),
-      )
-      .limit(1)
-      .all(),
+    read("member_federation_membership", () =>
+      db
+        .select({ id: federationMemberships.id })
+        .from(federationMemberships)
+        .where(
+          and(
+            eq(federationMemberships.userId, user.id),
+            eq(federationMemberships.federationId, tenant.federationId),
+          ),
+        )
+        .limit(1)
+        .all(),
+    ),
   ]);
   return memberAccessFrom(user, {
     ...held,
@@ -298,6 +318,7 @@ export const confineMemberAccess: MiddlewareFunction = async ({
       hasGrant: context.get(grantContext) !== null,
       isImpersonating: context.get(impersonationContext) !== null,
     },
+    { request, context },
   );
   const pathname = new URL(request.url).pathname;
   if (memberMayOpen(access, pathname)) return;
@@ -309,7 +330,7 @@ export const confineMemberAccess: MiddlewareFunction = async ({
 
 /** Readers and those who pass the records area open the records pages. */
 export function canReadRecords(user: Pick<User, "isArchiveUser"> & AccessUser): boolean {
-  return user.isArchiveUser || canAdministerArea(user, "records");
+  return user.isArchiveUser || canWorkInArea(user, "records");
 }
 
 /** Throws 403 unless `canReadRecords`. */
@@ -426,6 +447,8 @@ export interface ReaderEntityLink {
   createdAt: number;
   entityDisplayName: string;
   entityCode: string | null;
+  /** Whether the link is a relation side, which labels its role from the relation roles. */
+  relationSide: boolean;
 }
 
 /** A record's place link as the Reader page shows it. */
@@ -522,11 +545,12 @@ export async function loadPublishedRecord(
         roleNote: descriptionEntities.roleNote,
         sequence: descriptionEntities.sequence,
         honorific: descriptionEntities.honorific,
-        function: descriptionEntities.function,
+        function: officeSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
         createdAt: descriptionEntities.createdAt,
         entityDisplayName: entities.displayName,
         entityCode: entities.entityCode,
+        relationSide: relationSideSql(),
       })
       .from(descriptionEntities)
       .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
@@ -604,4 +628,4 @@ export function readerHiddenColumns(): string[] {
   return [...NEVER_RENDERED].filter((column) => column !== "repositoryId");
 }
 
-// @version v0.8.0
+// @version v0.9.0

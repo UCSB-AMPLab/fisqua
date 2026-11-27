@@ -1,12 +1,13 @@
 /**
  * Tests — media pipeline raw SQL tenant scope
  *
- * The cross-tenant keystone (`tests/db/cross-tenant-coverage.test.ts`)
- * reads query-builder calls (`from(t)`, `update(t)`, `delete(t)`,
- * `insert(t)`) and cannot see SQL written inside a `sql` template: an
- * `INSERT ... SELECT` run through `db.run(sql`...`)`, an `EXISTS` guard
- * inside `.where()`, or a subquery inside `.set()`. This suite covers
- * that gap for the media pipeline modules.
+ * This suite covers, for the media pipeline modules, the tenant scope of
+ * SQL that the cross-tenant keystone cannot see. The keystone
+ * (`tests/db/cross-tenant-coverage.test.ts`) reads query-builder calls
+ * (`from(t)`, `update(t)`, `delete(t)`, `insert(t)`) and cannot see SQL
+ * written inside a `sql` template: an `INSERT ... SELECT` run through
+ * `db.run(sql`...`)`, an `EXISTS` guard inside `.where()`, or a subquery
+ * inside `.set()`.
  *
  * It reads every `app/lib/pipeline/*.server.ts` file, and the capture
  * link's `app/lib/capture/*.server.ts`, whose writes register pipeline
@@ -22,11 +23,12 @@
  * cannot pass on one predicate.
  *
  * The few statements that are cross-tenant by design (the scheduled
- * sweep's) are listed in `ALLOWED_UNSCOPED`, each with its reason. An
+ * sweep's, and the global count behind the cap on active review runs)
+ * are listed in `ALLOWED_UNSCOPED`, each with its reason. An
  * entry that matches no template fails the suite, so an exemption
  * cannot outlive its statement.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -72,7 +74,14 @@ const BOUND_PREDICATE = /\$\{\s*[\w.]+\.tenantId\s*\}\s*=/g;
  * each identified by its file and a substring of its own text.
  */
 type Allowed = { file: string; match: string; reason: string };
-const ALLOWED_UNSCOPED: ReadonlyArray<Allowed> = [];
+const ALLOWED_UNSCOPED: ReadonlyArray<Allowed> = [
+  {
+    file: "app/lib/capture/review-run.server.ts",
+    match: "SELECT COUNT(*) FROM capture_review_runs c JOIN pipeline_runs r",
+    reason:
+      "The cap on active review runs counts them across every tenant, since the runners and the storage they share are global; it returns a count and no rows, and its join keeps each run to its own tenant's review row.",
+  },
+];
 
 type Template = { file: string; line: number; text: string };
 

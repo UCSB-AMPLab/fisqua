@@ -25,8 +25,12 @@
  *     check on existing behaviour).
  *   - lastActiveAt throttle still suppresses repeat writes within
  *     5 minutes (regression check on existing logic).
+ *   - a federation `staff` grant into a member of its federation: the
+ *     effective user works in every area and administers none, and a
+ *     write under it records one `edit_on_behalf` row naming the staff
+ *     role, the home tenant as actor and the member as target.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -36,6 +40,8 @@ import { RouterContextProvider } from "react-router";
 import {
   applyMigrations,
   cleanDatabase,
+  seedFederations,
+  DEFAULT_TEST_FEDERATION_ID,
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
@@ -47,7 +53,7 @@ import {
   userContext,
 } from "../../app/context";
 import { createSessionStorage } from "../../app/sessions.server";
-import { users } from "../../app/db/schema";
+import { federationMemberships, users } from "../../app/db/schema";
 
 const TEST_SECRET = "test-session-secret";
 
@@ -436,4 +442,43 @@ describe("authMiddleware", () => {
     // Date.now() inside the middleware.
     expect(row?.lastActiveAt).toBe(fresh);
   });
+
+  it("applies a staff grant's work-only flags and audits its writes as edit_on_behalf", async () => {
+    await seedFederations();
+    const user = await createTestUser({ tenantId: SECOND_TEST_TENANT_ID, isAdmin: true });
+    await drizzle(env.DB).insert(federationMemberships).values({
+      id: crypto.randomUUID(),
+      userId: user.id,
+      federationId: DEFAULT_TEST_FEDERATION_ID,
+      role: "staff",
+      createdAt: Date.now(),
+    });
+    const cookie = await makeSessionCookie(user.id);
+    const request = new Request("https://neogranadina.fisqua.test/admin/capture/queue", {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    const ctx = buildContext();
+
+    await authMiddleware({ request, context: ctx } as any, async () => undefined);
+
+    const effective = ctx.get(userContext);
+    expect(effective.isAdmin).toBe(false);
+    expect(effective.worksInEveryArea).toBe(true);
+    const { results } = await env.DB.prepare(
+      "SELECT actor_user_id, actor_tenant_id, action, target_tenant_id, target_object_kind, details FROM audit_log",
+    ).all();
+    expect(results).toEqual([
+      {
+        actor_user_id: user.id,
+        actor_tenant_id: SECOND_TEST_TENANT_ID,
+        action: "edit_on_behalf",
+        target_tenant_id: DEFAULT_TEST_TENANT_ID,
+        target_object_kind: "grant_write",
+        details: JSON.stringify({ role: "staff", method: "POST", path: "/admin/capture/queue" }),
+      },
+    ]);
+  });
 });
+
+// @version v0.9.0

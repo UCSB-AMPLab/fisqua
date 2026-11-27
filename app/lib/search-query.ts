@@ -93,7 +93,7 @@
  * once trimmed drops that row and leaves the rest of the query
  * standing.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 /** The field scopes a refinement may carry, in display order. */
@@ -232,7 +232,7 @@ export function isBlank(p: ParsedSearch): boolean {
  * the words in order — and with the star, a phrase whose last word is
  * open-ended.
  */
-function quotedUnit(term: string): string {
+export function quotedUnit(term: string): string {
   const prefixed = term.endsWith("*");
   const text = prefixed ? term.slice(0, -1) : term;
   return `"${text.replaceAll('"', '""')}"${prefixed ? "*" : ""}`;

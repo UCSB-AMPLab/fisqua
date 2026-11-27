@@ -39,7 +39,10 @@
  * delivery has no review run yet (one registered from a file) has its
  * review images prepared. A received or in-review volume with no reviewer is
  * assigned one from the queue; with a reviewer, review continues in the
- * viewer. Retakes wait for the scanner. Processing shows that it runs.
+ * viewer. A volume with retakes requested whose holding delivery still
+ * has undecided openings is on the queue (`queuedVolume`), so its next
+ * step is review in the same way; once every opening is decided, it
+ * waits for the scanner. Processing shows that it runs.
  * A published volume opens at its description.
  *
  * A refused handover is explained by its first problem's rule, never
@@ -47,10 +50,26 @@
  * (`refusalKey`).
  *
  * The queue holds the volumes waiting for capture review: registered and
- * undecided, preparing review images, or in capture QC (`inQueue`).
+ * undecided, preparing review images, or in capture QC (`inQueue`), and
+ * a volume with retakes requested whose holding delivery still has
+ * undecided openings (`queuedVolume`). The unit is asked for the retakes
+ * as soon as an opening is rejected, and the volume stays on the queue
+ * until every opening is decided; a volume whose openings are all
+ * decided, or that waits for retakes only (every opening approved, or
+ * none), is on Retakes and not on the queue.
+ * `queueReadinessOf` says whether a queued volume can be reviewed now,
+ * from its screen state: ready once it is in capture QC (its review
+ * images are ready, or its federation has no review-tiles bucket);
+ * preparing while its review run is open; not prepared while its
+ * delivery has no review run; failed when its review run failed.
+ * A volume with retakes requested has no such screen state, so
+ * `queueReadinessFor` reads its readiness from its holding delivery's
+ * review images in the same way (`reviewReadinessOf`).
+ * `sortQueue` lists the ready volumes first, then those preparing, not
+ * prepared and failed, keeping the order it was given within each group.
  * `waitingDays` counts whole days since a delivery was registered.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { CaptureLinkState } from "../validation/enums";
@@ -139,6 +158,9 @@ export interface NextStepInput {
   hasEarlierDelivery: boolean;
   /** The holding delivery's review run; absent counts as `not_applicable`. */
   review?: ReviewStep;
+  /** The holding delivery's openings and how many are decided; absent counts as all decided. */
+  openings?: number;
+  decided?: number;
 }
 
 export function nextStepOf(v: NextStepInput): NextStep | null {
@@ -155,6 +177,9 @@ export function nextStepOf(v: NextStepInput): NextStep | null {
     case "preparing_review":
       return v.hasEarlierDelivery ? "retakes_came_back" : "review_opens";
     case "retakes_requested":
+      if (v.registered && (v.decided ?? 0) < (v.openings ?? 0)) {
+        return v.hasReviewer ? "continue_review" : "assign_reviewer";
+      }
       return "waiting_for_scanner";
     case "running":
       return "running";
@@ -170,6 +195,68 @@ export const QUEUE_LINK_STATES: readonly CaptureLinkState[] = ["registered", "pr
 
 export function inQueue(state: CaptureLinkState): boolean {
   return QUEUE_LINK_STATES.includes(state);
+}
+
+/**
+ * Whether a volume is on the queue (module header): its link state is a
+ * queue state, or it is `retakes_requested` while its holding delivery
+ * still has undecided openings.
+ */
+export function queuedVolume(v: { linkState: CaptureLinkState; openings: number; decided: number }): boolean {
+  return inQueue(v.linkState) || (v.linkState === "retakes_requested" && v.decided < v.openings);
+}
+
+/** Whether a queued volume can be reviewed now, in the order the queue lists them. */
+export const QUEUE_READINESS = ["ready", "preparing", "not_prepared", "failed"] as const;
+export type QueueReadiness = (typeof QUEUE_READINESS)[number];
+
+/** A queued volume's readiness, from its screen state (module header). */
+export function queueReadinessOf(state: ScreenState): QueueReadiness {
+  switch (state) {
+    case "in_capture_qc":
+      return "ready";
+    case "preparing_review":
+      return "preparing";
+    case "review_failed":
+      return "failed";
+    default:
+      return "not_prepared";
+  }
+}
+
+/** A volume's readiness from its holding delivery's review images alone. */
+export function reviewReadinessOf(review: ReviewStep): QueueReadiness {
+  switch (review) {
+    case "ready":
+    case "not_applicable":
+      return "ready";
+    case "open":
+      return "preparing";
+    case "failed":
+      return "failed";
+    default:
+      return "not_prepared";
+  }
+}
+
+/**
+ * A queued volume's readiness (module header): from its review images
+ * while it is `retakes_requested`, from its screen state otherwise.
+ */
+export function queueReadinessFor(v: {
+  linkState: CaptureLinkState;
+  state: ScreenState;
+  reviewStep: ReviewStep;
+}): QueueReadiness {
+  return v.linkState === "retakes_requested" ? reviewReadinessOf(v.reviewStep) : queueReadinessOf(v.state);
+}
+
+/** The ready volumes first; the order given is kept within each readiness. */
+export function sortQueue<T extends { readiness: QueueReadiness }>(rows: T[]): T[] {
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => QUEUE_READINESS.indexOf(a.row.readiness) - QUEUE_READINESS.indexOf(b.row.readiness) || a.i - b.i)
+    .map(({ row }) => row);
 }
 
 /**
@@ -207,6 +294,12 @@ export const REFUSAL_RULES: readonly string[] = [
   "roles",
   "object-missing",
   "missing-object",
+  "calibration-object",
+  "calibration-applies-from",
+  "calibration-identity",
+  "calibration-key",
+  "rotate-deg",
+  "missing-side",
   "already-registered",
   "id-reused",
   "too-large",
@@ -233,4 +326,4 @@ export function waitingDays(since: number, now: number): number {
   return Math.max(0, Math.floor((now - since) / DAY_MS));
 }
 
-// @version v0.8.0
+// @version v0.9.0

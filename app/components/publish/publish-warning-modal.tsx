@@ -3,10 +3,14 @@
  *
  * This dialog is the confirm-before-kicking-off step for the Publish
  * button. Autofocus lands on Cancel — requiring a deliberate commit — and
- * Escape dismisses. Surfaces the total record count so operators can
- * sanity-check the scope of what they are about to regenerate.
+ * Escape dismisses. Surfaces an estimate of the run's length from the
+ * total record count so operators can sanity-check the scope of what
+ * they are about to regenerate. The count comes from the page's
+ * pre-flight counts, which load after the page renders; while they are
+ * not there (`totalRecordCount` null) the estimate is left out rather
+ * than shown as one minute.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
 import { useEffect, useRef } from "react";
@@ -14,7 +18,7 @@ import { useTranslation } from "react-i18next";
 
 interface PublishWarningModalProps {
   open: boolean;
-  totalRecordCount: number;
+  totalRecordCount: number | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -56,7 +60,10 @@ export function PublishWarningModal({
 
   // Estimate: one minute per 50k records, minimum one minute. Matches the
   // observed Workflows step wall clock at verification time.
-  const minutes = Math.max(1, Math.ceil(totalRecordCount / 50000));
+  const minutes =
+    totalRecordCount === null
+      ? null
+      : Math.max(1, Math.ceil(totalRecordCount / 50000));
 
   return (
     <div
@@ -75,9 +82,11 @@ export function PublishWarningModal({
         <p className="mt-3 font-sans text-sm text-stone-600">
           {t("warning.body")}
         </p>
-        <p className="mt-3 font-sans text-sm font-medium text-stone-800">
-          {t("warning.estimate", { minutes })}
-        </p>
+        {minutes !== null && (
+          <p className="mt-3 font-sans text-sm font-medium text-stone-800">
+            {t("warning.estimate", { minutes })}
+          </p>
+        )}
 
         <div className="mt-6 flex justify-end gap-3">
           <button

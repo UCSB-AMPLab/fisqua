@@ -1,12 +1,13 @@
 /**
  * Authority workbench — ledger-derived superseded status
  *
- * The merge/split workbenches (spec §4) leave the superseded record in
- * place: a merged-away record keeps its page, and both halves of a
- * split keep theirs. The status band atop those pages is DERIVED FROM
- * THE LEDGER (`authority_operations`) — there is no superseded column
- * and no new schema. This module owns that derivation: given a record
- * and an operation, it returns who performed it and when, resolving the
+ * This module deals with the superseded status of a merged or split
+ * record, derived from the ledger. The merge and split workbenches leave
+ * the superseded record in place: a merged-away record keeps its page, and
+ * both halves of a split keep theirs. The status band atop those pages is
+ * DERIVED FROM THE LEDGER (`authority_operations`) — there is no
+ * superseded column and no schema of its own. Given a record and an
+ * operation, the module returns who performed it and when, resolving the
  * actor's display name through the federation-scoped users join.
  *
  * `mergedInto` remains the live pointer the lists and detail loaders
@@ -14,7 +15,13 @@
  * from the immutable ledger row the merge/split action wrote in the
  * same batch as the mutation.
  *
- * @version v0.8.0
+ * A merge row whose detail carries `"carry":"functions"` records only
+ * that an earlier merge's function rows were moved to the survivor
+ * afterwards (`scripts/commands/carry-merged-functions.ts`); it is not
+ * the merge, and neither the band nor the history reads it
+ * (`notFunctionCarry`).
+ *
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -47,12 +54,14 @@ export async function getOperationActor(
     targetId?: string;
   },
 ): Promise<OperationActor | null> {
-  const { and, eq, desc } = await import("drizzle-orm");
+  const { and, eq, desc, sql } = await import("drizzle-orm");
   const { authorityOperations, users } = await import("../db/schema");
+  const { notFunctionCarry } = await import("./authority-operations.server");
 
   const conditions = [
     eq(authorityOperations.recordType, args.recordType),
     eq(authorityOperations.operation, args.operation),
+    notFunctionCarry(authorityOperations.detail),
   ];
   if (args.sourceId) {
     conditions.push(eq(authorityOperations.sourceId, args.sourceId));
@@ -142,7 +151,8 @@ export const OPERATION_HISTORY_LIMIT = 100;
  * (production backfill volume: a record can carry one resolve row plus
  * dozens of separate rows). Federation-scoped; the read-only history
  * route builds its direction-aware human titles from `operation` +
- * `direction` + the counterpart's name.
+ * `direction` + the counterpart's name. Function-carry rows are not
+ * operations on the record and are left out of the rows and the total.
  */
 export async function getOperationHistory(
   db: DrizzleD1Database<any>,
@@ -154,8 +164,10 @@ export async function getOperationHistory(
 ): Promise<{ rows: OperationHistoryRow[]; total: number }> {
   const { and, eq, or, desc, sql } = await import("drizzle-orm");
   const { authorityOperations, users } = await import("../db/schema");
+  const { notFunctionCarry } = await import("./authority-operations.server");
 
   const scope = and(
+    notFunctionCarry(authorityOperations.detail),
     eq(authorityOperations.federationId, args.federationId),
     eq(authorityOperations.recordType, args.recordType),
     or(
@@ -218,4 +230,4 @@ export async function getOperationHistory(
   return { rows: mapped, total };
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

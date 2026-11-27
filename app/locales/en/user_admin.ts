@@ -8,9 +8,11 @@
  * page's sections (Platform, Federation, Records management,
  * Authorities, Cataloguing, Digitization, Imports and exports); the
  * project and reviewed-volume tables; the access history; and the
- * notices, tooltips, errors and confirmations of both pages.
+ * notices, tooltips, errors and confirmations of both pages; and the
+ * list page's Language section, the workspace's default interface
+ * language.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   people_count_one: "{{count}} person in this workspace",
@@ -39,6 +41,7 @@ export default {
   federation_intro:
     "Members of other workspaces in the federation who work here. Their profiles are managed in their own workspace.",
   col_home_workspace: "Home workspace",
+  platform_admin: "Platform admins",
   col_access_here: "Access here",
   federation_role_steward: "Federation steward",
   federation_role_staff: "Federation staff",
@@ -154,6 +157,15 @@ export default {
   success_assigned: "Assigned to project",
   success_role_updated: "Role updated",
   success_removed: "Removed from project",
+  language_heading: "Language",
+  language_label: "Default interface language",
+  language_browser: "Follow the browser",
+  language_es: "Spanish",
+  language_en: "English",
+  language_help:
+    "Visitors who have not chosen a language see this workspace in the one selected here. A language chosen with the EN / ES links or saved in a person's own settings takes precedence.",
+  language_submit: "Save default language",
+  language_saved: "Default language saved.",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

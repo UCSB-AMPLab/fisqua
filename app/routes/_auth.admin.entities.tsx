@@ -38,7 +38,7 @@
  * `<Link>` navigation, same mounted route); a filter change reloads the
  * document and clears it, as it always has.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -63,6 +63,7 @@ import type {
 } from "~/components/data-table/data-table";
 import type { Route } from "./+types/_auth.admin.entities";
 import { useFormatters } from "~/lib/use-formatters";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,11 +110,18 @@ interface FunctionOption {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("entities:title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope, authorityScopeSql } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, asc, desc, isNull, eq, like, or, inArray, sql } =
     await import("drizzle-orm");
@@ -121,7 +129,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { normaliseName } = await import("~/lib/authority-duplicates.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -1333,3 +1341,5 @@ export default function AdminEntitiesPage({
     </div>
   );
 }
+
+// @version v0.9.0

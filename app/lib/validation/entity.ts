@@ -22,12 +22,16 @@
  * Biográfico Electrónico authority ref) and the generic `legacy_ids`
  * JSON column.
  *
- * @version v0.7.0
+ * `updateEntitySchema` carries no defaults, so a field the edit form
+ * does not submit (`legacyIds` among them) never reaches the UPDATE.
+ *
+ * @version v0.9.0
  */
 
 import { z } from "zod/v4";
 import { ENTITY_TYPES } from "./enums";
 import { AUTHORITY_CODE_RE } from "./authority-code";
+import { updateSchemaFrom } from "./update-schema";
 
 export const entitySchema = z.object({
   id: z.string().uuid(),
@@ -78,8 +82,8 @@ export const createEntitySchema = entitySchema.omit({
   updatedAt: true,
 });
 
-export const updateEntitySchema = entitySchema
-  .partial()
-  .required({ id: true });
+// No defaults: a field the edit form does not submit is absent from
+// the parsed output, never "[]" (see update-schema.ts).
+export const updateEntitySchema = updateSchemaFrom(entitySchema);
 
 export const importEntitySchema = entitySchema;

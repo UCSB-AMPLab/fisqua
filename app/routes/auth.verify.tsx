@@ -22,7 +22,22 @@
  * the member tenants they govern through this door — sessions are
  * host-scoped, so without it the grant machinery is unreachable.
  *
- * @version v0.6.1
+ * Exception — platform admins: a user whose row has `is_platform_admin`
+ * set is admitted on every workspace of kind `tenant` that is not
+ * disabled (`admitsAsPlatformAdmin`, `app/lib/platform-admin.server.ts`),
+ * with no grant; `authMiddleware` gives them every role flag there. The
+ * email is unique, so the session is for the same user row wherever it
+ * is minted. Where they are not admitted, they are never sent to the
+ * wrong-workspace page, as in `authMiddleware`; they get
+ * `/login?error=no-account`.
+ *
+ * The session response also carries the `lang` cookie when the user
+ * has a saved `users.locale` and this browser has no `lang` cookie on
+ * this host yet, so the language the user chose in `/configuracion`
+ * applies from the first page after sign-in. The i18next middleware
+ * runs before any user is known and cannot read `users.locale` itself.
+ *
+ * @version v0.9.0
  */
 
 import { redirect } from "react-router";
@@ -37,9 +52,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     SUBDOMAIN_HOST_SUFFIXES,
     PLATFORM_TENANT_ID,
     findTenantById,
-    getTenantFromRequest,
+    resolveRequestTenant,
   } = await import("../lib/tenant");
   const { users } = await import("../db/schema");
+  const { admitsAsPlatformAdmin } = await import(
+    "../lib/platform-admin.server"
+  );
+  const { signInLanguageCookie } = await import(
+    "../lib/language-cookie.server"
+  );
 
   const env = context.cloudflare.env;
   const url = new URL(request.url);
@@ -76,7 +97,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // loader correctly (React Router accepts thrown Response).
   let tenant;
   try {
-    tenant = await getTenantFromRequest(db, request);
+    tenant = await resolveRequestTenant(context, db, request);
   } catch (e) {
     if (e instanceof Response) throw e;
     throw e;
@@ -91,7 +112,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   //   - Current host is not a SUBDOMAIN_HOST_SUFFIXES host (legacy host
   //     `catalogacion.zasqua.org`): the interstitial CTA can't be built
   //     for it; fall through to /login?error=no-account.
-  if (user.tenantId !== tenant.id) {
+  if (user.tenantId !== tenant.id && !admitsAsPlatformAdmin(user, tenant)) {
+    // A platform admin is never sent to the wrong-workspace page.
+    if (user.isPlatformAdmin === true) {
+      throw redirect("/login?error=no-account");
+    }
     // A live federation grant admits a foreign-home user: mint the
     // session normally and let authMiddleware resolve the grant's
     // effective role on every request (federation spec §4). Without
@@ -128,11 +153,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession();
   session.set("userId", userId);
 
-  throw redirect("/dashboard", {
-    headers: {
-      "Set-Cookie": await commitSession(session),
-    },
-  });
+  const headers = new Headers();
+  headers.append("Set-Cookie", await commitSession(session));
+  const langCookie = await signInLanguageCookie(request, user.locale);
+  if (langCookie) headers.append("Set-Cookie", langCookie);
+
+  throw redirect("/dashboard", { headers });
 }
 
-// @version v0.4.1
+// @version v0.9.0

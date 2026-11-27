@@ -1,11 +1,11 @@
 /**
  * Tests — publishing a ready volume: publications that stalled
  *
- * A publish can stop part way: a `claimed` row whose request died, or a
- * `copying` row whose canonical put may have happened while its final
- * batch did not. This suite pins how such rows are finished or failed,
- * by the scheduled sweep and by a later publish request of the same
- * volume.
+ * This suite pins how the publications of a ready volume that stalled are
+ * finished or failed, by the scheduled sweep and by a later publish
+ * request of the same volume. A publish can stop part way: a `claimed` row
+ * whose request died, or a `copying` row whose canonical put may have
+ * happened while its final batch did not.
  *
  * A `claimed` row past its expiry is abandoned. A `copying` row past its
  * expiry is decided by reading the canonical key: the publication's own
@@ -29,7 +29,7 @@
  * own tenant; a row whose tenant has no storage destination is left as
  * it is and counts an attempt.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -171,9 +171,12 @@ async function lostClaim(seed: ReadyVolume): Promise<{ a: Record<string, any>; b
 /** The state a publish leaves when its final batch fails after the put. */
 async function stalledAfterCopy(seed: ReadyVolume): Promise<Record<string, any>> {
   let failed = false;
+  let fours = 0;
   const d1 = wrapD1(env.DB, {
     batch(n) {
-      if (!failed && n === 4) {
+      // The first batch of four is the OCR page batch; the second is the
+      // final batch.
+      if (!failed && n === 4 && ++fours === 2) {
         failed = true;
         throw new Error("D1 unavailable");
       }
@@ -480,9 +483,12 @@ describe("stalled publications", () => {
       },
     };
     let failed = false;
+    let fours = 0;
     const d1 = wrapD1(env.DB, {
       batch(n) {
-        if (!failed && n === 4) {
+        // The first batch of four is the OCR page batch; the second is
+        // the final batch.
+        if (!failed && n === 4 && ++fours === 2) {
           failed = true;
           throw new Error("D1 unavailable");
         }

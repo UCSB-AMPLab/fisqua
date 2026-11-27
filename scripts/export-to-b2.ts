@@ -18,7 +18,7 @@
  * Environment variables `B2_KEY_ID`, `B2_APP_KEY`, and `B2_ENDPOINT`
  * authenticate against the B2 S3 endpoint.
  *
- * @version v0.3.1
+ * @version v0.9.0
  *
  * Original docblock kept below for CLI usage examples:
  *
@@ -52,6 +52,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
+import { appendAll } from "./lib/arrays";
 
 const BUCKET = "zasqua-export";
 
@@ -144,7 +145,7 @@ async function main(): Promise<void> {
     }
     const fondsData = JSON.parse(readFileSync(fondsPath, "utf-8"));
     if (Array.isArray(fondsData)) {
-      allDescriptions.push(...fondsData);
+      appendAll(allDescriptions, fondsData);
       console.log(`  Read ${fondsData.length} descriptions from ${entry.key}`);
     }
   }
@@ -201,3 +202,5 @@ main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
+
+// @version v0.9.0

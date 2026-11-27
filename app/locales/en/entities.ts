@@ -6,7 +6,7 @@
  * primary call-to-action. Entities follow ISAAR(CPF), so the labels
  * stay close to the standard's preferred phrasing.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // Page
@@ -27,6 +27,7 @@ export default {
   deleteBody:
     "Are you sure you want to delete {{name}}? This action cannot be undone.",
   deleteBlocked: "Cannot delete — {{count}} linked descriptions",
+  deleteBlockedMergeSurvivor: "This record can't be deleted because other records were merged into it.",
   cascadeWarning: "This entity has {{count}} linked descriptions.",
   cascadeExamples: "Examples:",
 
@@ -177,6 +178,15 @@ export default {
   remove_link: "Remove link",
   remove_link_confirm: "Remove this link?",
   duplicate_link_error: "This description is already linked with this role",
+  // Refusals of a link edit or removal because of a relation between two people
+  link_error_relation_side_save:
+    "This link is one side of a relation between two people, and relations can't be edited in this form. Nothing was saved.",
+  link_error_relation_side_remove:
+    "This link is one side of a relation between two people. Removing it here would leave the other side of the relation without its partner. Nothing was removed.",
+  link_error_relation_changed_save:
+    "This link became part of a relation after you opened the page. Nothing was saved. Reload the page to see the link as it is now.",
+  link_error_relation_changed_remove:
+    "This link became part of a relation after you opened the page. Nothing was removed. Reload the page to see the link as it is now.",
   role_note_label: "Role note",
   sequence_label: "Sequence",
   honorific_label: "Honorific",
@@ -221,3 +231,5 @@ export default {
   // Detail-page redesign: LOD card
   sectionLod: "Linked open data",
 } as const;
+
+// @version v0.9.0

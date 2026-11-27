@@ -55,7 +55,7 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -89,6 +89,7 @@ import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { PLACE_TYPES } from "~/lib/validation/enums";
 import type { Route } from "./+types/_auth.admin.places";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,9 +129,16 @@ interface PagePoint extends MapPoint {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("places:title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, like, or, gt, asc, isNull, sql } = await import(
     "drizzle-orm"
@@ -138,7 +146,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -1467,3 +1475,5 @@ export default function AdminPlacesPage({
     </div>
   );
 }
+
+// @version v0.9.0

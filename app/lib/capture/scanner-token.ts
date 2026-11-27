@@ -14,7 +14,7 @@
  *
  * A tenant has one scanner (the table keeps it a row of its own, so
  * several per tenant later means lifting a unique index), named with the
- * unit's short id. Its token is live when it has a hash and no
+ * unit's appliance id. Its token is live when it has a hash and no
  * `revoked_at`.
  *
  *   - `make` gives the tenant's scanner a token: `create` when the
@@ -44,9 +44,28 @@
  * the new revision and this write's id, so only the write that changed
  * the row ever counts as landed.
  * Issuing or replacing a token clears `last_seen_at` and the rate window,
- * since they belong to the old token.
+ * since they belong to the old token, and the linked unit's name and
+ * device id, which a pairing stored and which no longer name the unit
+ * that holds the new token; a new scanner starts without them. Revoke
+ * keeps them.
  *
- * @version v0.8.0
+ * Pairing (contract §12.2) issues a token through `pairingTokenStatements`,
+ * two statements for one D1 batch. The first marks the pairing code
+ * `collected`, guarded by the code being `approved` for this tenant
+ * within its collection window, by the scanner and key revisions the
+ * approver saw, by the scanner still being as read (or there still
+ * being none), and by the stored keys being at the revision seen and not
+ * erased. The second is the scanner write: an INSERT when the tenant had
+ * no scanner, else an UPDATE of the scanner as read, which renames it to
+ * the stored keys' appliance id, records the unit's name and device id,
+ * puts the new hash in place and clears the mode the replaced unit last
+ * reported. It is guarded by the same scanner
+ * condition and by SQLite's `changes() = 1`, which holds only when the
+ * first statement changed the code row. Both statements check the same
+ * rows in one transaction, so either both land or neither does.
+ * `pairingLandedCondition` is the landed condition of that write.
+ *
+ * @version v0.9.0
  */
 
 import { SCANNER_NAME_PATTERN } from "./token";
@@ -188,8 +207,8 @@ export function scannerTokenStatement(step: Exclude<ScannerTokenStep, "none">, w
   return {
     sql:
       "UPDATE capture_scanners SET token_sha256 = ?, token_created_at = ?, revoked_at = NULL, " +
-      "last_seen_at = NULL, rate_window_start = NULL, rate_window_calls = 0, revision = revision + 1, write_id = ?, " +
-      "updated_at = ?\n" +
+      "last_seen_at = NULL, rate_window_start = NULL, rate_window_calls = 0, unit_name = NULL, device_id = NULL, " +
+      "revision = revision + 1, write_id = ?, updated_at = ?\n" +
       `WHERE ${guard.sql};`,
     params: [w.sha256, w.now, w.writeId, w.now, ...guard.params],
   };
@@ -215,4 +234,104 @@ export function landedQuery(w: ScannerTokenWrite, scannerId: string): SqlStateme
   return { sql: `SELECT ${SCANNER_COLUMNS} FROM capture_scanners WHERE ${c.sql};`, params: c.params };
 }
 
-// @version v0.8.0
+
+export interface PairingTokenWrite {
+  /** The pairing code's row id. */
+  codeId: string;
+  tenantId: string;
+  /** The tenant's scanner as read; null when it had none. */
+  current: ScannerRow | null;
+  /** The new scanner's id, used when `current` is null. */
+  newScannerId: string;
+  /** The stored keys' appliance id, which becomes the scanner's name. */
+  applianceId: string;
+  unitName: string;
+  deviceId: string;
+  /** The new token's hash. */
+  sha256: string;
+  now: number;
+  /** This write's own id, set as `write_id`. */
+  writeId: string;
+  /** The stored keys' revision the approver saw. */
+  keysRevisionSeen: number;
+}
+
+/** The condition that the tenant's scanner is as read, or that it still has none. */
+function scannerUnchanged(w: PairingTokenWrite): SqlStatement {
+  if (!w.current) {
+    return { sql: "NOT EXISTS (SELECT 1 FROM capture_scanners WHERE tenant_id = ?)", params: [w.tenantId] };
+  }
+  const guard = asRead(w.tenantId, w.current);
+  return { sql: `EXISTS (SELECT 1 FROM capture_scanners WHERE ${guard.sql})`, params: guard.params };
+}
+
+/** The code row's update to `collected` and the scanner write, in that order, for one D1 batch. */
+export function pairingTokenStatements(w: PairingTokenWrite): SqlStatement[] {
+  const unchanged = scannerUnchanged(w);
+  const collect: SqlStatement = {
+    sql:
+      "UPDATE capture_pairing_codes SET state = 'collected', collected_at = ?\n" +
+      "WHERE id = ? AND tenant_id = ? AND state = 'approved' AND collect_by > ? " +
+      "AND scanner_revision_seen = ? AND keys_revision_seen = ?\n" +
+      `AND ${unchanged.sql}\n` +
+      "AND EXISTS (SELECT 1 FROM capture_scanner_keys WHERE tenant_id = ? AND revision = ? AND sealed IS NOT NULL);",
+    params: [
+      w.now,
+      w.codeId,
+      w.tenantId,
+      w.now,
+      w.current?.revision ?? 0,
+      w.keysRevisionSeen,
+      ...unchanged.params,
+      w.tenantId,
+      w.keysRevisionSeen,
+    ],
+  };
+  if (!w.current) {
+    return [
+      collect,
+      {
+        sql:
+          "INSERT INTO capture_scanners (id, tenant_id, name, unit_name, device_id, token_sha256, token_created_at, " +
+          "revision, write_id, created_at, updated_at)\n" +
+          "SELECT ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?\n" +
+          `WHERE changes() = 1 AND ${unchanged.sql};`,
+        params: [
+          w.newScannerId,
+          w.tenantId,
+          w.applianceId,
+          w.unitName,
+          w.deviceId,
+          w.sha256,
+          w.now,
+          w.writeId,
+          w.now,
+          w.now,
+          ...unchanged.params,
+        ],
+      },
+    ];
+  }
+  const guard = asRead(w.tenantId, w.current);
+  return [
+    collect,
+    {
+      sql:
+        "UPDATE capture_scanners SET name = ?, unit_name = ?, device_id = ?, token_sha256 = ?, token_created_at = ?, " +
+        "revoked_at = NULL, last_seen_at = NULL, rate_window_start = NULL, rate_window_calls = 0, " +
+        "mode = NULL, mode_reported_at = NULL, revision = revision + 1, write_id = ?, updated_at = ?\n" +
+        `WHERE changes() = 1 AND ${guard.sql};`,
+      params: [w.applianceId, w.unitName, w.deviceId, w.sha256, w.now, w.writeId, w.now, ...guard.params],
+    },
+  ];
+}
+
+/** The scanner the pairing write leaves: its id at the next revision, with this write's id. */
+export function pairingLandedCondition(w: PairingTokenWrite): SqlStatement {
+  return {
+    sql: "tenant_id = ? AND id = ? AND revision = ? AND write_id = ?",
+    params: [w.tenantId, w.current?.id ?? w.newScannerId, (w.current?.revision ?? 0) + 1, w.writeId],
+  };
+}
+
+// @version v0.9.0

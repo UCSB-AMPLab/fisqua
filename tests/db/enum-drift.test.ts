@@ -23,7 +23,7 @@
  * (the create route trusts the value and the DB enum is the sole gate),
  * so it was deliberately left out of the hoist.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -46,6 +46,13 @@ import {
   captureQcDecisions,
   captureQcRotations,
   captureReviewRuns,
+  captureQueueEntries,
+  captureScannerOperators,
+  captureScanners,
+  federationCredits,
+  vocabularyValues,
+  authoritySources,
+  descriptionEntities,
 } from "../../app/db/schema";
 import {
   ENTRY_TYPES,
@@ -86,6 +93,14 @@ import {
   CAPTURE_QC_STATES,
   CAPTURE_REVIEW_RUN_STATUSES,
   CAPTURE_REVIEW_PURGE_STATUSES,
+  CAPTURE_QUEUE_ACTIONS,
+  CAPTURE_QUEUE_ORIGINS,
+  CAPTURE_OPERATOR_ROLES,
+  CAPTURE_SCANNER_MODES,
+  FEDERATION_CREDIT_ROLES,
+  VOCABULARY_LISTS,
+  VOCABULARY_STATUSES,
+  RELATION_CERTAINTIES,
 } from "../../app/lib/validation/enums";
 
 const sorted = (xs: readonly string[]) => [...xs].sort();
@@ -145,7 +160,7 @@ const CASES: [string, readonly string[], readonly string[], readonly string[]][]
   ["captureQcSets.state", captureQcSets.state.enumValues,
     CAPTURE_QC_SET_STATES, ["in_capture_qc", "retakes_requested", "approved"]],
   ["captureQcDecisions.decision", captureQcDecisions.decision.enumValues,
-    CAPTURE_QC_DECISIONS, ["approved", "rejected"]],
+    CAPTURE_QC_DECISIONS, ["approved", "rejected", "excluded"]],
   ["captureQcDecisions.reason", captureQcDecisions.reason.enumValues,
     CAPTURE_QC_REASONS,
     ["blur", "glare", "shadow", "focus", "exposure", "dirt", "framing", "obstruction", "other"]],
@@ -157,6 +172,25 @@ const CASES: [string, readonly string[], readonly string[], readonly string[]][]
     CAPTURE_REVIEW_RUN_STATUSES, ["dispatched", "review_ready", "aborted", "halted"]],
   ["captureReviewRuns.purgeStatus", captureReviewRuns.purgeStatus.enumValues,
     CAPTURE_REVIEW_PURGE_STATUSES, ["purged", "failed"]],
+  ["captureQueueEntries.action", captureQueueEntries.action.enumValues,
+    CAPTURE_QUEUE_ACTIONS, ["full-digitisation", "full-rescan", "spot-recapture", "complete"]],
+  ["captureQueueEntries.origin", captureQueueEntries.origin.enumValues,
+    CAPTURE_QUEUE_ORIGINS, ["queue", "retake"]],
+  ["captureScannerOperators.role", captureScannerOperators.role.enumValues,
+    CAPTURE_OPERATOR_ROLES, ["admin", "operator"]],
+  ["captureScanners.mode", captureScanners.mode.enumValues,
+    CAPTURE_SCANNER_MODES, ["offline", "backup", "fisqua"]],
+  ["federationCredits.role", federationCredits.role.enumValues,
+    FEDERATION_CREDIT_ROLES, ["partner", "funder", "developer", "host"]],
+  ["vocabularyValues.list", vocabularyValues.list.enumValues, VOCABULARY_LISTS,
+    ["entity_type", "place_type", "entity_role", "place_role", "role_group",
+      "relation_role", "link_attribute", "gender"]],
+  ["descriptionEntities.relationCertainty", descriptionEntities.relationCertainty.enumValues,
+    RELATION_CERTAINTIES, ["doubtful", "inferred", "derived"]],
+  ["vocabularyValues.status", vocabularyValues.status.enumValues, VOCABULARY_STATUSES,
+    ["approved", "proposed", "deprecated"]],
+  ["authoritySources.status", authoritySources.status.enumValues, VOCABULARY_STATUSES,
+    ["approved", "proposed", "deprecated"]],
 ];
 
 describe("capture QC vocabularies", () => {
@@ -248,3 +282,4 @@ describe("media pipeline vocabularies (constant === checkpoint)", () => {
   });
 });
 
+// @version v0.9.0

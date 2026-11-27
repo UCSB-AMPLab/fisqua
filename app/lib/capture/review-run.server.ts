@@ -46,15 +46,24 @@
  *      (`shareKeyImageBaseUrl`; `image_base_unavailable` when it cannot
  *      be).
  *   8. The token is minted, the lifetimes computed for one job of the
- *      volume's pages, and the spec built (`buildReviewRunSpec`) and
- *      validated (`validateAnyRunSpec`; `spec_invalid` with each
- *      problem's path and rule otherwise). Its review prefix is
- *      `{slug}/{delivery id}/`. A page whose image carries a rotation
- *      carries `rotate_deg`, 0 included, and a page without one none.
+ *      volume's pages with the review-run lifetime constants
+ *      (`reviewLifetime`; `spec_invalid` with `run_too_long` when the
+ *      spec URL would outlive a presigned URL), and the spec built
+ *      (`buildReviewRunSpec`) and validated (`validateAnyRunSpec`;
+ *      `spec_invalid` with each problem's path and rule otherwise). Its
+ *      review prefix is `{slug}/{delivery id}/`. A page whose image
+ *      carries a rotation carries `rotate_deg`, 0 included, and a page
+ *      without one none.
  *   9. One claim batch inserts the run, its one chunk and its review row,
  *      each conditional on the checks of steps 5 and 6 holding inside
- *      the batch, so of two starts for one delivery only one writes. A
- *      start that wrote nothing reads why and declines with that reason.
+ *      the batch, so of two starts for one delivery only one writes, and
+ *      on fewer than `REVIEW_ACTIVE_RUN_CAP` review runs being active,
+ *      so starts made at once, by the sweep or by hand, never take more
+ *      than the cap between them. A start that wrote nothing reads why
+ *      and declines with that reason: `processing_started` only when
+ *      processing holds the volume, and `review_capacity_full` whenever
+ *      the delivery's own checks show nothing against it, since the cap
+ *      may have been full at the claim and not by the time it is read.
  *  10. The spec is published; a failure abandons the run, and its review
  *      row is recorded as aborted.
  *  11. The chunk is dispatched (`postChunkDispatch`). A 204 marks the
@@ -80,13 +89,18 @@
  * runs (`purge_status` `purged` or `failed`: a purge that failed may
  * still have deleted some tiles). Step 6 and the
  * claim read runs the same way, so no Retry starts beside a run that
- * may still be writing the same prefix. `federationHasReviewBucket`
+ * may still be writing the same prefix. A review run is active, for the
+ * cap, on the same terms: it can still report, whichever tenant's it is
+ * (`countActiveReviewRuns`; the claim's condition is the same SQL).
+ * `federationHasReviewBucket`
  * says whether the tenant's federation has a review-tiles bucket.
  *
  * `startPendingReviewRuns` is the sweep's step. It runs only where
  * `PIPELINE_ENVIRONMENT` is `production`, and only when the dispatch
  * settings pass and the runner knows review runs. It starts the review
- * run of up to `limit` registered deliveries, oldest first. A declined
+ * run of up to `limit` registered deliveries, oldest first, and no more
+ * than the active-run cap leaves room for, read once before its passes:
+ * with the cap reached it starts nothing. A declined
  * start records nothing, so the candidates are those a start would
  * accept as far as rows can tell: tenants with the capability, a
  * federation with a review-tiles bucket and a secret prefix, openings
@@ -104,7 +118,10 @@
  * only when its reason is the delivery's own (`declineIsPerDelivery`:
  * `PER_DELIVERY_REASONS`, or a refused spec whose problems all lie
  * under the volume entry or its job); any other reason, one added later
- * included, takes the federation out of the rest of the tick. A delivery
+ * included, takes the federation out of the rest of the tick, except
+ * `review_capacity_full`, which ends the tick: other starts took the
+ * room left, so nothing more can start. That delivery is not recorded,
+ * and a later tick finds it, still without a review run. A delivery
  * declined for a reason of its own is recorded
  * (`capture_deliveries.review_declined_at`) and left out of later ticks,
  * except for the reasons that clear up by themselves
@@ -120,23 +137,28 @@
  * deliveries and federations never keep the ones behind them waiting,
  * and a tick makes at most `PENDING_MAX_PASSES` passes.
  *
- * `reviewRunAction` is the Prepare and Retry route's body. Only those
- * who pass the digitization area (workspace, super and digitization
- * admins) and the stewards of the tenant's federation may start a
- * review run
- * (a bare 403 for anyone else); the volume must be the tenant's and held
+ * `reviewRunAction` is the Prepare and Retry route's body. Preparing
+ * review images is capture work, so those who may decide on any volume
+ * may start a review run (`isQcWorker`: workspace, super and
+ * digitization admins, the stewards of the tenant's federation and its
+ * staff grants; a bare 403 for anyone else). Processing and
+ * publication runs stay with their own administrative gates; the volume must be the tenant's and held
  * by a registered delivery (404 `volume_not_found`). It clears the
  * delivery's `review_declined_at` before it starts, so a delivery the
  * sweep declined can always be tried again by hand, and the sweep
  * considers it again on later ticks. A start answers 200
  * with its run id; one declined because a review run is open answers 409
- * `review_run_open`, and any other declined start 409
- * `review_not_applicable` with its reason.
+ * `review_run_open`, one declined because the cap is reached 409
+ * `review_capacity_full`, and any other declined start 409
+ * `review_not_applicable` with its reason. A start the cap refused is
+ * not tried again by itself unless the delivery has no review run at
+ * all, the sweep's candidates: a Prepare is, on a later tick in
+ * production; a Retry, after a failed run, waits for a person.
  *
  * The token leaves this module only inside the stored spec. Nothing here
  * logs a token, a key or a download address.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
@@ -154,8 +176,7 @@ import {
 } from "../../db/schema";
 import type { Tenant, User } from "../../context";
 import { hasCapability } from "../tenant";
-import { isFederationSteward } from "../federation.server";
-import { canAdministerArea } from "../user-access.server";
+import { isQcWorker } from "./qc.server";
 import {
   buildAbandonStatements,
   buildDispatchedStatements,
@@ -196,6 +217,7 @@ import {
   type FederationDestinationColumns,
   type TenantDestination,
 } from "../pipeline/tenant-destination.server";
+import { REVIEW_ACTIVE_RUN_CAP } from "../pipeline/run-config";
 import { accountFor } from "./review-access.server";
 import { isRotateDeg } from "./manifest";
 import { mintRunToken, PRESIGN_MAX_SECONDS, runLifetimes } from "../pipeline/token.server";
@@ -239,7 +261,8 @@ export type ReviewSkipReason =
   | "review_open"
   | "review_ready"
   | "image_base_unavailable"
-  | "spec_invalid";
+  | "spec_invalid"
+  | "review_capacity_full";
 
 export type ReviewRunOutcome =
   | { started: true; runId: string }
@@ -404,15 +427,34 @@ function mayStillReport(status: string, holds: boolean, chunkStatus: string | nu
   return holds && (status === "dispatched" || (status === "aborted" && chunkStatus === "failed"));
 }
 
+/**
+ * `mayStillReport` in SQL, for the review row `c` joined to its run `r`
+ * (`ON r.id = c.run_id AND r.tenant_id = c.tenant_id`).
+ */
+function mayStillReportSql(now: number): SQL {
+  return sql`(r.token_revoked_at IS NULL AND r.token_expires_at > ${now}
+      AND (c.status = 'dispatched'
+        OR (c.status = 'aborted' AND EXISTS (SELECT 1 FROM pipeline_run_chunks k
+          WHERE k.tenant_id = c.tenant_id AND k.run_id = c.run_id AND k.chunk_index = 0 AND k.status = 'failed'))))`;
+}
+
 /** The delivery has no review run that is ready or can still report (`mayStillReport`). */
 function noLiveReviewSql(tenantId: string, deliveryId: string, now: number): SQL {
   return sql`NOT EXISTS (SELECT 1 FROM capture_review_runs c JOIN pipeline_runs r ON r.id = c.run_id AND r.tenant_id = c.tenant_id
       WHERE c.tenant_id = ${tenantId} AND c.delivery_id = ${deliveryId}
-      AND (c.status = 'review_ready'
-        OR (r.token_revoked_at IS NULL AND r.token_expires_at > ${now}
-          AND (c.status = 'dispatched'
-            OR (c.status = 'aborted' AND EXISTS (SELECT 1 FROM pipeline_run_chunks k
-              WHERE k.tenant_id = ${tenantId} AND k.run_id = c.run_id AND k.chunk_index = 0 AND k.status = 'failed'))))))`;
+      AND (c.status = 'review_ready' OR ${mayStillReportSql(now)}))`;
+}
+
+/** The review runs, of every tenant, that can still report (`mayStillReport`), counted. */
+function activeReviewRunsSql(now: number): SQL {
+  return sql`(SELECT COUNT(*) FROM capture_review_runs c JOIN pipeline_runs r ON r.id = c.run_id AND r.tenant_id = c.tenant_id
+      WHERE ${mayStillReportSql(now)})`;
+}
+
+/** How many review runs are active, across every tenant: those whose results may still arrive. */
+export async function countActiveReviewRuns(db: DrizzleD1Database<any>, now: number): Promise<number> {
+  const row = await db.get<{ n: number }>(sql`SELECT ${activeReviewRunsSql(now)} AS n`);
+  return Number(row?.n ?? 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -614,7 +656,7 @@ export async function startReviewRun(
   const lifetimes = runLifetimes(
     now,
     { totalImages: pages.length, jobImageCounts: [pages.length], chunkCount: 1 },
-    config.lifetime,
+    config.reviewLifetime,
   );
   if (Math.ceil((lifetimes.specUrlExpiresAt - now) / 1000) > PRESIGN_MAX_SECONDS) {
     return declined("spec_invalid", { problems: [{ path: "volumes.0.pages", rule: "run_too_long" }] });
@@ -659,7 +701,8 @@ export async function startReviewRun(
   const specSha256 = await sha256Hex(specJson);
 
   // 9. The claim.
-  const guard = sql`${deliveryReadySql(tenantId, deliveryId, volumeId, volume.pagesRevision)} AND ${noLiveReviewSql(tenantId, deliveryId, now)}`;
+  const guard = sql`${deliveryReadySql(tenantId, deliveryId, volumeId, volume.pagesRevision)} AND ${noLiveReviewSql(tenantId, deliveryId, now)}
+    AND ${activeReviewRunsSql(now)} < ${REVIEW_ACTIVE_RUN_CAP}`;
   await runBatch(db, [
     rawBatchItem(
       db,
@@ -849,7 +892,21 @@ async function lostClaimReason(
     .get();
   if (!delivery || delivery.state !== "registered") return "not_registered";
   if (delivery.openings <= 0) return "no_openings";
-  return "processing_started";
+  // `processing_started` only when processing holds the volume, on the
+  // claim's own terms (`deliveryReadySql`): out of Received, or named by
+  // a run. Otherwise the reason is `review_capacity_full`, which is never
+  // the delivery's own, so the sweep records nothing and a later start
+  // checks again: the cap is the guard's only other conjunct, and a
+  // recount here can come in under the cap once a run has ended since
+  // the claim. A volume made restricted or given new pages since the
+  // checks falls here too, and the next start declines it for that.
+  const processing = await db.get<{ n: number }>(
+    sql`SELECT COUNT(*) AS n FROM capture_deliveries d WHERE d.tenant_id = ${tenantId} AND d.id = ${deliveryId}
+      AND (NOT EXISTS (SELECT 1 FROM pipeline_volumes v WHERE v.tenant_id = d.tenant_id AND v.id = d.pipeline_volume_id
+          AND v.state = 'received')
+        OR EXISTS (SELECT 1 FROM pipeline_run_volumes rv WHERE rv.tenant_id = d.tenant_id AND rv.pipeline_volume_id = d.pipeline_volume_id))`,
+  );
+  return Number(processing?.n ?? 0) > 0 ? "processing_started" : "review_capacity_full";
 }
 
 // ---------------------------------------------------------------------------
@@ -933,7 +990,7 @@ export async function reviewRunAction(
 ): Promise<Response> {
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
   const { db } = deps;
-  if (!(canAdministerArea(user, "digitization") || (await isFederationSteward(db, user, tenant)))) {
+  if (!(await isQcWorker(db, tenant, user))) {
     throw new Response(null, { status: 403 });
   }
   const holder = await db
@@ -956,6 +1013,7 @@ export async function reviewRunAction(
   const outcome = await startReviewRun(deps, tenant, holder.id, user.id);
   if (outcome.started) return answer(200, { runId: outcome.runId });
   if (outcome.reason === "review_open") return answer(409, { error: "review_run_open" });
+  if (outcome.reason === "review_capacity_full") return answer(409, { error: "review_capacity_full" });
   return answer(409, { error: "review_not_applicable", reason: outcome.reason });
 }
 
@@ -985,7 +1043,6 @@ export async function startPendingReviewRuns(
     throw err;
   }
   if (!scriptVersionAtLeast(settings.scriptVersion, REVIEW_RUNNER_FROM)) return counts;
-  const limit = opts.limit ?? 10;
 
   // Every condition that holds for a whole federation is decided once,
   // on the list of federations, before any delivery is read: a review
@@ -997,6 +1054,13 @@ export async function startPendingReviewRuns(
   const readyFederations = await federationsReadyForReview(deps, settings);
   if (readyFederations.size === 0) return counts;
 
+  // No more starts than the active-run cap leaves room for. The claim's
+  // own condition is the guard; this read only spares attempts the claim
+  // would decline.
+  const room = REVIEW_ACTIVE_RUN_CAP - (await countActiveReviewRuns(deps.db, deps.now()));
+  const limit = Math.min(opts.limit ?? 10, room);
+  if (limit <= 0) return counts;
+
   // Each pass reads the oldest candidates of the ready federations
   // outside what earlier passes excluded: any delivery a start declined,
   // and a federation whose start is declined for a reason that holds for
@@ -1007,7 +1071,8 @@ export async function startPendingReviewRuns(
   const excludedDeliveries = new Set<string>();
   const maxAttempts = opts.maxAttempts ?? REVIEW_ATTEMPTS_PER_TICK;
   let attempts = 0;
-  for (let pass = 0; pass < PENDING_MAX_PASSES && counts.started < limit && attempts < maxAttempts; pass++) {
+  let full = false;
+  for (let pass = 0; pass < PENDING_MAX_PASSES && !full && counts.started < limit && attempts < maxAttempts; pass++) {
     const pending = await readPendingDeliveries(
       deps.db,
       [...readyFederations],
@@ -1031,6 +1096,13 @@ export async function startPendingReviewRuns(
         continue;
       }
       counts.declined++;
+      if (outcome.reason === "review_capacity_full") {
+        // Other starts took the room left: nothing more can start this
+        // tick. The delivery is not recorded, and a later tick finds it
+        // still without a review run.
+        full = true;
+        break;
+      }
       excludedDeliveries.add(p.deliveryId);
       if (!declineIsPerDelivery(outcome)) {
         readyFederations.delete(p.federationId);
@@ -1239,14 +1311,16 @@ const PENDING_MAX_PASSES = 5;
  * to 6, the claim batch of 3 and the read back, 12 in all, then the
  * failure batch of 6). A start whose dispatch succeeds costs 14 (the
  * dispatched batch is 2), and a decline that is recorded costs 9. Each
- * pass reads its candidates once, and the federation preflight runs
- * once per tick. Ten attempts therefore cost at most
- * 10 × 18 + 5 (`PENDING_MAX_PASSES`) + 1 = 186 queries
+ * pass reads its candidates once, and the federation preflight and the
+ * count of active review runs run once per tick. A claim the batch
+ * declined reads its reason in at most 3 queries, fewer than the failure
+ * batch it then skips. Ten attempts therefore cost at most
+ * 10 × 18 + 5 (`PENDING_MAX_PASSES`) + 2 = 187 queries
  * (`REVIEW_SWEEP_QUERY_CEILING`). The pipeline sweep before it makes at
  * most about 590 (token expiry 1; flag ingest up to 400 insert
  * statements, plus about 3 reads and 1 update for each of its 20 rows;
  * stalled publications 1 read plus about 6 for each of 20 rows), which
- * leaves the notification sweep after it about 224. Declined deliveries
+ * leaves the notification sweep after it about 223. Declined deliveries
  * are recorded (`review_declined_at`), so a backlog of them clears at
  * ten a tick.
  */
@@ -1256,11 +1330,11 @@ export const REVIEW_ATTEMPTS_PER_TICK = 10;
 const REVIEW_ATTEMPT_MAX_QUERIES = 18;
 
 /** The most D1 queries one tick of the review run step makes (above). */
-export const REVIEW_SWEEP_QUERY_CEILING = REVIEW_ATTEMPTS_PER_TICK * REVIEW_ATTEMPT_MAX_QUERIES + PENDING_MAX_PASSES + 1;
+export const REVIEW_SWEEP_QUERY_CEILING = REVIEW_ATTEMPTS_PER_TICK * REVIEW_ATTEMPT_MAX_QUERIES + PENDING_MAX_PASSES + 2;
 
 
 /** How many candidates a tick reads for each start it may make. */
 const PENDING_SCAN_FACTOR = 5;
 
 
-// @version v0.8.0
+// @version v0.9.0

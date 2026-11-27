@@ -28,7 +28,18 @@
  * `authMiddleware` const below; treat that as the authoritative
  * description and this header as the narrative orientation.
  *
- * @version v0.4.2
+ * The reads it makes on every request (the user row, the tenant, a
+ * federation grant, the home tenant for the wrong-workspace redirect,
+ * the `lastActiveAt` throttle) are retried while D1 refuses them as
+ * overloaded (`retryD1Read`); writes get one attempt (`runD1Write`).
+ * Every refusal writes a `d1_overload` log line naming the statement
+ * (`user_by_session`, `tenant_by_slug`, `grant_federation`,
+ * `grant_membership`, `tenant_by_id`,
+ * `last_active`, `grant_audit_insert`, `last_active_update`). When a
+ * refusal outlasts its retries and fails the request, the root
+ * `serviceBusyMiddleware` answers 503 instead of 500.
+ *
+ * @version v0.9.0
  */
 
 // --- TEMPLATE INFRASTRUCTURE --- do not modify when extending
@@ -41,13 +52,14 @@ import {
   impersonationContext,
   tenantContext,
   userContext,
+  type User,
 } from "../context";
 import { createSessionStorage } from "../sessions.server";
 import { requireUser } from "../lib/auth.server";
 import {
   assertNonPlatformOrAllowlisted,
   findTenantById,
-  getTenantFromRequest,
+  resolveRequestTenant,
   PLATFORM_TENANT_ID,
   requireTenantUser,
   SUBDOMAIN_HOST_SUFFIXES,
@@ -58,7 +70,12 @@ import {
   resolveGrant,
   type GrantAccess,
 } from "../lib/federation.server";
+import {
+  admitsAsPlatformAdmin,
+  platformAdminEffectiveUser,
+} from "../lib/platform-admin.server";
 import { users } from "../db/schema";
+import { retryD1Read, runD1Write } from "../lib/d1-overload";
 
 import type { MiddlewareFunction } from "react-router";
 
@@ -85,12 +102,22 @@ const IMPERSONATION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
  *      to `/login` with the cleared cookie.
  *   5. Resolve the tenant from the request `Host` header via
  *      `getTenantFromRequest` (legacy host map, subdomain suffix
- *      list, or 404 on unknown host). The resolver also handles
+ *      list, or 404 on unknown host), taken through
+ *      `resolveRequestTenant`, which reuses a lookup the i18next
+ *      middleware already made for this request. The resolver also handles
  *      the disabled-tenant 404 branch — a tenant whose
  *      `disabledAt` is set 404s here unless the pathname starts
  *      with `/operator/`.
  *   5a. Hard-404 the request if the tenant is the platform tenant
  *       and the path is not in `OPERATOR_ROUTE_PREFIXES`.
+ *   5a'. Platform admin. When the user row read in step 2 has
+ *       `is_platform_admin` set, the tenant's kind is `tenant` and it is
+ *       not disabled, and no impersonation envelope is live, replace
+ *       `userContext` with the user as a home member of the request
+ *       tenant with every role flag on (`platformAdminEffectiveUser`).
+ *       No grant is resolved, no grant context is set, no grant write
+ *       is audited, and the wrong-workspace redirect never fires for a
+ *       platform admin.
  *   5b. Resolve a federation grant. If the user's home tenant is not the
  *       request tenant (and they are neither operator nor impersonating),
  *       `resolveGrant` checks `federation_memberships` for a live grant
@@ -140,7 +167,7 @@ const IMPERSONATION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
  * session. The handoff route opts in for its own one-shot call when
  * minting the session; everything else flows through here.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 export const authMiddleware: MiddlewareFunction = async (
   { request, context },
@@ -157,7 +184,7 @@ export const authMiddleware: MiddlewareFunction = async (
   }
 
   const db = drizzle(env.DB);
-  const user = await requireUser(db, userId);
+  const user = await requireUser(db, userId, { request, context });
 
   if (!user) {
     throw redirect("/login");
@@ -188,13 +215,25 @@ export const authMiddleware: MiddlewareFunction = async (
   // leaks about which slugs exist. The disabled-tenant carve-out
   // inside the resolver: a soft-disabled tenant 404s unless the path
   // starts with /operator/.
-  const tenant = await getTenantFromRequest(db, request);
+  const tenant = await resolveRequestTenant(context, db, request);
 
   // Hard-404 every path on the platform tenant host whose pathname is
   // neither in the legacy literal allowlist (still []) nor a prefix
   // match against OPERATOR_ROUTE_PREFIXES. Bare 404 keeps the response
   // indistinguishable from the resolver's unknown-host 404.
   assertNonPlatformOrAllowlisted(tenant, new URL(request.url).pathname);
+
+  // --- Platform admin ---
+  // A platform admin is at home in every live workspace (migration 0114,
+  // app/lib/platform-admin.server.ts). The flag comes from the user row
+  // `requireUser` read this request, never from the session cookie, and
+  // the test is positive: the flag exactly true, the tenant's kind
+  // exactly `tenant`, `disabledAt` null. An impersonation envelope keeps
+  // its own path, unchanged. Platform admission takes precedence over a
+  // federation grant, so no grant is resolved for them and their flags
+  // are never lowered to steward or staff.
+  const platformAdmin =
+    !impersonatingFromSession && admitsAsPlatformAdmin(user, tenant);
 
   // --- Federation grant resolution ---
   // A user whose home tenant is not the request tenant may still reach it
@@ -207,11 +246,12 @@ export const authMiddleware: MiddlewareFunction = async (
   // their own paths and never resolve a grant.
   let grant: GrantAccess | null = null;
   if (
+    !platformAdmin &&
     !impersonatingFromSession &&
     user.tenantId !== tenant.id &&
     user.tenantId !== PLATFORM_TENANT_ID
   ) {
-    grant = await resolveGrant(db, user, tenant);
+    grant = await resolveGrant(db, user, tenant, { request, context });
   }
 
   // Under a grant, the acting role flags become the grant's effective
@@ -219,9 +259,16 @@ export const authMiddleware: MiddlewareFunction = async (
   // invariant I6). Re-attach the effective user so every downstream role
   // gate honours the override without grant awareness. Identity and the
   // HOME tenantId are preserved.
-  let effectiveUser = user;
+  let effectiveUser: User = user;
   if (grant) {
     effectiveUser = applyGrantEffectiveRole(user, grant);
+    context.set(userContext, effectiveUser);
+  }
+  // A platform admin acts as a home member of the request tenant: every
+  // role flag on and `tenantId` the request tenant, so every downstream
+  // gate and write sees a home member. The stored row is unchanged.
+  if (platformAdmin) {
+    effectiveUser = platformAdminEffectiveUser(user, tenant);
     context.set(userContext, effectiveUser);
   }
 
@@ -240,7 +287,12 @@ export const authMiddleware: MiddlewareFunction = async (
   // impersonation envelope continue to fall through to
   // requireTenantUser's 403 — the platform tenant has no user-facing
   // subdomain to redirect into (security boundary).
+  //
+  // A platform admin never takes this branch, wherever they are: on a
+  // live workspace they are admitted above, and on the platform host or
+  // anywhere else not admitted they fall through to the 403.
   if (
+    user.isPlatformAdmin !== true &&
     !impersonatingFromSession &&
     !grant &&
     user.tenantId !== tenant.id &&
@@ -251,7 +303,12 @@ export const authMiddleware: MiddlewareFunction = async (
       currentHost.endsWith(s),
     );
     if (isSubdomainHost) {
-      const homeTenant = await findTenantById(db, user.tenantId);
+      const homeTenant = await retryD1Read(
+        () => findTenantById(db, user.tenantId),
+        undefined,
+        undefined,
+        { read: "tenant_by_id", request, context },
+      );
       if (homeTenant && homeTenant.disabledAt === null) {
         // destroySession emits Set-Cookie with Max-Age=0 so the browser
         // drops the cookie immediately. Avoids a 302 loop if the user
@@ -273,10 +330,14 @@ export const authMiddleware: MiddlewareFunction = async (
   // tenant subdomains, requireTenantUser would 403 every operator request
   // without the carve-out. Pass allowImpersonation:true ONLY when the
   // session actually carries an impersonating envelope — every other
-  // request sees default-deny.
-  requireTenantUser(tenant, effectiveUser, {
+  // request sees default-deny. The stored user goes in, not the
+  // effective one: a grant keeps the stored tenantId anyway, and a
+  // platform admin is admitted by its own path (d), on the flag read
+  // above, rather than by the request tenant set on the effective user.
+  requireTenantUser(tenant, user, {
     allowImpersonation: impersonatingFromSession !== undefined,
     grant: grant ? { federationId: grant.federationId } : null,
+    platformAdmin,
   });
 
   context.set(tenantContext, tenant);
@@ -313,27 +374,40 @@ export const authMiddleware: MiddlewareFunction = async (
     request.method !== "GET" &&
     request.method !== "HEAD"
   ) {
-    await logGrantWrite(db, effectiveUser, tenant, grant, request);
+    await runD1Write(() => logGrantWrite(db, effectiveUser, tenant, grant, request), {
+      read: "grant_audit_insert",
+      request,
+      context,
+    });
   }
 
   // Throttle-update lastActiveAt on the user row (5-minute throttle to
   // avoid write amplification).
-  const [userRow] = await db
-    .select({ lastActiveAt: users.lastActiveAt })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
-    .all();
+  const [userRow] = await retryD1Read(() =>
+    db
+      .select({ lastActiveAt: users.lastActiveAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .all(),
+    undefined,
+    undefined,
+    { read: "last_active", request, context },
+  );
 
   if (
     userRow &&
     (!userRow.lastActiveAt ||
       now - userRow.lastActiveAt > LAST_ACTIVE_THROTTLE_MS)
   ) {
-    await db
-      .update(users)
-      .set({ lastActiveAt: now })
-      .where(eq(users.id, userId));
+    await runD1Write(
+      () =>
+        db
+          .update(users)
+          .set({ lastActiveAt: now })
+          .where(eq(users.id, userId)),
+      { read: "last_active_update", request, context },
+    );
   }
 
   // Refresh the impersonation envelope's lastActivityAt
@@ -352,3 +426,5 @@ export const authMiddleware: MiddlewareFunction = async (
     return response;
   }
 };
+
+// @version v0.9.0

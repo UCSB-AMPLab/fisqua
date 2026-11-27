@@ -36,7 +36,7 @@
  *     migration wants to surface impersonation status in operator
  *     chrome.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import { Form, Outlet, NavLink } from "react-router";
@@ -47,6 +47,7 @@ import {
   userContext,
 } from "../context";
 import type { Route } from "./+types/_operator";
+import { FisquaMark } from "../components/landing/landing-mark";
 
 export const middleware = [
   async (args: any, next: any) => {
@@ -82,12 +83,7 @@ export default function OperatorLayout({
           visual identity. */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50 px-4">
         <div className="flex items-center">
-          <img
-            src="/brand/fisqua-mark.svg"
-            alt=""
-            className="h-7 w-7"
-            aria-hidden="true"
-          />
+          <FisquaMark className="h-7 w-7 shrink-0" color="var(--verdigris)" />
           <span className="ml-2 font-display text-2xl font-semibold leading-none text-verdigris">
             {t("brand")}
           </span>
@@ -140,4 +136,4 @@ export default function OperatorLayout({
   );
 }
 
-// @version v0.4.2
+// @version v0.9.0

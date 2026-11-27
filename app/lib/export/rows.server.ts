@@ -46,7 +46,15 @@
  * the canonical CSV call the reader, each only when the form lists
  * `ocrText`.
  *
- * @version v0.8.0
+ * A REPOSITORY CARRIES ITS ATTRIBUTION LINE. `readRepositories` gives
+ * each repository the line `repositoryAttribution` composes from its
+ * name, place, credit statement and licence, its stored overrides, and
+ * the hosting statement of the tenant's federation, read once. The
+ * Dublin Core bulk reading writes it as `dc:rights`; the publish
+ * export's fonds step reads its repositories here too, so every Dublin
+ * Core file carries the same line.
+ *
+ * @version v0.9.0
  */
 
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -60,11 +68,14 @@ import {
   places,
   repositories,
 } from "../../db/schema";
+import { officeSql } from "../link-attributes.server";
 import { authorityScope } from "../authority-ownership.server";
 import { LegacyIdsSchema } from "../validation/legacy-ids";
 import type { Tenant } from "../../context";
 import { ID_CHUNK } from "./scopes.server";
 import { PAGE_JOIN } from "../ocr/search.server";
+import { readFederationHosting } from "../pipeline/dispatch.server";
+import { repositoryAttribution, type Bilingual } from "./attribution";
 
 export type DescriptionRow = typeof descriptions.$inferSelect;
 export type EntityRow = typeof entities.$inferSelect;
@@ -97,7 +108,8 @@ export interface ScopedRepository {
   name: string;
   city: string;
   code: string;
-  rightsText: string | null;
+  /** The attribution line in each language, as `repositoryAttribution` gives it. */
+  attribution: Bilingual;
 }
 
 function chunk<T>(items: readonly T[], size = ID_CHUNK): T[][] {
@@ -248,14 +260,20 @@ export async function readReferenceCodes(
   return codes;
 }
 
-/** The repositories a set of descriptions belongs to, keyed by id. */
+/**
+ * The repositories a set of descriptions belongs to, keyed by id, each
+ * with its attribution line. The federation's hosting statement is read
+ * only when there is a repository to read.
+ */
 export async function readRepositories(
   db: DrizzleD1Database<any>,
-  tenant: Tenant,
+  tenant: Pick<Tenant, "id" | "federationId">,
   repositoryIds: string[],
 ): Promise<Map<string, ScopedRepository>> {
   const out = new Map<string, ScopedRepository>();
   const unique = [...new Set(repositoryIds)];
+  if (unique.length === 0) return out;
+  const hosting = await readFederationHosting(db, tenant.federationId);
   for (const part of chunk(unique)) {
     const rows = await db
       .select({
@@ -263,7 +281,14 @@ export async function readRepositories(
         name: repositories.name,
         city: repositories.city,
         code: repositories.code,
-        rightsText: repositories.rightsText,
+        region: repositories.region,
+        country: repositories.country,
+        countryCode: repositories.countryCode,
+        manifestRights: repositories.manifestRights,
+        creditStatementEs: repositories.creditStatementEs,
+        creditStatementEn: repositories.creditStatementEn,
+        attributionEs: repositories.attributionEs,
+        attributionEn: repositories.attributionEn,
       })
       .from(repositories)
       .where(and(eq(repositories.tenantId, tenant.id), inArray(repositories.id, part)))
@@ -273,7 +298,7 @@ export async function readRepositories(
         name: row.name,
         city: row.city ?? "",
         code: row.code,
-        rightsText: row.rightsText ?? null,
+        attribution: repositoryAttribution(row, hosting),
       });
     }
   }
@@ -373,7 +398,7 @@ export async function readEntityLinks(
         roleRaw: descriptionEntities.roleRaw,
         sequence: descriptionEntities.sequence,
         honorific: descriptionEntities.honorific,
-        fn: descriptionEntities.function,
+        fn: officeSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
       })
       .from(descriptionEntities)
@@ -475,4 +500,4 @@ function sortLinks(rows: ScopedLink[]): ScopedLink[] {
   });
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

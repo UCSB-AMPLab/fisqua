@@ -19,7 +19,7 @@
  * gives way to a teaching note — the /new route refuses server-side too,
  * so a direct URL cannot bypass.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -35,6 +35,7 @@ import type {
   ColumnFiltersState,
 } from "~/components/data-table/data-table";
 import type { Route } from "./+types/_auth.admin.repositories";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,10 +61,17 @@ interface Repository {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("repositories:title"),
+  );
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const { drizzle } = await import("drizzle-orm/d1");
@@ -359,3 +367,5 @@ export default function AdminRepositoriesPage({
     </div>
   );
 }
+
+// @version v0.9.0

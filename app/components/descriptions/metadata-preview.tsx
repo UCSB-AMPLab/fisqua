@@ -3,9 +3,14 @@
  *
  * This card is the summary tile rendered alongside the description form,
  * showing the record's repository, parent, level, and key identifiers at
- * a glance.
+ * a glance. Its column of actions edits, adds a child, moves, reorders
+ * and deletes, and also adds the description to a handlist or to the
+ * digitization queue (`DescriptionActionButtons`, the same actions the
+ * rows' menus offer); the queue buttons show only under `canQueue`, which
+ * the screen's loader computes: the digitization capability and
+ * permission to manage capture work.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -15,6 +20,7 @@ import { ArrowUp, ArrowDown } from "lucide-react";
 import { MoveDialog } from "~/components/descriptions/move-dialog";
 import { StatusBadge } from "~/components/descriptions/status-badges";
 import type { TreeItem } from "./miller-columns";
+import { DescriptionActionButtons } from "./description-actions";
 
 // ---------------------------------------------------------------------------
 // Level badge colours (same as miller-item)
@@ -41,6 +47,8 @@ interface MetadataPreviewProps {
   onNavigateAway?: () => void;
   fetcher?: FetcherWithComponents<unknown>;
   onItemDeleted?: () => void;
+  /** The workspace may manage the digitization queue, and so may this person. */
+  canQueue?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +60,7 @@ export function MetadataPreview({
   onNavigateAway,
   fetcher,
   onItemDeleted,
+  canQueue = false,
 }: MetadataPreviewProps) {
   const { t } = useTranslation("descriptions_admin");
   const [showMoveDialog, setShowMoveDialog] = useState(false);
@@ -191,6 +200,7 @@ export function MetadataPreview({
             >
               {t("move_button")}
             </button>
+            <DescriptionActionButtons target={item} canQueue={canQueue} />
             {/* Reorder up/down */}
             <div className="flex gap-1">
               <button
@@ -279,3 +289,5 @@ export function MetadataPreview({
     </>
   );
 }
+
+// @version v0.9.0

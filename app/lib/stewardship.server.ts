@@ -19,6 +19,11 @@
  * fine for a forensic trail but not for a journal a revert depends
  * on (spec §3).
  *
+ * `composeJournalEntry` writes `acted_as` (migration 0127) only when it
+ * is given one: a command line run on a workspace its actor is not a
+ * user of passes `platform-admin` or `lead-admin`; every app write
+ * passes none and writes NULL.
+ *
  * ## Per-kind diff contract (spec §3 — constraints, not history)
  *
  * The `changelog.diff` column is TEXT holding JSON. Its shape is
@@ -62,12 +67,12 @@
  * lifecycle/linkage columns are ever mutated (by the Workflow and the
  * revert stamp), and only through dedicated update paths — never here.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
-import { changelog, stewardshipRuns } from "../db/schema";
+import { changelog, stewardshipRuns, type ChangelogActedAs } from "../db/schema";
 
 // Re-export the update-diff computer so callers have a single import
 // surface for journal composition. The implementation stays in
@@ -106,6 +111,12 @@ export interface JournalEntryParams {
   runId?: string | null;
   /** Clock override (epoch ms). Defaults to `Date.now()`. */
   now?: number;
+  /**
+   * How a command line actor acted on a workspace they are not a user of
+   * (migration 0127); NULL/undefined for a user of the workspace and
+   * every app write.
+   */
+  actedAs?: ChangelogActedAs | null;
 }
 
 /**
@@ -129,6 +140,7 @@ export function composeJournalEntry(
     runId: params.runId ?? null,
     kind: params.kind,
     createdAt: params.now ?? Date.now(),
+    actedAs: params.actedAs ?? null,
   });
 }
 

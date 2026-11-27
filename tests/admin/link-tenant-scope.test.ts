@@ -24,7 +24,7 @@
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -40,6 +40,9 @@ import {
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
+import { roleSetRows, seedRoleLists } from "../helpers/vocabulary";
+import { NEOGRANADINA_ROLES } from "../../scripts/data/vocabularies/neogranadina-roles";
+import { DEFAULT_TEST_FEDERATION_ID as ROLES_FEDERATION_A, SECOND_TEST_FEDERATION_ID as ROLES_FEDERATION_B } from "../helpers/db";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
 import { createTestEntity } from "../helpers/entities";
@@ -152,6 +155,9 @@ describe("description links and the request tenant", () => {
     await cleanDatabase();
     await seedFederations();
     await seedTenants();
+    // The link forms write only the roles the federation's list approves.
+    await seedRoleLists(ROLES_FEDERATION_A, roleSetRows(NEOGRANADINA_ROLES));
+    await seedRoleLists(ROLES_FEDERATION_B, roleSetRows(NEOGRANADINA_ROLES));
     await seed();
   });
 
@@ -303,3 +309,4 @@ describe("description links and the request tenant", () => {
   });
 });
 
+// @version v0.9.0

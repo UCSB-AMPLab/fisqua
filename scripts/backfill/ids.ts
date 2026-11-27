@@ -26,7 +26,7 @@
  * `created_at` is the wall clock at the write site) as clearly as the
  * `detail.origin` marker does.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { createHash } from "node:crypto";
@@ -43,8 +43,10 @@ export const BACKFILL_NAMESPACE = "1b671a64-40d5-491e-99b0-da01ff1f3341";
  * The single documented import-date timestamp (epoch ms) stamped on
  * every backfilled row. 2026-04-16T00:00:00Z — the earliest
  * `entities.created_at` in the production import. NEVER the backfill run
- * date. `authority_operations.created_at` is epoch ms (spec §3), unlike
- * `entities.created_at` which is epoch seconds.
+ * date. `authority_operations.created_at` is epoch ms (spec §3).
+ * `entities.created_at` on imported rows was written in epoch seconds
+ * until the importers switched to milliseconds; a separate data pass
+ * converts those stored values.
  */
 export const PHASE_13_CREATED_AT_MS = Date.UTC(2026, 3, 16, 0, 0, 0, 0);
 
@@ -87,4 +89,4 @@ export function uuidv5(name: string, namespace: string = BACKFILL_NAMESPACE): st
   return bytesToUuid(bytes);
 }
 
-// Version: v0.8.0
+// Version: v0.9.0

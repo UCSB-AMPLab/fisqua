@@ -17,7 +17,7 @@
  *      the same Worker. 404 keeps the response shape identical to
  *      the unknown-host fallback so the route's existence is not
  *      enumerable from outside.
- *   2. Resolve the request's tenant via `getTenantFromRequest`. The
+ *   2. Resolve the request's tenant via `resolveRequestTenant`. The
  *      resolver 404s on unknown hosts and on multi-level subdomains.
  *      Reject (404) if the tenant is the platform tenant — operators
  *      do not impersonate INTO themselves.
@@ -73,7 +73,7 @@
  * in any middleware here would gate the route behind a session that
  * does not yet exist.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 
 import { redirect } from "react-router";
@@ -82,7 +82,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../db/schema";
 import {
   PLATFORM_TENANT_ID,
-  getTenantFromRequest,
+  resolveRequestTenant,
   requireTenantUser,
 } from "../lib/tenant";
 import { isApexHost } from "../lib/github-auth.server";
@@ -100,12 +100,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const env = (context as any).cloudflare.env;
   const db = drizzle(env.DB);
 
-  // Resolve the request's tenant. getTenantFromRequest 404s on
+  // Resolve the request's tenant. The resolver 404s on
   // unknown hosts and multi-level subdomains; we accept the thrown
   // Response and propagate it.
   let tenant;
   try {
-    tenant = await getTenantFromRequest(db, request);
+    tenant = await resolveRequestTenant(context, db, request);
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;
@@ -208,4 +208,4 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   });
 }
 
-// @version v0.4.0
+// @version v0.9.0

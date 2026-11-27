@@ -25,7 +25,7 @@
  * row. Delete is allowed: runs and uploads keep FK-free pointers, so a
  * deleted profile leaves those intact.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useMemo, useState } from "react";
@@ -47,9 +47,19 @@ import {
   type EditorTransformKind,
 } from "../lib/import/profile-editor";
 import type { Route } from "./+types/_auth.admin.imports.profiles.$profileId";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.profile?.name ?? (data ? heading("imports:profileEditor.createHeading") : null),
+    heading("imports:title"),
+  );
+}
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { allowedTargetFields } = await import("~/lib/import/target-fields");
   const { federationLeadTenantId } = await import(
@@ -57,7 +67,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -119,11 +129,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -476,3 +486,5 @@ export default function ProfileEditorPage({ loaderData }: Route.ComponentProps) 
     </div>
   );
 }
+
+// @version v0.9.0

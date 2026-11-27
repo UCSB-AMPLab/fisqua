@@ -32,7 +32,17 @@
  * address (`{manifest_base_url}/{slug}`) as `manifestBaseUrl`, which
  * every promoted description's `iiif_manifest_url` is built under.
  *
- * @version v0.8.0
+ * The parent's child count and its version move in one statement, the
+ * version past the one the parent holds (`nextVersionSql`). Each insert
+ * batch also moves the versions of the descriptions that record one of
+ * its new codes as a former reference code (`formerCodeHoldersFollow`).
+ *
+ * The Django round import is retired, and its descriptions step
+ * (`scripts/commands/descriptions.ts`), which held the same
+ * reference-code pattern, was removed with it; `REFERENCE_CODE_PATTERN`
+ * here no longer has a copy to mirror.
+ *
+ * @version v0.9.0
  */
 import { eq, and, isNull, inArray, sql, desc } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -44,6 +54,8 @@ import {
   volumePages,
 } from "../../db/schema";
 import { mapEntryToDescription } from "./field-mapping";
+import { nextVersionSql } from "../record-version.server";
+import { formerCodeHoldersFollow } from "../export/former-codes.server";
 import { buildDocumentManifest, manifestObjectPath } from "./manifest-builder";
 import { parseManifest } from "../iiif.server";
 import { descriptionValidatorFor } from "../standards/validator-factory";
@@ -62,7 +74,6 @@ const MAX_BATCH_SIZE = 200;
  * max 50 chars. Multilingual posture (v0.4 round 1) — `\p{L}` admits
  * Spanish/Portuguese/French/Catalan diacritics so cataloguers can
  * emit reference codes like `Tutela-Niño` without lossy ASCII fold.
- * Mirrors `scripts/commands/descriptions.ts:REFERENCE_CODE_PATTERN`.
  */
 const REFERENCE_CODE_PATTERN = /^[\p{L}\p{N}-]{1,50}$/u;
 
@@ -532,8 +543,17 @@ export async function promoteEntries(
     } as typeof descriptions.$inferInsert)
   );
 
+  // Each chunk's new codes stop being published as former codes, so the
+  // descriptions that record them move their versions in its batch.
   for (let i = 0; i < insertStmts.length; i += CHUNK_SIZE) {
-    const chunk = insertStmts.slice(i, i + CHUNK_SIZE);
+    const chunk: unknown[] = insertStmts.slice(i, i + CHUNK_SIZE);
+    const holders = formerCodeHoldersFollow(
+      db,
+      tenantId,
+      mappings.slice(i, i + CHUNK_SIZE).map((m) => m.referenceCode),
+      now
+    );
+    if (holders) chunk.push(holders);
     await db.batch(chunk as any);
   }
 
@@ -572,7 +592,8 @@ export async function promoteEntries(
     .update(descriptions)
     .set({
       childCount: sql`${descriptions.childCount} + ${promotedCount}`,
-      updatedAt: now,
+      // Past the version the parent holds, whatever the clock.
+      updatedAt: nextVersionSql(descriptions.updatedAt, now),
     })
     .where(eq(descriptions.id, parentDescription.id));
 
@@ -588,3 +609,5 @@ export async function promoteEntries(
 
   return { promoted, skipped, errors };
 }
+
+// @version v0.9.0

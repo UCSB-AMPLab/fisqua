@@ -1,10 +1,11 @@
 /**
  * Tests — notification sweep and digest rendering
  *
- * Covers `app/lib/notification-sweep.server.ts` end to end against a
- * real D1 binding: who the sweep considers due, how many emails a pile
- * of pending outbox rows collapses into, what the links and labels in
- * those emails say, and what happens when the mail transport refuses.
+ * This suite covers `app/lib/notification-sweep.server.ts` and its digest
+ * rendering end to end against a real D1 binding: who the sweep considers
+ * due, how many emails a pile of pending outbox rows collapses into, what
+ * the links and labels in those emails say, and what happens when the mail
+ * transport refuses.
  *
  * The transport is a captured fake — an array of `{to, subject, html}`
  * the assertions read back — so nothing here touches the network and
@@ -12,13 +13,17 @@
  * escaping, locale, and grouping cases are checked: not by trusting the
  * renderer's contract, but by reading the HTML the recipient would get.
  *
+ * The digest's language follows the rule every email follows: the
+ * recipient's saved locale, then their workspace's default language,
+ * then Spanish (the cron has no request to take a language from).
+ *
  * FIXTURES sit inside the Neogranadina federation seeded by
  * `cleanDatabase()`: the lead tenant (`neogranadina`) plus one member
  * (`sweep-member`), so a shared-space question with no tenant of its own
  * can be checked to link through the lead's host while its recipient's
  * account link stays on the member's.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -459,6 +464,50 @@ describe("notification sweep", () => {
     expect(spanish?.html).toContain("Se resolvió 1 pregunta que planteaste");
   });
 
+  it("renders in the workspace default when the recipient has no saved locale", async () => {
+    const db = drizzle(env.DB, { schema });
+    const now = 1_800_000_000_000;
+    await env.DB.prepare("UPDATE tenants SET default_locale = 'en' WHERE id = ?")
+      .bind(MEMBER_TENANT_ID)
+      .run();
+    try {
+      await seedUser({ id: "u-6ws", locale: null });
+      await seedUser({ id: "u-6own", locale: "es" });
+      await seedProposalDecision({ id: "d-6ws", tenantId: MEMBER_TENANT_ID });
+      await seedOutbox({
+        id: "o-6ws",
+        userId: "u-6ws",
+        kind: "decision_ruled",
+        decisionId: "d-6ws",
+      });
+      await seedOutbox({
+        id: "o-6own",
+        userId: "u-6own",
+        kind: "decision_ruled",
+        decisionId: "d-6ws",
+      });
+
+      const sink: SentMail[] = [];
+      await runNotificationSweep(db, {
+        now,
+        hostSuffix: HOST_SUFFIX,
+        appConfig: APP_CONFIG,
+        sendEmail: capturingSender(sink),
+      });
+
+      const workspace = sink.find((m) => m.to === "u-6ws@test.local");
+      const own = sink.find((m) => m.to === "u-6own@test.local");
+      expect(workspace?.subject).toBe("1 update in Fisqua");
+      expect(workspace?.html).toContain('<html lang="en">');
+      expect(own?.subject).toBe("1 novedad en Fisqua");
+      expect(own?.html).toContain('<html lang="es">');
+    } finally {
+      await env.DB.prepare("UPDATE tenants SET default_locale = NULL WHERE id = ?")
+        .bind(MEMBER_TENANT_ID)
+        .run();
+    }
+  });
+
   // -------------------------------------------------------------------
   // 6. Transport failure
   // -------------------------------------------------------------------
@@ -635,4 +684,4 @@ describe("notification sweep", () => {
   });
 });
 
-// @version v0.7.0
+// @version v0.9.0

@@ -8,14 +8,16 @@
  *      `?return_to=<slug>`; the apex completes OAuth at the one
  *      callback URL the GitHub OAuth App is registered with and 302s
  *      back to this tenant via a single-use handoff token. The tenant
- *      slug is read from the loader's `getTenantFromRequest` resolution.
+ *      slug is read from the loader's tenant resolution, made through
+ *      `resolveRequestTenant`, so the row the i18next middleware read
+ *      for the workspace's default language is not read again.
  *
  *   2. Magic-link form — secondary position. Submits an email; the
  *      action generates a magic link with `new URL(request.url).origin`
  *      so the verify URL stays on the tenant subdomain (host-aware by
  *      construction).
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 import { redirect, data } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -24,19 +26,21 @@ import { CircleCheck, CircleX, Github, Mail } from "lucide-react";
 import type { Route } from "./+types/login";
 import {
   assertNonPlatformOrAllowlisted,
-  getTenantFromRequest,
+  resolveRequestTenant,
 } from "../lib/tenant";
 import { getLocale } from "../middleware/i18next";
+import { pageMeta, heading } from "../lib/page-title";
+import { FisquaMark } from "../components/landing/landing-mark";
 
 const emailSchema = z.object({
   email: z.string().email(),
 });
 
-export function meta({ data }: Route.MetaArgs) {
-  const lang = data?.lang === "es" ? "es" : "en";
-  return [
-    { title: lang === "es" ? "Iniciar sesión | Fisqua" : "Sign in | Fisqua" },
-  ];
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("auth:page_title"),
+  );
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -62,7 +66,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // tenant route gets, and a /login that 404s on a non-existent host
   // is correct.
   const db = drizzle(env.DB);
-  const tenant = await getTenantFromRequest(db, request);
+  const tenant = await resolveRequestTenant(context, db, request);
   // Seal platform host. /login is not in OPERATOR_ROUTE_ALLOWLIST,
   // so platform.fisqua.org/login hard-404s here — externally
   // identical to an unknown slug's /login.
@@ -94,6 +98,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { createSessionStorage } = await import("../sessions.server");
   const { generateMagicLink } = await import("../lib/auth.server");
+  const { isD1Overloaded } = await import("../lib/d1-overload");
   const { getInstance } = await import("~/middleware/i18next");
 
   const env = context.cloudflare.env;
@@ -113,13 +118,48 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const db = drizzle(env.DB);
   const origin = new URL(request.url).origin;
-  const result = await generateMagicLink(
-    db,
-    parsed.data.email,
-    origin,
-    env.RESEND_API_KEY,
-    env
-  );
+  // The email takes the default language of the workspace this host
+  // resolves to, the one the link signs into, which for a federation
+  // grant holder is not their home workspace. An unresolvable host
+  // leaves the user's home workspace to supply it. The page's language
+  // goes with the request: the email uses it only when the user has no
+  // saved language and the workspace no default.
+  //
+  // A D1 overload refusal answers 503 with a message asking the person
+  // to try again, whether it refused the workspace lookup, outlasted
+  // the read retries in generateMagicLink, or refused the token insert;
+  // any other error from generateMagicLink is left to the router. The
+  // workspace lookup is not retried here: the resolver already retries
+  // its read, the request holds a single lookup, and a failed one stays
+  // failed for the rest of the request.
+  const busy = () =>
+    data(
+      { error: i18n.t("auth:error.sign_in_busy"), success: false },
+      { status: 503 }
+    );
+  let workspaceId: string | null = null;
+  try {
+    workspaceId = (await resolveRequestTenant(context, db, request)).id;
+  } catch (err) {
+    if (isD1Overloaded(err)) return busy();
+    workspaceId = null;
+  }
+  let result: Awaited<ReturnType<typeof generateMagicLink>>;
+  try {
+    result = await generateMagicLink(
+      db,
+      parsed.data.email,
+      origin,
+      env.RESEND_API_KEY,
+      env,
+      i18n.language,
+      workspaceId,
+      { request }
+    );
+  } catch (err) {
+    if (!isD1Overloaded(err)) throw err;
+    return busy();
+  }
 
   if (result.error) {
     return data({ error: result.error, success: false }, { status: 400 });
@@ -160,11 +200,7 @@ export default function LoginPage({
     <div className="flex min-h-screen items-center justify-center bg-white">
       <div className="mx-auto w-full max-w-md space-y-6 px-4">
         <div className="text-center">
-          <img
-            src="/brand/fisqua-mark.svg"
-            alt="Fisqua"
-            className="mx-auto h-24 w-24"
-          />
+          <FisquaMark className="mx-auto h-24 w-24" color="var(--verdigris)" label="Fisqua" />
           <h1 className="mt-4 font-display text-5xl font-semibold text-indigo">
             Fisqua
           </h1>
@@ -281,4 +317,4 @@ export default function LoginPage({
   );
 }
 
-// @version v0.4.2
+// @version v0.9.0

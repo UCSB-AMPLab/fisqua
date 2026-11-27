@@ -22,11 +22,20 @@
  * framework-level 500. The try/catch below falls back to a standalone
  * instance so rendering can proceed and the boundary can do its job.
  *
- * @version v0.6.0
+ * `handleError` receives every error the router's error handling
+ * catches from a middleware, loader or action, before the response
+ * reaches the root middleware. It logs the error as React Router's
+ * default handler does, and records a D1 overload refusal in the
+ * request context (`noteD1Overload`), so `serviceBusyMiddleware` answers
+ * that request's 500 with the busy page. An overload a caller caught
+ * and absorbed never reaches it.
+ *
+ * @version v0.9.0
  */
 import type { EntryContext } from "react-router";
 import type { RouterContextProvider } from "react-router";
-import { ServerRouter } from "react-router";
+import { ServerRouter, isRouteErrorResponse, type HandleErrorFunction } from "react-router";
+import { noteD1Overload } from "./lib/d1-overload";
 import { I18nextProvider } from "react-i18next";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
@@ -79,3 +88,21 @@ export default async function handleRequest(
     status: responseStatusCode,
   });
 }
+
+/**
+ * Receives every error the router's error handling catches from a
+ * middleware, loader or action. It logs as React Router's default does,
+ * and records a D1 overload refusal for `serviceBusyMiddleware`.
+ */
+export const handleError: HandleErrorFunction = (error, { request, context }) => {
+  noteD1Overload(context, error);
+  if (!request.signal.aborted) {
+    console.error(
+      isRouteErrorResponse(error) && (error as { error?: unknown }).error
+        ? (error as { error?: unknown }).error
+        : error,
+    );
+  }
+};
+
+// @version v0.9.0

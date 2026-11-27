@@ -6,7 +6,7 @@
  * the general-settings form (name, manifest URL, contact email, role,
  * description, conventions) and the surrounding section labels.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   settings: {
@@ -33,7 +33,7 @@ export default {
     restore: "Restore",
     delete_title: "Delete this project",
     delete_description: "Permanently delete this project and all its data. This cannot be undone.",
-    delete_confirm: "Type \"{{name}}\" to confirm deletion.",
+    delete_confirm: "Type “{{name}}” to confirm deletion.",
     delete_permanently: "Delete permanently",
     subtypes_heading: "Document subtypes",
     subtypes_help: "Customize the list of document subtypes cataloguers can choose from. Labels are shown in Colombian Spanish regardless of interface language, matching archival conventions. Removing a subtype does not change any entries that already use it.",
@@ -90,7 +90,7 @@ export default {
   empty: {
     no_volumes: "No volumes in this project yet.",
     no_members: "No members yet.",
-    no_volumes_add: "No volumes yet. Click \"Add\" to import volumes from IIIF manifests.",
+    no_volumes_add: "No volumes yet. Click “Add” to import volumes from IIIF manifests.",
     no_volumes_assigned: "No volumes assigned yet.",
     no_projects_title: "No projects yet",
     no_projects_body: "You aren't a member of any projects yet. Ask a project lead to add you, or create a new one if you have permission.",

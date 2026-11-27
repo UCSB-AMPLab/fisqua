@@ -26,7 +26,7 @@
  *
  * Every value here is a test value: no real tenant or token.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -58,6 +58,9 @@ function database(): DatabaseSync {
   db.exec("CREATE TABLE users (id TEXT PRIMARY KEY NOT NULL)");
   db.exec(readFileSync(fileURLToPath(new URL("../../drizzle/0037_audit_log.sql", import.meta.url)), "utf8"));
   db.exec(readFileSync(fileURLToPath(new URL("../../drizzle/0101_audit_scanner_token.sql", import.meta.url)), "utf8"));
+  // 0123 adds the linked unit's name and device id, which Make token and
+  // Replace token clear.
+  db.exec(readFileSync(fileURLToPath(new URL("../../drizzle/0123_capture_pairing.sql", import.meta.url)), "utf8"));
   db.prepare("INSERT INTO tenants (id) VALUES (?)").run(FAKE_TENANT_ID);
   return db;
 }
@@ -254,4 +257,4 @@ describe("the arguments", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

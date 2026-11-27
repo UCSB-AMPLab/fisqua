@@ -16,7 +16,7 @@
  * `DEFAULT_TEST_TENANT_ID` so test bodies stay focused on the
  * field-level contract.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 import {
   describe,
@@ -29,6 +29,7 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
+import { attributesJson, officeOf, officeSql, withOfficeSql } from "../../app/lib/link-attributes.server";
 import { DEFAULT_TEST_TENANT_ID, DEFAULT_TEST_FEDERATION_ID, applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestEntity } from "../helpers/entities";
 import { createTestUser } from "../helpers/auth";
@@ -632,7 +633,7 @@ describe("entity description link CRUD", () => {
         roleNote: "Primary author",
         sequence: 1,
         honorific: "Don",
-        function: "Chronicler",
+        attributes: withOfficeSql("Chronicler"),
         nameAsRecorded: "Juan de Castellanos",
       })
       .where(eq(schema.descriptionEntities.id, linkId));
@@ -647,7 +648,7 @@ describe("entity description link CRUD", () => {
     expect(updated!.roleNote).toBe("Primary author");
     expect(updated!.sequence).toBe(1);
     expect(updated!.honorific).toBe("Don");
-    expect(updated!.function).toBe("Chronicler");
+    expect(officeOf(updated!.attributes)).toBe("Chronicler");
     expect(updated!.nameAsRecorded).toBe("Juan de Castellanos");
   });
 
@@ -732,7 +733,7 @@ describe("entity description link CRUD", () => {
       roleNote: "Test note",
       sequence: 2,
       honorific: "Fray",
-      function: "Priest",
+      attributes: attributesJson("Priest"),
       nameAsRecorded: "Fray Pedro",
       createdAt: now,
     });
@@ -746,7 +747,7 @@ describe("entity description link CRUD", () => {
         roleNote: schema.descriptionEntities.roleNote,
         sequence: schema.descriptionEntities.sequence,
         honorific: schema.descriptionEntities.honorific,
-        function: schema.descriptionEntities.function,
+        function: officeSql(),
         nameAsRecorded: schema.descriptionEntities.nameAsRecorded,
         descriptionTitle: schema.descriptions.title,
         referenceCode: schema.descriptions.referenceCode,

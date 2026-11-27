@@ -6,7 +6,7 @@
  * primary call-to-action. Entities follow ISAAR(CPF), so the labels
  * stay close to the standard's preferred Spanish phrasing.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // Page
@@ -27,6 +27,7 @@ export default {
   deleteBody:
     "¿Estás seguro de que deseas eliminar {{name}}? Esta acción no se puede deshacer.",
   deleteBlocked: "No se puede eliminar — {{count}} descripciones vinculadas",
+  deleteBlockedMergeSurvivor: "Este registro no se puede eliminar porque otros registros se fusionaron con él.",
   cascadeWarning: "Esta entidad tiene {{count}} descripciones vinculadas.",
   cascadeExamples: "Ejemplos:",
 
@@ -43,7 +44,7 @@ export default {
   person: "Persona",
   family: "Familia",
   corporate: "Entidad corporativa",
-  showMerged: "Mostrar combinados",
+  showMerged: "Mostrar fusionados",
   filterByType: "Filtrar por tipo:",
   typeFilterAria: "Filtrar por tipo: {{type}}",
   attested: "Documentado:",
@@ -69,23 +70,23 @@ export default {
   columnToggle: "Columnas",
 
   // Merge
-  mergeButton: "Combinar",
-  mergeTitle: "Combinar entidad",
+  mergeButton: "Fusionar",
+  mergeTitle: "Fusionar entidad",
   mergeSearch: "Buscar registro destino...",
   mergeReassignTitle: "Reasignar vínculos",
   mergeReassignSubtitle:
     "{{name}} tiene {{count}} descripciones vinculadas",
-  mergeConfirm: "Confirmar combinación",
+  mergeConfirm: "Confirmar fusión",
   mergeCancel: "Cancelar",
-  mergedBanner: "Este registro fue combinado en {{target}}.",
+  mergedBanner: "Este registro se fusionó con {{target}}.",
   mergedBannerLink: "Ver registro destino",
-  mergedSuffix: "(combinado)",
+  mergedSuffix: "(fusionado)",
 
   // Split
   splitButton: "Dividir",
   splitTitle: "Dividir entidad",
   splitSubtitle:
-    "Se creará un nuevo registro con los datos de {{name}}. Seleccione los vínculos que deben moverse al nuevo registro.",
+    "Se creará un nuevo registro con los datos de {{name}}. Selecciona los vínculos que deben moverse al nuevo registro.",
   splitConfirm: "Confirmar división",
   splitCancel: "Cancelar",
   loadMore: "Cargar más",
@@ -96,7 +97,7 @@ export default {
   successCreated: "Entidad creada.",
   successUpdated: "Entidad actualizada.",
   successDeleted: "Entidad eliminada.",
-  successMerged: "Entidad combinada.",
+  successMerged: "Entidad fusionada.",
   successSplit: "Entidad dividida.",
 
   // Error
@@ -122,7 +123,7 @@ export default {
   primary_function_placeholder: "Buscar o escribir una función...",
   "field.legalStatus": "Estatus legal",
   "field.functions": "Funciones",
-  "field.mergedInto": "Combinado en",
+  "field.mergedInto": "Fusionado con",
   "field.sources": "Fuentes",
   "field.wikidataId": "Wikidata",
   "field.viafId": "VIAF",
@@ -177,6 +178,15 @@ export default {
   remove_link: "Quitar vínculo",
   remove_link_confirm: "¿Quitar este vínculo?",
   duplicate_link_error: "Esta descripción ya está vinculada con este rol",
+  // Rechazos de una edición o eliminación de vínculo por una relación entre dos personas
+  link_error_relation_side_save:
+    "Este vínculo es uno de los lados de una relación entre dos personas, y las relaciones no se editan desde este formulario. No se guardó nada.",
+  link_error_relation_side_remove:
+    "Este vínculo es uno de los lados de una relación entre dos personas. Si lo quitaras aquí, el otro lado de la relación quedaría sin su par. No se quitó nada.",
+  link_error_relation_changed_save:
+    "Este vínculo pasó a formar parte de una relación después de que abriste la página. No se guardó nada. Vuelve a cargar la página para ver el vínculo como está ahora.",
+  link_error_relation_changed_remove:
+    "Este vínculo pasó a formar parte de una relación después de que abriste la página. No se quitó nada. Vuelve a cargar la página para ver el vínculo como está ahora.",
   role_note_label: "Nota del rol",
   sequence_label: "Secuencia",
   honorific_label: "Honorífico",
@@ -221,3 +231,5 @@ export default {
   // Rediseño de la página de detalle: tarjeta LOD
   sectionLod: "Datos abiertos enlazados",
 } as const;
+
+// @version v0.9.0

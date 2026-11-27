@@ -24,7 +24,9 @@
  *     member tenant, computed per request and never written to the
  *     member tenant's `users` table. `staff` maps to a
  *     cataloguer/editor-equivalent that NEVER confers member-tenant
- *     administration; `steward` maps to admin-equivalent (invariant I6).
+ *     administration but works in every area of it
+ *     (`worksInEveryArea`, read by `canWorkInArea`); `steward` maps to
+ *     admin-equivalent (invariant I6).
  *     Unlike the operator impersonation envelope -- which logs in as the
  *     operator's own user row and leaves its flags untouched -- a grant
  *     genuinely overrides the acting flags, because a home-tenant admin
@@ -49,13 +51,14 @@
  * target = the member tenant (invariant I6). Reads are not audited,
  * consistent with the operator-surface precedent in `audit.server.ts`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { auditLog, federationMemberships, federations } from "../db/schema";
 import type { Tenant, User } from "../context";
+import { retryD1Read, type D1Site } from "./d1-overload";
 
 /** The two federation roles (federation spec §5). Bounded enum; the DB
  * CHECK in migration 0049 is the runtime guard, this constant is the
@@ -83,6 +86,8 @@ export interface GrantRoleFlags {
   isAuthoritiesAdmin: boolean;
   isImportsAdmin: boolean;
   isDigitizationAdmin: boolean;
+  /** Works in every area without administering one (`canWorkInArea`). */
+  worksInEveryArea: boolean;
 }
 
 /**
@@ -98,12 +103,15 @@ export interface GrantRoleFlags {
  *     superadmin flag.
  *   - `staff` -> cataloguer/editor-equivalent. Every administrative flag
  *     is false: staff access NEVER confers member-tenant administration
- *     (I6).
+ *     (I6). `worksInEveryArea` is true: staff open and do the work of
+ *     every area (records, authorities, imports, digitization) through
+ *     `canWorkInArea`, while every check that stays on
+ *     `canAdministerArea` keeps excluding them.
  *
  * Both roles set the four area-admin flags to false, so an area flag
  * held at home never reaches a member tenant: a home records admin with
  * a staff grant is no records admin there. A steward passes every area
- * through `isAdmin`.
+ * through `isAdmin`, and also carries `worksInEveryArea`.
  */
 export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
   switch (role) {
@@ -119,6 +127,7 @@ export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
         isAuthoritiesAdmin: false,
         isImportsAdmin: false,
         isDigitizationAdmin: false,
+        worksInEveryArea: true,
       };
     case "staff":
       return {
@@ -132,6 +141,7 @@ export function grantEffectiveRoleFlags(role: FederationRole): GrantRoleFlags {
         isAuthoritiesAdmin: false,
         isImportsAdmin: false,
         isDigitizationAdmin: false,
+        worksInEveryArea: true,
       };
   }
 }
@@ -163,11 +173,17 @@ export interface GrantAccess {
  *   - the tenant's federation exists and is active;
  *   - a `federation_memberships` row for `(user, tenant.federationId)`.
  * (federation spec §4, invariant I2.)
+ *
+ * Each of the two reads is retried on its own while D1 refuses it as
+ * overloaded (`retryD1Read`, logged as `grant_federation` and
+ * `grant_membership` for the request in `site`), so a refused
+ * membership read never repeats the federation read that succeeded.
  */
 export async function resolveGrant(
   db: DrizzleD1Database<any>,
   user: User,
   tenant: Tenant,
+  site: Omit<D1Site, "read"> = {},
 ): Promise<GrantAccess | null> {
   // Home access is not a grant. Short-circuit before any DB read so the
   // common same-tenant request adds zero query overhead.
@@ -177,24 +193,36 @@ export async function resolveGrant(
   if (tenant.status === "suspended" || tenant.disabledAt !== null) return null;
 
   // The federation itself must be active.
-  const fed = await db
-    .select({ status: federations.status })
-    .from(federations)
-    .where(eq(federations.id, tenant.federationId))
-    .get();
+  const fed = await retryD1Read(
+    () =>
+      db
+        .select({ status: federations.status })
+        .from(federations)
+        .where(eq(federations.id, tenant.federationId))
+        .get(),
+    undefined,
+    undefined,
+    { ...site, read: "grant_federation" },
+  );
   if (!fed || fed.status !== "active") return null;
 
   // Live membership covering the tenant's federation.
-  const membership = await db
-    .select({ role: federationMemberships.role })
-    .from(federationMemberships)
-    .where(
-      and(
-        eq(federationMemberships.userId, user.id),
-        eq(federationMemberships.federationId, tenant.federationId),
-      ),
-    )
-    .get();
+  const membership = await retryD1Read(
+    () =>
+      db
+        .select({ role: federationMemberships.role })
+        .from(federationMemberships)
+        .where(
+          and(
+            eq(federationMemberships.userId, user.id),
+            eq(federationMemberships.federationId, tenant.federationId),
+          ),
+        )
+        .get(),
+    undefined,
+    undefined,
+    { ...site, read: "grant_membership" },
+  );
   if (!membership) return null;
 
   return {
@@ -239,20 +267,31 @@ export function applyGrantEffectiveRole(user: User, grant: GrantAccess): User {
  * tenant (its lead), so branch (A) admits exactly the current single
  * admin population. It is encoded now so the denial path is already
  * correct when step 6 provisions the first member tenant.
+ *
+ * Both reads are retried while D1 refuses them as overloaded
+ * (`retryD1Read`), logged as `steward_federation` and
+ * `steward_membership` with `site`'s request and context.
  */
 export async function isFederationSteward(
   db: DrizzleD1Database<any>,
   user: User,
   tenant: Tenant,
+  site: Omit<D1Site, "read"> = {},
 ): Promise<boolean> {
-  const fed = await db
-    .select({
-      leadTenantId: federations.leadTenantId,
-      status: federations.status,
-    })
-    .from(federations)
-    .where(eq(federations.id, tenant.federationId))
-    .get();
+  const fed = await retryD1Read(
+    () =>
+      db
+        .select({
+          leadTenantId: federations.leadTenantId,
+          status: federations.status,
+        })
+        .from(federations)
+        .where(eq(federations.id, tenant.federationId))
+        .get(),
+    undefined,
+    undefined,
+    { ...site, read: "steward_federation" },
+  );
   if (!fed || fed.status !== "active") return false;
 
   // (A) Home admin on the federation's lead tenant. `user.tenantId ===
@@ -268,17 +307,23 @@ export async function isFederationSteward(
   }
 
   // (B) Explicit steward membership covering this federation.
-  const membership = await db
-    .select({ id: federationMemberships.id })
-    .from(federationMemberships)
-    .where(
-      and(
-        eq(federationMemberships.userId, user.id),
-        eq(federationMemberships.federationId, tenant.federationId),
-        eq(federationMemberships.role, "steward"),
-      ),
-    )
-    .get();
+  const membership = await retryD1Read(
+    () =>
+      db
+        .select({ id: federationMemberships.id })
+        .from(federationMemberships)
+        .where(
+          and(
+            eq(federationMemberships.userId, user.id),
+            eq(federationMemberships.federationId, tenant.federationId),
+            eq(federationMemberships.role, "steward"),
+          ),
+        )
+        .get(),
+    undefined,
+    undefined,
+    { ...site, read: "steward_membership" },
+  );
   return membership !== undefined;
 }
 
@@ -356,3 +401,5 @@ export async function logGrantWrite(
     }),
   });
 }
+
+// @version v0.9.0

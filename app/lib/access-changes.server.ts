@@ -51,7 +51,7 @@
  * `project_members` has no tenant column; the caller has already
  * resolved the project inside the request tenant.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { users } from "../db/schema";
@@ -157,7 +157,10 @@ function markerExists(id: string): Statement {
 /** Another person of the workspace is a workspace admin. */
 function anotherWorkspaceAdmin(tenantId: string, userId: string): Statement {
   return {
-    sql: "EXISTS (SELECT 1 FROM users WHERE tenant_id = ? AND id <> ? AND is_admin = 1)",
+    // A platform admin's row is not the workspace's (they are listed
+    // apart and cannot be edited here), so it never counts as the
+    // workspace's other admin, whatever its is_admin holds.
+    sql: "EXISTS (SELECT 1 FROM users WHERE tenant_id = ? AND id <> ? AND is_admin = 1 AND is_platform_admin = 0)",
     params: [tenantId, userId],
   };
 }
@@ -447,4 +450,4 @@ export async function setProjectMembership(args: {
   return !!(await d1.prepare(`SELECT 1 AS landed WHERE ${marker.sql}`).bind(...marker.params).first());
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -8,7 +8,7 @@
  * bare keys like `t("button.save")` resolve here without an explicit
  * prefix.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   app_name: "Fisqua",
@@ -83,6 +83,10 @@ export default {
       "La solicitud no se completó. Intenta de nuevo y, si sigue fallando, cuéntale a quien administra el espacio qué estabas haciendo y en qué momento.",
     back_home: "Volver al espacio de trabajo",
     try_again: "Intentar de nuevo",
+    // La página 503 estática que se sirve cuando D1 está sobrecargado
+    // (`app/middleware/service-busy.ts`); se arma sin i18next.
+    busy_title: "Fisqua está ocupado en este momento",
+    busy_detail: "Intenta de nuevo en unos segundos.",
   },
   pagination: {
     previous: "Anterior",

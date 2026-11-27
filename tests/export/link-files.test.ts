@@ -30,12 +30,20 @@
  * staging objects are deleted and its upload aborted, a finished file
  * is left alone, and running the cleanup again is harmless.
  *
- * @version v0.8.0
+ * Relation cases cover the fields a link records (`""` for null text),
+ * `attributes` as an object (a stored value that is not one fails the
+ * step with the link id), and `related_to` as the other person's entity
+ * code, never a link id, null when that person is merged, uncoded or out
+ * of scope, and resolved when the two sides are read on different pages;
+ * and the three relation fields on entities.json.
+ *
+ * @version v0.9.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
 import {
   DEFAULT_TEST_TENANT_ID,
@@ -214,7 +222,25 @@ const ENTITY_LINK_KEYS = [
   "entity_code",
   "role",
   "role_raw",
+  "name_as_recorded",
+  "honorific",
+  "role_note",
+  "sequence",
+  "attributes",
+  "related_to",
+  "relation_certainty",
 ];
+
+/** The fields a link that is not a relation side, with nothing recorded, carries after `role_raw`. */
+const PLAIN_LINK = {
+  name_as_recorded: "",
+  honorific: "",
+  role_note: "",
+  sequence: 0,
+  attributes: {},
+  related_to: null,
+  relation_certainty: null,
+};
 const PLACE_LINK_KEYS = [
   "reference_code",
   "title",
@@ -335,17 +361,22 @@ async function linkEntity(
   db: Db,
   descriptionId: string,
   entityId: string,
-  role: (typeof schema.descriptionEntities.$inferInsert)["role"],
-  roleRaw: string | null = null
+  role: string,
+  roleRaw: string | null = null,
+  extra: Partial<typeof schema.descriptionEntities.$inferInsert> = {}
 ) {
+  const linkId = id();
   await db.insert(schema.descriptionEntities).values({
-    id: id(),
+    id: linkId,
     descriptionId,
     entityId,
-    role,
+    // Relation roles are the federation's own vocabulary, not the enum.
+    role: role as (typeof schema.descriptionEntities.$inferInsert)["role"],
     roleRaw,
     createdAt: now,
+    ...extra,
   });
+  return linkId;
 }
 
 async function linkPlace(
@@ -471,6 +502,7 @@ describe("link files export", () => {
         entity_code: "ne-aaaaa",
         role: "heir",
         role_raw: "heredero",
+        ...PLAIN_LINK,
       },
       {
         reference_code: "co-cihjml-acc-00002",
@@ -481,6 +513,7 @@ describe("link files export", () => {
         entity_code: "ne-aaaaa",
         role: "apoderado",
         role_raw: "",
+        ...PLAIN_LINK,
       },
       {
         reference_code: "co-cihjml-acc-00002",
@@ -491,6 +524,7 @@ describe("link files export", () => {
         entity_code: "ne-aaaaa",
         role: "sender",
         role_raw: "",
+        ...PLAIN_LINK,
       },
       {
         reference_code: "co-cihjml-acc-00002",
@@ -501,6 +535,7 @@ describe("link files export", () => {
         entity_code: "ne-bbbbb",
         role: "fiador",
         role_raw: "fiador del otorgante",
+        ...PLAIN_LINK,
       },
     ]);
 
@@ -905,3 +940,239 @@ describe("link files export", () => {
     await store.deleteObject(`${key}.carry-token-1-1`);
   });
 });
+
+/**
+ * Two links of one description that name each other: each side's
+ * `related_to` is the other side's link id.
+ */
+async function relate(
+  db: Db,
+  descriptionId: string,
+  a: { entityId: string; role: string; extra?: Partial<typeof schema.descriptionEntities.$inferInsert> },
+  b: { entityId: string; role: string; extra?: Partial<typeof schema.descriptionEntities.$inferInsert> }
+): Promise<[string, string]> {
+  const aId = await linkEntity(db, descriptionId, a.entityId, a.role, null, a.extra);
+  const bId = await linkEntity(db, descriptionId, b.entityId, b.role, null, { ...b.extra, relatedTo: aId });
+  await db
+    .update(schema.descriptionEntities)
+    .set({ relatedTo: bId })
+    .where(eq(schema.descriptionEntities.id, aId));
+  return [aId, bId];
+}
+
+/** Every string anywhere in a parsed JSON value. */
+function strings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).flatMap(([k, v]) => [k, ...strings(v)]);
+  }
+  return [];
+}
+
+describe("relations in entity_links.json", () => {
+  let db: Db;
+  let storage: MemoryStorage;
+  let repo: string;
+  let desc: string;
+
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+
+  beforeEach(async () => {
+    await cleanDatabase();
+    db = drizzle(env.DB, { schema });
+    storage = new MemoryStorage();
+    repo = await seedRepo(db, DEFAULT_TEST_TENANT_ID, "co-ahrb");
+    desc = await seedDescription(db, DEFAULT_TEST_TENANT_ID, repo, "co-ahrb-n1-63-001");
+  });
+
+  const rowsOf = (s: MemoryStorage) =>
+    JSON.parse(s.text("neogranadina/entity_links.json")!) as Array<Record<string, unknown>>;
+
+  it("exports both sides of a relation with the other person's entity code, never a link id", async () => {
+    const husband = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-hhhhh");
+    const wife = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-wwwww");
+    const [hLink, wLink] = await relate(
+      db,
+      desc,
+      {
+        entityId: husband,
+        role: "spouse",
+        extra: {
+          roleRaw: "marido de",
+          nameAsRecorded: "Pedro Díaz",
+          honorific: "capitán",
+          roleNote: "Nota del catalogador",
+          sequence: 3,
+          attributes: JSON.stringify({ office: "alcalde ordinario", residence: "vecino de Rionegro" }),
+        },
+      },
+      { entityId: wife, role: "spouse", extra: { roleRaw: "mujer de", relationCertainty: "derived" } }
+    );
+    // A document role of the same person on the same description.
+    const roleLink = await linkEntity(db, desc, husband, "spouse", "otorgante");
+
+    await runToEnd(exportEntityLinks, db, storage);
+    const rows = rowsOf(storage);
+    for (const row of rows) expect(Object.keys(row)).toEqual(ENTITY_LINK_KEYS);
+
+    const base = {
+      reference_code: "co-ahrb-n1-63-001",
+      title: "Title of co-ahrb-n1-63-001",
+      date_expression: "1760-07-23",
+      date_start: "1760-07-23",
+      repository_code: "co-ahrb",
+    };
+    // Order: entity code, role, link id.
+    const husbandRows = [
+      {
+        ...base,
+        entity_code: "ne-hhhhh",
+        role: "spouse",
+        role_raw: "marido de",
+        name_as_recorded: "Pedro Díaz",
+        honorific: "capitán",
+        role_note: "Nota del catalogador",
+        sequence: 3,
+        attributes: { office: "alcalde ordinario", residence: "vecino de Rionegro" },
+        related_to: "ne-wwwww",
+        relation_certainty: null,
+      },
+      { ...base, entity_code: "ne-hhhhh", role: "spouse", role_raw: "otorgante", ...PLAIN_LINK },
+    ];
+    if (roleLink < hLink) husbandRows.reverse();
+    expect(rows).toEqual([
+      ...husbandRows,
+      {
+        ...base,
+        entity_code: "ne-wwwww",
+        role: "spouse",
+        role_raw: "mujer de",
+        ...PLAIN_LINK,
+        related_to: "ne-hhhhh",
+        relation_certainty: "derived",
+      },
+    ]);
+
+    const linkIds = new Set([hLink, wLink, roleLink]);
+    for (const value of strings(rows)) expect(linkIds.has(value)).toBe(false);
+  });
+
+  it("writes related_to null when the other entity is merged, has no code or is out of scope", async () => {
+    await seedAhrMember(db);
+    const kept = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-kkkkk");
+    const target = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-ttttt");
+    const merged = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-mmmmm", { mergedInto: target });
+    const uncoded = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, null);
+    const otherFederation = await seedEntity(db, SECOND_TEST_FEDERATION_ID, "ne-ofofo");
+    // Owned by a member tenant the publish does not include.
+    const otherOwner = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-owner", { tenantId: AHR_TENANT_ID });
+
+    const sides = [merged, uncoded, otherFederation, otherOwner];
+    const roles = ["parent", "child", "sibling", "cousin"];
+    for (let i = 0; i < sides.length; i++) {
+      await relate(db, desc, { entityId: kept, role: roles[i] }, { entityId: sides[i], role: roles[i] });
+    }
+    // A link with no relation at all.
+    await linkEntity(db, desc, kept, "witness");
+
+    await runToEnd(exportEntityLinks, db, storage);
+    const rows = rowsOf(storage);
+    expect(rows.map((r) => [r.entity_code, r.role, r.related_to])).toEqual([
+      ["ne-kkkkk", "child", null],
+      ["ne-kkkkk", "cousin", null],
+      ["ne-kkkkk", "parent", null],
+      ["ne-kkkkk", "sibling", null],
+      ["ne-kkkkk", "witness", null],
+    ]);
+
+    // With the owner's tenant in the publish, that side resolves.
+    const federatedStorage = new MemoryStorage();
+    await runToEnd(exportEntityLinks, db, federatedStorage, [DEFAULT_TEST_TENANT_ID, AHR_TENANT_ID]);
+    const federated = rowsOf(federatedStorage).filter((r) => r.role === "cousin");
+    expect(federated.map((r) => [r.entity_code, r.related_to])).toEqual([
+      ["ne-kkkkk", "ne-owner"],
+      ["ne-owner", "ne-kkkkk"],
+    ]);
+  });
+
+  it("exports attributes as an object, {} for the default", async () => {
+    const e = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-aaaaa");
+    await linkEntity(db, desc, e, "witness");
+    await linkEntity(db, desc, e, "sender", null, { attributes: JSON.stringify({ age: "de 30 años" }) });
+
+    await runToEnd(exportEntityLinks, db, storage);
+    const text = storage.text("neogranadina/entity_links.json")!;
+    const rows = JSON.parse(text);
+    expect(rows.map((r: Record<string, unknown>) => [r.role, r.attributes])).toEqual([
+      ["sender", { age: "de 30 años" }],
+      ["witness", {}],
+    ]);
+    // Never the stored string.
+    expect(text).not.toContain('"{\\"age');
+  });
+
+  it("fails the step, naming the link, when a stored attributes value does not parse", async () => {
+    const e = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-aaaaa");
+    const bad = await linkEntity(db, desc, e, "witness");
+    // The column's CHECK refuses such a value; bypass it to stand for a
+    // row written before the constraint or by hand.
+    await env.DB.batch([
+      env.DB.prepare("PRAGMA ignore_check_constraints = ON"),
+      env.DB.prepare("UPDATE description_entities SET attributes = ? WHERE id = ?").bind("{not json", bad),
+      env.DB.prepare("PRAGMA ignore_check_constraints = OFF"),
+    ]);
+    const stored = await env.DB.prepare("SELECT attributes FROM description_entities WHERE id = ?").bind(bad).first<{ attributes: string }>();
+    expect(stored?.attributes).toBe("{not json");
+
+    await expect(runToEnd(exportEntityLinks, db, storage)).rejects.toThrow(bad);
+  });
+
+  it("resolves a relation whose two sides are read on different pages and steps", async () => {
+    const a = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-aaaaa");
+    const z = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-zzzzz");
+    const m = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-mmmmm");
+    await relate(db, desc, { entityId: a, role: "albacea" }, { entityId: z, role: "testator" });
+    await linkEntity(db, desc, m, "witness");
+
+    const states = await runToEnd(exportEntityLinks, db, storage, undefined, {
+      linkPageSize: 1,
+      rowsPerStep: 1,
+    });
+    expect(states.length).toBeGreaterThan(2);
+    const rows = rowsOf(storage);
+    expect(rows.map((r) => [r.entity_code, r.role, r.related_to])).toEqual([
+      ["ne-aaaaa", "albacea", "ne-zzzzz"],
+      ["ne-mmmmm", "witness", null],
+      ["ne-zzzzz", "testator", "ne-aaaaa"],
+    ]);
+  });
+
+  it("carries gender, known_only_from_relation and qualified_name on entities.json", async () => {
+    const maria = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-maria", {
+      gender: "female",
+      knownOnlyFromRelation: true,
+      qualifiedName: "María, hija de Pedro Díaz",
+    });
+    const pedro = await seedEntity(db, DEFAULT_TEST_FEDERATION_ID, "ne-pedro");
+    await relate(db, desc, { entityId: maria, role: "child" }, { entityId: pedro, role: "parent" });
+
+    await exportEntities(db, storage as unknown as ExportStorage, TENANT);
+    const entities = JSON.parse(storage.text("neogranadina/entities.json")!) as Array<Record<string, unknown>>;
+    const byCode = new Map(entities.map((e) => [e.entity_code, e]));
+    expect(byCode.get("ne-maria")).toMatchObject({
+      gender: "female",
+      known_only_from_relation: true,
+      qualified_name: "María, hija de Pedro Díaz",
+    });
+    expect(byCode.get("ne-pedro")).toMatchObject({
+      gender: null,
+      known_only_from_relation: false,
+      qualified_name: null,
+    });
+  });
+});
+
+// @version v0.9.0

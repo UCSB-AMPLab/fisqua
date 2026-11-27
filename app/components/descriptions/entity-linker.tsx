@@ -5,10 +5,26 @@
  * description, with typeahead search, role picker, and inline create-new
  * flow.
  *
- * @version v0.4.3
+ * An edit or a removal sends back the link's relation as the loader read
+ * it (`relationAsReadFields`), so the action can refuse a link whose
+ * relation changed since. A link that is a relation side is refused by
+ * the action; that refusal, and one for a relation changed since the
+ * read, is shown above the list under its own message
+ * (`link_error_<code>`).
+ *
+ * The role picker offers the federation's approved roles, grouped as its
+ * lists group them (`roles`, from the page's loader), and a new link
+ * starts on the first of them. A link shows its role's label from the
+ * federation's lists: a relation side from the relation roles, any other
+ * link from the document roles, and a code the lists do not hold as the
+ * code. A link says it is a relation side by its relation as read, or,
+ * on the Reader page, which reads no relation, by `relationSide`. An edit also offers the link's current code when the list does
+ * not.
+ *
+ * @version v0.9.0
  */
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -19,7 +35,14 @@ import {
   Plus,
 } from "lucide-react";
 import { SearchPopover } from "./search-popover";
-import { entityRoleOptionGroups } from "~/lib/role-options";
+import {
+  entityRoleLabel,
+  entityRoleOptions,
+  withCurrentGroup,
+  type RoleOptionGroup,
+  type RolePickers,
+} from "~/lib/role-options";
+import { isRelationRefusal, isRelationSide, relationAsReadFields } from "~/lib/relation-as-read";
 
 export interface DescriptionEntityLink {
   id: string;
@@ -34,11 +57,18 @@ export interface DescriptionEntityLink {
   createdAt: number;
   entityDisplayName: string;
   entityCode: string | null;
+  /** The link it names, as read: set on a relation side. */
+  relatedTo?: string | null;
+  /** The links naming it, as read, sorted. */
+  namedBy?: string[];
+  /** Whether it is a relation side, for a page that reads no relation (the Reader page). */
+  relationSide?: boolean;
 }
 
 interface EntityLinkerProps {
   descriptionId: string;
   links: DescriptionEntityLink[];
+  roles: RolePickers;
   isEditing: boolean;
 }
 
@@ -51,18 +81,25 @@ interface SelectedEntity {
 export function EntityLinker({
   descriptionId,
   links,
+  roles,
   isEditing,
 }: EntityLinkerProps) {
   const { t } = useTranslation("descriptions_admin");
   const fetcher = useFetcher();
-  // Grouped, localised role options — the picker can only offer
-  // vocabulary values (see `~/lib/role-options`).
-  const roleGroups = entityRoleOptionGroups(t);
+  // The federation's approved roles, grouped; a new link starts on the first.
+  const roleGroups = roles.entityGroups;
+  const firstRole = entityRoleOptions(roles)[0]?.value ?? "";
+  const labelOf = (link: DescriptionEntityLink) =>
+    entityRoleLabel(
+      roles.labels,
+      link.role,
+      link.relationSide ?? isRelationSide({ relatedTo: link.relatedTo ?? null, namedBy: link.namedBy ?? [] }),
+    );
   const [showSearch, setShowSearch] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(
     null
   );
-  const [addRole, setAddRole] = useState<string>("creator");
+  const [addRole, setAddRole] = useState<string>(firstRole);
   const [addHonorific, setAddHonorific] = useState("");
   const [addFunction, setAddFunction] = useState("");
   const [addNameAsRecorded, setAddNameAsRecorded] = useState("");
@@ -102,7 +139,7 @@ export function EntityLinker({
   function resetAddForm() {
     setSelectedEntity(null);
     setShowSearch(false);
-    setAddRole("creator");
+    setAddRole(firstRole);
     setAddHonorific("");
     setAddFunction("");
     setAddNameAsRecorded("");
@@ -118,10 +155,12 @@ export function EntityLinker({
 
   function handleSaveEdit() {
     if (!editingId) return;
+    const link = links.find((l) => l.id === editingId);
     fetcher.submit(
       {
         _action: "update_entity_link",
         linkId: editingId,
+        ...relationAsReadFields(link ?? {}),
         role: editRole,
         honorific: editHonorific,
         function: editFunction,
@@ -133,8 +172,9 @@ export function EntityLinker({
   }
 
   function handleRemove(linkId: string) {
+    const link = links.find((l) => l.id === linkId);
     fetcher.submit(
-      { _action: "remove_entity_link", linkId },
+      { _action: "remove_entity_link", linkId, ...relationAsReadFields(link ?? {}) },
       { method: "post" }
     );
     setConfirmRemoveId(null);
@@ -155,8 +195,17 @@ export function EntityLinker({
     return parts.length > 0 ? parts.join(" ") : null;
   }
 
+  // A refusal the action gives because of a link's relation.
+  const refusal = (fetcher.data as { error?: unknown } | undefined)?.error;
+
   return (
     <div>
+      {isRelationRefusal(refusal) && fetcher.state === "idle" && (
+        <p role="alert" className="mb-2 rounded border border-madder-soft bg-madder-tint px-3 py-2 text-sm text-madder-deep">
+          {t(`link_error_${refusal}`)}
+        </p>
+      )}
+
       {/* Linked entity list */}
       {links.length > 0 && (
         <ul className="space-y-2">
@@ -206,15 +255,7 @@ export function EntityLinker({
                     onChange={(e) => setEditRole(e.target.value)}
                     className="w-full rounded border border-stone-200 px-2 py-1 text-sm"
                   >
-                    {roleGroups.map((g) => (
-                      <optgroup key={g.key} label={g.label}>
-                        {g.options.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    <RoleGroupOptions groups={withCurrentGroup(roleGroups, link.role, labelOf(link))} />
                   </select>
                   <input
                     type="text"
@@ -261,7 +302,7 @@ export function EntityLinker({
                     {link.entityDisplayName}
                   </span>
                   <span className="rounded bg-indigo-tint px-1.5 py-0.5 text-xs font-medium text-indigo-deep">
-                    {t(`role_${link.role}`, link.role)}
+                    {labelOf(link)}
                   </span>
                   {stylingPreview(link) && (
                     <span className="text-xs italic text-stone-500">
@@ -368,15 +409,7 @@ export function EntityLinker({
               onChange={(e) => setAddRole(e.target.value)}
               className="w-full rounded border border-stone-200 px-2 py-1 text-sm"
             >
-              {roleGroups.map((g) => (
-                <optgroup key={g.key} label={g.label}>
-                  {g.options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+              <RoleGroupOptions groups={roleGroups} />
             </select>
           </div>
           <div>
@@ -433,3 +466,32 @@ export function EntityLinker({
     </div>
   );
 }
+
+/** A role picker's options: a group with a key under its heading, the codes with no held group without one. */
+export function RoleGroupOptions({ groups }: { groups: RoleOptionGroup[] }) {
+  return (
+    <>
+      {groups.map((g, i) =>
+        g.key === null ? (
+          <Fragment key={`ungrouped-${i}`}>
+            {g.options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Fragment>
+        ) : (
+          <optgroup key={g.key} label={g.label}>
+            {g.options.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </optgroup>
+        ),
+      )}
+    </>
+  );
+}
+
+/* @version v0.9.0 */

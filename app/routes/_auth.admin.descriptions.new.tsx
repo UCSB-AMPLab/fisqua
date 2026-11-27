@@ -43,7 +43,12 @@
  * description row to `tenant.id` rather than a single-tenant
  * hard-code.
  *
- * @version v0.8.0
+ * The create runs in one batch with the parent's child count, whose
+ * version moves past the one it holds, and with the version moves of
+ * the descriptions that record the new code as a former reference code
+ * (`formerCodeHoldersFollow`), which stop publishing it once it is live.
+ *
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -55,6 +60,7 @@ import { tenantContext, userContext } from "../context";
 import { tStd } from "~/lib/i18n/standard-aware";
 import { FieldGuidance } from "~/components/descriptions/field-guidance";
 import type { Route } from "./+types/_auth.admin.descriptions.new";
+import { pageMeta, heading } from "../lib/page-title";
 
 /**
  * The columns this form already renders as fixed identity inputs. A
@@ -85,8 +91,16 @@ export interface LevelField {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("descriptions_admin:new_description"),
+    heading("descriptions_admin:page_title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { descriptions, repositories } = await import("~/db/schema");
@@ -98,7 +112,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     import("~/lib/standards/types").DescriptionLevel;
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Schema-invariant guard — see action handler.
   if (tenant.descriptiveStandard == null) {
@@ -281,7 +295,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { descriptions } = await import("~/db/schema");
@@ -296,7 +310,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     import("~/lib/standards/types").DescriptionLevel;
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // `tenants.descriptive_standard` is NOT NULL when
   // `kind = 'tenant'` per the schema CHECK in
@@ -508,45 +522,61 @@ export async function action({ request, context }: Route.ActionArgs) {
   const position = siblingCount?.count ?? 0;
   const now = Date.now();
 
+  const { nextVersionSql } = await import("~/lib/record-version.server");
+  const { formerCodeHoldersFollow } = await import("~/lib/export/former-codes.server");
   try {
-    await db.insert(descriptions).values({
-      tenantId: tenant.id,
-      id,
-      repositoryId: parsed.data.repositoryId,
-      parentId: parsed.data.parentId ?? null,
-      position,
-      rootDescriptionId,
-      depth,
-      childCount: 0,
-      pathCache,
-      descriptionLevel: parsed.data.descriptionLevel,
-      referenceCode: parsed.data.referenceCode,
-      localIdentifier: parsed.data.localIdentifier,
-      title: parsed.data.title,
-      // Config-derived column names, already narrowed to this level's
-      // required set above; the cast is the price of a data-driven
-      // column list, and `FieldConfig.column` is contracted to name a
-      // real `descriptions` column.
-      ...(levelValues as Partial<typeof descriptions.$inferInsert>),
-      isPublished: false, // new descriptions default to unpublished
-      createdBy: user.id,
-      updatedBy: user.id,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Increment parent's childCount if parent exists
-    if (parentRow) {
-      await db
-        .update(descriptions)
-        .set({ childCount: parentRow.childCount + 1 })
-        .where(
-          and(
-            eq(descriptions.tenantId, tenant.id),
-            eq(descriptions.id, parentRow.id)
-          )
-        );
-    }
+    // One batch: the new row; the parent's child count, which is part of
+    // the parent's published record, so the parent's version moves with
+    // it (`nextVersionSql`: past the version it holds, whatever the
+    // clock), and an edit form open on the parent fails its version
+    // check; and the versions of the descriptions that record the new
+    // code as a former one, which stops being published once the code
+    // is live (`formerCodeHoldersFollow`).
+    const holders = formerCodeHoldersFollow(db, tenant.id, [parsed.data.referenceCode], now);
+    await db.batch([
+      db.insert(descriptions).values({
+        tenantId: tenant.id,
+        id,
+        repositoryId: parsed.data.repositoryId,
+        parentId: parsed.data.parentId ?? null,
+        position,
+        rootDescriptionId,
+        depth,
+        childCount: 0,
+        pathCache,
+        descriptionLevel: parsed.data.descriptionLevel,
+        referenceCode: parsed.data.referenceCode,
+        localIdentifier: parsed.data.localIdentifier,
+        title: parsed.data.title,
+        // Config-derived column names, already narrowed to this level's
+        // required set above; the cast is the price of a data-driven
+        // column list, and `FieldConfig.column` is contracted to name a
+        // real `descriptions` column.
+        ...(levelValues as Partial<typeof descriptions.$inferInsert>),
+        isPublished: false, // new descriptions default to unpublished
+        createdBy: user.id,
+        updatedBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      ...(parentRow
+        ? [
+            db
+              .update(descriptions)
+              .set({
+                childCount: parentRow.childCount + 1,
+                updatedAt: nextVersionSql(descriptions.updatedAt, now),
+              })
+              .where(
+                and(
+                  eq(descriptions.tenantId, tenant.id),
+                  eq(descriptions.id, parentRow.id)
+                )
+              ),
+          ]
+        : []),
+      ...(holders ? [holders] : []),
+    ] as any);
   } catch (e) {
     if (String(e).includes("UNIQUE constraint failed")) {
       return {
@@ -918,3 +948,5 @@ function FieldTextarea({
     </div>
   );
 }
+
+// @version v0.9.0

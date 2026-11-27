@@ -47,7 +47,11 @@
  * is read only when the form lists the column; a description without
  * pages carries `null`.
  *
- * @version v0.8.0
+ * An entity's `entityFunctions` is its `entity_functions` rows, one per
+ * line in the order they were entered (`readFunctionsTextByEntity`), or
+ * `null`; the `entities.functions` column is not read.
+ *
+ * @version v0.9.0
  */
 
 import { ENTITY_COLUMNS, PLACE_COLUMNS } from "./canonical-csv.server";
@@ -66,6 +70,7 @@ import {
   readScopedPlaces,
 } from "./rows.server";
 import type { EntityRow, PlaceRow, ScopedDescription, ScopedLink } from "./rows.server";
+import { readFunctionsTextByEntity } from "../entity-functions.server";
 
 /** The masthead. Everything a reader needs to place the file. */
 export interface ExportJsonMeta {
@@ -170,8 +175,9 @@ async function buildCanonicalDocument(
     const total = scope.entityIds.length + scope.placeIds.length + scope.counts.links;
     await ctx.checkpoint("authorities", 0, total);
 
+    const functions = await readFunctionsTextByEntity(db, scope.entityIds);
     for (const row of await readScopedEntities(db, tenant, scope.entityIds)) {
-      entities.push(entityObject(row));
+      entities.push(entityObject(row, functions.get(row.id) ?? null));
     }
     await ctx.checkpoint("authorities", entities.length, total);
 
@@ -255,7 +261,8 @@ function descriptionObject(
   return out;
 }
 
-function entityObject(row: EntityRow): Record<string, unknown> {
+/** `functions`: the entity's `entity_functions` rows, one per line (never the column). */
+function entityObject(row: EntityRow, functions: string | null): Record<string, unknown> {
   const values: Record<string, unknown> = {
     entityCode: row.entityCode,
     entityDisplayName: row.displayName,
@@ -270,7 +277,7 @@ function entityObject(row: EntityRow): Record<string, unknown> {
     entityDateStart: row.dateStart,
     entityDateEnd: row.dateEnd,
     entityHistory: row.history,
-    entityFunctions: row.functions,
+    entityFunctions: functions,
     entitySources: row.sources,
     entityWikidataId: row.wikidataId,
     entityViafId: row.viafId,
@@ -325,4 +332,4 @@ function inColumnOrder(
   return out;
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

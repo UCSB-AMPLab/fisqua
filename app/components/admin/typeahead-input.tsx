@@ -6,11 +6,12 @@
  * suggestions as a keyboard-navigable popover, and emits the selected
  * record to the parent form.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useFetcher } from "react-router";
+import { submittedTermId } from "~/lib/typeahead-term";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,6 +48,9 @@ export function TypeaheadInput({
 }: TypeaheadInputProps) {
   const [query, setQuery] = useState(defaultValue);
   const [selectedTermId, setSelectedTermId] = useState(defaultTermId);
+  // The text of the selected term; the hidden id is submitted only
+  // while the visible text still names it.
+  const [selectedTermText, setSelectedTermText] = useState(defaultValue);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [isProposed, setIsProposed] = useState(defaultTermStatus === "proposed");
@@ -91,6 +95,7 @@ export function TypeaheadInput({
   const handleSelect = (result: SearchResult) => {
     setQuery(result.canonical);
     setSelectedTermId(result.id);
+    setSelectedTermText(result.canonical);
     setIsProposed(false);
     setIsOpen(false);
     setSelectedIndex(-1);
@@ -189,7 +194,13 @@ export function TypeaheadInput({
 
       {/* Hidden inputs for form submission */}
       <input type="hidden" name={name} value={query} />
-      <input type="hidden" name={`${name}Id`} value={selectedTermId} />
+      <input
+        type="hidden"
+        name={`${name}Id`}
+        value={submittedTermId(query, { id: selectedTermId, text: selectedTermText })}
+      />
+
+      <input type="hidden" name={`${name}SelectedText`} value={selectedTermText} />
 
       {/* Dropdown */}
       {isOpen && results.length > 0 && (
@@ -223,3 +234,5 @@ export function TypeaheadInput({
     </div>
   );
 }
+
+// @version v0.9.0

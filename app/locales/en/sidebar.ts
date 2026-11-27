@@ -7,7 +7,7 @@
  * Places, Repositories, Publish, Promote, Collaborative
  * cataloguing).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   search: "Search",
@@ -37,6 +37,7 @@ export default {
   capture_volumes: "Volumes",
   capture_qc: "Capture QC",
   retakes: "Retakes",
+  capture_queue: "Digitization queue",
   scanner: "Scanner",
   my_settings: "My settings",
   users: "Users",
@@ -62,4 +63,4 @@ export default {
   section_hide: "Hide {{section}}",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

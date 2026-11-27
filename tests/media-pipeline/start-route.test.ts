@@ -20,7 +20,7 @@
  *     dispatched;
  *   - GET answers 405.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -47,6 +47,7 @@ import { AHR_TENANT_ID, NEOGRANADINA_FEDERATION_ID } from "../../app/lib/tenant"
 import { startRunAction, type PipelineRunConfig } from "../../app/lib/pipeline/dispatch.server";
 import { getPipelineSpecStore } from "../../app/lib/pipeline/store.server";
 import { TONAL_DEFAULT_PRESET } from "../../app/lib/pipeline/recipe";
+import { REVIEW_RUN_LIFETIME_CONSTANTS } from "../../app/lib/pipeline/run-config";
 import type { ManifestResolver } from "../../app/lib/pipeline/run-spec";
 import { action, loader } from "../../app/routes/_auth.admin.media.runs.start";
 
@@ -66,6 +67,7 @@ const CONFIG: PipelineRunConfig = {
     urlFloorSeconds: 1800,
     callbackTailSeconds: 600,
   },
+  reviewLifetime: REVIEW_RUN_LIFETIME_CONSTANTS,
   presets: {
     byOutputClass: { tonal: TONAL_DEFAULT_PRESET },
     acceptedKeys: { preprocess: [], render: [] },
@@ -259,4 +261,4 @@ describe("start-run route", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

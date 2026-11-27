@@ -19,7 +19,7 @@
  * suite does it, so a plain tenant admin can rule a pair of
  * tenant-owned records without a steward fixture in every test.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -40,6 +40,7 @@ import {
   rulePairKeepBoth,
 } from "../../app/lib/pending-decisions.server";
 import { rulePairMerge } from "../../app/lib/pair-merge.server";
+import { mergeWithEvidence } from "../helpers/merge-evidence";
 import type { AuthorityProposalPayload } from "../../app/lib/pending-decisions.server";
 import type { Tenant, User } from "../../app/context";
 
@@ -316,7 +317,7 @@ describe("notification fan-out", () => {
         loserId,
       );
 
-      const result = await rulePairMerge(
+      const result = await mergeWithEvidence(
         db,
         ruler,
         alpha,

@@ -1,18 +1,26 @@
 /**
  * Pending Decisions — duplicate pair collation ("Look closer")
  *
- * The considered lane for a duplicate pair, opened from the door on the
- * pair card. It is deliberately NOT a bigger card and it is not the
- * proposal detail's form-plus-aside either: a pair wants collation, not
- * a form. There is nothing to fill in — two records already exist and
- * the admin is reading them field by field, which is what an archivist
- * actually does — so the page is a single full-width column whose spine
- * is the comparison table.
+ * This route is the considered lane for a duplicate pair, opened from the
+ * door on the pair card. It is deliberately NOT a bigger card and it is
+ * not the proposal detail's form-plus-aside either: a pair wants
+ * collation, not a form. There is nothing to fill in — two records already
+ * exist and the admin is reading them field by field, which is what an
+ * archivist actually does — so the page is a single full-width column
+ * whose spine is the comparison table.
  *
  * The table argues by contrast alone. Rows where the two records agree
  * recede; rows where they disagree hold. No badges, no "differs"
  * markers, no legend: the reader's eye lands on exactly the rows that
- * bear on the identity question. Below it the same three registers the
+ * bear on the identity question. Under the record fields the table
+ * carries what a reviewer rules on: the descriptions that name each
+ * record, the entities and places those descriptions also name — a name
+ * both records keep company with holds, one only this side has recedes —
+ * and where each record came from. `loadPairContext` reads all of it in
+ * one batch of five statements, so the page costs the same whatever the
+ * records carry.
+ *
+ * Below the table the same three registers the
  * card carries, in the same order — the mechanical direction note (a
  * consequence, never a recommendation), the saffron ask (the scan never
  * recommends on identity), and the conversation.
@@ -28,6 +36,16 @@
  * `authorities` capability here, the record-visibility scope on the reads, and the
  * pair mutation gate inside `rulePairKeepBoth` / `rulePairMerge` /
  * `getOrCreatePairDecision`. This route owns no ruling logic of its own.
+ * A merge refused because its relation repoints would collide
+ * (`LinkCollisionError`) is shown with the description, the entity and
+ * the role it names, under its relation role's label. An entity merge
+ * carries the evidence its panel collected (`evidenceFromForm`); a merge
+ * the server refuses for its evidence is answered with the refusal's
+ * evidence code.
+ *
+ * The role labels in the context rows are the federation's, read once
+ * (`readRolePickers`); the roles a record holds as a relation side take
+ * the relation roles' labels.
  *
  * The conversation is writable here, not just readable: the thread is
  * handed the signed-in reader, and rewriting or retracting a comment
@@ -37,29 +55,38 @@
  * pair's decision row — there is nothing to create when the thread is
  * already there.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, redirect, useNavigation, useSubmit } from "react-router";
 import { Trans, useTranslation } from "react-i18next";
 import { ChevronLeft, Merge } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { requestTimeZone } from "~/lib/format";
+import { entityRoleLabel, placeRoleLabel } from "~/lib/role-options";
 import {
   DecisionThread,
   type ThreadComment,
 } from "~/components/admin/decision-comment";
 import { DismissDialog } from "~/components/admin/dismiss-dialog";
 import { PairMergeDialog } from "~/components/admin/pair-merge-dialog";
+import { evidenceErrorKey, evidenceFormEntries, evidenceShape, type EvidenceSide } from "~/components/admin/merge-evidence-panel";
+import { isEvidenceError } from "~/lib/merge-facts";
 import { AskPanel, SectionLabelRow } from "~/components/admin/decision-panels";
 import {
   RecordCollation,
   type CollationField,
 } from "~/components/admin/record-collation";
+import { linkDateLabel } from "~/components/admin/linked-descriptions-worklist";
 import { useFormatters } from "~/lib/use-formatters";
+import type {
+  PairNeighbour,
+  PairRecordContext,
+} from "~/lib/pair-context.server";
 import type { Route } from "./+types/_auth.admin.decisions.pair";
+import { pageMeta, heading } from "../lib/page-title";
 
 type RecordKind = "entities" | "places";
 
@@ -81,6 +108,23 @@ interface PairRecordView {
   dbeId: string | null;
   tgnId: string | null;
   descriptionCount: number;
+  /** Descriptions, neighbours and origin, from `loadPairContext`. */
+  context: PairRecordContext;
+}
+
+/** A record's side of the evidence panel: the descriptions the page lists for it. */
+function evidenceSide(record: PairRecordView): EvidenceSide {
+  return {
+    entityId: record.id,
+    name: record.name,
+    code: record.code,
+    descriptions: record.context.descriptions.map((d) => ({
+      id: d.id,
+      code: d.referenceCode,
+      date: d.dateExpression ?? d.dateStart,
+      title: d.title,
+    })),
+  };
 }
 
 /** Narrow the `?type=` param; entities is the default worklist. */
@@ -97,8 +141,18 @@ function queuePath(kind: RecordKind): string {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data ? `${data.left.name} / ${data.right.name}` : null,
+    heading("decisions:tabDuplicates"),
+    heading("decisions:surfaceName"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
+  const { canAdministerArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, isNull, or, sql } = await import("drizzle-orm");
   const {
@@ -113,9 +167,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { listDecisionComments, pairKey } = await import(
     "~/lib/pending-decisions.server"
   );
+  const { loadPairContext } = await import("~/lib/pair-context.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -142,6 +197,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
               nameVariants: places.nameVariants,
               tgnId: places.tgnId,
               mergedInto: places.mergedInto,
+              createdAt: places.createdAt,
+              legacyIds: places.legacyIds,
             })
             .from(places)
             .where(
@@ -164,6 +221,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           dbeId: null,
           tgnId: r.tgnId,
           mergedInto: r.mergedInto,
+          createdAt: r.createdAt,
+          legacyIds: r.legacyIds,
         }))
       : (
           await db
@@ -179,6 +238,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
               viafId: entities.viafId,
               dbeId: entities.dbeId,
               mergedInto: entities.mergedInto,
+              createdAt: entities.createdAt,
+              legacyIds: entities.legacyIds,
             })
             .from(entities)
             .where(
@@ -201,6 +262,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           dbeId: r.dbeId,
           tgnId: null,
           mergedInto: r.mergedInto,
+          createdAt: r.createdAt,
+          legacyIds: r.legacyIds,
         }));
 
   const a = loaded.find((r) => r.id === idA);
@@ -284,6 +347,19 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     for (const r of rows) counts.set(r.id, r.count);
   }
 
+  // What a reviewer reads to rule: the descriptions naming each record,
+  // who and what else they name, and where each record came from. One
+  // batch of a fixed number of statements, whatever the records carry.
+  const contextById = await loadPairContext(db, {
+    kind,
+    tenantId: tenant.id,
+    federationId: tenant.federationId,
+    seeds: [
+      { id: a.id, createdAt: a.createdAt, legacyIds: a.legacyIds },
+      { id: b.id, createdAt: b.createdAt, legacyIds: b.legacyIds },
+    ],
+  });
+
   const view = (r: (typeof loaded)[number]): PairRecordView => ({
     id: r.id,
     name: r.name,
@@ -297,10 +373,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     dbeId: r.dbeId,
     tgnId: r.tgnId,
     descriptionCount: counts.get(r.id) ?? 0,
+    context: contextById[r.id],
   });
+
+  // The role labels come from the federation's lists.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
 
   return {
     kind,
+    roles,
     left: view(a),
     right: view(b),
     comments: comments as ThreadComment[],
@@ -313,17 +395,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, inArray } = await import("drizzle-orm");
   const { entities, places } = await import("~/db/schema");
   const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { addDecisionComment, getOrCreatePairDecision, rulePairKeepBoth } =
     await import("~/lib/pending-decisions.server");
-  const { rulePairMerge } = await import("~/lib/pair-merge.server");
+  const { LinkCollisionError, rulePairMerge } = await import("~/lib/pair-merge.server");
+  const { evidenceFromForm, isEvidenceError } = await import("~/lib/merge-evidence.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -446,6 +529,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         reason || null,
         Date.now(),
         requestTimeZone(request),
+        evidenceFromForm(formData),
       );
     } else {
       return { ok: false as const, code: "generic" as const };
@@ -455,10 +539,19 @@ export async function action({ request, context }: Route.ActionArgs) {
     // away underneath, or the pair ruled by someone else. It belongs on
     // the page as translated feedback; the error's own text never does.
     if (err instanceof Response) {
+      // An entity merge refused for its evidence names the refusal, so the
+      // panel can say which part is missing or gone.
+      const body = err.status === 400 || err.status === 409 ? await err.clone().text() : "";
+      if (isEvidenceError(body)) return { ok: false as const, code: body };
       return {
         ok: false as const,
         code: err.status === 409 ? ("conflict" as const) : ("generic" as const),
       };
+    }
+    // A merge whose relation repoints would collide is refused before
+    // anything is written, naming the description, the entity and the role.
+    if (err instanceof LinkCollisionError) {
+      return { ok: false as const, code: "relation_collision" as const, collision: err.collision };
     }
     throw err;
   }
@@ -479,8 +572,8 @@ export default function DecisionPairPage({
   const { t: te } = useTranslation("entities");
   const { t: tp } = useTranslation("places");
   const { t: ta } = useTranslation("authorities");
-  const { formatNumber } = useFormatters();
-  const { kind, left, right, comments, viewer } = loaderData;
+  const { formatDate, formatNumber } = useFormatters();
+  const { kind, left, right, comments, viewer, roles } = loaderData;
   const navigation = useNavigation();
   const submit = useSubmit();
   const pending = navigation.state !== "idle";
@@ -663,18 +756,268 @@ export default function DecisionPairPage({
     },
   );
 
+  // The context rows. Each value is a list, so `same` is stated: the
+  // rows hold, and the lists carry their own contrast.
+  const recordPath = (id: string) => `/admin/${kind}/${id}`;
+  const roleLabel = (role: string, relationSide = false): string =>
+    kind === "places" ? placeRoleLabel(roles.labels, role) : entityRoleLabel(roles.labels, role, relationSide);
+  const subLine = "block text-xs leading-[1.5] text-stone-500";
+
+  const namedIn = (record: PairRecordView): ReactNode => {
+    const ctx = record.context;
+    if (ctx.descriptions.length === 0) return t("pairLoadNone");
+    const more = ctx.descriptionTotal - ctx.descriptions.length;
+    return (
+      <>
+        <ul className="space-y-2">
+          {ctx.descriptions.map((d) => {
+            const date = linkDateLabel(d);
+            // A relation side's roles are labelled from the relation roles.
+            const roles = [
+              ...d.roles.map((r) => roleLabel(r)),
+              ...(d.relationRoles ?? []).map((r) => roleLabel(r, true)),
+            ].join(", ");
+            return (
+              <li key={d.id}>
+                <Link
+                  to={`/admin/descriptions/${d.id}`}
+                  className="font-serif text-indigo hover:underline"
+                >
+                  {d.title}
+                </Link>
+                <span className={subLine}>
+                  <span className="font-mono text-11">{d.referenceCode}</span>
+                  {date !== "—" ? ` · ${date}` : ""}
+                  {roles ? ` · ${roles}` : ""}
+                </span>
+                {d.nameAsRecorded ? (
+                  <span className={subLine}>
+                    {t("pairAsRecorded", { name: d.nameAsRecorded })}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        {more > 0 ? (
+          <Link
+            to={recordPath(record.id)}
+            className="mt-2 inline-block text-13 font-medium text-indigo hover:underline"
+          >
+            {t("pairMoreDescriptions", {
+              count: more,
+              formattedCount: formatNumber(more),
+            })}
+          </Link>
+        ) : null}
+      </>
+    );
+  };
+
+  // A name both records keep company with holds; a name only this side
+  // has recedes. The count is the descriptions it shares with the record.
+  const neighbourList = (
+    items: PairNeighbour[],
+    other: PairNeighbour[],
+    basePath: string,
+  ): ReactNode => {
+    if (items.length === 0) return "—";
+    const shared = new Set(other.map((n) => n.id));
+    return (
+      <ul className="space-y-0.5">
+        {items.map((n) => (
+          <li
+            key={n.id}
+            className={shared.has(n.id) ? "text-indigo" : "text-stone-500"}
+          >
+            <Link to={`${basePath}/${n.id}`} className="hover:underline">
+              {n.name}
+            </Link>{" "}
+            <span className="font-mono text-11 text-stone-400">
+              {formatNumber(n.count)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  // Where the record came from, from what is recorded: the creation
+  // journal entry (an import run or a person), the entity pipeline's
+  // creation record, a split, merges into it, and identifiers in earlier
+  // systems. With none of those, the page says so; the row's own
+  // creation date closes the list either way.
+  const originLines = (record: PairRecordView): ReactNode => {
+    const o = record.context.origin;
+    const who = (name: string | null) => name || ta("bandUnknownUser");
+    const lines: ReactNode[] = [];
+    if (o.journal?.run) {
+      const run = o.journal.run;
+      lines.push(
+        run.visible
+          ? t("pairOriginImport", {
+              user: who(o.journal.userName),
+              date: formatDate(run.createdAt ?? o.journal.createdAt),
+              message: run.message ?? "",
+            })
+          : t("pairOriginImportOther", {
+              date: formatDate(o.journal.createdAt),
+            }),
+      );
+      if (run.visible && run.filename) {
+        lines.push(
+          <span className={subLine}>
+            {t("pairOriginFile", { filename: run.filename })}
+          </span>,
+        );
+      }
+    } else if (o.journal) {
+      lines.push(
+        t("pairOriginCreatedBy", {
+          user: who(o.journal.userName),
+          date: formatDate(o.journal.createdAt),
+        }),
+      );
+      if (o.journal.note) {
+        lines.push(<span className={subLine}>{o.journal.note}</span>);
+      }
+    }
+    if (o.pipeline) {
+      const p = o.pipeline;
+      lines.push(
+        t("pairOriginPipeline", { date: formatDate(p.createdAt) }),
+      );
+      const decision = [p.decisionSource, p.decisionRule]
+        .filter(Boolean)
+        .join(" · ");
+      if (decision) {
+        lines.push(
+          <span className={subLine}>
+            {t("pairOriginPipelineDecision", { decision })}
+          </span>,
+        );
+      }
+      if (p.mentionCount != null) {
+        lines.push(
+          <span className={subLine}>
+            {t("pairOriginPipelineMentions", {
+              count: p.mentionCount,
+              formattedCount: formatNumber(p.mentionCount),
+            })}
+          </span>,
+        );
+      }
+      if (p.reasoning) {
+        lines.push(
+          <span className={`${subLine} line-clamp-4`} title={p.reasoning}>
+            {p.reasoning}
+          </span>,
+        );
+      }
+    }
+    for (const split of o.splitFrom) {
+      lines.push(
+        t("pairOriginSplitFrom", {
+          name: split.sourceName
+            ? `${split.sourceName} (${split.sourceCode ?? ""})`
+            : split.sourceId,
+          user: who(split.userName),
+          date: formatDate(split.createdAt),
+        }),
+      );
+    }
+    if (o.absorbed) {
+      lines.push(
+        <Link
+          to={`${recordPath(record.id)}/history`}
+          className="hover:underline"
+        >
+          {t("pairOriginAbsorbed", {
+            count: o.absorbed.count,
+            formattedCount: formatNumber(o.absorbed.count),
+          })}
+        </Link>,
+      );
+    }
+    if (o.legacyIds.length > 0) {
+      lines.push(
+        <span className={subLine}>
+          {t("pairOriginLegacy")}:{" "}
+          <span className="font-mono text-11">
+            {o.legacyIds.map((l) => `${l.provider} ${l.id}`).join(", ")}
+          </span>
+        </span>,
+      );
+    }
+    if (
+      !o.journal &&
+      !o.pipeline &&
+      o.splitFrom.length === 0 &&
+      o.legacyIds.length === 0
+    ) {
+      lines.unshift(t("pairOriginNone"));
+    }
+    lines.push(
+      <span className={subLine}>
+        {t("pairOriginRowCreated", { date: formatDate(o.createdAt) })}
+      </span>,
+    );
+    return (
+      <ul className="space-y-1">
+        {lines.map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ul>
+    );
+  };
+
+  fields.push(
+    {
+      label: t("pairRowNamedIn"),
+      a: namedIn(left),
+      b: namedIn(right),
+      same: false,
+    },
+    {
+      label: t("pairRowEntities"),
+      a: neighbourList(left.context.entities, right.context.entities, "/admin/entities"),
+      b: neighbourList(right.context.entities, left.context.entities, "/admin/entities"),
+      same: false,
+    },
+    {
+      label: t("pairRowPlaces"),
+      a: neighbourList(left.context.places, right.context.places, "/admin/places"),
+      b: neighbourList(right.context.places, left.context.places, "/admin/places"),
+      same: false,
+    },
+    {
+      label: t("pairRowOrigin"),
+      a: originLines(left),
+      b: originLines(right),
+      same: false,
+    },
+  );
+
   // Comment acts post through the thread's own fetcher and never reach
   // actionData; failures report themselves inside the thread, so the
   // page banner is always the ruling's.
   const errorMessage =
     actionData && actionData.ok === false
-      ? t(
-          actionData.code === "conflict"
-            ? "pairErrorConflict"
-            : actionData.code === "invalid"
-              ? "errorInvalid"
-              : "errorGeneric",
-        )
+      ? actionData.code === "relation_collision" && "collision" in actionData
+        ? t("pairErrorRelationCollision", {
+            description: actionData.collision.referenceCode,
+            entity: actionData.collision.entityCode,
+            role: actionData.collision.role ? entityRoleLabel(roles.labels, actionData.collision.role, true) : "",
+          })
+        : isEvidenceError(actionData.code)
+          ? ta(evidenceErrorKey(actionData.code, evidenceShape(left.entityType, right.entityType)))
+          : t(
+            actionData.code === "conflict"
+              ? "pairErrorConflict"
+              : actionData.code === "invalid"
+                ? "errorInvalid"
+                : "errorGeneric",
+          )
       : null;
 
   const textareaClass =
@@ -796,17 +1139,25 @@ export default function DecisionPairPage({
           defaultSurvivorCode={defaultSurvivorCode}
           reasonPlaceholder={whySame}
           pending={pending}
-          onCancel={() => setDialog(null)}
-          onConfirm={(survivorCode, reason) =>
-            submit(
-              { _action: "merge", survivorCode, reason },
-              { method: "post" },
-            )
+          evidence={
+            kind === "places"
+              ? undefined
+              : { sides: [evidenceSide(left), evidenceSide(right)], shape: evidenceShape(left.entityType, right.entityType) }
           }
+          onCancel={() => setDialog(null)}
+          onConfirm={(survivorCode, reason, evidence) => {
+            const form = new FormData();
+            form.set("_action", "merge");
+            form.set("survivorCode", survivorCode);
+            form.set("reason", reason);
+            // An entity merge carries the evidence its panel collected.
+            for (const [name, value] of evidence ? evidenceFormEntries(evidence) : []) form.append(name, value);
+            submit(form, { method: "post" });
+          }}
         />
       )}
     </div>
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

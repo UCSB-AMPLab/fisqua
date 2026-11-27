@@ -2,10 +2,9 @@
  * Authority linked-description context — rich card data for the
  * merge/split workbenches
  *
- * The merge and split workbenches (spec §4) show each linked
- * description as a "linked description" card rather than a bare title +
- * count. This module owns the server-side computation behind those
- * cards:
+ * This module deals with the server-side computation behind the "linked
+ * description" cards that the merge and split workbenches show for each
+ * linked description, in place of a bare title + count:
  *
  *   - `extractScopeSnippet` — a pure, offset-faithful window of
  *     `scopeContent` around the first accent-/case-insensitive match of
@@ -45,11 +44,17 @@
  *     description, its metadata and its transcript never reach a card,
  *     a count or "Show all", and a link id of theirs resolves to null.
  *
- * @version v0.8.0
+ * An entity's links, in its cards' roles and in the unfolded panel's
+ * entities, say whether each is a relation side (`relationSideSql`), so
+ * the pages label a code both lists hold from the list the link belongs
+ * to. No link id of the relation is read.
+ *
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { headingPhraseExpression } from "./global-search.server";
+import { relationSideSql } from "./relation-sides.server";
 import {
   findAnchorPages,
   loadTranscriptText,
@@ -467,6 +472,8 @@ export interface CardPlace {
   name: string;
   role: string;
   isCurrent?: boolean;
+  /** An entity's link only: whether it is a relation side, which labels its role from the relation roles. */
+  relationSide?: boolean;
 }
 
 /** Server-computed data for one linked-description card. */
@@ -474,8 +481,9 @@ export interface LinkedDescriptionCardData {
   descriptionId: string;
   title: string;
   referenceCode: string;
-  /** One entry per junction row on this description (distinct roles). */
-  roles: { role: string; roleRaw: string | null }[];
+  /** One entry per junction row on this description (distinct roles);
+   * `relationSide` marks an entity link that is a relation side. */
+  roles: { role: string; roleRaw: string | null; relationSide: boolean }[];
   /** Every junction-row id on this description — assigned as one unit. */
   linkIds: string[];
   dateExpression: string | null;
@@ -515,6 +523,8 @@ interface JunctionRow {
   descriptionId: string;
   role: string;
   roleRaw: string | null;
+  /** An entity link that is a relation side; false for a place link. */
+  relationSide: boolean;
   nameAsRecorded: string | null;
   title: string;
   referenceCode: string;
@@ -571,6 +581,7 @@ export async function loadLinkedDescriptionCards(
         descriptionId: descriptionEntities.descriptionId,
         role: descriptionEntities.role,
         roleRaw: descriptionEntities.roleRaw,
+        relationSide: relationSideSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
         sequence: descriptionEntities.sequence,
         title: descriptions.title,
@@ -601,6 +612,7 @@ export async function loadLinkedDescriptionCards(
       descriptionId: r.descriptionId,
       role: r.role,
       roleRaw: r.roleRaw,
+      relationSide: r.relationSide,
       nameAsRecorded: r.nameAsRecorded,
       title: r.title,
       referenceCode: r.referenceCode,
@@ -650,6 +662,7 @@ export async function loadLinkedDescriptionCards(
       descriptionId: r.descriptionId,
       role: r.role,
       roleRaw: r.roleRaw,
+      relationSide: false,
       nameAsRecorded: null,
       title: r.title,
       referenceCode: r.referenceCode,
@@ -748,7 +761,7 @@ export async function loadLinkedDescriptionCards(
       descriptionId: descId,
       title: first.title,
       referenceCode: first.referenceCode,
-      roles: g.map((r) => ({ role: r.role, roleRaw: r.roleRaw })),
+      roles: g.map((r) => ({ role: r.role, roleRaw: r.roleRaw, relationSide: r.relationSide })),
       linkIds: g.map((r) => r.linkId),
       dateExpression: first.dateExpression,
       dateStart: first.dateStart,
@@ -846,6 +859,7 @@ export async function loadLinkedDescriptionCard(
         descriptionId: descriptionEntities.descriptionId,
         role: descriptionEntities.role,
         roleRaw: descriptionEntities.roleRaw,
+        relationSide: relationSideSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
         title: descriptions.title,
         referenceCode: descriptions.referenceCode,
@@ -901,7 +915,7 @@ export async function loadLinkedDescriptionCard(
       )
       .orderBy(asc(descriptionPlaces.createdAt))
       .all();
-    group = raw.map((r, i) => ({ ...r, nameAsRecorded: null, order: i }));
+    group = raw.map((r, i) => ({ ...r, relationSide: false, nameAsRecorded: null, order: i }));
   }
   if (group.length === 0) return null;
 
@@ -934,6 +948,7 @@ export async function loadLinkedDescriptionCard(
         id: descriptionEntities.entityId,
         name: entities.displayName,
         role: descriptionEntities.role,
+        relationSide: relationSideSql(),
       })
       .from(descriptionEntities)
       .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
@@ -944,6 +959,7 @@ export async function loadLinkedDescriptionCard(
       name: e.name,
       role: e.role,
       isCurrent: e.id === args.ownerId,
+      relationSide: e.relationSide,
     }));
   }
 
@@ -970,7 +986,7 @@ export async function loadLinkedDescriptionCard(
     descriptionId: descId,
     title: first.title,
     referenceCode: first.referenceCode,
-    roles: group.map((r) => ({ role: r.role, roleRaw: r.roleRaw })),
+    roles: group.map((r) => ({ role: r.role, roleRaw: r.roleRaw, relationSide: r.relationSide })),
     linkIds: group.map((r) => r.linkId),
     dateExpression: first.dateExpression,
     dateStart: first.dateStart,
@@ -1054,4 +1070,4 @@ export async function loadJunctionOcrText(
   return text.get(row.id) ?? "";
 }
 
-// Version: v0.8.0
+// @version v0.9.0

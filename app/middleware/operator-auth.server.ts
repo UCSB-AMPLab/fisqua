@@ -21,7 +21,9 @@
  *      already prevents `/operator/*` paths from being reachable on
  *      tenant subdomains, so by the time this middleware runs we can
  *      trust the host is the platform host. We still go through
- *      `getTenantFromRequest` because that is the canonical resolver
+ *      `getTenantFromRequest` (by way of `resolveRequestTenant`, which
+ *      reuses a lookup the i18next middleware already made for this
+ *      request) because that is the canonical resolver
  *      (legacy host map, subdomain suffix list, disabled-tenant 404
  *      branch) and skipping it would create a parallel resolution
  *      path that future schema changes would have to remember to
@@ -65,7 +67,13 @@
  *     check `user.tenantId === tenant.id` passes naturally. The
  *     carve-out only matters on tenant subdomains.
  *
- * @version v0.4.0
+ * The user and tenant reads are retried while D1 refuses them as
+ * overloaded (in `requireUser` and `resolveRequestTenant`), each
+ * refusal writing a `d1_overload` log line; when a refusal outlasts the
+ * retries and fails the request, the root `serviceBusyMiddleware`
+ * answers 503 instead of 500.
+ *
+ * @version v0.9.0
  */
 
 import { redirect } from "react-router";
@@ -80,7 +88,7 @@ import { requireUser } from "../lib/auth.server";
 import {
   PLATFORM_TENANT_ID,
   assertOperator,
-  getTenantFromRequest,
+  resolveRequestTenant,
 } from "../lib/tenant";
 
 import type { MiddlewareFunction } from "react-router";
@@ -99,7 +107,7 @@ export const operatorAuthMiddleware: MiddlewareFunction = async (
   }
 
   const db = drizzle(env.DB);
-  const user = await requireUser(db, userId);
+  const user = await requireUser(db, userId, { request, context });
   if (!user) {
     throw redirect("/login");
   }
@@ -108,7 +116,7 @@ export const operatorAuthMiddleware: MiddlewareFunction = async (
   // Resolve tenant from Host header. On the platform host this lands
   // on the platform tenant; on a tenant subdomain it lands on that
   // tenant's row. The assertOperator gate below 403s the second case.
-  const tenant = await getTenantFromRequest(db, request);
+  const tenant = await resolveRequestTenant(context, db, request);
   assertOperator(tenant);
 
   // assertOperator alone gates the TENANT side; we also need to gate
@@ -130,4 +138,4 @@ export const operatorAuthMiddleware: MiddlewareFunction = async (
   context.set(impersonationContext, null);
 };
 
-// @version v0.4.0
+// @version v0.9.0

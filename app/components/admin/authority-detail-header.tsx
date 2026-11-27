@@ -1,12 +1,12 @@
 /**
  * Admin — Authority Detail Header
  *
- * The breadcrumb and title/action-row cluster shared by the authority
- * detail editors (`entities.$id`, `places.$id`). Both carried a
- * structurally identical breadcrumb (root link, chevron, current
- * record) and an identical title row (serif h1 plus the
- * merge/split/edit/delete action buttons, hidden while editing or when
- * the record is merged).
+ * This component renders the breadcrumb and the title and action row that
+ * the two authority detail editors (`entities.$id`, `places.$id`) share.
+ * Both show the same breadcrumb (root link, chevron, current record) and
+ * the same title row (serif h1 plus the merge/split/edit/delete action
+ * buttons, hidden while the record is being edited or once it has been
+ * merged).
  *
  * `descriptions.$id` deliberately does NOT use these: its breadcrumb
  * renders a collapsing ancestor chain and its action row has a
@@ -25,7 +25,12 @@
  * being edited, or once it has been merged away, the row is absent and
  * so is everything in it.
  *
- * @version v0.7.0
+ * Delete is disabled, with its reason as the button's title, while the
+ * record has linked descriptions (the count) or the caller gives a
+ * `deleteBlockedReason` (an entity others were merged into). The linked
+ * descriptions take precedence.
+ *
+ * @version v0.9.0
  */
 
 import type { ReactNode } from "react";
@@ -70,6 +75,7 @@ export function AuthorityDetailHeader({
   splitTo,
   onEdit,
   onDelete,
+  deleteBlockedReason,
   extraActions,
   t,
 }: {
@@ -82,10 +88,13 @@ export function AuthorityDetailHeader({
   splitTo: string;
   onEdit: () => void;
   onDelete: () => void;
+  /** Why Delete is disabled when the record has no linked descriptions; absent, it is enabled. */
+  deleteBlockedReason?: string;
   /** Rendered first in the action row; see the header. */
   extraActions?: ReactNode;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const deleteBlocked = hasDescriptions || deleteBlockedReason !== undefined;
   return (
     <div className="flex items-center justify-between">
       <h1 className="font-serif text-2xl font-semibold text-stone-700">
@@ -119,16 +128,16 @@ export function AuthorityDetailHeader({
           </button>
           <button
             type="button"
-            onClick={() => !hasDescriptions && onDelete()}
-            disabled={hasDescriptions}
-            aria-disabled={hasDescriptions ? "true" : undefined}
+            onClick={() => !deleteBlocked && onDelete()}
+            disabled={deleteBlocked}
+            aria-disabled={deleteBlocked ? "true" : undefined}
             title={
               hasDescriptions
                 ? t("deleteBlocked", { count: descLinkCount })
-                : undefined
+                : deleteBlockedReason
             }
             className={
-              hasDescriptions
+              deleteBlocked
                 ? "inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment opacity-50"
                 : "inline-flex items-center gap-2 rounded-lg bg-madder px-4 py-2 text-sm font-semibold text-parchment hover:bg-madder-deep"
             }

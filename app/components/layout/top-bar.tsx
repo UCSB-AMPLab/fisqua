@@ -6,13 +6,14 @@
  * global search input, the locale switcher, and the user-menu popover
  * with sign-out and configuration links.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import { Form, Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { User } from "../../context";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { FisquaMark } from "../landing/landing-mark";
 
 interface TopBarProps {
   user: User;
@@ -28,7 +29,7 @@ export function TopBar({ user, appName }: TopBarProps) {
       <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <Link to="/dashboard" className="flex items-center gap-3 no-underline">
-            <img src="/brand/fisqua-mark.svg" alt="" className="h-8 w-8" aria-hidden="true" />
+            <FisquaMark className="h-8 w-8 shrink-0" color="var(--verdigris)" />
             <div className="h-6 border-l border-stone-200" aria-hidden="true" />
             <span className="font-sans text-sm text-stone-500">Fisqua</span>
           </Link>
@@ -50,3 +51,5 @@ export function TopBar({ user, appName }: TopBarProps) {
     </header>
   );
 }
+
+// @version v0.9.0

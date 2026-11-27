@@ -25,7 +25,7 @@
  * `preferís`, `sabés`, `tenés`, `sos`; siempre `quieres`, `prefieres`,
  * `sabes`, `tienes`, `eres`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   // Página
@@ -40,10 +40,10 @@ export default {
   delete_cancel: "Volver",
   move_button: "Mover...",
   move_title: "Mover descripción",
-  move_subtitle: "Selecciona el nuevo padre para '{{title}}'.",
+  move_subtitle: "Selecciona la nueva descripción superior de '{{title}}'.",
   move_confirm: "Confirmar movimiento",
   move_cancel: "Cancelar",
-  add_child: "Agregar hijo",
+  add_child: "Agregar descripción subordinada",
   reorder: "Reordenar",
   breadcrumb_new: "Nueva descripción",
   breadcrumb_root: "Descripciones",
@@ -52,10 +52,10 @@ export default {
     "Agrega la primera descripción o importa registros existentes.",
   filter_placeholder: "Filtrar...",
   ref_code_helper:
-    "Sugerido a partir del registro padre. Lo puedes editar.",
-  parent_helper: "Padre: {{parentTitle}}",
+    "Sugerido a partir de la descripción superior. Lo puedes editar.",
+  parent_helper: "Descripción superior: {{parentTitle}}",
   level_required_helper:
-    "El nivel {{level}} también exige estos campos. Los puedes ajustar después en la misma descripción.",
+    "El nivel “{{level}}” también exige estos campos. Los puedes ajustar después en la misma descripción.",
 
   // Orientación por campo: lo que la propia norma dice que es cada
   // elemento, citado textualmente. Se organiza por norma y NO hereda de
@@ -105,8 +105,8 @@ export default {
     // of American Archivists), del "Purpose and Scope" de cada elemento.
     // A diferencia de ISAD(G), DACS NO tiene edición en español: estas
     // son traducciones nuestras, que la licencia CC-BY permite como obra
-    // derivada. «Atribuido» (nunca «atributado») traduce el "devised"
-    // de DACS, siguiendo los «títulos atribuidos» de la ISAD(G) española
+    // derivada. "Atribuido" (nunca "atributado") traduce el "devised"
+    // de DACS, siguiendo los "títulos atribuidos" de la ISAD(G) española
     // para que ambas normas usen el mismo término.
     "referenceCode.dacs":
       "Este elemento proporciona un identificador único para la unidad que se describe. El identificador puede constar de tres subelementos: un identificador local, un código del repositorio y un código del país.",
@@ -136,7 +136,7 @@ export default {
     "title.rad":
       "Transcribe el título formal que traen los propios documentos; si no lo traen, redacta uno.",
     "editionStatement.rad":
-      "Transcribe la mención de edición del documento. Solo en el nivel de unidad documental.",
+      "Transcribe la mención de edición del documento. Solo en el nivel de unidad documental simple.",
     "dateExpression.rad":
       "La fecha o las fechas de creación. En los niveles de agrupación se consignan las fechas de creación, no los datos de publicación.",
     "extent.rad":
@@ -231,10 +231,10 @@ export default {
     uniformTitle: "Título uniforme",
     descriptionLevel: "Nivel de descripción",
     resourceType: "Tipo de recurso",
-    genre: "Género",
+    genre: "Género documental",
     repositoryId: "Repositorio",
-    parentId: "Registro padre",
-    childCount: "Sub-elementos",
+    parentId: "Descripción superior",
+    childCount: "Descripciones subordinadas",
 
     // Sobreescritura por estándar: RAD distingue "Title proper" de
     // títulos suministrados/paralelos (1.1B1 / 2.1B); ISAD(G) y DACS
@@ -363,6 +363,15 @@ export default {
   link_cancel: "Cancelar",
   remove_link_confirm: "¿Eliminar vínculo con {{name}}?",
   remove_link_button: "Eliminar",
+  // Rechazos de una edición o eliminación de vínculo por una relación entre dos personas
+  link_error_relation_side_save:
+    "Este vínculo es uno de los lados de una relación entre dos personas, y las relaciones no se editan desde este formulario. No se guardó nada.",
+  link_error_relation_side_remove:
+    "Este vínculo es uno de los lados de una relación entre dos personas. Si lo eliminaras aquí, el otro lado de la relación quedaría sin su par. No se eliminó nada.",
+  link_error_relation_changed_save:
+    "Este vínculo pasó a formar parte de una relación después de que abriste la página. No se guardó nada. Vuelve a cargar la página para ver el vínculo como está ahora.",
+  link_error_relation_changed_remove:
+    "Este vínculo pasó a formar parte de una relación después de que abriste la página. No se eliminó nada. Vuelve a cargar la página para ver el vínculo como está ahora.",
   no_results: "No se encontraron resultados",
 
   // Borrador / changelog
@@ -391,15 +400,25 @@ export default {
   error_duplicate_ref:
     "Ya existe una descripción con ese código de referencia.",
   error_invalid_level:
-    "El nivel debe ser inferior al del registro padre.",
+    "El nivel debe ser inferior al de la descripción superior.",
+  error_delete_blocked_one:
+    "No se puede eliminar porque tiene 1 descripción subordinada.",
+  error_delete_blocked_other:
+    "No se puede eliminar porque tiene {{count}} descripciones subordinadas.",
+  // Base form: i18next falls back to it when Spanish selects the "many" category.
   error_delete_blocked:
-    "No se puede eliminar -- {{count}} descripciones hijas",
+    "No se puede eliminar porque tiene {{count}} descripciones subordinadas.",
   error_delete_cascade:
     "Al eliminar esta descripción se eliminarán {{entityCount}} vínculos con entidades y {{placeCount}} vínculos con lugares.",
   error_delete_confirm:
     "¿Estás seguro de que deseas eliminar {{title}}? Esta acción no se puede deshacer.",
+  error_move_children_one:
+    "Junto con esta descripción se moverá su descripción subordinada.",
+  error_move_children_other:
+    "Junto con esta descripción se moverán sus {{count}} descripciones subordinadas.",
+  // Base form: i18next falls back to it when Spanish selects the "many" category.
   error_move_children:
-    "Esta descripción tiene {{count}} hijos que también se moverán.",
+    "Junto con esta descripción se moverán sus {{count}} descripciones subordinadas.",
 
   // Éxito
   success_created: "Descripción creada.",
@@ -417,17 +436,19 @@ export default {
   aria_move_down: "Mover abajo",
   aria_edit_link: "Editar vínculo",
   aria_remove_link: "Eliminar vínculo con {{name}}",
+  row_actions: "Acciones: {{title}}",
 
   // Nombres de los niveles de descripción
   level_fonds: "Fondo",
   level_subfonds: "Subfondo",
   level_series: "Serie",
   level_subseries: "Subserie",
-  level_file: "Expediente",
-  level_item: "Pieza",
+  level_file: "Unidad documental compuesta",
+  level_item: "Unidad documental simple",
   level_collection: "Colección",
   level_section: "Sección",
   level_volume: "Volumen",
+  level_repository: "Repositorio",
 
   // Vista
   view_tree: "Árbol de archivos",
@@ -439,7 +460,7 @@ export default {
   col_level: "Nivel",
   col_repository: "Repositorio",
   col_has_digital: "Objeto digital",
-  col_parent_code: "Código padre",
+  col_parent_code: "Código superior",
   col_toggle: "Columnas",
 
   // Filtros de la vista de columnas
@@ -474,4 +495,4 @@ export default {
   next_page: "Página siguiente",
 } as const;
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

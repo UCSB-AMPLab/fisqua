@@ -51,6 +51,14 @@
  * groups; the head counts do not. Reviewer assignments are read only
  * when the workspace has the Digitization area.
  *
+ * Platform admins (`users.is_platform_admin`, migration 0114) are at
+ * home in every live workspace, but their rows are not the workspace's
+ * to manage. `loadUsersList` lists them apart, as `platformAdmins`,
+ * whichever workspace their row is stored in, with their name and
+ * email only, and leaves them out of both groups above and of the head
+ * counts. The search applies to them; the area filter does not, as
+ * they work in every area.
+ *
  * `loadUserDetailAccess` reads what the detail page shows below the
  * profile, for one person of the tenant and one viewer. Which sections
  * the viewer sees is `visibleDetailSections`: Platform to super admins
@@ -77,7 +85,7 @@
  * Federation, a project change with Cataloguing. An invitation with no
  * role names none, and every viewer sees it.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -242,6 +250,14 @@ export interface FederationPerson {
   reviewedVolumeCount: number;
 }
 
+/** A platform admin, as the list shows them: read-only, no link. */
+export interface PlatformAdminPerson {
+  id: string;
+  /** The name, or the email when there is none. */
+  name: string;
+  email: string;
+}
+
 export interface UsersList {
   workspaceName: string;
   federationName: string | null;
@@ -252,6 +268,8 @@ export interface UsersList {
   areas: UsersArea[];
   people: UsersListPerson[];
   federationPeople: FederationPerson[];
+  /** Platform admins, wherever their row is stored; after the search. */
+  platformAdmins: PlatformAdminPerson[];
 }
 
 export interface UsersListFilter {
@@ -317,7 +335,15 @@ export async function loadUsersList(
       lastActiveAt: users.lastActiveAt,
     })
     .from(users)
-    .where(eq(users.tenantId, tenant.id))
+    .where(and(eq(users.tenantId, tenant.id), eq(users.isPlatformAdmin, false)))
+    .orderBy(asc(users.name), asc(users.email))
+    .all();
+
+  // Platform admins are listed apart, wherever their row is stored.
+  const platformAdminRows = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.isPlatformAdmin, true))
     .orderBy(asc(users.name), asc(users.email))
     .all();
 
@@ -335,7 +361,12 @@ export async function loadUsersList(
     .from(federationMemberships)
     .innerJoin(users, eq(users.id, federationMemberships.userId))
     .innerJoin(tenants, eq(tenants.id, users.tenantId))
-    .where(eq(federationMemberships.federationId, tenant.federationId))
+    .where(
+      and(
+        eq(federationMemberships.federationId, tenant.federationId),
+        eq(users.isPlatformAdmin, false),
+      ),
+    )
     .orderBy(asc(users.name), asc(users.email))
     .all();
 
@@ -413,6 +444,9 @@ export async function loadUsersList(
         badges,
         reviewedVolumeCount,
       })),
+    platformAdmins: platformAdminRows
+      .filter((p) => matches({ query: filter.query, area: null }, p.name, p.email, []))
+      .map((p) => ({ id: p.id, name: personName(p.name, p.email), email: p.email })),
   };
 }
 
@@ -796,4 +830,4 @@ export async function loadAccessHistory(
   return out.sort((a, b) => b.at - a.at);
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

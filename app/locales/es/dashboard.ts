@@ -8,7 +8,7 @@
  * headings on the dashboard surface, including the admin-only "Pending
  * decisions" card (`pending_decisions`).
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   nav: {
@@ -124,8 +124,8 @@ export default {
   vol_abbr: "uds.",
   item_abbr: "items",
   attention: {
-    reseg_flag: "Re-segmentación pendiente en \"{{volume}}\"",
-    unassigned_volumes: "{{volumes}} sin asignar en \"{{project}}\"",
+    reseg_flag: "Re-segmentación pendiente en “{{volume}}”",
+    unassigned_volumes: "{{volumes}} sin asignar en “{{project}}”",
     inactive_member: "{{name}} — {{days}} sin actividad",
   },
   activity: {
@@ -163,4 +163,4 @@ export default {
   },
 } as const;
 
-// Version: v0.3.0 (2026-04-17) — page-level annotations
+// Version: v0.9.0 (2026-04-17) — page-level annotations

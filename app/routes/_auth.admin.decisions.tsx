@@ -23,7 +23,7 @@
  * tenant has its capability and the user administers its area, so no
  * one sees a tab that would 404 or 403.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Outlet, NavLink } from "react-router";
@@ -31,13 +31,21 @@ import { useTranslation } from "react-i18next";
 import { tenantContext, userContext } from "../context";
 import { hasCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.decisions";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("decisions:surfaceName"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { canAdministerArea } = await import("../lib/user-access.server");
+  const { canWorkInArea } = await import("../lib/user-access.server");
 
   const user = context.get(userContext);
-  const authoritiesAdmin = canAdministerArea(user, "authorities");
-  const recordsAdmin = canAdministerArea(user, "records");
+  const authoritiesAdmin = canWorkInArea(user, "authorities");
+  const recordsAdmin = canWorkInArea(user, "records");
   if (!authoritiesAdmin && !recordsAdmin) {
     throw new Response("Forbidden", { status: 403 });
   }
@@ -111,3 +119,5 @@ export default function AdminDecisionsLayout({
     </div>
   );
 }
+
+// @version v0.9.0

@@ -15,7 +15,7 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -24,10 +24,18 @@ import { ChevronRight } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.vocabularies._index";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("vocabularies:page_title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
@@ -42,12 +50,12 @@ export async function loader({ context }: Route.LoaderArgs) {
     places,
   } = await import("~/db/schema");
 
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
 
   // The layout checks the same two gates, but a data request for this
   // route alone runs this loader without the layout's, so it carries
   // its own. Every domain query is scoped to the calling tenant.
-  requireArea(context.get(userContext), "records");
+  requireAreaWork(context.get(userContext), "records");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "vocabulary_hub");
 
@@ -207,3 +215,5 @@ export default function AdminVocabulariesIndex({
     </div>
   );
 }
+
+// @version v0.9.0

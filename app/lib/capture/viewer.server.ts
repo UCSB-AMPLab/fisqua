@@ -8,9 +8,10 @@
  * (`qc.server.ts`), which the viewer posts to.
  *
  * Who may open it is who may decide. The volume must be the tenant's
- * (a bare 404 otherwise). The tenant's admins and its federation's
- * stewards may open any volume (`isQcManager`, the decisions route's
- * own check), and the volume's assigned reviewer their own; anyone else
+ * (a bare 404 otherwise). Those who work in capture (the tenant's
+ * admins, its digitization admin, its federation's stewards and staff
+ * grants) may open any volume (`isQcWorker`, the decisions route's own
+ * check), and the volume's assigned reviewer their own; anyone else
  * gets a bare 403. A volume with no current delivery, the one
  * `registered` that holds it, has nothing to review and answers 404.
  *
@@ -21,14 +22,22 @@
  * handover nobody saw, when it was received, and which handover of the
  * volume it is (its place among the volume's registered and superseded
  * deliveries, by `seq`), and how many of its records are `rejected`
- * (retakes the unit owes, which are not openings); the delivery's
- * openings, its records `in_review` or `approved` in the manifest, in
+ * (retakes the unit owes, which are not openings, open placeholders
+ * among them), and what it says of its calibration shots (contract
+ * §13: `present`, `skipped` with its reason, or null) with how many it
+ * carries, read from `capture_calibration_shots`, which nothing else
+ * here reads, so a shot is never an opening or an image; the delivery's
+ * openings, its records read as `in_review` or `approved`
+ * (`qcStatusOf`, a placeholder closed with an image among them), in
  * `sequence` order, each
  * with its images (capture id, role and page key, left, right, then a
  * single), its decision (with the image a rejection asks to retake, its
  * `side`, and `sentAt`, when the unit first fetched a set carrying it,
  * from `capture_qc_fetches` as the Retakes screen reads them) and its
- * rotations, and `earlier` (below); the decision set's counts
+ * rotations, and `earlier` (below); `placeholders`, every record
+ * `missing` a side or both (contract 1.9), open or closed, in `sequence`
+ * order, with the image of the side it has, its closing reason and note,
+ * its request id, and whether it is also an opening; the decision set's counts
  * and `revision` (0 before any decision), which the viewer sends back as
  * `expectedRevision` so a write made on an older state is refused;
  * `locked`, true once a run has started on the volume (the guard the
@@ -63,12 +72,13 @@
  * separate reads would otherwise pair older decisions with a newer
  * revision, and a later write sent on that revision would post them.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
+  captureCalibrationShots,
   captureDeliveries,
   captureImages,
   captureQcDecisions,
@@ -81,9 +91,9 @@ import {
   users,
 } from "../../db/schema";
 import type { Tenant, User } from "../../context";
-import { unpackJson, volumeStillOpen } from "./link.server";
-import { isOpening } from "./manifest";
-import { isQcManager } from "./qc.server";
+import { readStoredRecords, volumeStillOpen, type StoredRecord } from "./link.server";
+import { isOpening, isOpeningRecord } from "./manifest";
+import { isQcWorker } from "./qc.server";
 import { readEarlierRejections } from "./retakes.server";
 import { sentAt, type DecisionFetch } from "./retakes";
 import { federationHasReviewBucket, readLatestReviewRuns } from "./review-run.server";
@@ -95,6 +105,7 @@ import type {
   ViewerEarlier,
   ViewerImage,
   ViewerOpening,
+  ViewerPlaceholder,
   ViewerRotation,
 } from "./viewer";
 
@@ -197,7 +208,7 @@ export async function loadCaptureQcVolume(
     .innerJoin(users, eq(users.id, captureQcReviewers.reviewerId))
     .where(and(eq(captureQcReviewers.tenantId, t), eq(captureQcReviewers.pipelineVolumeId, volumeId)))
     .get();
-  if (reviewer?.id !== user.id && !(await isQcManager(db, tenant, user))) throw refuse(403);
+  if (reviewer?.id !== user.id && !(await isQcWorker(db, tenant, user))) throw refuse(403);
 
   const delivery = await db
     .select({
@@ -206,6 +217,8 @@ export async function loadCaptureQcVolume(
       records: captureDeliveries.records,
       receivedAt: captureDeliveries.receivedAt,
       rejectedRecords: captureDeliveries.rejectedRecords,
+      calibrationStatus: captureDeliveries.calibrationStatus,
+      calibrationSkippedReason: captureDeliveries.calibrationSkippedReason,
     })
     .from(captureDeliveries)
     .where(
@@ -217,6 +230,12 @@ export async function loadCaptureQcVolume(
     )
     .get();
   if (!delivery || delivery.records === null) throw refuse(404);
+
+  const shots = await db
+    .select({ n: sql<number>`COUNT(*)` })
+    .from(captureCalibrationShots)
+    .where(and(eq(captureCalibrationShots.tenantId, t), eq(captureCalibrationShots.deliveryId, delivery.id)))
+    .get();
 
   const handover = await db
     .select({ n: sql<number>`COUNT(*)` })
@@ -232,14 +251,9 @@ export async function loadCaptureQcVolume(
     .get();
 
   // The openings, in manifest order.
-  const records = JSON.parse(await unpackJson(delivery.records)) as Array<{
-    captuaRecordId: number;
-    sequence: number;
-    status: string;
-  }>;
-  const openingRecords = records
-    .filter((r) => isOpening(r.status))
-    .sort((a, b) => a.sequence - b.sequence || a.captuaRecordId - b.captuaRecordId);
+  const records = await readStoredRecords(delivery.records);
+  const bySequence = (a: StoredRecord, b: StoredRecord) => a.sequence - b.sequence || a.captuaRecordId - b.captuaRecordId;
+  const openingRecords = records.filter(isOpeningRecord).sort(bySequence);
 
   const imageRows = groupByRecord(
     await db
@@ -281,6 +295,7 @@ export async function loadCaptureQcVolume(
       .select({
         approved: captureQcSets.approvedCount,
         rejected: captureQcSets.rejectedCount,
+        excluded: captureQcSets.excludedCount,
         decided: captureQcSets.decidedCount,
         revision: captureQcSets.revision,
       })
@@ -342,13 +357,32 @@ export async function loadCaptureQcVolume(
       handover: Number(handover?.n ?? 1),
       receivedAt: delivery.receivedAt,
       rejectedRecords: delivery.rejectedRecords,
+      calibration: {
+        status: delivery.calibrationStatus ?? null,
+        skippedReason: delivery.calibrationSkippedReason ?? null,
+        shots: Number(shots?.n ?? 0),
+      },
     },
     openings,
+    placeholders: records
+      .filter((r) => r.status === "missing")
+      .sort(bySequence)
+      .map((r) => ({
+        captuaRecordId: r.captuaRecordId,
+        sequence: r.sequence,
+        missingSide: (r.missingSide ?? "both") as ViewerPlaceholder["missingSide"],
+        closedReason: r.closedReason ?? null,
+        closedNote: r.closedNote ?? null,
+        requestId: r.requestId ?? null,
+        opening: isOpeningRecord(r),
+        images: viewerImages(imageRows.get(r.captuaRecordId)),
+      })),
     counts: {
       openings: openings.length,
       images: openings.reduce((n, o) => n + o.images.length, 0),
       approved: set?.approved ?? 0,
       rejected: set?.rejected ?? 0,
+      excluded: set?.excluded ?? 0,
       decided: set?.decided ?? 0,
     },
     revision: set?.revision ?? 0,
@@ -450,4 +484,4 @@ async function readEarlier(
   return out;
 }
 
-// @version v0.8.0
+// @version v0.9.0

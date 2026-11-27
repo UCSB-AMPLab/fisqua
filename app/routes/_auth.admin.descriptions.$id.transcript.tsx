@@ -24,7 +24,7 @@
  * workspace answers 404. Every page read names the tenant
  * (`app/lib/ocr/search.server.ts`).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link, useLoaderData } from "react-router";
@@ -33,6 +33,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { Marked } from "~/components/search/marked";
 import type { Route } from "./+types/_auth.admin.descriptions.$id.transcript";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** The most matching pages one find lists. */
 const MAX_TRANSCRIPT_HITS = 100;
@@ -47,8 +48,18 @@ function positiveInt(raw: string | null): number {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.description?.title,
+    heading("descriptions_admin:transcript.label"),
+    heading("descriptions_admin:page_title"),
+  );
+}
+
 export async function loader({ params, request, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { descriptions } = await import("~/db/schema");
@@ -59,7 +70,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { HIGHLIGHT_OPEN, HIGHLIGHT_CLOSE } = await import("~/lib/global-search.server");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Schema-invariant guard, as in the description editor.
   if (tenant.descriptiveStandard == null) {
@@ -193,4 +204,4 @@ export default function DescriptionTranscriptPage() {
   );
 }
 
-// Version: v0.8.0
+// Version: v0.9.0

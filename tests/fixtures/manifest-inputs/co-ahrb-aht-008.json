@@ -1,0 +1,171 @@
+{
+  "source": "Production D1 rows (descriptions, repositories) read 2026-10-16, and the manifest published at https://manifests.zasqua.org/iiif/co-ahrb-aht-008/manifest.json without its items. The description's dateExpression is the Date the published manifest carries; storedDateExpression is the value D1 holds now.",
+  "storedDateExpression": "1570 .. 1572",
+  "description": {
+    "referenceCode": "co-ahrb-aht-008",
+    "title": "Legajo 008",
+    "dateExpression": "1570-1572",
+    "extent": "628 tomas",
+    "language": "",
+    "accessConditions": "",
+    "scopeContent": ""
+  },
+  "repository": {
+    "id": "85f477f3-3a2b-4ec2-a7a0-c240bafee324",
+    "code": "co-ahrb",
+    "name": "Archivo Histórico Regional de Boyacá",
+    "city": "Tunja",
+    "country": "Colombia"
+  },
+  "published": {
+    "@context": "http://iiif.io/api/presentation/3/context.json",
+    "id": "https://manifests.zasqua.org/iiif/co-ahrb-aht-008/manifest.json",
+    "type": "Manifest",
+    "label": {
+      "es": [
+        "Legajo 008"
+      ]
+    },
+    "metadata": [
+      {
+        "label": {
+          "en": [
+            "Date"
+          ],
+          "es": [
+            "Fecha"
+          ]
+        },
+        "value": {
+          "es": [
+            "1570-1572"
+          ]
+        }
+      },
+      {
+        "label": {
+          "en": [
+            "Extent"
+          ],
+          "es": [
+            "Extensión"
+          ]
+        },
+        "value": {
+          "es": [
+            "628 tomas"
+          ]
+        }
+      },
+      {
+        "label": {
+          "en": [
+            "Reference"
+          ],
+          "es": [
+            "Signatura"
+          ]
+        },
+        "value": {
+          "es": [
+            "co-ahrb-aht-008"
+          ]
+        }
+      },
+      {
+        "label": {
+          "en": [
+            "Repository"
+          ],
+          "es": [
+            "Repositorio"
+          ]
+        },
+        "value": {
+          "es": [
+            "Archivo Histórico Regional de Boyacá, Tunja"
+          ]
+        }
+      }
+    ],
+    "requiredStatement": {
+      "label": {
+        "en": [
+          "Attribution"
+        ],
+        "es": [
+          "Atribución"
+        ]
+      },
+      "value": {
+        "en": [
+          "Archivo Histórico Regional de Boyacá, Tunja, Colombia. Digitized by Neogranadina and hosted on Zasqua (zasqua.org)."
+        ],
+        "es": [
+          "Archivo Histórico Regional de Boyacá, Tunja, Colombia. Digitalizado por Neogranadina y alojado en Zasqua (zasqua.org)."
+        ]
+      }
+    },
+    "rights": "http://creativecommons.org/licenses/by-nc/4.0/",
+    "provider": [
+      {
+        "id": "https://neogranadina.org/",
+        "type": "Agent",
+        "label": {
+          "en": [
+            "Neogranadina"
+          ],
+          "es": [
+            "Neogranadina"
+          ]
+        },
+        "homepage": [
+          {
+            "id": "https://zasqua.org/",
+            "type": "Text",
+            "label": {
+              "en": [
+                "Zasqua"
+              ],
+              "es": [
+                "Zasqua"
+              ]
+            },
+            "format": "text/html"
+          }
+        ]
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "https://manifests.zasqua.org/mets/co-ahrb-aht-008.xml",
+        "type": "Dataset",
+        "label": {
+          "en": [
+            "METS metadata"
+          ],
+          "es": [
+            "Metadatos METS"
+          ]
+        },
+        "format": "application/xml",
+        "profile": "http://www.loc.gov/METS/"
+      }
+    ],
+    "homepage": [
+      {
+        "id": "https://zasqua.org/co-ahrb-aht-008/",
+        "type": "Text",
+        "label": {
+          "es": [
+            "Legajo 008"
+          ]
+        },
+        "format": "text/html"
+      }
+    ],
+    "behavior": [
+      "paged"
+    ]
+  }
+}

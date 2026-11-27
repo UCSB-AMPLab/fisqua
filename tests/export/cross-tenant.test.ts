@@ -28,7 +28,8 @@
  *
  *   4. METS links -- each description's `mets_url` is built from
  *      its own tenant's `mets_base_url`, in a single-tenant fonds
- *      export and in a federation repositories export.
+ *      export and in a federation repositories export, whether or not
+ *      the description is digitised.
  *
  *   5. Silent-pass guard -- every recorded R2 key starts with
  *      `${tenant.slug}/`. A bare `descriptions-<ref>.json` write
@@ -37,7 +38,7 @@
  *      caught even if the data-leak assertions pass for a different
  *      reason.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
@@ -81,6 +82,10 @@ class RecordingStorage {
   }
   async putObjectXml(key: string, body: string): Promise<void> {
     this.puts.push({ key, body, contentType: "application/xml" });
+  }
+  /** The descriptions file arrives as UTF-8 bytes from `JsonArrayUpload`. */
+  async putObjectBytes(key: string, body: Uint8Array): Promise<void> {
+    this.puts.push({ key, body: new TextDecoder().decode(body), contentType: "application/json" });
   }
   async deleteObject(_key: string): Promise<void> {
     /* no-op for this test */
@@ -263,6 +268,8 @@ describe("Cross-tenant export isolation", () => {
 
   it("builds each description's mets_url from its own tenant's METS base", async () => {
     const { eq } = await import("drizzle-orm");
+    // The address does not depend on digitisation.
+    await db.update(schema.descriptions).set({ hasDigital: false, iiifManifestUrl: null });
     await db
       .update(schema.tenants)
       .set({ metsBaseUrl: "https://manifests.example.org/mets/" })
@@ -460,6 +467,7 @@ describe("Cross-tenant export ROUTE-LOADER isolation (review CR-01 + CR-02)", ()
       {
         id: neoRunId,
         triggeredBy: neoUserId,
+        tenantId: DEFAULT_TEST_TENANT_ID,
         status: "complete",
         selectedFonds: JSON.stringify(["co-neo-fonds"]),
         selectedTypes: JSON.stringify(["descriptions"]),
@@ -472,6 +480,7 @@ describe("Cross-tenant export ROUTE-LOADER isolation (review CR-01 + CR-02)", ()
       {
         id: secondRunId,
         triggeredBy: secondUserId,
+        tenantId: SECOND_TEST_TENANT_ID,
         status: "complete",
         selectedFonds: JSON.stringify(["mx-second-fonds"]),
         selectedTypes: JSON.stringify(["descriptions"]),
@@ -588,6 +597,7 @@ describe("Cross-tenant export ROUTE-LOADER isolation (review CR-01 + CR-02)", ()
     await db.insert(schema.exportRuns).values({
       id: "33333333-3333-4333-8333-cccccccccccc",
       triggeredBy: secondUserId,
+      tenantId: SECOND_TEST_TENANT_ID,
       status: "running",
       selectedFonds: JSON.stringify(["mx-second-fonds"]),
       selectedTypes: JSON.stringify(["descriptions"]),
@@ -633,3 +643,5 @@ describe("Cross-tenant export ROUTE-LOADER isolation (review CR-01 + CR-02)", ()
     ).not.toContain(secondRunId);
   });
 });
+
+// @version v0.9.0

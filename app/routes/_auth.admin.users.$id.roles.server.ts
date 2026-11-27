@@ -9,7 +9,7 @@
  * request. The route's loader reads `writableRoleFlags` to decide which
  * checkboxes to enable; its action calls `applyUpdateRoles`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -24,6 +24,7 @@ import {
   type AccessActor,
   type FederationRoleChoice,
 } from "../lib/access-changes.server";
+import { readIsPlatformAdmin } from "../lib/platform-admin.server";
 
 /** The tenant capability behind each role flag of an optional area. */
 const FLAG_CAPABILITY: Partial<
@@ -89,6 +90,9 @@ export type UpdateRolesResult =
  *     `none`, `staff` or `steward`. A change that touches `steward`
  *     needs `canGrantSteward`; any other needs `canGrantStaff`.
  *     Otherwise the whole save is refused with `role_not_assignable`.
+ *   - A platform admin (`users.is_platform_admin`) is never touched:
+ *     the save is refused with `role_not_assignable` before anything is
+ *     read from the form. Their flags are not the workspace's to change.
  *   - The changes go to `applyRoleChanges`, which writes them all with
  *     their audit rows or none of them.
  */
@@ -105,6 +109,10 @@ export async function applyUpdateRoles(args: {
   newId: () => string;
 }): Promise<UpdateRolesResult> {
   const { formData } = args;
+
+  if (await readIsPlatformAdmin(args.db, args.targetUserId)) {
+    return { ok: false, error: "role_not_assignable" };
+  }
 
   const changes: Array<{ flag: RoleFlag; shown: boolean; to: boolean }> = [];
   for (const flag of writableRoleFlags(args.assignableFlags, args.tenant)) {
@@ -150,3 +158,5 @@ export async function applyUpdateRoles(args: {
     newId: args.newId,
   });
 }
+
+// @version v0.9.0

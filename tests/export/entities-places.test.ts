@@ -15,7 +15,13 @@
  * from the description set's link rows and intersects against the
  * authority set; only authorities inside the closure survive.
  *
- * @version v0.8.0
+ * An entity's `functions` come only from its `entity_functions` rows
+ * (the `functions` column is not read),
+ * grouped and ordered as the 21 April 2026 export gave them, and its
+ * `dbe_id` is written as that export's integer. `gender`,
+ * `known_only_from_relation` and `qualified_name` are written as stored.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -49,6 +55,7 @@ function makeEntityRow(overrides: Record<string, unknown> = {}) {
     history: "Notable notary of Rionegro.",
     // legal_status dropped in 0036 (0% populated).
     functions: null as string | null,
+    dbeId: null as string | null,
     sources: "Parish records",
     mergedInto: null as string | null,
     wikidataId: "Q12345",
@@ -90,6 +97,21 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("formatEntity", () => {
+  it("carries gender, known_only_from_relation and qualified_name as stored", () => {
+    const result = formatEntity(
+      makeEntityRow({ gender: "female", knownOnlyFromRelation: true, qualifiedName: "María, hija de Pedro Díaz" })
+    );
+    expect(result.gender).toBe("female");
+    expect(result.known_only_from_relation).toBe(true);
+    expect(result.qualified_name).toBe("María, hija de Pedro Díaz");
+  });
+
+  it("writes an unrecorded gender and qualified name as null, and a person not known only from a relation as false", () => {
+    const result = formatEntity(makeEntityRow({ gender: null, knownOnlyFromRelation: false, qualifiedName: null }));
+    expect(result.gender).toBeNull();
+    expect(result.known_only_from_relation).toBe(false);
+    expect(result.qualified_name).toBeNull();
+  });
   it("maps entityCode to entity_code", () => {
     const result = formatEntity(makeEntityRow());
     expect(result.entity_code).toBe("ne-000001");
@@ -133,20 +155,44 @@ describe("formatEntity", () => {
     expect(result.viaf_id).toBe("67890");
   });
 
-  it("leaves functions out when the column is empty or null", () => {
-    expect(formatEntity(makeEntityRow({ functions: null }))).not.toHaveProperty("functions");
-    expect(formatEntity(makeEntityRow({ functions: "" }))).not.toHaveProperty("functions");
-    expect(formatEntity(makeEntityRow({ functions: "[]" }))).not.toHaveProperty("functions");
+  it("writes functions from the entity's entity_functions rows, grouped as the April export gave them", () => {
+    // Rows in the order they were entered. Spellings that differ only in
+    // case or accents are one function, under the first one entered; the
+    // groups run by count, then by name with case and accents ignored.
+    const entityFunctions = [
+      { function: "Capitán" },
+      { function: "indio" },
+      { function: "Indio" },
+      { function: "Capitan" },
+      { function: "Batallón no. 2" },
+      { function: "capitán" },
+      { function: "Batallón nº 2" },
+      { function: "Alcalde" },
+    ];
+    expect(formatEntity(makeEntityRow({ entityFunctions })).functions).toEqual([
+      { function: "Capitán", count: 3 },
+      { function: "indio", count: 2 },
+      { function: "Alcalde", count: 1 },
+      { function: "Batallón nº 2", count: 1 },
+      { function: "Batallón no. 2", count: 1 },
+    ]);
   });
 
-  it("writes functions as an array: a JSON array as stored, other text as one entry", () => {
+  it("reads functions only from the entity_functions rows, never from the functions column", () => {
     const stored = '[{"function":"escribano","count":3}]';
-    expect(formatEntity(makeEntityRow({ functions: stored })).functions).toEqual([
-      { function: "escribano", count: 3 },
-    ]);
-    expect(formatEntity(makeEntityRow({ functions: "escribano" })).functions).toEqual([
-      { function: "escribano" },
-    ]);
+    expect(
+      formatEntity(makeEntityRow({ functions: stored, entityFunctions: [{ function: "Notario" }] })).functions
+    ).toEqual([{ function: "Notario", count: 1 }]);
+    expect(formatEntity(makeEntityRow({ functions: stored, entityFunctions: [] }))).not.toHaveProperty("functions");
+    expect(formatEntity(makeEntityRow({ functions: "escribano" }))).not.toHaveProperty("functions");
+  });
+
+  it("writes dbe_id as the integer the April export gave, and null when there is none", () => {
+    expect(formatEntity(makeEntityRow({ dbeId: "43576" })).dbe_id).toBe(43576);
+    expect(formatEntity(makeEntityRow({ dbeId: null })).dbe_id).toBeNull();
+    expect(formatEntity(makeEntityRow({ dbeId: "" })).dbe_id).toBeNull();
+    expect(formatEntity(makeEntityRow({ dbeId: " 9182 " })).dbe_id).toBe(9182);
+    expect(formatEntity(makeEntityRow({ dbeId: "dbe-abc" })).dbe_id).toBeNull();
   });
 
   it("handles empty nameVariants gracefully", () => {
@@ -308,3 +354,52 @@ describe("filterLinkedPlaces", () => {
     expect(result).toHaveLength(0);
   });
 });
+
+
+describe("modified_at (entity)", () => {
+  const call = (updatedAt: unknown) => formatEntity(makeEntityRow({ updatedAt }));
+
+  it("is the UTC calendar date of updated_at in milliseconds", () => {
+    expect(call(1700000000000).modified_at).toBe("2023-11-14");
+  });
+
+  it("reads a value below 1e11 as seconds", () => {
+    expect(call(1700000000).modified_at).toBe("2023-11-14");
+  });
+
+  it("keeps the UTC date just before and at midnight UTC", () => {
+    expect(call(1710028799999).modified_at).toBe("2024-03-09");
+    expect(call(1710028800000).modified_at).toBe("2024-03-10");
+  });
+
+  it("omits the field when updated_at is null or not finite", () => {
+    for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(call(value)).not.toHaveProperty("modified_at");
+    }
+  });
+});
+
+describe("modified_at (place)", () => {
+  const call = (updatedAt: unknown) => formatPlace(makePlaceRow({ updatedAt }));
+
+  it("is the UTC calendar date of updated_at in milliseconds", () => {
+    expect(call(1700000000000).modified_at).toBe("2023-11-14");
+  });
+
+  it("reads a value below 1e11 as seconds", () => {
+    expect(call(1700000000).modified_at).toBe("2023-11-14");
+  });
+
+  it("keeps the UTC date just before and at midnight UTC", () => {
+    expect(call(1710028799999).modified_at).toBe("2024-03-09");
+    expect(call(1710028800000).modified_at).toBe("2024-03-10");
+  });
+
+  it("omits the field when updated_at is null or not finite", () => {
+    for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(call(value)).not.toHaveProperty("modified_at");
+    }
+  });
+});
+
+// @version v0.9.0

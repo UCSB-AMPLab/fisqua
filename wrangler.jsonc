@@ -12,16 +12,16 @@
  *
  *   - a D1 database (SQLite-in-the-edge) for archival descriptions, users,
  *     projects, and cataloguing workflow state;
- *   - five R2 buckets — `BUCKET` for live app uploads, `EXPORT_BUCKET` for
+ *   - four R2 buckets — `BUCKET` for live app uploads, `EXPORT_BUCKET` for
  *     published JSON exports consumed by the static frontend, `MANIFESTS_BUCKET`
  *     for generated IIIF image manifests (no longer read: each tenant's
- *     manifests go to its own bucket, written over S3), `METS_BUCKET` for archival METS
- *     XML packages that track provenance, and `SPEC_BUCKET` for the media
+ *     manifests go to its own bucket, written over S3), and `SPEC_BUCKET` for the media
  *     pipeline's run specs and the previous manifest and OCR text each
  *     publication keeps;
- *   - Cloudflare Workflows, used to run the publish-export pipeline as a
- *     durable background job that survives Worker restarts and can be resumed
- *     after failure;
+ *   - Cloudflare Workflows, used to run the publish-export pipeline, import
+ *     commits and reverts, and the refresh of a federation's published
+ *     manifest attribution as durable background jobs that survive Worker
+ *     restarts and can be resumed after failure;
  *   - a handful of plain environment variables (app name, sender email,
  *     allowed IIIF manifest hosts, the subdomain suffix tenant workspaces
  *     answer on) plus secrets managed out-of-band via
@@ -47,15 +47,38 @@
  * Every pipeline credential is a secret, listed in the comment above
  * `vars`.
  *
+ * The Captua pairing routes answer only on `CAPTURE_PAIRING_ORIGIN`, each
+ * environment's main address, and `CAPTURE_PAIRING_ENVIRONMENT` names the
+ * environment a collected payload reports. Their private key,
+ * `CAPTURE_KEYS_PRIVATE_JWK`, is a secret.
+ *
  * Two deployment environments are defined: the default production environment
  * (served at `fisqua.org`) and a staging environment at `staging.fisqua.org`
- * with its own D1 database. Staging has its own manifests bucket
- * (`zasqua-manifests-staging`) and its own pipeline spec bucket
- * (`fisqua-pipeline-specs-staging`), so a staging run or publish does not
- * write specs, kept copies or canonical manifests to the production
- * buckets, or sign URLs into them.
- * The other buckets are shared: `BUCKET` (`fisqua-bucket`), exports and
- * METS packages are the production buckets in both environments.
+ * with its own D1 database. Every bucket staging binds is its own, named
+ * with the `-staging` suffix: `fisqua-bucket-staging` (`BUCKET`),
+ * `zasqua-export-staging` (`EXPORT_BUCKET`), `zasqua-manifests-staging`
+ * (`MANIFESTS_BUCKET`) and
+ * `fisqua-pipeline-specs-staging` (`SPEC_BUCKET`), and its working bucket
+ * is `fisqua-pipeline-working-staging`. A staging publish, import, export
+ * or run therefore writes nothing to the buckets production and the
+ * Zasqua site read through these bindings, and signs no URLs into them.
+ * Each federation's tiles and manifest buckets are on its record in
+ * staging's D1, not here.
+ * tests/media-pipeline-node/staging-destinations.test.ts fails if a
+ * staging binding or variable names a production bucket; the one
+ * variable it allows is the unread `PIPELINE_TILES_BUCKET`. It also fails
+ * if staging names the production Worker in a `script_name` or `service`,
+ * or shares a D1 database, KV namespace, queue, Hyperdrive config or
+ * workflow name with production. Staging's workflows carry no
+ * `script_name`, so the staging Worker hosts them.
+ *
+ * The build, not wrangler, chooses the environment: `CLOUDFLARE_ENV` at
+ * build time decides which block is resolved into
+ * build/server/wrangler.json, and `wrangler deploy` follows a redirect to
+ * that file. A production build records no target environment, so
+ * wrangler ignores `--env` when deploying it. Deploy production with
+ * `npm run deploy` and staging with `npm run deploy:staging`; both go
+ * through scripts/deploy.mjs, which refuses `--env`.
  *
  * Workers Logs (Cloudflare's "observability" feature) is enabled on both
  * environments so Worker invocations leave a forensic trail in the
@@ -63,26 +86,40 @@
  * Cloudflare's default 100% head sampling rate; this can be lowered
  * later if log volume becomes a cost concern.
  *
- * Version: v0.8.0
+ * Version: v0.9.0
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fisqua",
+  // Pinned so a deploy cannot land in another account that wrangler
+  // finds in its cache or in the user's configuration. Inherited by staging.
+  "account_id": "492ecadf9e992aecb0553ec14ebf90c7",
   "compatibility_date": "2025-04-04",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./workers/app.ts",
   "observability": {
     "enabled": true
   },
+  // The subrequest limit counts per invocation, and one invocation of the
+  // publish workflow runs many steps. Every D1 read and write and every R2
+  // put of those steps counts, the children step's put per parent
+  // description among them, so the limit is set above the paid default of
+  // 10,000.
+  "limits": {
+    "subrequests": 100000
+  },
   "routes": [
     { "pattern": "fisqua.org", "custom_domain": true },
     { "pattern": "*fisqua.org/*", "zone_name": "fisqua.org" }
   ],
-  // The notification sweep's tick. Fifteen minutes is the floor of the
-  // digest-frequency enum, so every other frequency is a multiple of it;
-  // recipients who are not yet due are skipped in the handler.
+  // Two ticks. Every fifteen minutes runs the sweeps, including the
+  // notification sweep: fifteen minutes is the floor of the
+  // digest-frequency enum, so every other frequency is a multiple of it,
+  // and recipients who are not yet due are skipped in the handler. Every
+  // five minutes runs the duplicate recheck alone. The handler picks the
+  // jobs from the cron string (app/lib/scheduled-dispatch.ts).
   "triggers": {
-    "crons": ["*/15 * * * *"]
+    "crons": ["*/15 * * * *", "*/5 * * * *"]
   },
   // Secrets (set via `wrangler secret put` or .dev.vars):
   // SESSION_SECRET, RESEND_API_KEY, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
@@ -126,6 +163,13 @@
     // seeded by a migration has the same id in both.
     "PIPELINE_ENVIRONMENT": "production",
     "PIPELINE_CALLBACK_ORIGIN": "https://fisqua.org",
+    // Captua pairing: the main address the two pairing routes answer on
+    // (a bare 404 on any other host, or when unset), and the environment
+    // named in a collected payload. The secret CAPTURE_KEYS_PRIVATE_JWK,
+    // the key the stored scanner keys are opened with, is set with
+    // `wrangler secret put` and never written in this file.
+    "CAPTURE_PAIRING_ORIGIN": "https://fisqua.org",
+    "CAPTURE_PAIRING_ENVIRONMENT": "production",
     "PIPELINE_SPEC_BUCKET": "fisqua-bucket",
     // No longer read: the tenant record's pipeline_tiles_bucket replaces
     // it. Remove once Neogranadina is adopted in both environments.
@@ -136,12 +180,11 @@
     // The shared working bucket, made by provision-working-bucket.ts.
     "PIPELINE_WORKING_BUCKET": "fisqua-pipeline-working",
     "PIPELINE_WORKING_S3_ENDPOINT": "https://s3.us-west-001.backblazeb2.com",
-    // The runner pin for new runs: the v1.2.0 tag's build of the runner's
-    // main at a4e22b2, which turns a page by its rotate_deg from the
-    // stored pixels, and the script version that image reports. Staging
-    // pins the same image below.
-    "PIPELINE_RUNNER_IMAGE": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:8a4b25275f348c3808a9b4771b022410307804b1a285d36755596bf7d0766a26",
-    "PIPELINE_SCRIPT_VERSION": "v1.2.0"
+    // The runner pin for new runs: the v1.3.0 tag's build of the runner's
+    // main at 3d7c656, which verifies a volume's calibration shots, and the
+    // script version that image reports. Staging pins the same image below.
+    "PIPELINE_RUNNER_IMAGE": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:4d2834c63d63c5cc1b79365a3d4379688c7f96c2abcddb28626f6a4dac095502",
+    "PIPELINE_SCRIPT_VERSION": "v1.3.0"
   },
   "d1_databases": [
     {
@@ -168,10 +211,6 @@
       "bucket_name": "zasqua-manifests"
     },
     {
-      "binding": "METS_BUCKET",
-      "bucket_name": "zasqua-mets"
-    },
-    {
       "binding": "SPEC_BUCKET",
       "bucket_name": "fisqua-bucket"
     }
@@ -194,6 +233,14 @@
       "binding": "IMPORT_REVERT",
       "class_name": "ImportRevertWorkflow",
       "script_name": "fisqua"
+    },
+    {
+      // Rewrites the attribution fields of a federation's published
+      // manifests; started from /api/manifest-refresh.
+      "name": "manifest-refresh",
+      "binding": "MANIFEST_REFRESH",
+      "class_name": "ManifestRefreshWorkflow",
+      "script_name": "fisqua"
     }
   ],
   "env": {
@@ -208,6 +255,9 @@
         // through the `.staging.fisqua.org` suffix in app/lib/tenant.ts;
         // the apex above stays reserved.
         { "pattern": "ahr.staging.fisqua.org", "custom_domain": true },
+        // The Neogranadina federation lead, which publishes the federation's
+        // export to zasqua-export-staging.
+        { "pattern": "neogranadina.staging.fisqua.org", "custom_domain": true },
         // The AMPL federation's tenants on staging, for the Captua link:
         // ampl (the lab unit), sbmal, and cobos (a test bench, staging only).
         { "pattern": "ampl.staging.fisqua.org", "custom_domain": true },
@@ -221,19 +271,22 @@
         // domains above still provide the DNS records and certificates.
         { "pattern": "staging.fisqua.org/*", "zone_name": "fisqua.org" },
         { "pattern": "ahr.staging.fisqua.org/*", "zone_name": "fisqua.org" },
+        { "pattern": "neogranadina.staging.fisqua.org/*", "zone_name": "fisqua.org" },
         { "pattern": "ampl.staging.fisqua.org/*", "zone_name": "fisqua.org" },
         { "pattern": "sbmal.staging.fisqua.org/*", "zone_name": "fisqua.org" },
         { "pattern": "cobos.staging.fisqua.org/*", "zone_name": "fisqua.org" }
       ],
-      // Explicitly empty: "triggers" is an INHERITABLE wrangler key, so
-      // omitting it here would silently give staging the production cron.
-      // Staging must not run the sweep: its tenant hosts are test hosts,
+      // Staging runs only the duplicate recheck, on the five-minute cron.
+      // "triggers" is an INHERITABLE wrangler key, so omitting it here
+      // would silently give staging the production crons, and this block
+      // must not list the sweep cron: the sweep must not run on staging.
+      // Its tenant hosts are test hosts,
       // and without PUBLIC_HOST_SUFFIX the sweep would build digest links
       // on the production suffix (.fisqua.org) and mark the outbox rows
       // sent. Likewise no PUBLIC_HOST_SUFFIX below (vars are NOT
       // inheritable, so that one is absent by default).
       "triggers": {
-        "crons": []
+        "crons": ["*/5 * * * *"]
       },
       "vars": {
         "APP_NAME": "Fisqua [Staging]",
@@ -249,9 +302,15 @@
         "PIPELINE_DISPATCH_REPO": "UCSB-AMPLab/fisqua-media-pipeline",
         "PIPELINE_ENVIRONMENT": "staging",
         "PIPELINE_CALLBACK_ORIGIN": "https://staging.fisqua.org",
+        // Captua pairing, as production above; CAPTURE_KEYS_PRIVATE_JWK
+        // is a staging secret of its own, set with `wrangler secret put`.
+        "CAPTURE_PAIRING_ORIGIN": "https://staging.fisqua.org",
+        "CAPTURE_PAIRING_ENVIRONMENT": "staging",
         "PIPELINE_SPEC_BUCKET": "fisqua-pipeline-specs-staging",
         // No longer read: the tenant record's pipeline_tiles_bucket
         // replaces it. Remove once Neogranadina is adopted in staging.
+        // It names the production tiles bucket, and the staging
+        // destinations test allows it only because nothing reads it.
         "PIPELINE_TILES_BUCKET": "zasqua-iiif-tiles",
         "PIPELINE_READER_BACKEND": "b2",
         // The account's R2 S3 endpoint, where the spec bucket is read.
@@ -259,12 +318,12 @@
         // The shared working bucket, made by provision-working-bucket.ts.
         "PIPELINE_WORKING_BUCKET": "fisqua-pipeline-working-staging",
         "PIPELINE_WORKING_S3_ENDPOINT": "https://s3.us-west-001.backblazeb2.com",
-        // The runner pin for new runs: the image by digest (the v1.2.0
-        // tag's build of the runner's main at a4e22b2, which turns a page
-        // by its rotate_deg from the stored pixels) and the script version
-        // that image reports, as production does above.
-        "PIPELINE_RUNNER_IMAGE": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:8a4b25275f348c3808a9b4771b022410307804b1a285d36755596bf7d0766a26",
-        "PIPELINE_SCRIPT_VERSION": "v1.2.0"
+        // The runner pin for new runs: the image by digest (the v1.3.0
+        // tag's build of the runner's main at 3d7c656, which verifies a
+        // volume's calibration shots) and the script version that image
+        // reports, as production does above.
+        "PIPELINE_RUNNER_IMAGE": "ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:4d2834c63d63c5cc1b79365a3d4379688c7f96c2abcddb28626f6a4dac095502",
+        "PIPELINE_SCRIPT_VERSION": "v1.3.0"
       },
       "d1_databases": [
         {
@@ -274,14 +333,19 @@
           "migrations_dir": "drizzle"
         }
       ],
+      // Staging's own buckets; none is a production bucket.
       "r2_buckets": [
         {
+          // Workspace export artefacts and, with no
+          // IMPORTS_STAGING_BACKEND set, import uploads and reports.
           "binding": "BUCKET",
-          "bucket_name": "fisqua-bucket"
+          "bucket_name": "fisqua-bucket-staging"
         },
         {
+          // Published JSON exports. The Zasqua site builds from
+          // production's zasqua-export, never from this bucket.
           "binding": "EXPORT_BUCKET",
-          "bucket_name": "zasqua-export"
+          "bucket_name": "zasqua-export-staging"
         },
         {
           // No longer read: the tenant record's manifest bucket replaces
@@ -290,32 +354,35 @@
           "bucket_name": "zasqua-manifests-staging"
         },
         {
-          "binding": "METS_BUCKET",
-          "bucket_name": "zasqua-mets"
-        },
-        {
           "binding": "SPEC_BUCKET",
           "bucket_name": "fisqua-pipeline-specs-staging"
         }
       ],
+      // Hosted by the staging Worker: with no script_name, `wrangler
+      // deploy` registers each workflow on the Worker being deployed
+      // (fisqua-staging), so its steps run with staging's D1 and buckets.
+      // Naming "fisqua" here would bind to production's Worker instead.
+      // Workflow names are account-wide, hence the -staging suffix.
       "workflows": [
         {
           "name": "publish-export-staging",
           "binding": "PUBLISH_EXPORT",
-          "class_name": "PublishExportWorkflow",
-          "script_name": "fisqua"
+          "class_name": "PublishExportWorkflow"
         },
         {
           "name": "import-commit-staging",
           "binding": "IMPORT_COMMIT",
-          "class_name": "ImportCommitWorkflow",
-          "script_name": "fisqua"
+          "class_name": "ImportCommitWorkflow"
         },
         {
           "name": "import-revert-staging",
           "binding": "IMPORT_REVERT",
-          "class_name": "ImportRevertWorkflow",
-          "script_name": "fisqua"
+          "class_name": "ImportRevertWorkflow"
+        },
+        {
+          "name": "manifest-refresh-staging",
+          "binding": "MANIFEST_REFRESH",
+          "class_name": "ManifestRefreshWorkflow"
         }
       ]
     }

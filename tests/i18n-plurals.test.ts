@@ -14,9 +14,11 @@
  * runtime, not a stubbed translator. A regression here usually
  * means a pluralisation suffix was misnamed (e.g. `_plural` instead
  * of `_other`) — i18next then silently falls back to the bare key
- * and the count parameter never substitutes.
+ * and the count parameter never substitutes. The publish page's
+ * changelog labels and children-file total are pinned too, since each
+ * follows a printed count.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import i18next from "i18next";
@@ -75,6 +77,24 @@ describe("Spanish pluralisation", () => {
     );
     expect(i18next.t("workflow:bulk.selected", { count: 3 })).toBe(
       "3 uds. seleccionadas",
+    );
+  });
+
+  it("publish changelog labels agree with the count", () => {
+    expect(i18next.t("publish:changelog.added", { count: 1 })).toBe("agregada");
+    expect(i18next.t("publish:changelog.added", { count: 4 })).toBe("agregadas");
+    expect(i18next.t("publish:changelog.unpublished", { count: 1 })).toBe("despublicada");
+    expect(i18next.t("publish:changelog.unpublished", { count: 2 })).toBe("despublicadas");
+    expect(i18next.t("publish:changelog.modified", { count: 1 })).toBe("con cambios");
+    expect(i18next.t("publish:changelog.modified", { count: 7 })).toBe("con cambios");
+  });
+
+  it("publish detail.childrenFilesTotal agrees with the count", () => {
+    expect(i18next.t("publish:detail.childrenFilesTotal", { count: 1 })).toBe(
+      "Se generó 1 archivo children/{refCode}.json en todos los fondos",
+    );
+    expect(i18next.t("publish:detail.childrenFilesTotal", { count: 12 })).toBe(
+      "Se generaron 12 archivos children/{refCode}.json en todos los fondos",
     );
   });
 });

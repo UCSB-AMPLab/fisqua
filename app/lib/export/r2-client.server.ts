@@ -20,9 +20,12 @@
  * as an R2 multipart upload in fixed-size parts (R2 requires every
  * part but the last to be the same size and at least 5 MiB), and the
  * bytes that do not yet fill a part are kept in a small staging object
- * between Workflow steps. See `json-array-upload.server.ts`.
+ * between Workflow steps. See `json-array-upload.server.ts`. The
+ * per-fonds descriptions, EAD3 and Dublin Core files use the same
+ * multipart methods within one step; a multipart upload takes the
+ * content type of the file it writes.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export class ExportStorage {
   constructor(private bucket: R2Bucket) {}
@@ -107,14 +110,17 @@ export class ExportStorage {
 
   /**
    * Start a multipart upload to `key`; returns its upload id. The
-   * custom metadata is carried by the object once the upload completes.
+   * custom metadata and content type are carried by the object once the
+   * upload completes; the content type is JSON unless the caller names
+   * another (the EAD3 and Dublin Core files are XML).
    */
   async createMultipartUpload(
     key: string,
-    customMetadata?: Record<string, string>
+    customMetadata?: Record<string, string>,
+    contentType = "application/json; charset=utf-8"
   ): Promise<string> {
     const upload = await this.bucket.createMultipartUpload(key, {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
+      httpMetadata: { contentType },
       ...(customMetadata ? { customMetadata } : {}),
     });
     return upload.uploadId;
@@ -166,3 +172,5 @@ export class ExportStorage {
     return head ? { size: head.size, customMetadata: head.customMetadata } : null;
   }
 }
+
+// @version v0.9.0

@@ -17,9 +17,10 @@
  * Prerequisites: `wrangler` authenticated and the target bucket
  * already created in the Cloudflare dashboard.
  *
- * @version v0.3.1
+ * @version v0.9.0
  */
 import { execSync } from "child_process";
+import { appendAll } from "./lib/arrays";
 
 const SOURCE_BUCKET = "zasqua-iiif-tiles";
 const TARGET_BUCKET = "zasqua-manifests";
@@ -77,7 +78,7 @@ function listManifests(): R2Object[] {
     const manifests = result.objects.filter((o) =>
       o.key.endsWith("/manifest.json")
     );
-    allObjects.push(...manifests);
+    appendAll(allObjects, manifests);
 
     console.log(
       `  Page ${page}: ${result.objects.length} objects, ${manifests.length} manifests`
@@ -243,3 +244,5 @@ main().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
+
+// @version v0.9.0

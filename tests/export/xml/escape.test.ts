@@ -2,13 +2,13 @@
  * Tests — Shared XML Emit Helpers
  *
  * This suite pins the contract of `escapeXml`, `el(tag, text)`, and
- * `sanitiseRefForKey(ref)` factored out of `mets-builder.ts`. The
- * METS, EAD3, and Dublin Core builders all import from this module,
+ * `sanitiseRefForKey(ref)`. The EAD3 and Dublin Core builders both
+ * import from this module,
  * so the behaviours below are the regression surface that keeps
  * cross-emitter XML-injection holes closed and reference-code-
  * derived R2 keys safe.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 
 import { describe, it, expect } from "vitest";

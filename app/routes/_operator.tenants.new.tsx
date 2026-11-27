@@ -47,7 +47,10 @@
  * and the same posture applies to tenant bootstrap. If the email
  * fails the operator still sees the redirect and the new tenant; the
  * operator can re-send the magic-link from `/login` on the new
- * tenant subdomain on the bootstrap user's behalf.
+ * tenant subdomain on the bootstrap user's behalf. The operator's
+ * request language goes with the call: the new workspace has no
+ * default language yet and the bootstrap user no saved one, so the
+ * email is written in the language the operator was using.
  *
  * ## Slug + email validation
  *
@@ -66,7 +69,7 @@
  * refused with a field error saying the storage destination is not set
  * up; the operator turns it on from the tenant's page once it is.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Form, redirect } from "react-router";
@@ -84,7 +87,16 @@ import { withAuditLog } from "../lib/audit.server";
 import { CreateTenantSchema } from "../lib/operator-actions.server";
 import { userContext } from "../context";
 import { generateMagicLink } from "../lib/auth.server";
+import { requestLanguage } from "../lib/email-locale.server";
 import type { Route } from "./+types/_operator.tenants.new";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("operator:tenant_new.page_title"),
+  );
+}
 
 export async function loader(_: Route.LoaderArgs) {
   // No DB read — the form is rendered statically. The middleware
@@ -263,6 +275,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       newOrigin,
       env.RESEND_API_KEY,
       env,
+      requestLanguage(context),
     );
   } catch (err) {
     // Non-blocking — the bootstrap email is a convenience for the
@@ -541,4 +554,4 @@ export default function CreateTenantPage({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

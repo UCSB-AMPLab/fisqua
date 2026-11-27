@@ -18,7 +18,10 @@
  * coordinate editor replacing the preview — without remounting the
  * right column. Merge and split live on their own workbench routes;
  * this action handles update/delete/autosave and the description-link
- * intents.
+ * intents. An update writes only the editable fields the request
+ * carries; a column the form does not edit (legacy_ids, place_code,
+ * fclass, merged_into) keeps its stored value, and a blank field whose
+ * stored value is already blank is left as stored.
  *
  * Authority scope is the federation (migrations 0045-0048). Every
  * read/update/delete of `places` is filtered by `tenant.federationId`.
@@ -34,7 +37,37 @@
  * only handlists that hold places, and it reports the resulting count
  * rather than a bare "Added".
  *
- * @version v0.8.0
+ * A save's UPDATE runs only while the record holds the version the
+ * save read, so a save that another lands between the version check and
+ * the write changes nothing, logs nothing and gets the conflict
+ * response. A successful save returns the new version, and the form
+ * submits the version its field values were loaded from
+ * (`useFormVersion`), which a loader revalidation does not move.
+ *
+ * After an edit conflict, the overwrite resubmits the editor's fields
+ * with `_force=true`. A forced update that carries none of the editable
+ * fields is refused, and a save deletes the autosaved draft only when
+ * it carried fields.
+ *
+ * A hard delete runs only while the record holds the version the
+ * delete read and no record names it in `merged_into`: a record others
+ * were merged into is refused (`merge_survivor`), and one changed
+ * between the delete's reads and its batch gets the conflict response.
+ * The batch opens with a guard on both, so a merge or a save that lands
+ * between the reads and the batch fails it whole.
+ *
+ * The loader reads the federation's role lists once (`readRolePickers`).
+ * The link dialogs offer its approved place roles, the worklist and the
+ * context cards show its labels, and the worklist's role filter takes
+ * any code its place roles hold.
+ *
+ * The link actions write a role only while the federation's list
+ * approves it, checked inside the INSERT or UPDATE
+ * (`link-roles.server.ts`); an edit may keep the link's current code
+ * even when the list has deprecated it, and a refused role gets the
+ * generic refusal.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect } from "react";
@@ -60,6 +93,7 @@ import {
 import { HandlistPicker } from "~/components/handlists/handlist-picker";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
+import { useFormVersion, useRecordEditMode } from "~/lib/use-form-version";
 import { FieldDisplay } from "~/components/admin/field-display";
 import { EditField } from "~/components/admin/edit-field";
 import {
@@ -74,25 +108,36 @@ import { GeocodeSearch } from "~/components/admin/geocode-search";
 import { parseWorklistParams } from "~/lib/worklist-params";
 import {
   PLACE_TYPES,
-  PLACE_ROLES,
+  type PLACE_ROLES,
   COORDINATE_PRECISIONS,
 } from "~/lib/validation/enums";
+import { placeRoleLabel } from "~/lib/role-options";
 import type { Route } from "./+types/_auth.admin.places.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.place?.label,
+    heading("places:title"),
+  );
+}
+
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, or, like, asc, sql } = await import("drizzle-orm");
   const { places, descriptionPlaces, descriptions, repositories } =
     await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -162,9 +207,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   // ---- Linked-descriptions worklist (spec §5 redesign; round-3 filters) ----
   const sp = new URL(request.url).searchParams;
   const wl = parseWorklistParams(sp);
-  // An off-vocabulary role param is ignored, never an empty worklist.
+  // The federation's role pickers and labels, read once. A role param
+  // its place roles do not hold is ignored, never an empty worklist.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
   const role =
-    wl.role && (PLACE_ROLES as readonly string[]).includes(wl.role)
+    wl.role && Object.hasOwn(roles.labels.place, wl.role)
       ? (wl.role as (typeof PLACE_ROLES)[number])
       : null;
 
@@ -446,6 +494,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     roleCounts,
     repoCounts,
     repoSpan,
+    roles,
     wl: {
       dq: wl.dq,
       role,
@@ -472,17 +521,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, inArray, sql } = await import("drizzle-orm");
   const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
   const { updatePlaceSchema } = await import("~/lib/validation/place");
+  const { submittedFields, fieldsToWrite } = await import(
+    "~/lib/validation/update-schema"
+  );
   const { logAuthorityOperation } = await import(
     "~/lib/authority-operations.server"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -542,71 +594,56 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "update": {
       await requireAuthorityMutation(db, user, tenant, "place", [id]);
-      const label = (formData.get("label") as string)?.trim() || undefined;
-      const displayName =
-        (formData.get("displayName") as string)?.trim() || undefined;
-      const placeType =
-        (formData.get("placeType") as string)?.trim() || undefined;
-      const nameVariantsRaw = formData.get("nameVariants") as string;
-      const parentId =
-        (formData.get("parentId") as string)?.trim() || undefined;
-      // historical_gobernacion, historical_partido, historical_region,
-      // country_code, admin_level_1, admin_level_2 all dropped in 0036
-      // (0% populated in production audit).
-      // Empty-string → null coercion at the form boundary: the select's
-      // unset option submits "", which is NOT a vocabulary member, so it
-      // must reach the z.enum as null (not recorded).
-      const coordinatePrecision =
-        (formData.get("coordinatePrecision") as string)?.trim() || null;
-      const notes = (formData.get("notes") as string)?.trim() || null;
-      const internalNotes =
-        (formData.get("internalNotes") as string)?.trim() || null;
+      // Only the fields the edit form carries and the user can edit are
+      // read, and each only when the request carries it: a field absent
+      // from the request is absent from the parsed values and is never
+      // written. legacyIds, placeCode, fclass and mergedInto are not
+      // edited here. A blank text input or select reaches the schema as
+      // null (not recorded), which also keeps an unset precision ("",
+      // not a vocabulary member) away from the z.enum.
+      const { has, trimmed } = submittedFields(formData);
+      const input: Record<string, unknown> = { id };
+      // label and displayName are NOT NULL: blank leaves them as stored.
+      for (const name of ["label", "displayName"] as const) {
+        if (has(name)) input[name] = trimmed(name) || undefined;
+      }
+      for (const name of [
+        "placeType",
+        "parentId",
+        "coordinatePrecision",
+        "tgnId",
+        "hgisId",
+        "whgId",
+        "notes",
+        "internalNotes",
+      ] as const) {
+        if (has(name)) input[name] = trimmed(name) || null;
+      }
+      if (has("nameVariants")) {
+        input.nameVariants = (formData.get("nameVariants") as string) || "[]";
+      }
 
       // Parse coordinates. A present-but-unparseable value is a
       // FIELD ERROR, never a silent null — dropping a mistyped
       // coordinate would masquerade as a deliberate removal. Range
       // bounds (lat -90..90, lng -180..180) are enforced by the Zod
       // schema below.
-      const latStr = (formData.get("latitude") as string)?.trim();
-      const lngStr = (formData.get("longitude") as string)?.trim();
-      const latitude = latStr ? parseFloat(latStr) : null;
-      const longitude = lngStr ? parseFloat(lngStr) : null;
       const coordErrors: Record<string, string[]> = {};
-      if (latStr && isNaN(latitude!)) {
-        coordErrors.latitude = ["Latitude must be a number"];
-      }
-      if (lngStr && isNaN(longitude!)) {
-        coordErrors.longitude = ["Longitude must be a number"];
+      for (const [name, message] of [
+        ["latitude", "Latitude must be a number"],
+        ["longitude", "Longitude must be a number"],
+      ] as const) {
+        if (!has(name)) continue;
+        const str = trimmed(name);
+        const value = str ? parseFloat(str) : null;
+        if (str && isNaN(value!)) coordErrors[name] = [message];
+        input[name] = value;
       }
       if (Object.keys(coordErrors).length > 0) {
         return { ok: false as const, errors: coordErrors };
       }
 
-      // LOD identifiers
-      const tgnId =
-        (formData.get("tgnId") as string)?.trim() || undefined;
-      const hgisId =
-        (formData.get("hgisId") as string)?.trim() || undefined;
-      const whgId =
-        (formData.get("whgId") as string)?.trim() || undefined;
-      // wikidata_id dropped from places in 0036.
-
-      const parsed = updatePlaceSchema.safeParse({
-        id,
-        label,
-        displayName,
-        placeType: placeType || null,
-        nameVariants: nameVariantsRaw || "[]",
-        parentId: parentId || null,
-        latitude,
-        longitude,
-        coordinatePrecision,
-        tgnId: tgnId || null,
-        hgisId: hgisId || null,
-        whgId: whgId || null,
-        notes,
-        internalNotes,
-      });
+      const parsed = updatePlaceSchema.safeParse(input);
 
       if (!parsed.success) {
         return {
@@ -625,6 +662,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       // Optimistic lock check
       const formUpdatedAt = formData.get("_updatedAt") as string;
       const forceOverwrite = formData.get("_force") === "true";
+      // Whether the request carries any field the editor submits. An
+      // overwrite after a conflict resubmits the editor's fields; a
+      // forced update without any would write nothing and report
+      // success while the user's edits stay unsaved, so it is refused.
+      const carriesFields = Object.keys(input).some((key) => key !== "id");
+      if (forceOverwrite && !carriesFields) {
+        return { ok: false as const, error: "generic" };
+      }
       if (
         !forceOverwrite &&
         formUpdatedAt &&
@@ -638,29 +683,48 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
+      // The values to write: every parsed field the request carried,
+      // except a blank one whose stored value is already blank.
       const { id: _id, ...updates } = parsed.data;
-      const updatedFields: Record<string, unknown> = {
-        ...updates,
-        nameVariants: updates.nameVariants ?? "[]",
-        parentId: updates.parentId ?? null,
-        latitude: updates.latitude ?? null,
-        longitude: updates.longitude ?? null,
-        coordinatePrecision: updates.coordinatePrecision ?? null,
-        tgnId: updates.tgnId ?? null,
-        hgisId: updates.hgisId ?? null,
-        whgId: updates.whgId ?? null,
-        notes: updates.notes ?? null,
-        internalNotes: updates.internalNotes ?? null,
-      };
+      const updatedFields = fieldsToWrite(
+        updates,
+        original as Record<string, unknown> | undefined,
+      );
 
+      if (!original) throw new Response("Not found", { status: 404 });
+
+      // The write runs only while the place holds the version read
+      // above (the one the form's version was checked against, or that a
+      // forced overwrite applies to): a save that another lands before
+      // changes nothing, and its changes count says so.
+      const { nextVersion } = await import("~/lib/record-version.server");
+      const savedVersion = nextVersion(original.updatedAt);
       try {
-        await db
+        const result = await db
           .update(places)
           .set({
             ...updatedFields,
-            updatedAt: Date.now(),
+            updatedAt: savedVersion,
           })
-          .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id)));
+          .where(
+            and(
+              authorityScope(places, tenant.federationId, tenant.id),
+              eq(places.id, id),
+              eq(places.updatedAt, original.updatedAt)
+            )
+          );
+        if ((result.meta?.changes ?? 0) === 0) {
+          const current = await db
+            .select({ updatedAt: places.updatedAt })
+            .from(places)
+            .where(eq(places.id, id))
+            .get();
+          return {
+            ok: false as const,
+            error: "conflict" as const,
+            modifiedAt: current?.updatedAt ?? original.updatedAt,
+          };
+        }
       } catch (e) {
         if (String(e).includes("UNIQUE constraint failed")) {
           return { ok: false as const, error: "duplicate_code" };
@@ -684,14 +748,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         }
       }
 
-      // Delete draft after successful save
-      const { deleteDraft } = await import("~/lib/drafts.server");
-      await deleteDraft(db, tenant.id, id, "place");
+      // The saved fields supersede the autosaved draft. A request that
+      // carried none of them saved nothing, and the draft is kept.
+      if (carriesFields) {
+        const { deleteDraft } = await import("~/lib/drafts.server");
+        await deleteDraft(db, tenant.id, id, "place");
+      }
 
-      return { ok: true as const, message: "updated" };
+      // The new version, which the form submits with its next save.
+      return { ok: true as const, message: "updated", updatedAt: savedVersion };
     }
 
     case "delete": {
+      // Deleting a record is administration, which a staff grant does not have.
+      requireArea(user, "authorities");
       await requireAuthorityMutation(db, user, tenant, "place", [id]);
       // Server-side cascade check
       const [{ count }] = await db
@@ -716,20 +786,65 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         return redirect("/admin/places");
       }
 
-      await db.batch([
-        db
-          .delete(places)
-          .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, id))),
-        logAuthorityOperation(db, {
-          federationId: tenant.federationId,
-          recordType: "place",
-          operation: "delete",
-          sourceId: id,
-          targetId: null,
-          userId: user.id,
-          detail: { snapshot: original },
-        }),
-      ] as any);
+      // A record others were merged into is their pointer's target;
+      // deleting it would leave the pointers dangling. The batch opens
+      // with a guard that the record still holds the version read and is
+      // no merge's survivor (`json()` of text that is not JSON raises),
+      // so a merge or save between these reads and the batch fails it
+      // whole.
+      const isMergeSurvivor = async () =>
+        (await db
+          .select({ id: places.id })
+          .from(places)
+          .where(eq(places.mergedInto, id))
+          .limit(1)
+          .get()) !== undefined;
+      if (await isMergeSurvivor()) {
+        return { ok: false as const, error: "merge_survivor" };
+      }
+      const asRead = db
+        .select({
+          asRead: sql<number>`CASE WHEN EXISTS (SELECT 1 FROM ${places} WHERE ${places.id} = ${id} AND ${places.updatedAt} = ${original.updatedAt}) AND NOT EXISTS (SELECT 1 FROM ${places} WHERE ${places.mergedInto} = ${id}) THEN 1 ELSE json('the place changed since it was read') END`,
+        })
+        .from(sql`(SELECT 1)`);
+      try {
+        await db.batch([
+          asRead,
+          db
+            .delete(places)
+            .where(
+              and(
+                authorityScope(places, tenant.federationId, tenant.id),
+                eq(places.id, id),
+                eq(places.updatedAt, original.updatedAt)
+              )
+            ),
+          logAuthorityOperation(db, {
+            federationId: tenant.federationId,
+            recordType: "place",
+            operation: "delete",
+            sourceId: id,
+            targetId: null,
+            userId: user.id,
+            detail: { snapshot: original },
+          }),
+        ] as any);
+      } catch (err) {
+        if (await isMergeSurvivor()) {
+          return { ok: false as const, error: "merge_survivor" };
+        }
+        const current = await db
+          .select({ updatedAt: places.updatedAt })
+          .from(places)
+          .where(eq(places.id, id))
+          .get();
+        if (current && current.updatedAt === original.updatedAt) throw err;
+        return {
+          ok: false as const,
+          error: "conflict" as const,
+          modifiedAt: current?.updatedAt ?? original.updatedAt,
+        };
+      }
       return redirect("/admin/places");
     }
 
@@ -758,29 +873,29 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "link_description": {
       const descriptionId = formData.get("descriptionId") as string;
-      const role = formData.get("role") as string;
+      const { roleCode } = await import("~/lib/role-options");
+      const role = roleCode(formData.get("role") as string | null);
       if (!descriptionId || !role) {
         return { ok: false as const, error: "generic" };
       }
-      const { PLACE_ROLES } = await import("~/lib/validation/enums");
-      if (!(PLACE_ROLES as readonly string[]).includes(role)) {
-        return { ok: false as const, error: "generic" };
-      }
-      const narrowedRole = role as (typeof PLACE_ROLES)[number];
       const description = await db
         .select({ id: descriptions.id })
         .from(descriptions)
         .where(and(eq(descriptions.id, descriptionId), eq(descriptions.tenantId, tenant.id)))
         .get();
       if (!description) throw notFound();
+      // The role is checked inside the INSERT: a code the federation's
+      // list does not approve, at the moment of the write, writes nothing.
+      const { insertPlaceLink } = await import("~/lib/link-roles.server");
       try {
-        await db.insert(descriptionPlaces).values({
+        const written = await insertPlaceLink(db, tenant.federationId, {
           id: crypto.randomUUID(),
           descriptionId,
           placeId: id,
-          role: narrowedRole,
+          role,
           createdAt: Date.now(),
         });
+        if (!written) return { ok: false as const, error: "generic" };
       } catch (e) {
         if (String(e).includes("UNIQUE constraint failed")) {
           return { ok: false as const, error: "duplicate_link" };
@@ -792,15 +907,11 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
     case "edit_description_link": {
       const linkId = formData.get("linkId") as string;
-      const role = formData.get("role") as string;
+      const { roleCode } = await import("~/lib/role-options");
+      const role = roleCode(formData.get("role") as string | null);
       if (!linkId || !role) {
         return { ok: false as const, error: "generic" };
       }
-      const { PLACE_ROLES: placeRoles } = await import("~/lib/validation/enums");
-      if (!(placeRoles as readonly string[]).includes(role)) {
-        return { ok: false as const, error: "generic" };
-      }
-      const narrowedRole = role as (typeof placeRoles)[number];
       const roleNote = (formData.get("roleNote") as string)?.trim() || null;
       const link = await db
         .select({ id: descriptionPlaces.id })
@@ -808,10 +919,15 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(linkHere(linkId))
         .get();
       if (!link) throw notFound();
-      await db
+      // The role is checked inside the UPDATE: the link's current code, or
+      // one the federation's list approves at the moment of the write.
+      const { roleKeptOrApprovedSql } = await import("~/lib/link-roles.server");
+      const placeUpdated = await db
         .update(descriptionPlaces)
-        .set({ role: narrowedRole, roleNote })
-        .where(linkHere(linkId));
+        .set({ role: role as (typeof PLACE_ROLES)[number], roleNote })
+        .where(and(linkHere(linkId), roleKeptOrApprovedSql(descriptionPlaces.role, tenant.federationId, "place_role", role)))
+        .returning({ id: descriptionPlaces.id });
+      if (placeUpdated.length === 0) return { ok: false as const, error: "generic" };
       return { ok: true as const };
     }
 
@@ -861,6 +977,7 @@ export default function PlaceDetailPage({
     repoCounts,
     repoSpan,
     wl,
+    roles,
     conflictDraft,
     maptilerKey,
   } = loaderData;
@@ -871,7 +988,10 @@ export default function PlaceDetailPage({
   // including the label on the control that opens it.
   const { t: th } = useTranslation("handlists");
 
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit mode belongs to the record it was opened on: following a link
+  // to another place leaves it, so the form's inputs and its version
+  // always come from the same load.
+  const [isEditing, setIsEditing] = useRecordEditMode(place.id);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
 
@@ -887,6 +1007,9 @@ export default function PlaceDetailPage({
 
   // Autosave via shared debounced-draft hook
   const { formRef, handleFormChange, draftStatus } = useAutosaveDraft(isEditing);
+  // The version the form's field values were loaded from, which it
+  // submits; a loader revalidation does not move it.
+  const formVersion = useFormVersion(`${place.id}:${isEditing}`, place.updatedAt, actionData);
 
   const globalError =
     actionData && "error" in actionData ? actionData.error : undefined;
@@ -1052,6 +1175,7 @@ export default function PlaceDetailPage({
                 onDiscard={() => setIsEditing(false)}
                 formRef={formRef}
                 onFormChange={handleFormChange}
+                formVersion={formVersion}
               />
             </div>
           ) : (
@@ -1081,12 +1205,12 @@ export default function PlaceDetailPage({
             size={wl.size}
             page={wl.page}
             isMerged={isMerged}
-            roles={PLACE_ROLES}
+            roleOptions={roles.placeOptions}
             recordId={place.id}
             recordType="place"
             showEntityFields={false}
-            roleLabel={(r) => t(`role_${r}`)}
-            placeRoleLabel={(r) => t(`role_${r}`)}
+            roleLabel={(r) => placeRoleLabel(roles.labels, r)}
+            placeRoleLabel={(r) => placeRoleLabel(roles.labels, r)}
             t={t}
             ta={ta}
           />
@@ -1152,7 +1276,7 @@ export default function PlaceDetailPage({
                 ? (actionData.modifiedAt as number)
                 : null
             }
-            recordUpdatedAt={place.updatedAt}
+            formRef={formRef}
             onCancel={() => setShowConflictDialog(false)}
             t={t}
           />
@@ -1320,6 +1444,7 @@ function EditMode({
   onDiscard,
   formRef,
   onFormChange,
+  formVersion,
 }: {
   place: PlaceLoaderData["place"];
   nameVariantsList: string[];
@@ -1329,6 +1454,8 @@ function EditMode({
   onDiscard: () => void;
   formRef?: React.Ref<HTMLFormElement>;
   onFormChange?: () => void;
+  /** The version the form's field values were loaded from, submitted as `_updatedAt`. */
+  formVersion: number;
 }) {
   const [nameVariants, setNameVariants] = useState<string[]>(nameVariantsList);
   const [latitude, setLatitude] = useState<number | null>(place.latitude);
@@ -1359,7 +1486,7 @@ function EditMode({
       <input
         type="hidden"
         name="_updatedAt"
-        value={String(place.updatedAt)}
+        value={String(formVersion)}
       />
       <input
         type="hidden"
@@ -1647,4 +1774,4 @@ function EditMode({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

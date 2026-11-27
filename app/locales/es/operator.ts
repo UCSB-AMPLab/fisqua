@@ -2,8 +2,9 @@
  * Traducciones al español — namespace operator
  *
  * This locale namespace carries las cadenas para la superficie del
- * operador: navegación de la barra superior, lista de inquilinos,
- * formulario de creación, página de detalle del inquilino, el banner
+ * operador: navegación de la barra superior, lista de espacios de trabajo,
+ * formulario de creación, página de detalle del espacio de trabajo (con
+ * su aviso de claves del escáner borradas), el banner
  * de suplantación que se renderiza en los subdominios durante una
  * sesión de "ingresar como", y un conjunto pequeño de errores
  * genéricos del operador.
@@ -12,18 +13,18 @@
  * son `tú prefieres / quieres / sabes / eres / tienes`. NUNCA usar
  * `preferís / querés / sabés / sos / tenés`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   brand: "Fisqua Operador",
   nav: {
-    tenants: "Inquilinos",
+    tenants: "Espacios de trabajo",
     logout: "Cerrar sesión",
     end_impersonation: "Salir de la suplantación",
   },
   tenants_list: {
-    page_title: "Inquilinos",
-    new_tenant_button: "Nuevo inquilino",
+    page_title: "Espacios de trabajo",
+    new_tenant_button: "Nuevo espacio de trabajo",
     columns: {
       slug: "Identificador",
       name: "Nombre",
@@ -48,11 +49,11 @@ export default {
       digitization: "Digitalización",
     },
     view_link: "Ver",
-    empty_state: "Aún no hay inquilinos.",
+    empty_state: "Aún no hay espacios de trabajo.",
   },
-  // Cadenas de creación y detalle del inquilino.
+  // Cadenas de creación y detalle del espacio de trabajo.
   tenant_new: {
-    page_title: "Crear inquilino",
+    page_title: "Crear espacio de trabajo",
     fields: {
       slug: "Identificador",
       slug_help:
@@ -66,7 +67,7 @@ export default {
       bootstrap_email_help:
         "Le enviaremos a esta persona un enlace mágico para iniciar sesión.",
     },
-    submit: "Crear inquilino e invitar al superadministrador",
+    submit: "Crear e invitar al superadministrador",
     errors: {
       slug_taken: "Este identificador ya está en uso.",
       slug_reserved: "Este identificador está reservado.",
@@ -76,13 +77,24 @@ export default {
     },
   },
   tenant_detail: {
-    page_title: "Inquilino: {{name}}",
+    page_title: "Espacio de trabajo: {{name}}",
     sections: {
       overview: "Resumen",
       capabilities: "Capacidades",
       impersonate: "Ingresar como",
       danger_zone: "Zona de riesgo",
       manifests: "Manifiestos IIIF",
+      default_locale: "Idioma predeterminado",
+      scanner_keys_erased: "Claves del escáner borradas",
+    },
+    scanner_keys_erased: {
+      erased_at: "Fisqua borró la copia que guardaba de las claves del escáner de este espacio de trabajo el {{date}}.",
+      revoke:
+        "Revoca las dos claves en Backblaze B2. Fisqua solo borró su propia copia, así que las claves siguen activas hasta que las revoques allí.",
+      write_key: "Clave de carga",
+      read_key: "Clave de lectura",
+      pairing:
+        "No se podrá vincular ningún equipo Captua con este espacio de trabajo hasta que se guarden claves nuevas.",
     },
     overview: {
       slug: "Identificador",
@@ -95,7 +107,16 @@ export default {
       submit: "Guardar capacidades",
       success: "Capacidades guardadas.",
       destination_unset:
-        "No se puede activar el procesamiento de imágenes: el destino de almacenamiento de este inquilino no está configurado.",
+        "No se puede activar el procesamiento de imágenes: el destino de almacenamiento de este espacio de trabajo no está configurado.",
+    },
+    default_locale_form: {
+      label: "Idioma predeterminado de la interfaz",
+      browser: "Según el navegador",
+      es: "Español",
+      en: "Inglés",
+      help: "Quienes no hayan elegido un idioma ven este espacio de trabajo en el idioma que selecciones aquí. Si una persona elige un idioma con los enlaces EN / ES o lo guarda en su configuración, se respeta esa elección.",
+      submit: "Guardar idioma predeterminado",
+      success: "Idioma predeterminado guardado.",
     },
     manifest_form: {
       public_site_url: "URL del sitio público",
@@ -107,15 +128,15 @@ export default {
       success: "Configuración de manifiestos guardada.",
     },
     impersonate_form: {
-      role_legend: "¿Con cuál rol quieres iniciar sesión en este inquilino?",
+      role_legend: "¿Con cuál rol quieres iniciar sesión en este espacio de trabajo?",
       reason_label: "Motivo (opcional)",
       reason_help: "Queda registrado en la bitácora de auditoría.",
       submit: "Ingresar como {{role}}",
     },
     soft_disable: {
-      title: "Desactivar este inquilino",
+      title: "Desactivar este espacio de trabajo",
       help:
-        "El subdominio del inquilino devuelve 404. Las rutas del operador siguen viéndolo. Reactívalo limpiando la marca de desactivación.",
+        "Quien entre al subdominio del espacio de trabajo verá un error 404; desde la consola del operador lo sigues viendo. Para reactivarlo, quita la marca de desactivación.",
       submit: "Desactivar",
       reenable: "Reactivar",
       confirm_disable:
@@ -130,7 +151,7 @@ export default {
     not_operator: "No eres un operador de la instancia.",
     no_session: "Inicia sesión para continuar.",
   },
-  // Tokens de validación por campo de la acción de crear inquilino.
+  // Tokens de validación por campo de la acción de crear un espacio de trabajo.
   field_error: {
     name_required: "El nombre es obligatorio",
     email_invalid: "El correo electrónico no es válido",
@@ -141,4 +162,4 @@ export default {
   },
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

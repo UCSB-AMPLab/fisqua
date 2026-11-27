@@ -3,11 +3,13 @@
  *
  * This locale namespace carries the English strings for the
  * repositories admin surface — the list page, the create/edit form,
- * and the destructive actions. Repositories are the top-level
+ * the destructive actions, and the fields of the repository's
+ * simplified ISDIAH record. Repositories are the top-level
  * institutional anchors the description tree hangs off, so the labels
- * follow ISAAR(CPF)'s phrasing for archival institutions.
+ * follow ISAAR(CPF)'s phrasing for archival institutions,
+ * and the record's fields follow ISDIAH's element names.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   title: "Repositories",
@@ -23,7 +25,7 @@ export default {
   delete_modal_title: "Delete repository",
   delete_modal_body:
     "Are you sure you want to delete {{name}}? This action cannot be undone.",
-  delete_modal_confirm_label: 'Type "{{code}}" to confirm',
+  delete_modal_confirm_label: 'Type “{{code}}” to confirm',
   delete_blocked: "Cannot delete — {{count}} linked descriptions",
   cascade_warning: "This repository has {{count}} linked descriptions.",
   cascade_examples: "Examples:",
@@ -63,7 +65,7 @@ export default {
   website_help: "Shown on the repository's page on the published site.",
   notes_help: "Internal working notes for this workspace — never published or exported.",
   rights_text_help:
-    "The rights statement for digitised records: it travels in their METS exports (the standard packaging file for digital objects) and appears on the published site as the image-reproduction text.",
+    "A short text about reproducing the digitized images. It appears as written on the published site.",
   enabled_help:
     "A disabled repository is hidden from record pickers, import commits, and the published repository index; its existing records stay put.",
   last_repository_note:
@@ -73,11 +75,52 @@ export default {
   "field.address": "Address",
   "field.website": "Website",
   "field.notes": "Notes",
-  "field.rightsText": "Rights text (METS)",
+  "field.rightsText": "Image reproduction text",
   "field.manifestRights": "Rights URI (IIIF manifest)",
   "field.attributionEn": "Attribution in English (IIIF manifest)",
   "field.attributionEs": "Attribution in Spanish (IIIF manifest)",
+  "field.creditStatementEs": "Credit statement (Spanish)",
+  "field.creditStatementEn": "Credit statement (English)",
+  credit_statement_help:
+    "Who digitized the materials, with whom and with whose support. It appears as written in the image attribution line on the published site, between the place and the license.",
   "field.enabled": "Status",
+
+  // Institution record (ISDIAH)
+  section_description: "Description area",
+  section_access: "Access area",
+  section_services: "Services area",
+  section_control: "Control area",
+  "field.otherNames": "Other forms of name",
+  other_names_help: "One name per line.",
+  "field.institutionType": "Type of institution",
+  "field.region": "Region",
+  region_help: "Department, state or province.",
+  "field.postalCode": "Postal code",
+  "field.telephone": "Telephone",
+  "field.email": "Email",
+  "field.holdingsEs": "Holdings (Spanish)",
+  "field.holdingsEn": "Holdings (English)",
+  "field.historyEs": "History of the institution (Spanish)",
+  "field.historyEn": "History of the institution (English)",
+  "field.openingTimesEs": "Opening times (Spanish)",
+  "field.openingTimesEn": "Opening times (English)",
+  "field.accessConditionsEs": "Access conditions (Spanish)",
+  "field.accessConditionsEn": "Access conditions (English)",
+  "field.accessibilityEs": "Accessibility (Spanish)",
+  "field.accessibilityEn": "Accessibility (English)",
+  "field.reproductionServicesEs": "Reproduction services (Spanish)",
+  "field.reproductionServicesEn": "Reproduction services (English)",
+  markdown_help:
+    "Markdown: paragraphs, lists and links. Raw HTML is not shown on the published site.",
+  "field.descriptionLanguage": "Language of description",
+  description_language_help:
+    "The language this record is written in, as a three-letter code, e.g. spa.",
+  "field.catalogueLicenceUri": "Catalogue licence URI",
+  catalogue_licence_help:
+    "The licence on this repository's descriptions. Its label is derived from the URI.",
+  "field.homeOrder": "Home page order",
+  home_order_help:
+    "The position of this repository's card on the site's home page, in ascending order. Repositories without one come after the rest, sorted by name.",
 
   // Linked descriptions
   linked_descriptions: "Linked descriptions",
@@ -89,7 +132,8 @@ export default {
   display_title_label: "Display title",
   display_title_helper:
     "Overrides name for frontend display. Leave blank to use name.",
-  subtitle_label: "Subtitle",
+  subtitle_label: "Subtitle (Spanish)",
+  subtitle_en_label: "Subtitle (English)",
   subtitle_helper: "Shown below the title on the frontend",
   hero_image_url_label: "Hero image URL",
   hero_image_url_helper:
@@ -107,4 +151,4 @@ export default {
   overwrite_cancel: "Cancel",
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

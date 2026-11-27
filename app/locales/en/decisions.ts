@@ -1,19 +1,20 @@
 /**
  * English translations — decisions namespace
  *
- * Strings for the Pending decisions surface: the surface chrome and
- * tab bar, the authority-proposal queue with its accept / amend /
- * reject rulings, the entities-and-places duplicates toggle, and the
- * feedback lines the rulings return. Kept in its own namespace rather
- * than folded into `authorities` because the surface spans three
- * modules — authority proposals, the duplicates scan, and the
- * vocabulary review queue — and none of them owns the others' copy.
+ * This module deals with the English strings for the Pending decisions
+ * surface: the surface chrome and tab bar, the authority-proposal queue
+ * with its accept / amend / reject rulings, the entities-and-places
+ * duplicates toggle, and the feedback lines the rulings return. They are
+ * kept in their own namespace rather than folded into `authorities`
+ * because the surface spans three modules — authority proposals, the
+ * duplicates scan, and the vocabulary review queue — and none of them owns
+ * the others' copy.
  *
  * The duplicates tab reuses the `authorities` namespace for the
  * worklist body itself (`dup*` keys); only the surface-level toggle
  * and the dismissal wording live here.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   // Surface chrome
@@ -259,17 +260,44 @@ export default {
   // Pane provenance fallback and pair feedback
   pairProvNone: "No provenance recorded.",
   pairErrorConflict: "This pair has already been ruled.",
+  pairErrorRelationCollision:
+    "Nothing was merged. After the merge, {{entity}} would hold two links to {{description}} as {{role}} that point to the same side of a relation.",
   feedbackPairMerged: "Records merged.",
   feedbackPairKeptBoth: "Both records kept.",
+
+  // Pair page context rows: the descriptions naming each record, who
+  // and what else they name, and where the record came from. Dates
+  // arrive formatted; the origin lines state only what is recorded.
+  pairRowNamedIn: "Named in",
+  pairRowEntities: "Entities in the same descriptions",
+  pairRowPlaces: "Places in the same descriptions",
+  pairRowOrigin: "Origin",
+  pairAsRecorded: "Recorded as “{{name}}”",
+  pairMoreDescriptions_one: "and {{formattedCount}} more",
+  pairMoreDescriptions_other: "and {{formattedCount}} more",
+  pairOriginImport: "Imported by {{user}} on {{date}}, in the run “{{message}}”",
+  pairOriginImportOther: "Imported on {{date}}, in a run of another workspace",
+  pairOriginFile: "File: {{filename}}",
+  pairOriginCreatedBy: "Created by {{user}} on {{date}}",
+  pairOriginPipeline: "Created by the automatic entity identification process on {{date}}",
+  pairOriginPipelineDecision: "Criterion: {{decision}}",
+  pairOriginPipelineMentions_one: "{{formattedCount}} mention in the pipeline’s sources",
+  pairOriginPipelineMentions_other: "{{formattedCount}} mentions in the pipeline’s sources",
+  pairOriginSplitFrom: "Split from {{name}} by {{user}} on {{date}}",
+  pairOriginAbsorbed_one: "{{formattedCount}} record merged into this one",
+  pairOriginAbsorbed_other: "{{formattedCount}} records merged into this one",
+  pairOriginLegacy: "Earlier identifiers",
+  pairOriginRowCreated: "Record created on {{date}}",
+  pairOriginNone: "Fisqua has no record of how this record was created.",
 
   // Vocabulary near-match cards. Provenance is deliberately spare:
   // status is the fact that matters, and the counts carry the load.
   vocabContext: "Subject term awaiting review",
   vocabIncomingProv: "Proposed for the vocabulary; not yet approved.",
   vocabExistingProv: "Approved as a subject term.",
-  vocabSuggestedMerge: 'Merge into "{{term}}"',
+  vocabSuggestedMerge: 'Merge into “{{term}}”',
   vocabDirection: "Merging keeps {{term}} — the approved form.",
-  vocabKeepModalTitle: 'Keep "{{term}}" as its own term?',
+  vocabKeepModalTitle: 'Keep “{{term}}” as its own term?',
   vocabKeepModalBody:
     "The term is approved and enters the vocabulary as its own subject form, alongside the existing one.",
   whyOwnTerm: "Why this is its own subject",
@@ -278,3 +306,5 @@ export default {
     "One form survives as the subject term. The other is retired — every entity classified with it is reclassified under the survivor. This cannot be undone.",
   whySameSubject: "Why these are the same subject",
 } as const;
+
+/* @version v0.9.0 */

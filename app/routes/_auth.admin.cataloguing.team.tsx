@@ -27,7 +27,7 @@
  * one result region and one announcement, which is what the user
  * wants — these are sequential, one-at-a-time actions.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -42,6 +42,7 @@ import {
   isPendingSubmission,
 } from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.cataloguing.team";
+import { pageMeta, heading } from "../lib/page-title";
 
 interface TeamMember {
   id: string;
@@ -63,6 +64,13 @@ const ROLE_BADGE_COLORS: Record<string, string> = {
   cataloguer: "bg-indigo-tint text-indigo",
   reviewer: "bg-verdigris-tint text-verdigris",
 };
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("team:title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -594,4 +602,4 @@ export default function AdminCataloguingTeam({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

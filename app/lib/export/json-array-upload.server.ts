@@ -68,7 +68,13 @@
  * key carries another token fails rather than ends quietly, since an
  * older file and a newer publish's file cannot be told apart.
  *
- * @version v0.8.0
+ * The buffering and part mechanics live in a base class shared with
+ * `TextUpload`, which writes the EAD3 and Dublin Core files: a plain
+ * text file appended in order and completed within one step, with no
+ * array brackets, no pause and its own content type. The JSON array's
+ * bytes and calls are what they were before the split.
+ *
+ * @version v0.9.0
  */
 
 import type { ExportStorage } from "./r2-client.server";
@@ -125,17 +131,150 @@ export async function abandonJsonArrayUpload(
   }
 }
 
-export class JsonArrayUpload {
+const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+
+/**
+ * The byte buffer and multipart mechanics shared by the JSON array and
+ * the plain text uploads: bytes are appended, cut into fixed-size parts
+ * and sent as they fill, and the object is completed (or written with a
+ * single put when it never filled a part).
+ */
+abstract class MultipartByteUpload {
   private chunks: Uint8Array[] = [];
-  private bufferedBytes = 0;
+  protected bufferedBytes = 0;
+
+  protected constructor(
+    protected storage: ExportStorage,
+    protected state: JsonArrayUploadState,
+    protected partSize: number,
+    protected contentType: string
+  ) {}
+
+  /** A copy of the current state. */
+  snapshot(): JsonArrayUploadState {
+    return { ...this.state, parts: [...this.state.parts] };
+  }
+
+  /** Send the buffered bytes and complete the object; returns its size. */
+  protected async complete(): Promise<number> {
+    let byteSize: number;
+    if (this.state.uploadId === null) {
+      byteSize = this.bufferedBytes;
+      await this.storage.putObjectBytes(
+        this.state.key,
+        this.take(byteSize),
+        this.contentType,
+        { [UPLOAD_TOKEN_FIELD]: this.state.token }
+      );
+    } else {
+      await this.sendFullParts();
+      const tail = this.bufferedBytes;
+      if (tail > 0) await this.sendPart(this.take(tail));
+      byteSize = (this.state.parts.length - (tail > 0 ? 1 : 0)) * this.partSize + tail;
+      await this.storage.completeMultipartUpload(
+        this.state.key,
+        this.state.uploadId,
+        this.state.parts
+      );
+    }
+    return byteSize;
+  }
+
+  protected append(bytes: Uint8Array): void {
+    if (bytes.length === 0) return;
+    this.chunks.push(bytes);
+    this.bufferedBytes += bytes.length;
+  }
+
+  /** Remove and return the first `n` buffered bytes as one array. */
+  protected take(n: number): Uint8Array {
+    const out = new Uint8Array(n);
+    let filled = 0;
+    while (filled < n) {
+      const head = this.chunks[0];
+      const need = n - filled;
+      if (head.length <= need) {
+        out.set(head, filled);
+        filled += head.length;
+        this.chunks.shift();
+      } else {
+        out.set(head.subarray(0, need), filled);
+        this.chunks[0] = head.subarray(need);
+        filled += need;
+      }
+    }
+    this.bufferedBytes -= n;
+    return out;
+  }
+
+  protected async sendFullParts(): Promise<void> {
+    while (this.bufferedBytes >= this.partSize) {
+      await this.sendPart(this.take(this.partSize));
+    }
+  }
+
+  private async sendPart(bytes: Uint8Array): Promise<void> {
+    if (this.state.uploadId === null) {
+      this.state.uploadId = await this.storage.createMultipartUpload(
+        this.state.key,
+        { [UPLOAD_TOKEN_FIELD]: this.state.token },
+        this.contentType
+      );
+    }
+    const part = await this.storage.uploadPart(
+      this.state.key,
+      this.state.uploadId,
+      this.state.parts.length + 1,
+      bytes
+    );
+    this.state.parts.push(part);
+  }
+}
+
+function newState(key: string): JsonArrayUploadState {
+  return { key, token: crypto.randomUUID(), uploadId: null, parts: [], rowCount: 0, segment: 0 };
+}
+
+/**
+ * A text file written in one Workflow step: the caller appends text in
+ * order and `finish()` completes the object. Used for the EAD3 and
+ * Dublin Core files, which are XML rather than a JSON array; the
+ * bytes are exactly the UTF-8 of the text appended. It never pauses,
+ * so `abandonJsonArrayUpload` on its snapshot only aborts the upload.
+ */
+export class TextUpload extends MultipartByteUpload {
+  static start(
+    storage: ExportStorage,
+    key: string,
+    contentType: string,
+    partSize = DEFAULT_PART_SIZE
+  ): TextUpload {
+    return new TextUpload(storage, newState(key), partSize, contentType);
+  }
+
+  /** Append text and send every part the buffer now fills. */
+  async write(text: string): Promise<void> {
+    this.append(encoder.encode(text));
+    await this.sendFullParts();
+  }
+
+  /** Complete the object. Returns the bytes written. */
+  async finish(): Promise<{ byteSize: number }> {
+    return { byteSize: await this.complete() };
+  }
+}
+
+export class JsonArrayUpload extends MultipartByteUpload {
   /** Size of the finished object when a replayed step finds it complete. */
   private completedSize: number | null = null;
 
   private constructor(
-    private storage: ExportStorage,
-    private state: JsonArrayUploadState,
-    private partSize: number
-  ) {}
+    storage: ExportStorage,
+    state: JsonArrayUploadState,
+    partSize: number
+  ) {
+    super(storage, state, partSize, JSON_CONTENT_TYPE);
+  }
 
   /** Begin a new array at `key`. */
   static start(
@@ -143,18 +282,7 @@ export class JsonArrayUpload {
     key: string,
     partSize = DEFAULT_PART_SIZE
   ): JsonArrayUpload {
-    const upload = new JsonArrayUpload(
-      storage,
-      {
-        key,
-        token: crypto.randomUUID(),
-        uploadId: null,
-        parts: [],
-        rowCount: 0,
-        segment: 0,
-      },
-      partSize
-    );
+    const upload = new JsonArrayUpload(storage, newState(key), partSize);
     upload.append(encoder.encode("["));
     return upload;
   }
@@ -198,11 +326,6 @@ export class JsonArrayUpload {
     return this.state.rowCount;
   }
 
-  /** A copy of the current state. */
-  snapshot(): JsonArrayUploadState {
-    return { ...this.state, parts: [...this.state.parts] };
-  }
-
   /** Append one page of rows and send every part the buffer now fills. */
   async writeRows(rows: unknown[]): Promise<void> {
     if (rows.length === 0) return;
@@ -236,26 +359,7 @@ export class JsonArrayUpload {
       return { rowCount: this.state.rowCount, byteSize: this.completedSize };
     }
     this.append(encoder.encode("]"));
-    let byteSize: number;
-    if (this.state.uploadId === null) {
-      byteSize = this.bufferedBytes;
-      await this.storage.putObjectBytes(
-        this.state.key,
-        this.take(byteSize),
-        undefined,
-        { [UPLOAD_TOKEN_FIELD]: this.state.token }
-      );
-    } else {
-      await this.sendFullParts();
-      const tail = this.bufferedBytes;
-      if (tail > 0) await this.sendPart(this.take(tail));
-      byteSize = (this.state.parts.length - (tail > 0 ? 1 : 0)) * this.partSize + tail;
-      await this.storage.completeMultipartUpload(
-        this.state.key,
-        this.state.uploadId,
-        this.state.parts
-      );
-    }
+    const byteSize = await this.complete();
     await this.deleteStaging();
     return { rowCount: this.state.rowCount, byteSize };
   }
@@ -274,53 +378,6 @@ export class JsonArrayUpload {
       }
     }
   }
-
-  private append(bytes: Uint8Array): void {
-    if (bytes.length === 0) return;
-    this.chunks.push(bytes);
-    this.bufferedBytes += bytes.length;
-  }
-
-  /** Remove and return the first `n` buffered bytes as one array. */
-  private take(n: number): Uint8Array {
-    const out = new Uint8Array(n);
-    let filled = 0;
-    while (filled < n) {
-      const head = this.chunks[0];
-      const need = n - filled;
-      if (head.length <= need) {
-        out.set(head, filled);
-        filled += head.length;
-        this.chunks.shift();
-      } else {
-        out.set(head.subarray(0, need), filled);
-        this.chunks[0] = head.subarray(need);
-        filled += need;
-      }
-    }
-    this.bufferedBytes -= n;
-    return out;
-  }
-
-  private async sendFullParts(): Promise<void> {
-    while (this.bufferedBytes >= this.partSize) {
-      await this.sendPart(this.take(this.partSize));
-    }
-  }
-
-  private async sendPart(bytes: Uint8Array): Promise<void> {
-    if (this.state.uploadId === null) {
-      this.state.uploadId = await this.storage.createMultipartUpload(
-        this.state.key,
-        { [UPLOAD_TOKEN_FIELD]: this.state.token }
-      );
-    }
-    const part = await this.storage.uploadPart(
-      this.state.key,
-      this.state.uploadId,
-      this.state.parts.length + 1,
-      bytes
-    );
-    this.state.parts.push(part);
-  }
 }
+
+// @version v0.9.0

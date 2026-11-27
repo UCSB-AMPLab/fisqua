@@ -62,7 +62,7 @@
  * The caller does not pass an id; the helper owns the entropy source
  * for forensic-trail uniqueness.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -82,7 +82,7 @@ export { AUDIT_LOG_ACTIONS, type AuditAction };
  */
 export interface WithAuditLogParams {
   /**
-   * One of the seven bounded `audit_log.action` values. The
+   * One of the bounded `audit_log.action` values. The
    * `AuditAction` union is the compile-time guard; the DB CHECK
    * (migration 0037) is the runtime guard.
    */
@@ -221,4 +221,4 @@ export async function withAuditLog<T>(
   return result;
 }
 
-// @version v0.4.0
+// @version v0.9.0

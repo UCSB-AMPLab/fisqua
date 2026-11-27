@@ -18,7 +18,7 @@
  * its federation keeps authorities private, NULL when it shares them,
  * with the same setting deciding whether a steward is required.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -33,15 +33,24 @@ import { LodLinkField } from "~/components/forms/lod-link-field";
 import { CoordinateInput } from "~/components/forms/coordinate-input";
 import { PLACE_TYPES } from "~/lib/validation/enums";
 import type { Route } from "./+types/_auth.admin.places.new";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("places:createTitle"),
+    heading("places:title"),
+  );
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   return {};
@@ -52,14 +61,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { places } = await import("~/db/schema");
   const { createPlaceSchema } = await import("~/lib/validation/place");
   const { generateUniqueCode } = await import("~/lib/codes.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -440,3 +449,5 @@ function FieldInput({
     </div>
   );
 }
+
+// @version v0.9.0

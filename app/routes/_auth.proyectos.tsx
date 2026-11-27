@@ -17,7 +17,7 @@
  * `tenant_id` before anything reaches the page. `_auth.dashboard.tsx`
  * is the reference for the shape.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -30,6 +30,14 @@ import { DashboardSection } from "../components/dashboard/dashboard-section";
 import { VolumeStatusCard } from "../components/dashboard/volume-status-card";
 import { DescriptionStatusBadge } from "../components/workflow/status-badge";
 import type { Route } from "./+types/_auth.proyectos";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("dashboard:member_dashboard.page_title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -672,4 +680,4 @@ function ProjectManagementCard({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -3,13 +3,14 @@
  *
  * This locale namespace carries the English strings for the operator
  * surface: top-bar nav, tenants list table,
- * tenant create form, tenant detail page, the impersonation banner
+ * tenant create form, tenant detail page (with its notice of erased
+ * scanner keys), the impersonation banner
  * that renders on tenant subdomains during a login-as session, and a
  * small set of generic operator errors. The symmetry test
  * (`tests/i18n-coverage.test.ts`) runs equally over the parallel
  * ES file.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 export default {
   brand: "Fisqua Operator",
@@ -80,6 +81,16 @@ export default {
       impersonate: "Log in as",
       danger_zone: "Danger zone",
       manifests: "IIIF manifests",
+      default_locale: "Default language",
+      scanner_keys_erased: "Scanner keys erased",
+    },
+    scanner_keys_erased: {
+      erased_at: "Fisqua erased its copy of this tenant's scanner keys on {{date}}.",
+      revoke:
+        "Revoke both keys in Backblaze B2. Fisqua erased only its own copy, so the keys work until you revoke them there.",
+      write_key: "Upload key",
+      read_key: "Read key",
+      pairing: "No unit can be paired with this tenant until new keys are stored for it.",
     },
     overview: {
       slug: "Slug",
@@ -93,6 +104,15 @@ export default {
       success: "Capabilities saved.",
       destination_unset:
         "The media pipeline can't be turned on: this tenant's storage destination is not set up.",
+    },
+    default_locale_form: {
+      label: "Default interface language",
+      browser: "Follow the browser",
+      es: "Spanish",
+      en: "English",
+      help: "Visitors who have not chosen a language see this tenant in the one selected here. A language chosen with the EN / ES links or saved in a user's settings takes precedence.",
+      submit: "Save default language",
+      success: "Default language saved.",
     },
     manifest_form: {
       public_site_url: "Public site URL",
@@ -138,4 +158,4 @@ export default {
   },
 } as const;
 
-// @version v0.8.0
+// @version v0.9.0

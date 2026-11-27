@@ -16,7 +16,7 @@
  * (legacy level names) replaced with the canonical `DESCRIPTION_LEVELS`
  * enum from `app/lib/validation/enums.ts`. Spanish value rendering
  * follows Zasqua's archival-terminology conventions — file =
- * "Expediente", item = "Unidad documental simple", and the rest follow
+ * "Unidad documental compuesta", item = "Unidad documental simple", and the rest follow
  * the canonical ISAD(G) Spanish renditions used elsewhere in the
  * codebase.
  *
@@ -41,7 +41,7 @@
  * guardado" para el cierre y tú-form para la apertura ("Tienes
  * cambios").
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 export default {
   status: {
@@ -97,7 +97,7 @@ export default {
     subfonds: "Subfondo",
     series: "Serie",
     subseries: "Subserie",
-    file: "Expediente",
+    file: "Unidad documental compuesta",
     item: "Unidad documental simple",
     collection: "Colección",
     section: "Sección",
@@ -222,7 +222,7 @@ export default {
   // resuelvan a texto localizado en ambas superficies.
   error_required: "Este campo es obligatorio para el estándar activo.",
   error_invalid_level:
-    "Este nivel no es válido para el nivel de la descripción padre.",
+    "Este nivel no es válido para el nivel de la descripción superior.",
   error_required_title: "El título es obligatorio",
   error_required_date_expression: "La expresión de fecha es obligatoria",
   error_required_scope: "El alcance y contenido es obligatorio",
@@ -230,4 +230,4 @@ export default {
   error_required_extent: "La extensión es obligatoria",
 } as const;
 
-/* @version v0.7.0 */
+/* @version v0.9.0 */

@@ -92,6 +92,13 @@
  * carries no tenant column, so a membership is resolved through its
  * owning project, the way `requireProjectRole` does it.
  *
+ * A platform admin (`users.is_platform_admin`) is not the workspace's
+ * to manage, even when their row is stored in it: the loader and the
+ * action resolve the target only among people without the flag, so
+ * the page and every intent 404 on a platform admin, and they cannot
+ * be edited, demoted or removed here. The list shows them apart, with
+ * no link to this page.
+ *
  * `applyUpdateRoles`, in `_auth.admin.users.$id.roles.server.ts`,
  * reads the role part of the form and hands the changes to
  * `applyRoleChanges`. It lives in a server module so the client bundle
@@ -106,7 +113,7 @@
  * carried by the in-flight submission, so clicking "Save profile" does
  * not grey out "Save roles".
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -140,10 +147,20 @@ import type {
   AccessActor,
   FederationRoleChoice,
 } from "../lib/access-changes.server";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.targetUser?.name ?? data?.targetUser?.email,
+    heading("sidebar:users"),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -176,7 +193,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const [targetUser] = await db
     .select()
     .from(users)
-    .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id)))
+    .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id), eq(users.isPlatformAdmin, false)))
     .limit(1)
     .all();
 
@@ -329,11 +346,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // federation grant a steward's home tenant is not the tenant being
   // served. A target outside the request tenant 404s with the same
   // shape a missing id gets, so probing cannot distinguish "belongs to
-  // someone else" from "does not exist".
+  // someone else" from "does not exist". A platform admin is never a
+  // target here, so every intent 404s on one.
   const [targetUser] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id)))
+    .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id), eq(users.isPlatformAdmin, false)))
     .limit(1)
     .all();
   if (!targetUser) {
@@ -366,7 +384,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     await db
       .update(users)
       .set({ name, email })
-      .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id)));
+      .where(and(eq(users.tenantId, tenant.id), eq(users.id, params.id), eq(users.isPlatformAdmin, false)));
 
     return { ok: true, message: i18n.t("user_admin:success_profile_updated") };
   }
@@ -1179,4 +1197,4 @@ export default function UserDetailPage({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

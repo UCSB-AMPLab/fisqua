@@ -16,11 +16,11 @@
  * keeps `id` (the import pipeline carries legacy identifiers across);
  * the `entityCode` and `placeCode` formats follow the `xx-xxxxxx`
  * pattern with a 32-character alphabet (the same alphabet the ID
- * minter uses); and the junction role enums (`ENTITY_ROLES`,
- * `PLACE_ROLES`) gate the only values that can appear in junction
- * rows.
+ * minter uses); and the junction schemas take any non-empty role
+ * code, since the federation's list, checked when a link is written,
+ * decides which codes a link may hold.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -176,7 +176,7 @@ describe("Zod validation schemas", () => {
   });
 
   describe("junction schemas", () => {
-    it("descriptionEntitySchema validates role against ENTITY_ROLES enum", () => {
+    it("descriptionEntitySchema takes any role code, trimmed, and refuses an empty one", () => {
       const valid = {
         id: crypto.randomUUID(),
         descriptionId: crypto.randomUUID(),
@@ -188,10 +188,14 @@ describe("Zod validation schemas", () => {
       const result = descriptionEntitySchema.safeParse(valid);
       expect(result.success).toBe(true);
 
-      // Invalid role
-      const invalid = { ...valid, role: "invalid_role" };
-      const invalidResult = descriptionEntitySchema.safeParse(invalid);
-      expect(invalidResult.success).toBe(false);
+      // The federation's list, checked at write time, decides which codes
+      // a link may hold; the schema takes any code the constants lack.
+      expect(descriptionEntitySchema.safeParse({ ...valid, role: "deponent" }).success).toBe(true);
+      expect(descriptionEntitySchema.safeParse({ ...valid, role: "" }).success).toBe(false);
+      // A code is read trimmed: whitespace alone is no code, and padding is stripped.
+      expect(descriptionEntitySchema.safeParse({ ...valid, role: "   " }).success).toBe(false);
+      const padded = descriptionEntitySchema.safeParse({ ...valid, role: " witness " });
+      expect(padded.success && padded.data.role).toBe("witness");
 
       // Verify ENTITY_ROLES contains expected values
       expect(ENTITY_ROLES).toContain("author");
@@ -199,7 +203,7 @@ describe("Zod validation schemas", () => {
       expect(ENTITY_ROLES).toContain("notary");
     });
 
-    it("descriptionPlaceSchema validates role against PLACE_ROLES enum", () => {
+    it("descriptionPlaceSchema takes any role code, trimmed, and refuses an empty one", () => {
       const valid = {
         id: crypto.randomUUID(),
         descriptionId: crypto.randomUUID(),
@@ -211,10 +215,11 @@ describe("Zod validation schemas", () => {
       const result = descriptionPlaceSchema.safeParse(valid);
       expect(result.success).toBe(true);
 
-      // Invalid role
-      const invalid = { ...valid, role: "invalid_role" };
-      const invalidResult = descriptionPlaceSchema.safeParse(invalid);
-      expect(invalidResult.success).toBe(false);
+      expect(descriptionPlaceSchema.safeParse({ ...valid, role: "seat" }).success).toBe(true);
+      expect(descriptionPlaceSchema.safeParse({ ...valid, role: "" }).success).toBe(false);
+      expect(descriptionPlaceSchema.safeParse({ ...valid, role: "   " }).success).toBe(false);
+      const padded = descriptionPlaceSchema.safeParse({ ...valid, role: " seat " });
+      expect(padded.success && padded.data.role).toBe("seat");
 
       // Verify PLACE_ROLES contains expected values
       expect(PLACE_ROLES).toContain("created");
@@ -222,3 +227,5 @@ describe("Zod validation schemas", () => {
     });
   });
 });
+
+// @version v0.9.0

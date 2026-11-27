@@ -35,7 +35,10 @@
  *   7. The description set the federation export emits equals the full
  *      published set across both tenants (set equivalence).
  *
- * @version v0.4.2
+ * The fixture itself lives in `tests/helpers/federation-fixture.ts`,
+ * which the publish pre-flight counts suite shares.
+ *
+ * @version v0.9.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
@@ -65,6 +68,7 @@ import {
 import { resolveExportScope } from "../../app/lib/export/federation-scope.server";
 import type { ExportStorage } from "../../app/lib/export/r2-client.server";
 import type { ExportTenant } from "../../app/lib/export/types";
+import { seedFederationFixture, type Db } from "../helpers/federation-fixture";
 
 /** Records every key + body the pipeline writes, JSON and XML alike. */
 class RecordingStorage {
@@ -74,6 +78,10 @@ class RecordingStorage {
   }
   async putObjectXml(key: string, body: string): Promise<void> {
     this.puts.push({ key, body, contentType: "application/xml" });
+  }
+  /** The descriptions file arrives as UTF-8 bytes from `JsonArrayUpload`. */
+  async putObjectBytes(key: string, body: Uint8Array): Promise<void> {
+    this.puts.push({ key, body: new TextDecoder().decode(body), contentType: "application/json" });
   }
   async deleteObject(): Promise<void> {}
   async putObjectStream(): Promise<void> {}
@@ -97,172 +105,6 @@ const LEAD_TENANT: ExportTenant = {
   slug: LEAD_SLUG,
   descriptiveStandard: "isadg",
 };
-
-type Db = ReturnType<typeof drizzle>;
-
-// Stable ids so leak/presence assertions read cleanly.
-const NEO_FONDS_ID = "aaaaaaaa-0001-4001-8001-000000000001";
-const NEO_CHILD_ID = "aaaaaaaa-0001-4001-8001-000000000002";
-const AHR_FONDS_ID = "bbbbbbbb-0001-4001-8001-000000000001";
-const AHR_CHILD_ID = "bbbbbbbb-0001-4001-8001-000000000002";
-const AHR_ONLY_ENTITY_ID = "cccccccc-0001-4001-8001-000000000001";
-const AHR_ONLY_PLACE_ID = "dddddddd-0001-4001-8001-000000000001";
-
-/**
- * Seed a two-tenant federation: lead (neogranadina, co-ahrb) + member
- * (ahr, co-ahr) in the SAME federation. An entity + place link ONLY to
- * the AHR (member) fonds so the authority fan-out is testable.
- */
-async function seedFederationFixture(db: Db) {
-  const now = Date.now();
-
-  // Member tenant `ahr` in the Neogranadina federation (the step-6
-  // partition target). cleanDatabase() re-seeds only the standard
-  // fixtures, so ahr is inserted per-test here.
-  await db.insert(schema.tenants).values({
-    id: AHR_TENANT_ID,
-    slug: "ahr",
-    name: "Archivo Histórico de Rionegro",
-    kind: "tenant",
-    descriptiveStandard: "isadg",
-    status: "active",
-    crowdsourcingEnabled: false,
-    vocabularyHubEnabled: true,
-    publishPipelineEnabled: true,
-    multiRepositoryEnabled: false,
-    federationId: DEFAULT_TEST_FEDERATION_ID,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  const neoRepoId = crypto.randomUUID();
-  const ahrRepoId = crypto.randomUUID();
-  await db.insert(schema.repositories).values([
-    {
-      id: neoRepoId,
-      tenantId: DEFAULT_TEST_TENANT_ID,
-      code: "co-ahrb",
-      name: "Archivo Histórico de la Diócesis",
-      country: "Colombia",
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: ahrRepoId,
-      tenantId: AHR_TENANT_ID,
-      code: "co-ahr",
-      name: "Archivo Histórico de Rionegro",
-      country: "Colombia",
-      enabled: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ]);
-
-  // Lead fonds (co-ahrb-gob) + one published child.
-  await db.insert(schema.descriptions).values([
-    {
-      id: NEO_FONDS_ID,
-      tenantId: DEFAULT_TEST_TENANT_ID,
-      repositoryId: neoRepoId,
-      parentId: null,
-      rootDescriptionId: NEO_FONDS_ID,
-      descriptionLevel: "fonds",
-      referenceCode: "co-ahrb-gob",
-      localIdentifier: "AHRB-001",
-      title: "Gobierno (AHRB)",
-      isPublished: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: NEO_CHILD_ID,
-      tenantId: DEFAULT_TEST_TENANT_ID,
-      repositoryId: neoRepoId,
-      parentId: NEO_FONDS_ID,
-      rootDescriptionId: NEO_FONDS_ID,
-      descriptionLevel: "series",
-      referenceCode: "co-ahrb-gob-s1",
-      localIdentifier: "AHRB-001-s1",
-      title: "Serie AHRB",
-      isPublished: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ]);
-
-  // Member (AHR) fonds (co-ahr-gob) + one published child.
-  await db.insert(schema.descriptions).values([
-    {
-      id: AHR_FONDS_ID,
-      tenantId: AHR_TENANT_ID,
-      repositoryId: ahrRepoId,
-      parentId: null,
-      rootDescriptionId: AHR_FONDS_ID,
-      descriptionLevel: "fonds",
-      referenceCode: "co-ahr-gob",
-      localIdentifier: "AHR-001",
-      title: "Gobierno (AHR)",
-      isPublished: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: AHR_CHILD_ID,
-      tenantId: AHR_TENANT_ID,
-      repositoryId: ahrRepoId,
-      parentId: AHR_FONDS_ID,
-      rootDescriptionId: AHR_FONDS_ID,
-      descriptionLevel: "series",
-      referenceCode: "co-ahr-gob-s1",
-      localIdentifier: "AHR-001-s1",
-      title: "Serie AHR",
-      isPublished: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ]);
-
-  // Federation-scoped entity + place, each linked ONLY to the AHR fonds.
-  // A lead-only export never sees them; a federation export must.
-  await db.insert(schema.entities).values({
-    id: AHR_ONLY_ENTITY_ID,
-    federationId: DEFAULT_TEST_FEDERATION_ID,
-    entityCode: "ne-ahr-001",
-    displayName: "Alcalde de Rionegro",
-    sortName: "Alcalde de Rionegro",
-    entityType: "person",
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(schema.descriptionEntities).values({
-    id: crypto.randomUUID(),
-    descriptionId: AHR_FONDS_ID,
-    entityId: AHR_ONLY_ENTITY_ID,
-    role: "subject",
-    createdAt: now,
-  });
-
-  await db.insert(schema.places).values({
-    id: AHR_ONLY_PLACE_ID,
-    federationId: DEFAULT_TEST_FEDERATION_ID,
-    placeCode: "pl-ahr-001",
-    label: "Rionegro",
-    displayName: "Rionegro, Antioquia",
-    placeType: "city",
-    fclass: "P",
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(schema.descriptionPlaces).values({
-    id: crypto.randomUUID(),
-    descriptionId: AHR_FONDS_ID,
-    placeId: AHR_ONLY_PLACE_ID,
-    role: "subject",
-    createdAt: now,
-  });
-}
 
 describe("Federation export aggregation (step 8)", () => {
   let db: Db;
@@ -466,3 +308,5 @@ describe("Federation export aggregation (step 8)", () => {
     expect(leadRows.length).toBe(2);
   });
 });
+
+// @version v0.9.0

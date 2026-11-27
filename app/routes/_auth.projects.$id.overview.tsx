@@ -8,7 +8,7 @@
  * describer assignment on the kanban card; every other mutation lives
  * on the dedicated sub-pages.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState, useCallback } from "react";
@@ -20,6 +20,15 @@ import { AssignDescriberPopover } from "../components/pipeline/assign-describer-
 import type { Route } from "./+types/_auth.projects.$id.overview";
 import type { PipelineColumn as PipelineColumnType } from "../lib/pipeline/pipeline.server";
 import { PROJECT_ROLES } from "../lib/validation/enums";
+import { pageMeta, heading, projectName } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:tab.overview"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -270,4 +279,4 @@ export default function ProjectOverview({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

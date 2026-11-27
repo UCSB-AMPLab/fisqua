@@ -11,11 +11,14 @@
  * reviewer or "Not assigned", the decided count, the days waited, the
  * Retakes received mark with the count of replaced openings to review
  * again when a retake's approvals were carried over, the assignment
- * control for a manager only, and Open linking to the viewer.
+ * control for a manager only, and Open linking to the viewer; and each
+ * volume's readiness, with Open only on a volume ready to review and a
+ * waiting note in its place on the others. Prepare review images is a
+ * button for everyone who opens Volumes.
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -31,12 +34,15 @@ import enCommon from "../../app/locales/en/common";
 import esCommon from "../../app/locales/es/common";
 import VolumesPage from "../../app/routes/_auth.admin.capture.volumes";
 import QueuePage from "../../app/routes/_auth.admin.capture.qc";
-import type { CaptureVolumeRow, ReviewerCandidates } from "../../app/lib/capture/screens.server";
+import type { CaptureQueueRow, CaptureVolumeRow, ReviewerCandidates } from "../../app/lib/capture/screens.server";
+import type { QueueReadiness } from "../../app/lib/capture/screens";
 
 const T0 = Date.UTC(2026, 9, 20, 12);
 const DAY = 24 * 60 * 60 * 1000;
 
-function row(overrides: Partial<CaptureVolumeRow>): CaptureVolumeRow {
+function row(
+  overrides: Partial<CaptureVolumeRow> & { readiness?: QueueReadiness },
+): CaptureVolumeRow & { readiness?: QueueReadiness } {
   return {
     referenceCode: "co-test-0001",
     volumeId: "v-1",
@@ -52,6 +58,7 @@ function row(overrides: Partial<CaptureVolumeRow>): CaptureVolumeRow {
     hasEarlierDelivery: false,
     approved: 2,
     rejected: 0,
+    excluded: 0,
     decided: 2,
     reviewAgain: null,
     ...overrides,
@@ -134,9 +141,10 @@ const CANDIDATES: ReviewerCandidates = {
   federation: [{ id: "u-9", name: "Test Steward" }],
 };
 
-const queue = (lang: "en" | "es", manager: boolean, rows: CaptureVolumeRow[]) =>
+/** Queue rows are ready to review unless a test says otherwise. */
+const queue = (lang: "en" | "es", manager: boolean, rows: Array<CaptureVolumeRow & { readiness?: QueueReadiness }>) =>
   render(lang, "/admin/capture/qc", "/admin/capture/qc", QueuePage, {
-    volumes: rows,
+    volumes: rows.map((r): CaptureQueueRow => ({ ...r, readiness: r.readiness ?? "ready" })),
     candidates: manager ? CANDIDATES : null,
     federationName: "Test Federation",
     canAssign: manager,
@@ -163,7 +171,7 @@ describe("Volumes, rendered", () => {
     expect(html).toContain("Waiting for the scanner");
     expect(html).toMatch(/<a[^>]*href="\/admin\/capture\/qc\/v-1"[^>]*>Continue review<\/a>/);
     expect(html).not.toContain("aria-disabled");
-    expect(html).toContain("A volume goes on to processing only when every opening is approved.");
+    expect(html).toContain("A volume goes on to processing only when every opening is approved or excluded.");
   });
 
   it("draws each state in its colour pair, Published in sage", async () => {
@@ -220,6 +228,15 @@ describe("Volumes, rendered", () => {
     expect(html).toContain("Fisqua no aceptó la entrega.");
     expect(html).toContain("Detalle técnico:");
   });
+
+  it("offers Prepare review images and Retry as buttons", async () => {
+    const html = await volumes("en", [
+      row({ linkState: "registered", state: "received", nextStep: "prepare_review" }),
+      row({ referenceCode: "co-test-0009", volumeId: "v-9", linkState: "registered", state: "received", nextStep: "retry_review" }),
+    ]);
+    expect(html).toMatch(/<button[^>]*>Prepare review images<\/button>/);
+    expect(html).toMatch(/<button[^>]*>Retry<\/button>/);
+  });
 });
 
 describe("the Capture QC queue, rendered", () => {
@@ -240,7 +257,14 @@ describe("the Capture QC queue, rendered", () => {
     expect(html).not.toContain("disabled=\"\"");
     expect(html).toContain("Approved");
     expect(html).toContain("Rejected for retake");
+    expect(html).toContain("Excluded");
     expect(html).toContain("Undecided");
+  });
+
+  it("draws a volume's excluded openings in the progress bar", async () => {
+    const html = await queue("en", true, [row({ approved: 2, excluded: 1, decided: 3 })]);
+    expect(html).toContain('<div class="bg-stone-500" style="width:25%"></div>');
+    expect(html).toContain("3 of 4 openings decided");
   });
 
   it("gives a manager Reassign and Assign, and a reviewer neither", async () => {
@@ -277,6 +301,37 @@ describe("the Capture QC queue, rendered", () => {
     expect(html).toContain("1 día");
     expect(html).toContain("Reasignar");
   });
+
+  const mixed = [
+    row({ volumeId: "v-ready", referenceCode: "co-ready" }),
+    row({ volumeId: "v-prep", referenceCode: "co-prep", linkState: "preparing_review", state: "preparing_review", readiness: "preparing" }),
+    row({ volumeId: "v-none", referenceCode: "co-none", linkState: "registered", state: "received", readiness: "not_prepared" }),
+    row({ volumeId: "v-fail", referenceCode: "co-fail", linkState: "registered", state: "review_failed", readiness: "failed" }),
+  ];
+
+  it("says which volumes are ready to review, and links Open only from those", async () => {
+    const html = await queue("en", true, mixed);
+    expect(html).toContain(">State</th>");
+    expect(html).toMatch(/text-saffron-deep">Ready to review</);
+    expect(html).toMatch(/text-indigo">Preparing review images</);
+    expect(html).toMatch(/text-stone-600">Review images not prepared yet</);
+    expect(html).toMatch(/text-madder-deep">Review images failed</);
+    expect(html).toMatch(/<a[^>]*href="\/admin\/capture\/qc\/v-ready"[^>]*>Open<\/a>/);
+    for (const id of ["v-prep", "v-none", "v-fail"]) expect(html).not.toContain(`href="/admin/capture/qc/${id}"`);
+    expect(html.match(/Review opens when the images are ready/g)).toHaveLength(3);
+    // Assigning a reviewer does not wait for the images.
+    expect(html.match(/>Reassign<\/button>/g)).toHaveLength(4);
+  });
+
+  it("says the same in Spanish", async () => {
+    const html = await queue("es", true, mixed);
+    expect(html).toContain(">Estado</th>");
+    expect(html).toContain("Listo para revisar");
+    expect(html).toContain("Preparando imágenes para revisión");
+    expect(html).toContain("Imágenes para revisión por preparar");
+    expect(html).toContain("Error al preparar las imágenes para revisión");
+    expect(html.match(/Se podrá revisar cuando las imágenes estén listas/g)).toHaveLength(3);
+  });
 });
 
-// @version v0.8.0
+// @version v0.9.0
