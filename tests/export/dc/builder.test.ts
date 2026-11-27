@@ -29,11 +29,23 @@
  * (`app/lib/export/dc/builder.ts`) is iterated until the contract
  * holds.
  *
- * @version v0.8.0
+ * `dc:rights` in the bulk reading is the repository's attribution line
+ * in the description's language: the English line for a description in
+ * English, the Spanish one otherwise, and the default statement when
+ * that language has no line. The workspace-export reading keeps the
+ * record's own access and reproduction conditions.
+ *
+ * @version v0.9.0
  */
 
 import { describe, it, expect } from "vitest";
 import { buildDcBulk } from "../../../app/lib/export/dc/builder";
+import {
+  DC_RIGHTS_DEFAULT,
+  dcDescriptionRecord,
+  type DcDescriptionRow,
+  type DcRepository,
+} from "../../../app/lib/export/dc/crosswalk";
 import { sampleFondsRows, sampleRepositoryById } from "../ead/fixtures";
 
 const FONDS_CODE = "co-ahr-gob";
@@ -212,4 +224,59 @@ describe("buildDcBulk — XML escape", () => {
   });
 });
 
-/* @version v0.8.0 */
+describe("dc:rights — the attribution line", () => {
+  const row = (language: string | null): DcDescriptionRow => ({
+    referenceCode: "co-x-1",
+    title: "Expediente",
+    descriptionLevel: "file",
+    dateExpression: null,
+    extent: null,
+    creatorDisplay: null,
+    scopeContent: null,
+    placeDisplay: null,
+    imprint: null,
+    language,
+    parentReferenceCode: null,
+    accessConditions: "Consulta libre",
+    reproductionConditions: "Con permiso",
+  });
+  const repo: DcRepository = {
+    name: "Archivo X",
+    city: "Popayán",
+    attribution: { es: "Archivo X, Popayán. Digitalizado por el archivo.", en: "Archivo X, Popayán. Digitized by the archive." },
+  };
+
+  it("is the Spanish line for a description in Spanish, in a code, or with no language", () => {
+    for (const language of ["spa", "192", "lat", null]) {
+      expect(dcDescriptionRecord(row(language), repo, "oai-bulk").rights).toBe(repo.attribution.es);
+    }
+  });
+
+  it("is the English line for a description in English", () => {
+    for (const language of ["eng", "en", "English"]) {
+      expect(dcDescriptionRecord(row(language), repo, "oai-bulk").rights).toBe(repo.attribution.en);
+    }
+  });
+
+  it("falls back to the default statement when the language has no line, or there is no repository", () => {
+    const noEnglish: DcRepository = { ...repo, attribution: { es: repo.attribution.es, en: "  " } };
+    expect(dcDescriptionRecord(row("eng"), noEnglish, "oai-bulk").rights).toBe(DC_RIGHTS_DEFAULT);
+    const none: DcRepository = { ...repo, attribution: { es: null, en: null } };
+    expect(dcDescriptionRecord(row("spa"), none, "oai-bulk").rights).toBe(DC_RIGHTS_DEFAULT);
+    expect(dcDescriptionRecord(row("spa"), undefined, "oai-bulk").rights).toBe(DC_RIGHTS_DEFAULT);
+  });
+
+  it("is unchanged in the workspace-export reading", () => {
+    expect(dcDescriptionRecord(row("eng"), repo, "workspace-export").rights).toBe("Consulta libre\n\nCon permiso");
+  });
+
+  it("is written into every record of the bulk file", () => {
+    const xml = buildDcBulk(sampleFondsRows, sampleRepositoryById, FONDS_CODE, DATESTAMP);
+    const line = [...sampleRepositoryById.values()][0].attribution.es!;
+    const records = xml.split(/<\/record>/).filter((r) => r.includes("<record>"));
+    expect(records.length).toBeGreaterThan(0);
+    for (const r of records) expect(r).toContain(`<dc:rights>${line}</dc:rights>`);
+  });
+});
+
+/* @version v0.9.0 */

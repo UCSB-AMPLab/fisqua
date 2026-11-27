@@ -24,9 +24,16 @@
  *
  *   - `oai-bulk` is what the publish pipeline has emitted since v0.4.
  *     `dc:description` is scope and content alone; `dc:rights` is the
- *     repository's licence statement, because a harvested record needs
- *     to say what may be done with it and the repository is the one
- *     making that promise.
+ *     repository's attribution line, because a harvested record needs
+ *     to say whose materials these are and on what terms, and the
+ *     repository is the one making that promise. It is the line the
+ *     export's `attribution` and the IIIF
+ *     `requiredStatement` carry (`repositoryAttribution` in
+ *     `../attribution.ts`), which the caller composes into the
+ *     repository it passes. A record carries one language: the English
+ *     line for a description in English, the Spanish one otherwise
+ *     (`rightsLanguage`), and the default statement
+ *     when that language has no line.
  *   - `workspace-export` is the export surface's reading, and it is the
  *     one the choice-cost card describes. Scope and content MERGES with
  *     the biographical/administrative note into `dc:description`, and
@@ -39,8 +46,8 @@
  * argument rather than a second mapping.
  *
  * AN AUTHORITY RECORD IS A THIN DUBLIN CORE RECORD, and the export
- * surface's authority card rules how thin: «Fifteen-element crosswalk ·
- * agents as creator and subject». An entity is named in `dc:creator`, a
+ * surface's authority card rules how thin: "Fifteen-element crosswalk ·
+ * agents as creator and subject". An entity is named in `dc:creator`, a
  * place in `dc:subject`, and everything the fifteen elements have no
  * term for is LEFT EMPTY rather than approximated. In particular
  * `dc:type` is null for both: the DCMI Type Vocabulary is a closed set
@@ -50,10 +57,19 @@
  * and is a later cut; until it exists, Dublin Core says the little it
  * can honestly say.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { sanitiseRefForKey } from "../xml/escape";
+import { text, type Bilingual } from "../attribution";
+
+/** Description language codes whose `dc:rights` is the English line. */
+const ENGLISH_LANGUAGES: ReadonlySet<string> = new Set(["eng", "en", "English"]);
+
+/** The language of the attribution line a description's record carries: English for English, else Spanish. */
+function rightsLanguage(language: string | null): "es" | "en" {
+  return language !== null && ENGLISH_LANGUAGES.has(language.trim()) ? "en" : "es";
+}
 
 /**
  * The fifteen elements of simple Dublin Core, in OAI-DC spec order.
@@ -92,8 +108,7 @@ export type DcReading = "oai-bulk" | "workspace-export";
 export const DC_COLUMNS: string[] = DC_ELEMENTS.map((e) => `dc:${e}`);
 
 /**
- * `descriptionLevel` → DCMI Type. Lifted from `builder.ts`, which took
- * it from `mets-builder.ts`. Levels absent from the map emit no
+ * `descriptionLevel` → DCMI Type. Levels absent from the map emit no
  * `dc:type` at all rather than guessing a term.
  */
 export const DC_TYPE_MAP: Record<string, string> = {
@@ -121,10 +136,11 @@ export const DC_LANGUAGE_MAP: Record<string, string> = {
 };
 
 /**
- * Rights statement when a repository has none of its own. Only the
- * `oai-bulk` reading uses it: a workspace export's `dc:rights` carries
- * the record's own access and reproduction conditions, and a record
- * with neither says nothing rather than borrowing a licence.
+ * Rights statement when a repository has no attribution line in the
+ * record's language. Only the `oai-bulk` reading uses it: a workspace
+ * export's `dc:rights` carries the record's own access and reproduction
+ * conditions, and a record with neither says nothing rather than
+ * borrowing a licence.
  */
 export const DC_RIGHTS_DEFAULT =
   "All materials in the public domain. Please credit the institution.";
@@ -136,7 +152,8 @@ export const DC_IDENTIFIER_PREFIX = "fisqua:";
 export interface DcRepository {
   name: string;
   city: string;
-  rightsText: string | null;
+  /** The repository's attribution line in each language, as `repositoryAttribution` gives it. */
+  attribution: Bilingual;
 }
 
 /**
@@ -220,9 +237,7 @@ export function dcDescriptionRecord(
   const rights =
     reading === "workspace-export"
       ? merge(row.accessConditions, row.reproductionConditions)
-      : repo?.rightsText && repo.rightsText.trim().length > 0
-        ? repo.rightsText
-        : DC_RIGHTS_DEFAULT;
+      : (text(repo?.attribution[rightsLanguage(row.language)]) ?? DC_RIGHTS_DEFAULT);
 
   return {
     title: nullIfBlank(row.title),
@@ -306,4 +321,4 @@ export function dcRecordAsObject(record: DcRecord): Record<string, string | null
   return out;
 }
 
-/* @version v0.7.0 */
+/* @version v0.9.0 */

@@ -15,7 +15,11 @@
  * `77777777-7777-4777-8777-777777777777` = RAD). See app/lib/tenant.ts and
  * tests/helpers/db.ts for the canonical declarations these mirror.
  *
- * @version v0.8.0
+ * The repository carries its attribution line already composed, as the
+ * publish step passes it; the Dublin Core builder writes it as
+ * `dc:rights`.
+ *
+ * @version v0.9.0
  */
 
 import type { Standard } from "../../../app/lib/standards/types";
@@ -51,7 +55,7 @@ export type EadRepository = {
   name: string;
   city: string;
   code: string;
-  rightsText: string | null;
+  attribution: { es: string | null; en: string | null };
 };
 
 export type ExportTenantFixture = {
@@ -104,7 +108,10 @@ export const sampleRepositoryById: ReadonlyMap<string, EadRepository> = new Map(
       name: "Archivo Histórico de Rionegro",
       city: "Rionegro",
       code: "co-ahr",
-      rightsText: "All materials in the public domain",
+      attribution: {
+        es: "Archivo Histórico de Rionegro, Rionegro, Antioquia, Colombia. CC BY 4.0.",
+        en: "Archivo Histórico de Rionegro, Rionegro, Antioquia, Colombia. CC BY 4.0.",
+      },
     },
   ],
 ]);
@@ -194,3 +201,5 @@ export const sampleFondsRows: ReadonlyArray<EadInput> = [
     legacyIds: [{ provider: "ca", id: 99999 }],
   },
 ];
+
+// @version v0.9.0

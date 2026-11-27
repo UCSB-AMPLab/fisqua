@@ -4,10 +4,26 @@
  * This page is the edit form for a single repository. Every
  * ISAD-adjacent field is editable here, including the display metadata
  * that the public
- * frontend surfaces -- display title, subtitle, hero image -- plus the
+ * frontend surfaces -- display title, Spanish and English subtitle, hero
+ * image -- plus the
  * institution's rights statement and the manifest settings: the rights
  * URI and the English and Spanish attribution a pipeline manifest
- * carries for this repository's volumes. Autosaves to `drafts` via useFetcher
+ * carries for this repository's volumes.
+ *
+ * The form also holds the repository's simplified ISDIAH record, grouped
+ * by ISDIAH area: other names and the type of institution (identity);
+ * region, postal code, telephone and email beside the address (contact);
+ * holdings and history (description); opening times, access conditions
+ * and accessibility (access); reproduction services (services); and the
+ * language of the description (control). The catalogue licence URI and
+ * the home-page order sit with the image licence in the administrative
+ * area, and the credit statement, a Spanish and English pair of plain
+ * text that the attribution line uses as written, sits with the
+ * attribution fields. Each prose field is a Spanish and English pair of
+ * Markdown textareas. Other names are written one per line and stored as
+ * a JSON array of the non-blank lines; the home order must be an integer.
+ *
+ * Autosaves to `drafts` via useFetcher
  * on a debounce so a curator's work survives a page reload, and
  * commits a final row to the `changelog` table on explicit save so
  * editors can audit who changed what and when. A draft conflict banner
@@ -17,6 +33,12 @@
  * `authMiddleware`. Every read/update/delete of `repositories`,
  * `descriptions`, and `users` is filtered by `tenant.id`.
  *
+ * A save that changes a field the repository's descriptions publish
+ * (`REPOSITORY_FIELDS_DESCRIPTIONS_PUBLISH`) moves every one of those
+ * descriptions' versions in the same batch, so the publish sees their
+ * files change; an edit form open on one of them then fails its version
+ * check.
+ *
  * The edit form's country/code fields are the shared identity fields
  * (`repository-country-fields`): country is an ISO select that fills the
  * alpha-3 code, the repository code gets a derived suggestion behind a
@@ -24,7 +46,24 @@
  * rewritten), and a stored free-text country matching no ISO entry is
  * kept verbatim behind a fallback option.
  *
- * @version v0.8.0
+ * The update writes only the fields the request carries, and of those
+ * only the ones that change the stored row; the changelog records the
+ * same set. The enabled checkbox travels with a hidden input of the
+ * same name, so an unchecked box disables the repository and a request
+ * without the name leaves the flag as stored. After an edit conflict,
+ * the shared conflict dialog resubmits the edit form's fields with
+ * `_force=true`; a forced update that carries none of the editable
+ * fields is refused, and a save deletes the autosaved draft only when
+ * it carried fields.
+ *
+ * A save's UPDATE runs only while the record holds the version the
+ * save read, so a save that another lands between the version check and
+ * the write changes nothing, logs nothing and gets the conflict
+ * response. A successful save returns the new version, and the form
+ * submits the version its field values were loaded from
+ * (`useFormVersion`), which a loader revalidation does not move.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -40,6 +79,8 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { DraftsBanner } from "~/components/admin/drafts-banner";
+import { ConflictDialog } from "~/components/admin/conflict-dialog";
+import { useFormVersion, useRecordEditMode } from "~/lib/use-form-version";
 import {
   useRepositoryIdentity,
   RepoNameInput,
@@ -48,21 +89,30 @@ import {
   RepoCountryCodeInput,
 } from "~/components/admin/repository-country-fields";
 import { DescriptionTree } from "~/components/descriptions/description-tree";
-import { useFormatters } from "~/lib/use-formatters";
 import type { Route } from "./+types/_auth.admin.repositories.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.repository?.name,
+    heading("repositories:title"),
+  );
+}
+
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, asc, sql } = await import("drizzle-orm");
   const { repositories, descriptions } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -147,17 +197,34 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // Action
 // ---------------------------------------------------------------------------
 
+/**
+ * The repository columns its descriptions publish: `repository_code`
+ * and `country` in the descriptions files, and the name, city and the
+ * attribution line (composed from the place, credit statements, image
+ * licence and the stored overrides) in the EAD and Dublin Core files.
+ */
+const REPOSITORY_FIELDS_DESCRIPTIONS_PUBLISH = [
+  "code",
+  "country",
+  "countryCode",
+  "name",
+  "city",
+  "region",
+  "manifestRights",
+  "creditStatementEs",
+  "creditStatementEn",
+  "attributionEs",
+  "attributionEn",
+] as const;
+
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { repositories, descriptions } = await import("~/db/schema");
-  const { updateRepositorySchema } = await import(
-    "~/lib/validation/repository"
-  );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -178,32 +245,101 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "update": {
-      // Normalise empty strings to undefined for optional fields
-      const code = (formData.get("code") as string)?.trim() || undefined;
-      const name = (formData.get("name") as string)?.trim() || undefined;
-      const shortName =
-        (formData.get("shortName") as string)?.trim() || undefined;
-      const countryCode =
-        (formData.get("countryCode") as string)?.trim() || undefined;
-      const country =
-        (formData.get("country") as string)?.trim() || undefined;
-      const city = (formData.get("city") as string)?.trim() || undefined;
-      const address =
-        (formData.get("address") as string)?.trim() || undefined;
-      const website =
-        (formData.get("website") as string)?.trim() || undefined;
-      const notes = (formData.get("notes") as string)?.trim() || undefined;
-      const rightsText =
-        (formData.get("rightsText") as string)?.trim() || undefined;
-      const displayTitle =
-        (formData.get("displayTitle") as string)?.trim() || null;
-      const subtitle =
-        (formData.get("subtitle") as string)?.trim() || null;
-      const heroImageUrl =
-        (formData.get("heroImageUrl") as string)?.trim() || null;
-      const enabled = formData.get("enabled") === "on";
+      // A field is read only when the request carries it: a field the
+      // request does not carry keeps its stored value, and a carried,
+      // blank field clears its column. code, name and countryCode are
+      // required on the form, so a blank one leaves the stored value.
+      const { submittedFields, fieldsToWrite, updateSchemaFrom } = await import(
+        "~/lib/validation/update-schema"
+      );
+      const { has, trimmed } = submittedFields(formData);
+      const { readManifestFields, REPOSITORY_MANIFEST_FIELDS } = await import(
+        "~/lib/validation/manifest-fields"
+      );
+
+      const REQUIRED_TEXT = ["code", "name", "countryCode"] as const;
+      const OPTIONAL_TEXT = [
+        "shortName",
+        "country",
+        "city",
+        "address",
+        "website",
+        "notes",
+        "rightsText",
+        "displayTitle",
+        "subtitle",
+        "heroImageUrl",
+        "subtitleEn",
+        "institutionType",
+        "region",
+        "postalCode",
+        "telephone",
+        "email",
+        "holdingsEs",
+        "holdingsEn",
+        "historyEs",
+        "historyEn",
+        "openingTimesEs",
+        "openingTimesEn",
+        "accessConditionsEs",
+        "accessConditionsEn",
+        "accessibilityEs",
+        "accessibilityEn",
+        "reproductionServicesEs",
+        "reproductionServicesEn",
+        "descriptionLanguage",
+        "catalogueLicenceUri",
+        "creditStatementEs",
+        "creditStatementEn",
+      ] as const;
+
+      // Whether the request carries any field the edit form submits. An
+      // overwrite after a conflict resubmits the form's fields; a forced
+      // update without any would write nothing and report success while
+      // the user's edits stay unsaved, so it is refused.
+      const carriesFields = [
+        ...REQUIRED_TEXT,
+        ...OPTIONAL_TEXT,
+        ...REPOSITORY_MANIFEST_FIELDS,
+        "otherNames",
+        "homeOrder",
+        "enabled",
+      ].some((name) => has(name));
+      if (formData.get("_force") === "true" && !carriesFields) {
+        return { ok: false as const, error: "generic" };
+      }
+
+      const input: Record<string, unknown> = { id };
+      for (const name of REQUIRED_TEXT) {
+        if (has(name)) input[name] = trimmed(name) || undefined;
+      }
+      for (const name of OPTIONAL_TEXT) {
+        if (has(name)) input[name] = trimmed(name) || null;
+      }
+      // The enabled checkbox travels after a hidden input of the same
+      // name, so a request that carries the name came from the form and
+      // "on" among its values means checked. Without the name the flag
+      // stays as stored.
+      if (has("enabled")) input.enabled = formData.getAll("enabled").includes("on");
+      // Other names travel one per line; the blank lines are dropped, and
+      // no names at all clears the column. The list is validated as one
+      // and stored as a JSON array.
+      if (has("otherNames")) {
+        const names = (formData.get("otherNames") as string)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line !== "");
+        input.otherNames = names.length > 0 ? names : null;
+      }
+      // The home order is an integer; any other text reaches the schema
+      // as a non-integer and is refused under the field's name.
+      if (has("homeOrder")) {
+        const text = trimmed("homeOrder");
+        input.homeOrder = text === "" ? null : /^[+-]?\d+$/.test(text) ? Number(text) : Number.NaN;
+      }
 
       // Validate heroImageUrl — only http/https protocols
+      const heroImageUrl = input.heroImageUrl as string | null | undefined;
       if (heroImageUrl) {
         try {
           const parsed = new URL(heroImageUrl);
@@ -221,12 +357,12 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         }
       }
 
-      // Manifest settings: the rights URI must be http or https; an
-      // empty field clears its column.
-      const { readManifestFields, REPOSITORY_MANIFEST_FIELDS } = await import(
-        "~/lib/validation/manifest-fields"
+      // Manifest settings, those the request carries: the rights URI
+      // must be http or https; an empty field clears its column.
+      const manifestFields = readManifestFields(
+        formData,
+        REPOSITORY_MANIFEST_FIELDS.filter((name) => has(name)),
       );
-      const manifestFields = readManifestFields(formData, REPOSITORY_MANIFEST_FIELDS);
       if (!manifestFields.ok) {
         return {
           ok: false as const,
@@ -234,19 +370,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
-      const parsed = updateRepositorySchema.safeParse({
-        id,
-        code,
-        name,
-        shortName,
-        countryCode,
-        country,
-        city,
-        address,
-        website,
-        notes,
-        enabled,
-      });
+      // The schema without its defaults (countryCode "COL", enabled
+      // true), so an absent field is not handed back as a default. A
+      // cleared field is validated as absent and carried back as null.
+      const { repositorySchema } = await import("~/lib/validation/repository");
+      const schemaInput = Object.fromEntries(
+        Object.entries(input).filter(
+          ([key, value]) =>
+            value !== null &&
+            key !== "displayTitle" &&
+            key !== "subtitle" &&
+            key !== "heroImageUrl",
+        ),
+      );
+      const parsed = updateSchemaFrom(repositorySchema).safeParse(schemaInput);
 
       if (!parsed.success) {
         return {
@@ -261,6 +398,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .from(repositories)
         .where(and(eq(repositories.tenantId, tenant.id), eq(repositories.id, id)))
         .get();
+      if (!original) throw new Response("Not found", { status: 404 });
+      const stored = original as unknown as Record<string, unknown>;
 
       // Optimistic lock check
       const formUpdatedAt = formData.get("_updatedAt") as string;
@@ -268,7 +407,6 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       if (
         !forceOverwrite &&
         formUpdatedAt &&
-        original &&
         String(original.updatedAt) !== formUpdatedAt
       ) {
         return {
@@ -278,34 +416,80 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
-      const { id: _id, ...updates } = parsed.data;
-      const updatedFields = {
-        ...updates,
-        shortName: updates.shortName ?? null,
-        country: updates.country ?? null,
-        city: updates.city ?? null,
-        address: updates.address ?? null,
-        website: updates.website ?? null,
-        notes: updates.notes ?? null,
-        rightsText: rightsText ?? null,
-        displayTitle,
-        subtitle,
-        heroImageUrl,
-        manifestRights: manifestFields.values.manifestRights,
-        attributionEn: manifestFields.values.attributionEn,
-        attributionEs: manifestFields.values.attributionEs,
+      const { id: _id, ...parsedUpdates } = parsed.data;
+      const updates: Record<string, unknown> = {
+        ...Object.fromEntries(
+          Object.entries(input).filter(([key, value]) => key !== "id" && value !== undefined),
+        ),
+        ...parsedUpdates,
+        ...manifestFields.values,
       };
+      if (Array.isArray(updates.otherNames)) {
+        updates.otherNames = JSON.stringify(updates.otherNames);
+      }
 
+      // Of those, only the ones that change the stored row are written
+      // and logged.
+      const changed: Record<string, unknown> = {};
+      for (const [name, value] of Object.entries(fieldsToWrite(updates, stored))) {
+        if (JSON.stringify(stored[name]) === JSON.stringify(value)) continue;
+        changed[name] = value;
+      }
+
+      // The write runs only while the repository holds the version read
+      // above (the one the form's version was checked against, or that a
+      // forced overwrite applies to): a save that another lands before
+      // changes nothing, and its changes count says so.
+      // A change to a field the repository's descriptions publish (their
+      // repository code and country, and the name, place, credit and
+      // attribution their EAD and Dublin Core files carry) moves every
+      // one of those descriptions' versions, in the same batch, and only
+      // while the repository's own write lands.
+      const { nextVersion, nextVersionSql } = await import("~/lib/record-version.server");
+      const savedVersion = nextVersion(original.updatedAt);
+      const publishedFieldChanged = REPOSITORY_FIELDS_DESCRIPTIONS_PUBLISH.some((f) => f in changed);
       try {
-        await db
-          .update(repositories)
-          .set({
-            ...updatedFields,
-            updatedAt: Date.now(),
-          })
-          .where(
-            and(eq(repositories.tenantId, tenant.id), eq(repositories.id, id))
-          );
+        const [result] = await db.batch([
+          db
+            .update(repositories)
+            .set({
+              ...(changed as Partial<typeof repositories.$inferInsert>),
+              updatedAt: savedVersion,
+            })
+            .where(
+              and(
+                eq(repositories.tenantId, tenant.id),
+                eq(repositories.id, id),
+                eq(repositories.updatedAt, original.updatedAt)
+              )
+            ),
+          ...(publishedFieldChanged
+            ? [
+                db
+                  .update(descriptions)
+                  .set({ updatedAt: nextVersionSql(descriptions.updatedAt, savedVersion) })
+                  .where(
+                    and(
+                      eq(descriptions.tenantId, tenant.id),
+                      eq(descriptions.repositoryId, id),
+                      sql`EXISTS (SELECT 1 FROM repositories r WHERE r.id = ${id} AND r.tenant_id = ${tenant.id} AND r.updated_at = ${savedVersion})`
+                    )
+                  ),
+              ]
+            : []),
+        ]);
+        if ((result.meta?.changes ?? 0) === 0) {
+          const current = await db
+            .select({ updatedAt: repositories.updatedAt })
+            .from(repositories)
+            .where(and(eq(repositories.tenantId, tenant.id), eq(repositories.id, id)))
+            .get();
+          return {
+            ok: false as const,
+            error: "conflict" as const,
+            modifiedAt: current?.updatedAt ?? original.updatedAt,
+          };
+        }
       } catch (e) {
         if (String(e).includes("UNIQUE constraint failed")) {
           return { ok: false as const, error: "duplicate_code" };
@@ -313,37 +497,38 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         return { ok: false as const, error: "generic" };
       }
 
-      // Compute diff and create changelog entry
-      if (original) {
-        const { computeDiff, createChangelogEntry } = await import(
-          "~/lib/changelog.server"
+      // Changelog entry for the fields that changed.
+      const { computeDiff, createChangelogEntry } = await import(
+        "~/lib/changelog.server"
+      );
+      const diff = computeDiff(stored, changed);
+      if (diff) {
+        const commitNote =
+          (formData.get("commitNote") as string)?.trim() || undefined;
+        await createChangelogEntry(
+          db,
+          id,
+          "repository",
+          user.id,
+          diff,
+          commitNote
         );
-        const diff = computeDiff(
-          original as unknown as Record<string, unknown>,
-          updatedFields as unknown as Record<string, unknown>
-        );
-        if (diff) {
-          const commitNote =
-            (formData.get("commitNote") as string)?.trim() || undefined;
-          await createChangelogEntry(
-            db,
-            id,
-            "repository",
-            user.id,
-            diff,
-            commitNote
-          );
-        }
       }
 
-      // Delete draft after successful save
-      const { deleteDraft } = await import("~/lib/drafts.server");
-      await deleteDraft(db, tenant.id, id, "repository");
+      // The saved fields supersede the autosaved draft. A request that
+      // carried none of them saved nothing, and the draft is kept.
+      if (carriesFields) {
+        const { deleteDraft } = await import("~/lib/drafts.server");
+        await deleteDraft(db, tenant.id, id, "repository");
+      }
 
-      return { ok: true as const, message: "updated" };
+      // The new version, which the form submits with its next save.
+      return { ok: true as const, message: "updated", updatedAt: savedVersion };
     }
 
     case "delete": {
+      // Deleting a repository is administration, which a staff grant does not have.
+      requireArea(user, "records");
       // Safety: check description count before deleting
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
@@ -394,9 +579,11 @@ export default function RepositoryDetailPage({
     loaderData;
   const actionData = useActionData<typeof action>();
   const { t } = useTranslation("repositories");
-  const { formatDateTime } = useFormatters();
 
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit mode belongs to the record it was opened on: following a link
+  // to another repository leaves it, so the form's inputs and its version
+  // always come from the same load.
+  const [isEditing, setIsEditing] = useRecordEditMode(repository.id);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [showConflictDialog, setShowConflictDialog] = useState(false);
@@ -409,6 +596,10 @@ export default function RepositoryDetailPage({
       setShowConflictDialog(true);
     }
   }, [actionData]);
+
+  // The version the form's field values were loaded from, which it
+  // submits; a loader revalidation does not move it.
+  const formVersion = useFormVersion(`${repository.id}:${isEditing}`, repository.updatedAt, actionData);
 
   // Autosave via useFetcher
   const draftFetcher = useFetcher();
@@ -592,6 +783,7 @@ export default function RepositoryDetailPage({
             onDiscard={() => setIsEditing(false)}
             formRef={formRef}
             onFormChange={handleFormChange}
+            formVersion={formVersion}
           />
         ) : (
           <ViewMode repository={repository} t={t} />
@@ -669,43 +861,17 @@ export default function RepositoryDetailPage({
         actionData &&
         "error" in actionData &&
         actionData.error === "conflict" && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-              <h2 className="text-lg font-semibold text-stone-700">
-                {t("overwrite_confirm", {
-                  name: "",
-                  time:
-                    "modifiedAt" in actionData
-                      ? formatDateTime(actionData.modifiedAt as number)
-                      : "",
-                })}
-              </h2>
-              <div className="mt-4 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowConflictDialog(false)}
-                  className="rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
-                >
-                  {t("overwrite_cancel")}
-                </button>
-                <Form method="post">
-                  <input type="hidden" name="_action" value="update" />
-                  <input type="hidden" name="_force" value="true" />
-                  <input
-                    type="hidden"
-                    name="_updatedAt"
-                    value={String(repository.updatedAt)}
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
-                  >
-                    {t("overwrite_button")}
-                  </button>
-                </Form>
-              </div>
-            </div>
-          </div>
+          <ConflictDialog
+            modifiedByName=""
+            modifiedAt={
+              "modifiedAt" in actionData
+                ? (actionData.modifiedAt as number)
+                : null
+            }
+            formRef={formRef}
+            onCancel={() => setShowConflictDialog(false)}
+            t={t}
+          />
         )}
     </div>
   );
@@ -736,6 +902,14 @@ function ViewMode({
             label={t("field.shortName")}
             value={repository.shortName}
           />
+          <FieldDisplay
+            label={t("field.otherNames")}
+            value={otherNamesText(repository.otherNames).split("\n").join("; ")}
+          />
+          <FieldDisplay
+            label={t("field.institutionType")}
+            value={repository.institutionType}
+          />
         </div>
       </section>
 
@@ -754,10 +928,20 @@ function ViewMode({
             value={repository.country}
           />
           <FieldDisplay label={t("field.city")} value={repository.city} />
+          <FieldDisplay label={t("field.region")} value={repository.region} />
           <FieldDisplay
             label={t("field.address")}
             value={repository.address}
           />
+          <FieldDisplay
+            label={t("field.postalCode")}
+            value={repository.postalCode}
+          />
+          <FieldDisplay
+            label={t("field.telephone")}
+            value={repository.telephone}
+          />
+          <FieldDisplay label={t("field.email")} value={repository.email} />
           {repository.website ? (
             <div>
               <p className="text-xs text-stone-500">{t("field.website")}</p>
@@ -779,6 +963,48 @@ function ViewMode({
         </div>
       </section>
 
+      {/* Description, access and services areas */}
+      {(
+        [
+          ["section_description", PROSE_PAIRS.slice(0, 2)],
+          ["section_access", PROSE_PAIRS.slice(2, 5)],
+          ["section_services", PROSE_PAIRS.slice(5)],
+        ] as const
+      ).map(([section, pairs]) => (
+        <section key={section}>
+          <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-wider text-stone-500">
+            {t(section)}
+          </h2>
+          <div className="space-y-3">
+            {pairs.flatMap((pair) => [
+              <FieldDisplay
+                key={`${pair}Es`}
+                label={t(`field.${pair}Es`)}
+                value={repository[`${pair}Es`]}
+              />,
+              <FieldDisplay
+                key={`${pair}En`}
+                label={t(`field.${pair}En`)}
+                value={repository[`${pair}En`]}
+              />,
+            ])}
+          </div>
+        </section>
+      ))}
+
+      {/* Control area */}
+      <section>
+        <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-wider text-stone-500">
+          {t("section_control")}
+        </h2>
+        <div className="space-y-3">
+          <FieldDisplay
+            label={t("field.descriptionLanguage")}
+            value={repository.descriptionLanguage}
+          />
+        </div>
+      </section>
+
       {/* Administrative */}
       <section>
         <h2 className="mt-6 mb-4 text-sm font-semibold uppercase tracking-wider text-stone-500">
@@ -789,10 +1015,27 @@ function ViewMode({
           <FieldDisplay label={t("field.rightsText")} value={repository.rightsText} />
           <FieldDisplay label={t("display_title_label")} value={repository.displayTitle} />
           <FieldDisplay label={t("subtitle_label")} value={repository.subtitle} />
+          <FieldDisplay label={t("subtitle_en_label")} value={repository.subtitleEn} />
           <FieldDisplay label={t("hero_image_url_label")} value={repository.heroImageUrl} />
           <FieldDisplay label={t("field.manifestRights")} value={repository.manifestRights} />
+          <FieldDisplay
+            label={t("field.catalogueLicenceUri")}
+            value={repository.catalogueLicenceUri}
+          />
+          <FieldDisplay
+            label={t("field.homeOrder")}
+            value={repository.homeOrder == null ? null : String(repository.homeOrder)}
+          />
           <FieldDisplay label={t("field.attributionEn")} value={repository.attributionEn} />
           <FieldDisplay label={t("field.attributionEs")} value={repository.attributionEs} />
+          <FieldDisplay
+            label={t("field.creditStatementEs")}
+            value={repository.creditStatementEs}
+          />
+          <FieldDisplay
+            label={t("field.creditStatementEn")}
+            value={repository.creditStatementEn}
+          />
           <div>
             <p className="text-xs text-stone-500">{t("field.enabled")}</p>
             {repository.enabled ? (
@@ -837,6 +1080,7 @@ function EditMode({
   onDiscard,
   formRef,
   onFormChange,
+  formVersion,
 }: {
   repository: Awaited<ReturnType<typeof loader>>["repository"];
   errors?: Record<string, string[]> | undefined;
@@ -844,6 +1088,8 @@ function EditMode({
   onDiscard: () => void;
   formRef?: React.Ref<HTMLFormElement>;
   onFormChange?: () => void;
+  /** The version the form's field values were loaded from, submitted as `_updatedAt`. */
+  formVersion: number;
 }) {
   // Interpolated strings and the active locale need the real i18n handle;
   // the narrow `t` prop stays for the plain labels.
@@ -861,7 +1107,7 @@ function EditMode({
       <input
         type="hidden"
         name="_updatedAt"
-        value={String(repository.updatedAt)}
+        value={String(formVersion)}
       />
 
       {/* Contact area */}
@@ -888,6 +1134,13 @@ function EditMode({
           defaultValue={repository.city ?? ""}
           error={errors?.city?.[0]}
         />
+        <EditField
+          name="region"
+          label={t("field.region")}
+          defaultValue={repository.region ?? ""}
+          error={errors?.region?.[0]}
+          helperText={t("region_help")}
+        />
         <EditTextarea
           name="address"
           label={t("field.address")}
@@ -895,11 +1148,31 @@ function EditMode({
           error={errors?.address?.[0]}
         />
         <EditField
+          name="postalCode"
+          label={t("field.postalCode")}
+          defaultValue={repository.postalCode ?? ""}
+          error={errors?.postalCode?.[0]}
+        />
+        <EditField
           name="website"
           label={t("field.website")}
           defaultValue={repository.website ?? ""}
           error={errors?.website?.[0]}
           helperText={t("website_help")}
+        />
+        <EditField
+          name="telephone"
+          label={t("field.telephone")}
+          defaultValue={repository.telephone ?? ""}
+          error={errors?.telephone?.[0]}
+          type="tel"
+        />
+        <EditField
+          name="email"
+          label={t("field.email")}
+          defaultValue={repository.email ?? ""}
+          error={errors?.email?.[0]}
+          type="email"
         />
       </div>
 
@@ -933,6 +1206,63 @@ function EditMode({
           defaultValue={repository.shortName ?? ""}
           error={errors?.shortName?.[0]}
           helperText={t("short_name_help")}
+        />
+        <EditTextarea
+          name="otherNames"
+          label={t("field.otherNames")}
+          defaultValue={otherNamesText(repository.otherNames)}
+          error={errors?.otherNames?.[0]}
+          helperText={t("other_names_help")}
+        />
+        <EditField
+          name="institutionType"
+          label={t("field.institutionType")}
+          defaultValue={repository.institutionType ?? ""}
+          error={errors?.institutionType?.[0]}
+        />
+      </div>
+
+      {/* Description area */}
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-wider text-stone-500">
+        {t("section_description")}
+      </h2>
+      <div className="space-y-4">
+        {PROSE_PAIRS.slice(0, 2).map((pair) => (
+          <ProsePair key={pair} pair={pair} repository={repository} errors={errors} t={t} />
+        ))}
+      </div>
+
+      {/* Access area */}
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-wider text-stone-500">
+        {t("section_access")}
+      </h2>
+      <div className="space-y-4">
+        {PROSE_PAIRS.slice(2, 5).map((pair) => (
+          <ProsePair key={pair} pair={pair} repository={repository} errors={errors} t={t} />
+        ))}
+      </div>
+
+      {/* Services area */}
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-wider text-stone-500">
+        {t("section_services")}
+      </h2>
+      <div className="space-y-4">
+        {PROSE_PAIRS.slice(5).map((pair) => (
+          <ProsePair key={pair} pair={pair} repository={repository} errors={errors} t={t} />
+        ))}
+      </div>
+
+      {/* Control area */}
+      <h2 className="mb-4 mt-6 text-sm font-semibold uppercase tracking-wider text-stone-500">
+        {t("section_control")}
+      </h2>
+      <div className="space-y-4">
+        <EditField
+          name="descriptionLanguage"
+          label={t("field.descriptionLanguage")}
+          defaultValue={repository.descriptionLanguage ?? ""}
+          error={errors?.descriptionLanguage?.[0]}
+          helperText={t("description_language_help")}
         />
       </div>
 
@@ -970,6 +1300,13 @@ function EditMode({
           helperText={t("subtitle_helper")}
         />
         <EditField
+          name="subtitleEn"
+          label={t("subtitle_en_label")}
+          defaultValue={repository.subtitleEn ?? ""}
+          error={errors?.subtitleEn?.[0]}
+          helperText={t("subtitle_helper")}
+        />
+        <EditField
           name="heroImageUrl"
           label={t("hero_image_url_label")}
           defaultValue={repository.heroImageUrl ?? ""}
@@ -984,6 +1321,22 @@ function EditMode({
           error={errors?.manifestRights?.[0]}
           type="url"
         />
+        <EditField
+          name="catalogueLicenceUri"
+          label={t("field.catalogueLicenceUri")}
+          defaultValue={repository.catalogueLicenceUri ?? ""}
+          error={errors?.catalogueLicenceUri?.[0]}
+          helperText={t("catalogue_licence_help")}
+          type="url"
+        />
+        <EditField
+          name="homeOrder"
+          label={t("field.homeOrder")}
+          defaultValue={repository.homeOrder == null ? "" : String(repository.homeOrder)}
+          error={errors?.homeOrder?.[0]}
+          helperText={t("home_order_help")}
+          type="number"
+        />
         <EditTextarea
           name="attributionEn"
           label={t("field.attributionEn")}
@@ -996,7 +1349,17 @@ function EditMode({
           defaultValue={repository.attributionEs ?? ""}
           error={errors?.attributionEs?.[0]}
         />
+        <ProsePair
+          pair="creditStatement"
+          repository={repository}
+          errors={errors}
+          t={t}
+          helperKey="credit_statement_help"
+        />
         <div className="flex items-center gap-2">
+          {/* An unchecked checkbox is not submitted; this hidden input
+              tells the update action the request carries the field. */}
+          <input type="hidden" name="enabled" value="" />
           <input
             type="checkbox"
             id="enabled"
@@ -1036,6 +1399,68 @@ function EditMode({
         </div>
       </div>
     </Form>
+  );
+}
+
+/** The prose pairs of the ISDIAH record, in area order: description (2), access (3), services (1). */
+const PROSE_PAIRS = [
+  "holdings",
+  "history",
+  "openingTimes",
+  "accessConditions",
+  "accessibility",
+  "reproductionServices",
+] as const;
+
+/** Language pairs of plain text, not Markdown, in the administrative area. */
+type PlainPair = "creditStatement";
+
+type ProseColumn = `${(typeof PROSE_PAIRS)[number] | PlainPair}${"Es" | "En"}`;
+
+/** The stored other names (a JSON array, or null) as one name per line. */
+function otherNamesText(stored: string | null): string {
+  if (!stored) return "";
+  try {
+    const names: unknown = JSON.parse(stored);
+    return Array.isArray(names) ? names.filter((n) => typeof n === "string").join("\n") : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * A field's Spanish and English textareas, stacked, each with the
+ * Markdown hint, or with `helperKey`'s text for a plain-text pair.
+ */
+function ProsePair({
+  pair,
+  repository,
+  errors,
+  t,
+  helperKey = "markdown_help",
+}: {
+  pair: (typeof PROSE_PAIRS)[number] | PlainPair;
+  repository: Record<ProseColumn, string | null>;
+  errors?: Record<string, string[]> | undefined;
+  t: (key: string) => string;
+  helperKey?: string;
+}) {
+  return (
+    <>
+      {(["Es", "En"] as const).map((lang) => {
+        const name: ProseColumn = `${pair}${lang}`;
+        return (
+          <EditTextarea
+            key={name}
+            name={name}
+            label={t(`field.${name}`)}
+            defaultValue={repository[name] ?? ""}
+            error={errors?.[name]?.[0]}
+            helperText={t(helperKey)}
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -1131,4 +1556,4 @@ function EditTextarea({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

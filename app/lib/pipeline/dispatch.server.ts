@@ -35,19 +35,30 @@
  *   5. Each volume's declaration family resolves to its latest version;
  *      a wave needs a gate pass for that exact row and the configured
  *      script version, and a sample run is limited in size.
- *   6. Page lists are read and checked against the cross-field rules,
+ *   6. Page lists are read, each volume's capture QC is read
+ *      (`readPageRotations`: its rotations, its decision set's revision
+ *      and the pages of the openings it excluded), and the pages of an
+ *      excluded opening (a test shot, a duplicate) are left out: the
+ *      rest keep their order and are numbered again from 1, and the
+ *      volume's `expected_count` for this run is the number left. The
+ *      registered page list and the volume's own count are not changed,
+ *      so an opening approved again is a page again at the next start,
+ *      and nothing is deleted from the masters. A volume with no page
+ *      left is refused as `invalid_page_list` with rule `no_pages`.
+ *      The page lists are then checked against the cross-field rules,
  *      recipes are resolved, and each volume's description is read in
  *      the tenant; a volume whose description is not found there is
  *      refused, because its spec entry cannot be built. Each volume's
  *      manifest block is asked of the manifest resolver built for the
  *      tenant's manifest address (its federation's `manifest_base_url`
- *      and its slug), with the description, its
- *      repository and the tenant; a repository without
- *      manifest rights is refused (`repository_rights_unset`), and so is
- *      one with an attribution in one language only
- *      (`repository_attribution_incomplete`), each naming the
- *      repository. Each page's `rotate_deg` is read from its volume's
- *      registered delivery (`readPageRotateDegs`); a page that two of
+ *      and its slug) and its federation's hosting statement, with the
+ *      description, its repository and the tenant; a repository without
+ *      manifest rights is refused (`repository_rights_unset`), naming
+ *      the repository. `repository_attribution_incomplete` stays among
+ *      the refusal codes, but the resolver no longer raises it: each
+ *      language of the attribution is written when it has a line.
+ *      Each page's `rotate_deg` is read from its volume's registered
+ *      delivery (`readPageRotateDegs`); a page that two of
  *      the delivery's page images match is refused as
  *      `invalid_page_list` with rule `page_image_ambiguous`; when any
  *      page has one
@@ -55,11 +66,15 @@
  *      (`ROTATE_DEG_FROM`), whose schema refuses the field, the request
  *      is refused (`rotate_deg_unsupported`, naming the volumes). When
  *      the runner's script version is v1.1.0 or later
- *      (`ROTATE_AND_PURGE_FROM`), each volume's capture QC rotations are
- *      read (`readPageRotations`) with its decision set's revision, and,
- *      when the federation has a review-tiles bucket, the review prefixes
- *      still to purge (`readReviewPurges`). Volumes are then grouped into
- *      jobs.
+ *      (`ROTATE_AND_PURGE_FROM`), the capture QC rotations go into the
+ *      spec, and, when the federation has a review-tiles bucket, the
+ *      review prefixes still to purge are read (`readReviewPurges`).
+ *      Each volume's calibration objects (contract 1.12) are read from
+ *      its registered delivery's shots (`readCalibrationObjects`); when
+ *      any volume has one and the runner's script version is below
+ *      v1.3.0 (`CALIBRATION_FROM`), which neither reads nor verifies
+ *      them, the request is refused (`calibration_unsupported`, naming
+ *      the volumes). Volumes are then grouped into jobs.
  *   7. The token and spec URL lifetimes are computed; a run whose URL
  *      would outlive a presigned URL's seven-day ceiling is refused.
  *   8. Restriction: a volume whose restricted flag is set refuses the
@@ -69,7 +84,9 @@
  *      destination is the federation's tiles bucket and endpoint, with
  *      the tenant's slug as the tiles prefix, under `ocr/` in it as the
  *      OCR prefix, and after the federation's image address. A page
- *      whose image carries a rotation carries `rotate_deg`, 0 included.
+ *      whose image carries a rotation carries `rotate_deg`, 0 included,
+ *      and a volume with calibration shots lists their objects, key and
+ *      digest, as `calibration`, for the runner to pull and verify.
  *      From v1.1.0, a page capture QC rotated carries `quarter_turns`; with a
  *      review-tiles bucket as well, the spec names it in a `review` block
  *      on the federation's delivery endpoint, and each volume lists in
@@ -90,10 +107,10 @@
  *      volume's hold, re-checking the hold inside the batch, so of two
  *      concurrent requests for one volume only one can take it; the
  *      capture QC hold is re-checked there too, so a decision recorded
- *      since step 4 that leaves an opening unapproved wins. From v1.1.0
- *      each volume's decision set must also still be at the revision
- *      read with its rotations (no set at all, for a volume that had
- *      none), so a rotation changed on an approved set since step 6
+ *      since step 4 that leaves an opening unapproved wins. Each
+ *      volume's decision set must also still be at the revision read
+ *      in step 6 (no set at all, for a volume that had none), so a
+ *      rotation or an exclusion changed on an approved set since then
  *      loses the claim as a replaced page list does. A run
  *      that took fewer volumes than it asked for closes itself in the
  *      same batch as an error with stage `claim`.
@@ -145,7 +162,7 @@
  * `startRunAction` is the start-run route's body: it validates the JSON
  * request, calls `startPipelineRun` and maps refusals to responses.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, getTableColumns, gt, gte, inArray, isNull, sql, type SQL } from "drizzle-orm";
@@ -154,11 +171,14 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { z } from "zod";
 import {
   captureDeliveries,
+  captureCalibrationShots,
   captureImages,
+  captureQcDecisions,
   captureQcRotations,
   captureQcSets,
   captureReviewRuns,
   descriptions,
+  federations,
   pipelineGatePasses,
   pipelineRecipeDeclarations,
   pipelineRunChunks,
@@ -171,6 +191,7 @@ import {
 import type { Tenant, User } from "../../context";
 import { PIPELINE_RUN_KINDS, PIPELINE_RUN_PURPOSES } from "../validation/enums";
 import { captureQcPendingSql, readCaptureQcPending } from "../capture/hold.server";
+import type { FederationHosting } from "../export/attribution";
 import { requireMediaPipelineAccess } from "./access.server";
 import {
   GitHubAppTokenError,
@@ -196,7 +217,7 @@ import {
   type RunSpec,
   type RunSpecRecipe,
 } from "./run-spec";
-import { RUN_LIFETIME_CONSTANTS, RUN_LIMITS, RUN_PRESETS } from "./run-config";
+import { REVIEW_RUN_LIFETIME_CONSTANTS, RUN_LIFETIME_CONSTANTS, RUN_LIMITS, RUN_PRESETS } from "./run-config";
 import { pipelineKey, publishRunSpec, type PipelineSpecStore } from "./store.server";
 import {
   resolveTenantDestination,
@@ -241,6 +262,15 @@ export const ROTATE_AND_PURGE_FROM = [1, 1, 0] as const;
  */
 export const ROTATE_DEG_FROM = [1, 2, 0] as const;
 
+/**
+ * The runner release that reads a volume's `calibration`: it pulls each
+ * calibration shot's objects once and verifies their digests, as it
+ * does a page's master (contract 1.12). An older runner refuses a key
+ * its schema does not name, and would verify nothing, so a volume with
+ * shots is refused below it (`calibration_unsupported`) and never sent.
+ */
+export const CALIBRATION_FROM = [1, 3, 0] as const;
+
 const RUNNER_IMAGE_PATTERN = /^[^@\s]+@sha256:[0-9a-f]{64}$/;
 const DISPATCH_REPO_PATTERN = /^[^/\s]+\/[^/\s]+$/;
 const DISPATCH_EVENT_TYPE = "fisqua-pipeline-run";
@@ -252,6 +282,8 @@ export interface PipelineRunConfig {
   maxSampleVolumes: number;
   targetImagesPerJob: number;
   lifetime: LifetimeConstants;
+  /** The lifetime constants a capture review run is timed by. */
+  reviewLifetime: LifetimeConstants;
   presets: RecipePresets;
 }
 
@@ -259,6 +291,7 @@ export interface PipelineRunConfig {
 export const DEFAULT_RUN_CONFIG: PipelineRunConfig | null = {
   ...RUN_LIMITS,
   lifetime: RUN_LIFETIME_CONSTANTS,
+  reviewLifetime: REVIEW_RUN_LIFETIME_CONSTANTS,
   presets: RUN_PRESETS,
 };
 
@@ -298,8 +331,8 @@ export interface StartRunDeps {
   env: PipelineDispatchEnv;
   specStore: PipelineSpecStore;
   fetchImpl: typeof fetch;
-  /** Builds the manifest resolver for the tenant's manifest base URL. */
-  manifestResolverFor: (manifestBaseUrl: string) => ManifestResolver;
+  /** Builds the manifest resolver for the tenant's manifest base URL and its federation's hosting statement. */
+  manifestResolverFor: (manifestBaseUrl: string, hosting: FederationHosting | null) => ManifestResolver;
   config: PipelineRunConfig | null;
   now: () => number;
   newId: () => string;
@@ -340,7 +373,8 @@ export type StartRunRefusalCode =
   | "description_not_found"
   | "restricted_material"
   | "volume_source_invalid"
-  | "rotate_deg_unsupported";
+  | "rotate_deg_unsupported"
+  | "calibration_unsupported";
 
 /** A start-run request refused before anything of the new run was dispatched. */
 export class StartRunRefusal extends Error {
@@ -1125,24 +1159,79 @@ export async function readPageRotateDegs(
   return { degrees, ambiguous };
 }
 
+/**
+ * Each volume's calibration objects (contract 1.12), from the shots of
+ * its `registered` delivery in their manifest order: each shot's capture
+ * and then its preview where it has one, by full key and digest. A
+ * volume with no delivery or no shot is left out. Shots are kept apart
+ * from the delivery's images, so nothing here touches the pages.
+ */
+export async function readCalibrationObjects(
+  db: DrizzleD1Database<any>,
+  tenantId: string,
+  volumeIds: string[],
+): Promise<Map<string, Array<{ key: string; sha256: string }>>> {
+  const out = new Map<string, Array<{ key: string; sha256: string }>>();
+  for (const chunk of chunked(volumeIds, READ_ID_CHUNK)) {
+    const rows = await db
+      .select({
+        volumeId: captureDeliveries.pipelineVolumeId,
+        captureKey: captureCalibrationShots.captureKey,
+        captureSha256: captureCalibrationShots.captureSha256,
+        previewKey: captureCalibrationShots.previewKey,
+        previewSha256: captureCalibrationShots.previewSha256,
+      })
+      .from(captureDeliveries)
+      .innerJoin(
+        captureCalibrationShots,
+        and(
+          eq(captureCalibrationShots.tenantId, captureDeliveries.tenantId),
+          eq(captureCalibrationShots.deliveryId, captureDeliveries.id),
+        ),
+      )
+      .where(
+        and(
+          eq(captureDeliveries.tenantId, tenantId),
+          inArray(captureDeliveries.pipelineVolumeId, chunk),
+          sql`${captureDeliveries.state} = 'registered'`,
+        ),
+      )
+      .orderBy(captureDeliveries.pipelineVolumeId, captureCalibrationShots.seq)
+      .all();
+    for (const row of rows) {
+      const id = row.volumeId as string;
+      const list = out.get(id) ?? [];
+      list.push({ key: row.captureKey, sha256: row.captureSha256 });
+      if (row.previewKey !== null && row.previewSha256 !== null) list.push({ key: row.previewKey, sha256: row.previewSha256 });
+      out.set(id, list);
+    }
+  }
+  return out;
+}
+
 /** What `readPageRotations` read of the volumes' capture QC. */
 export interface PageRotations {
   /** Per volume, the clockwise quarter-turns of each rotated page, by page key. */
   rotations: Map<string, Map<string, number>>;
   /** Per volume with a decision set on its registered delivery, the set's revision. */
   qcRevisions: Map<string, number>;
+  /** Per volume, the page keys of the images of the openings capture QC excluded. */
+  excluded: Map<string, Set<string>>;
 }
 
 /**
- * Each volume's capture QC rotations, by page key, and its decision
- * set's revision, 90 volumes to a batch so the two agree. A rotation
+ * Each volume's capture QC rotations, by page key, its decision set's
+ * revision, and the page keys of the openings it excluded, 90 volumes to
+ * a batch so the three agree. An excluded page is an image, of the
+ * volume's `registered` delivery, of a record whose decision there is
+ * `excluded`. A rotation
  * reaches a page through the volume's `registered` delivery, the
  * delivery's image with the page's key, and the rotation recorded for
  * that image's record, capture id and role; the two images of a spread
  * share a capture id and are told apart by role. A carried approval's
  * rotations were copied to the new delivery when it was registered, so
- * they are read the same way. A volume with no delivery, or no rotation,
- * gets an empty map.
+ * they are read the same way. A volume with no delivery, or no rotation
+ * or exclusion, gets empty maps.
  */
 export async function readPageRotations(
   db: DrizzleD1Database<any>,
@@ -1151,9 +1240,10 @@ export async function readPageRotations(
 ): Promise<PageRotations> {
   const rotations = new Map<string, Map<string, number>>(volumeIds.map((id) => [id, new Map()]));
   const qcRevisions = new Map<string, number>();
+  const excluded = new Map<string, Set<string>>(volumeIds.map((id) => [id, new Set()]));
   const registered = sql`${captureDeliveries.state} = 'registered'`;
   for (const chunk of chunked(volumeIds, READ_ID_CHUNK)) {
-    const [turns, sets] = await db.batch([
+    const [turns, sets, exclusions] = await db.batch([
       db
         .select({
           volumeId: captureDeliveries.pipelineVolumeId,
@@ -1202,6 +1292,32 @@ export async function readPageRotations(
             registered,
           ),
         ),
+      db
+        .select({ volumeId: captureDeliveries.pipelineVolumeId, pageKey: captureImages.pageKey })
+        .from(captureDeliveries)
+        .innerJoin(
+          captureQcDecisions,
+          and(
+            eq(captureQcDecisions.tenantId, captureDeliveries.tenantId),
+            eq(captureQcDecisions.deliveryId, captureDeliveries.id),
+          ),
+        )
+        .innerJoin(
+          captureImages,
+          and(
+            eq(captureImages.tenantId, captureQcDecisions.tenantId),
+            eq(captureImages.deliveryId, captureQcDecisions.deliveryId),
+            eq(captureImages.captuaRecordId, captureQcDecisions.captuaRecordId),
+          ),
+        )
+        .where(
+          and(
+            eq(captureDeliveries.tenantId, tenantId),
+            inArray(captureDeliveries.pipelineVolumeId, chunk),
+            registered,
+            sql`${captureQcDecisions.decision} = 'excluded'`,
+          ),
+        ),
     ]);
     for (const row of turns) {
       if (row.volumeId !== null) rotations.get(row.volumeId)?.set(row.pageKey, row.quarterTurns);
@@ -1209,8 +1325,24 @@ export async function readPageRotations(
     for (const row of sets) {
       if (row.volumeId !== null) qcRevisions.set(row.volumeId, row.revision);
     }
+    for (const row of exclusions) {
+      if (row.volumeId !== null) excluded.get(row.volumeId)?.add(row.pageKey);
+    }
   }
-  return { rotations, qcRevisions };
+  return { rotations, qcRevisions, excluded };
+}
+
+/**
+ * A volume's page rows without the pages capture QC excluded, the rest
+ * in `seq` order and numbered again from 1. Pure: the rows read are not
+ * changed.
+ */
+export function pagesWithout(rows: PageRow[], excluded: ReadonlySet<string> | undefined): PageRow[] {
+  if (excluded === undefined || excluded.size === 0) return rows;
+  return [...rows]
+    .sort((a, b) => a.seq - b.seq)
+    .filter((p) => !excluded.has(p.pageKey))
+    .map((p, i) => ({ ...p, seq: i + 1 }));
 }
 
 /**
@@ -1383,6 +1515,32 @@ function scriptVersionAtLeast(version: string, from: readonly [number, number, n
   return true;
 }
 
+/**
+ * The federation's hosting statement, or null. A database without
+ * migration 0122 has no such columns, and SQLite would read the quoted
+ * column names as string literals instead of failing, so the columns are
+ * looked up first; without them the run composes the line without the
+ * statement.
+ */
+export async function readFederationHosting(
+  db: DrizzleD1Database<any>,
+  federationId: string,
+): Promise<FederationHosting | null> {
+  const present = await db.all<{ name: string }>(
+    sql`SELECT name FROM pragma_table_info('federations') WHERE name IN ('hosting_statement_es', 'hosting_statement_en')`,
+  );
+  if (present.length < 2) return null;
+  const row = await db
+    .select({
+      hostingStatementEs: federations.hostingStatementEs,
+      hostingStatementEn: federations.hostingStatementEn,
+    })
+    .from(federations)
+    .where(eq(federations.id, federationId))
+    .get();
+  return row ?? null;
+}
+
 export async function startPipelineRun(
   deps: StartRunDeps,
   input: StartRunInput,
@@ -1409,7 +1567,10 @@ export async function startPipelineRun(
     if (!(err instanceof TenantDestinationError)) throw err;
     throw new StartRunRefusal("tenant_destination_unset", { missing: err.missing });
   }
-  const manifestResolver = deps.manifestResolverFor(destination.manifestBaseUrl);
+  const manifestResolver = deps.manifestResolverFor(
+    destination.manifestBaseUrl,
+    await readFederationHosting(db, destination.federationId),
+  );
   if (
     !(PIPELINE_RUN_KINDS as readonly string[]).includes(kind) ||
     !(PIPELINE_RUN_PURPOSES as readonly string[]).includes(input.purpose) ||
@@ -1425,7 +1586,7 @@ export async function startPipelineRun(
   const scriptVersion = env.PIPELINE_SCRIPT_VERSION as string;
 
   // 4. Volumes, and the capture QC hold.
-  const volumes = checkVolumes(ids, await readVolumes(db, tenantId, ids, now), kind);
+  let volumes = checkVolumes(ids, await readVolumes(db, tenantId, ids, now), kind);
   const qcPending = await readCaptureQcPending(db, tenantId, ids);
   if (qcPending.length > 0) {
     throw new StartRunRefusal("capture_qc_pending", { volume_ids: qcPending });
@@ -1456,9 +1617,28 @@ export async function startPipelineRun(
     });
   }
 
-  // 6. Pages, rotations and review prefixes, recipes, manifests, jobs.
-  const pages = await readPages(db, tenantId, ids);
+  // 6. Pages less the excluded ones, rotations and review prefixes,
+  // recipes, manifests, jobs.
+  const registeredPages = await readPages(db, tenantId, ids);
+  const qc = await readPageRotations(db, tenantId, ids);
+  const pages = new Map<string, PageRow[]>();
+  for (const [id, rows] of registeredPages) pages.set(id, pagesWithout(rows, qc.excluded.get(id)));
+  const emptied = volumes.filter(
+    (v) => (registeredPages.get(v.id)?.length ?? 0) > 0 && (pages.get(v.id)?.length ?? 0) === 0,
+  );
+  if (emptied.length > 0) {
+    throw new StartRunRefusal("invalid_page_list", {
+      volume_id: emptied[0].id,
+      reference_code: emptied[0].referenceCode,
+      rules: ["no_pages"],
+    });
+  }
+  // This run's count of each volume is the pages left in.
+  volumes = volumes.map((v) =>
+    (qc.excluded.get(v.id)?.size ?? 0) > 0 ? { ...v, expectedCount: pages.get(v.id)?.length ?? 0 } : v,
+  );
   const { degrees: rotateDegs, ambiguous } = await readPageRotateDegs(db, tenantId, ids);
+  for (const [id, keys] of qc.excluded) for (const key of keys) rotateDegs.get(id)?.delete(key);
   if (ambiguous.length > 0) {
     const first = ambiguous[0];
     throw new StartRunRefusal("invalid_page_list", {
@@ -1475,8 +1655,15 @@ export async function startPipelineRun(
       runner_from: `v${ROTATE_DEG_FROM.join(".")}`,
     });
   }
+  const calibration = await readCalibrationObjects(db, tenantId, ids);
+  const calibrated = ids.filter((id) => calibration.has(id));
+  if (calibrated.length > 0 && !scriptVersionAtLeast(scriptVersion, CALIBRATION_FROM)) {
+    throw new StartRunRefusal("calibration_unsupported", {
+      volume_ids: calibrated,
+      runner_from: `v${CALIBRATION_FROM.join(".")}`,
+    });
+  }
   const rotatesAndPurges = scriptVersionAtLeast(scriptVersion, ROTATE_AND_PURGE_FROM);
-  const qc = rotatesAndPurges ? await readPageRotations(db, tenantId, ids) : null;
   const review =
     rotatesAndPurges && destination.reviewTilesBucket !== null
       ? { endpoint: destination.deliveryEndpoint, bucket: destination.reviewTilesBucket }
@@ -1629,9 +1816,10 @@ export async function startPipelineRun(
         recipe: recipes.get(v.id) as RunSpecRecipe,
         description: descriptionRows.get(v.descriptionId) ?? null,
         repository: null,
-        rotations: qc?.rotations.get(v.id),
+        rotations: rotatesAndPurges ? qc.rotations.get(v.id) : undefined,
         rotateDegs: rotateDegs.get(v.id),
         reviewPurge: purges?.get(v.id),
+        calibration: calibration.get(v.id),
       })),
       tenant: input.tenant,
       manifestResolver: (v) => manifestOf.get(v.id) as ReturnType<ManifestResolver>,
@@ -1681,7 +1869,7 @@ export async function startPipelineRun(
       chunkIds,
       volumeIds: ids,
       pagesRevisions: new Map(volumes.map((v) => [v.id, v.pagesRevision])),
-      qcRevisions: qc?.qcRevisions,
+      qcRevisions: qc.qcRevisions,
       kind,
       now,
     }),
@@ -1712,7 +1900,7 @@ export async function startPipelineRun(
     // A decision set written since its rotations were read is why the
     // claim was lost: the spec may carry rotations the set no longer
     // records. Starting the run again reads them afresh.
-    if (qc !== null) {
+    {
       const nowRevisions = (await readPageRotations(db, tenantId, ids)).qcRevisions;
       const rewritten = ids.filter((id) => nowRevisions.get(id) !== qc.qcRevisions.get(id));
       if (rewritten.length > 0) {
@@ -1876,4 +2064,4 @@ export async function startRunAction(
   }
 }
 
-// @version v0.8.0
+// @version v0.9.0

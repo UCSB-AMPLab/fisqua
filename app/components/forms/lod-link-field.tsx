@@ -5,7 +5,7 @@
  * (Wikidata, VIAF, TGN) with a click-through link icon that opens the
  * resolved URL in a new tab.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -36,9 +36,9 @@ const SERVICE_PATTERNS: Record<LodService, RegExp> = {
 export const SERVICE_URLS: Record<LodService, (id: string) => string> = {
   wikidata: (id) => `https://www.wikidata.org/wiki/${id}`,
   viaf: (id) => `https://viaf.org/viaf/${id}`,
-  tgn: (id) => `https://vocab.getty.edu/tgn/${id}`,
+  tgn: (id) => `https://vocab.getty.edu/page/tgn/${id}`,
   hgis: (id) => `https://hgis-indias.net/place/${id}`,
-  whg: (id) => `https://whgazetteer.org/places/${id}`,
+  whg: (id) => `https://whgazetteer.org/places/${id}/detail`,
 };
 
 export function LodLinkField({
