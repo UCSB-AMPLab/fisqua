@@ -40,7 +40,10 @@
  * D1's hundred-binding cap) rather than by calling `addMembers`
  * thousands of times.
  *
- * @version v0.8.0
+ * A split backfilled by an authorities file carries its target's
+ * creation time, so it flags only a member added before the split.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
@@ -178,8 +181,9 @@ async function seedEntity(values: {
   tenantId: string | null;
   displayName: string;
   mergedInto?: string | null;
+  createdAt?: number;
 }): Promise<void> {
-  const now = Date.now();
+  const now = values.createdAt ?? Date.now();
   await db().insert(schema.entities).values({
     id: values.id,
     federationId: values.federationId,
@@ -929,6 +933,42 @@ describe("handlists", () => {
       expect(detail.missingCount).toBe(1);
       expect(detail.needsReviewCount).toBe(1);
       expect(detail.needsReview).toBe(true);
+    });
+  });
+
+  describe("membership integrity — a backfilled split, stamped with its target's creation time", () => {
+    const E_ORIGINAL = "8d000000-0000-4000-8000-000000000101";
+    const E_SPLIT_OFF = "8d000000-0000-4000-8000-000000000102";
+    /** When the split made E_SPLIT_OFF: its `created_at`, which the authorities file's `record-split` row copies. */
+    const T_SPLIT = 1_700_100_000_000;
+    let before: string;
+    let after: string;
+
+    beforeAll(async () => {
+      await seedEntity({ id: E_ORIGINAL, federationId: FED_A, tenantId: TENANT_A, displayName: "Inés Original", createdAt: T_SPLIT - 50_000 });
+      await seedEntity({ id: E_SPLIT_OFF, federationId: FED_A, tenantId: TENANT_A, displayName: "Inés SplitOff", createdAt: T_SPLIT });
+      // As the backfill writes it, long after the split: created_at is the target's.
+      await db().insert(schema.authorityOperations).values({
+        id: "8e000000-0000-4000-8000-000000000101", federationId: FED_A, recordType: "entity", operation: "split",
+        sourceId: E_ORIGINAL, targetId: E_SPLIT_OFF, userId: ADMIN_ID,
+        detail: JSON.stringify({ reason: "backfill", movedLinks: 0, backfill: true, file: "backfill.csv" }), createdAt: T_SPLIT,
+      });
+      before = (await createHandlist(db(), tenantA, admin, { name: "Added before the split", recordType: "entities", memberIds: [E_ORIGINAL] }, T_SPLIT - 1_000)).id;
+      after = (await createHandlist(db(), tenantA, admin, { name: "Added after the split", recordType: "entities", memberIds: [E_ORIGINAL] }, T_SPLIT + 1_000)).id;
+    });
+
+    it("flags the original in a handlist it joined before the split", async () => {
+      const row = (await getWithMembers(db(), tenantA, admin, before)).members[0];
+      expect(row.state).toBe("split");
+      expect(row.needsReview).toBe(true);
+      expect(row.exportable).toBe(false);
+    });
+
+    it("does not flag the original in a handlist it joined after the split", async () => {
+      const row = (await getWithMembers(db(), tenantA, admin, after)).members[0];
+      expect(row.state).toBe("present");
+      expect(row.needsReview).toBe(false);
+      expect(row.exportable).toBe(true);
     });
   });
 

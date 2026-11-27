@@ -1,0 +1,1377 @@
+{
+ "federationId": "b4462493-6170-44f8-ae07-24666606d1f1",
+ "userId": "user_001",
+ "now": 1792884549405,
+ "places": [
+  {
+   "id": "d885ce54-0052-42d5-b476-f6f992f82885",
+   "updated_at": 1776157142,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Chancaillo",
+   "display_name": "Chancaillo",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": null,
+   "longitude": null,
+   "coordinate_precision": "",
+   "place_code": "nl-xnfbx4"
+  },
+  {
+   "id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+   "updated_at": 1776157143,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Guachipa",
+   "display_name": "Guachipa",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": null,
+   "longitude": null,
+   "coordinate_precision": "",
+   "place_code": "nl-96wh4w"
+  },
+  {
+   "id": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+   "updated_at": 1776369182,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Habana",
+   "display_name": "Habana",
+   "name_variants": "[\"Havana\",\"La Habana\",\"La Havana\"]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": 23.136,
+   "longitude": -82.383,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-2gfhvm"
+  },
+  {
+   "id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+   "updated_at": 1776157142,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Ilabe",
+   "display_name": "Ilabe",
+   "name_variants": "[\"Ilave\"]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -16.08,
+   "longitude": -69.64,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-jcfc4k"
+  },
+  {
+   "id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+   "updated_at": 1776369181,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Océano Pacífico",
+   "display_name": "Océano Pacífico",
+   "name_variants": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -15,
+   "longitude": -90,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-ggs2a7"
+  },
+  {
+   "id": "443b9b64-d153-462b-b21d-6f99938a920e",
+   "updated_at": 1776157144,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Chancayllo",
+   "display_name": "Chancayllo",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -11.56,
+   "longitude": -77.27,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-zpc9mm"
+  },
+  {
+   "id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "updated_at": 1776157143,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Huachipa",
+   "display_name": "Huachipa",
+   "name_variants": "[\"Huachipas\"]",
+   "tgn_id": "1024512",
+   "hgis_id": "lugares13k_rel:14164238",
+   "whg_id": "177581",
+   "latitude": -12.018079,
+   "longitude": -76.94768,
+   "coordinate_precision": "",
+   "place_code": "nl-nw4c7t"
+  },
+  {
+   "id": "06598ff5-88a5-426e-bfce-08fcba46d6d5",
+   "updated_at": 1776369182,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "La Habana",
+   "display_name": "La Habana",
+   "name_variants": "[\"La Havana\"]",
+   "tgn_id": "1001206",
+   "hgis_id": "territorios892:139920",
+   "whg_id": "139920",
+   "latitude": 23.13,
+   "longitude": -82.37,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-4emzb7"
+  },
+  {
+   "id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+   "updated_at": 1776157143,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Ylave",
+   "display_name": "Ylave",
+   "name_variants": "[\"Ylabe\"]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -16.082,
+   "longitude": -69.649,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-75jnvc"
+  },
+  {
+   "id": "33795e81-ec92-4974-a11f-bc58316554b6",
+   "updated_at": 1776369181,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Pacífico",
+   "display_name": "Pacífico",
+   "name_variants": "[\"Pacific\"]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": 0,
+   "longitude": -85,
+   "coordinate_precision": "uncertain",
+   "place_code": "nl-yx3wbx"
+  },
+  {
+   "id": "44e29637-2f79-474e-bbac-b3e91b326663",
+   "updated_at": 1776369181,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Pacific Ocean",
+   "display_name": "Pacific Ocean",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -5,
+   "longitude": -85,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-s8h5xv"
+  },
+  {
+   "id": "b21dc2ad-bc86-46a8-ad92-916f5c3cf4c3",
+   "updated_at": 1776369181,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Mar Pacífico",
+   "display_name": "Mar Pacífico",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": -10,
+   "longitude": -80,
+   "coordinate_precision": "approximate",
+   "place_code": "nl-9yqtxw"
+  },
+  {
+   "id": "4422273a-05c7-4f6e-a389-ea653a543a7c",
+   "updated_at": 1776369181,
+   "tenant_id": null,
+   "merged_into": null,
+   "label": "Pacific Sea",
+   "display_name": "Pacific Sea",
+   "name_variants": "[]",
+   "tgn_id": null,
+   "hgis_id": null,
+   "whg_id": null,
+   "latitude": null,
+   "longitude": null,
+   "coordinate_precision": "",
+   "place_code": "nl-spe87b"
+  }
+ ],
+ "links": [
+  {
+   "id": "02f30044-1202-41cc-8bf9-1693b6b5eb8c",
+   "place_id": "443b9b64-d153-462b-b21d-6f99938a920e",
+   "description_id": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "c5db0091-b0e3-48f0-af33-1471f46c4c97",
+   "place_id": "443b9b64-d153-462b-b21d-6f99938a920e",
+   "description_id": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "d0a47424-1e08-4d18-a63c-ad42d1128069",
+   "place_id": "443b9b64-d153-462b-b21d-6f99938a920e",
+   "description_id": "2c2056ae-7751-40cb-9d41-2e1928285687",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "0e502066-2368-42b0-88e3-d4d80df1a533",
+   "place_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "description_id": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "33bbaa36-7fc4-4727-90f4-abfef875e64d",
+   "place_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "description_id": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "8064b814-cac7-48eb-af39-3cb3bca34f98",
+   "place_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "description_id": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "9c35c341-e43a-49a3-8ed1-a15f50dfc248",
+   "place_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "description_id": "f7145486-97e6-403e-b61a-efce253dc2f6",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "9d849d52-a8e9-42bd-bf67-32b32c68059e",
+   "place_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+   "description_id": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "41a22d15-640e-451c-abbf-67e0f5f39044",
+   "place_id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+   "description_id": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "53afaf26-c54c-4285-b16a-1a84f0020a40",
+   "place_id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+   "description_id": "6586eef8-062d-46c5-a342-7a231859de27",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "b87b2542-f08d-450b-b72c-1f085b0172e5",
+   "place_id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+   "description_id": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "993d8f3e-8a81-4bd1-b066-c38bb0f7fb09",
+   "place_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+   "description_id": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  },
+  {
+   "id": "b3bbc57b-ef97-4d7f-9027-c464d1f41ef7",
+   "place_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+   "description_id": "6586eef8-062d-46c5-a342-7a231859de27",
+   "role": "mentioned",
+   "role_note": "",
+   "role_raw": "mentioned",
+   "created_at": 1777844551
+  }
+ ],
+ "rows": [
+  {
+   "op": "merge-place",
+   "authority_code": "nl-zpc9mm",
+   "authority_name": "Chancayllo",
+   "target_codes": "nl-xnfbx4",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (B004)",
+   "latitude": "-11.56",
+   "longitude": "-77.27",
+   "coordinate_precision": "approximate",
+   "name_variants_add": "Chancayllo"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-nw4c7t",
+   "authority_name": "Huachipa",
+   "target_codes": "nl-96wh4w",
+   "label_to_keep": "Huachipa",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (B011)",
+   "tgn_id": "1024512",
+   "hgis_id": "lugares13k_rel:14164238",
+   "whg_id": "177581",
+   "latitude": "-12.018079",
+   "longitude": "-76.94768",
+   "coordinate_precision": "",
+   "name_variants_add": "Huachipas | Guachipa"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-4emzb7",
+   "authority_name": "La Habana",
+   "target_codes": "nl-2gfhvm",
+   "label_to_keep": "La Habana",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (B077)",
+   "tgn_id": "1001206",
+   "hgis_id": "territorios892:139920",
+   "whg_id": "139920",
+   "name_variants_add": "Habana"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-75jnvc",
+   "authority_name": "Ylave",
+   "target_codes": "nl-jcfc4k",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (B192)",
+   "name_variants_add": "Ylave | Ylabe"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-yx3wbx",
+   "authority_name": "Pacífico",
+   "target_codes": "nl-ggs2a7",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (row 69)",
+   "name_variants_add": ""
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-s8h5xv",
+   "authority_name": "Pacific Ocean",
+   "target_codes": "nl-ggs2a7",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (row 70)"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-9yqtxw",
+   "authority_name": "Mar Pacífico",
+   "target_codes": "nl-ggs2a7",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (row 71)"
+  },
+  {
+   "op": "merge-place",
+   "authority_code": "nl-spe87b",
+   "authority_name": "Pacific Sea",
+   "target_codes": "nl-ggs2a7",
+   "label_to_keep": "",
+   "changelog_note": "Place merge list place-merges-final.csv, ruled 2026-10-24 (row 72)"
+  }
+ ],
+ "expected": {
+  "places": [
+   {
+    "id": "06598ff5-88a5-426e-bfce-08fcba46d6d5",
+    "place_code": "nl-4emzb7",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+    "label": "La Habana",
+    "display_name": "La Habana",
+    "name_variants": "[\"La Havana\"]",
+    "tgn_id": "1001206",
+    "hgis_id": "territorios892:139920",
+    "whg_id": "139920",
+    "latitude": 23.13,
+    "longitude": -82.37,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+    "place_code": "nl-nw4c7t",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "label": "Huachipa",
+    "display_name": "Huachipa",
+    "name_variants": "[\"Huachipas\"]",
+    "tgn_id": "1024512",
+    "hgis_id": "lugares13k_rel:14164238",
+    "whg_id": "177581",
+    "latitude": -12.018079,
+    "longitude": -76.94768,
+    "coordinate_precision": ""
+   },
+   {
+    "id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "place_code": "nl-jcfc4k",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": null,
+    "label": "Ilabe",
+    "display_name": "Ilabe",
+    "name_variants": "[\"Ilave\",\"Ylave\",\"Ylabe\"]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -16.08,
+    "longitude": -69.64,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "33795e81-ec92-4974-a11f-bc58316554b6",
+    "place_code": "nl-yx3wbx",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "label": "Pacífico",
+    "display_name": "Pacífico",
+    "name_variants": "[\"Pacific\"]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": 0,
+    "longitude": -85,
+    "coordinate_precision": "uncertain"
+   },
+   {
+    "id": "4422273a-05c7-4f6e-a389-ea653a543a7c",
+    "place_code": "nl-spe87b",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "label": "Pacific Sea",
+    "display_name": "Pacific Sea",
+    "name_variants": "[]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": null,
+    "longitude": null,
+    "coordinate_precision": ""
+   },
+   {
+    "id": "443b9b64-d153-462b-b21d-6f99938a920e",
+    "place_code": "nl-zpc9mm",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "label": "Chancayllo",
+    "display_name": "Chancayllo",
+    "name_variants": "[]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -11.56,
+    "longitude": -77.27,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "44e29637-2f79-474e-bbac-b3e91b326663",
+    "place_code": "nl-s8h5xv",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "label": "Pacific Ocean",
+    "display_name": "Pacific Ocean",
+    "name_variants": "[]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -5,
+    "longitude": -85,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+    "place_code": "nl-75jnvc",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "label": "Ylave",
+    "display_name": "Ylave",
+    "name_variants": "[\"Ylabe\"]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -16.082,
+    "longitude": -69.649,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "place_code": "nl-ggs2a7",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": null,
+    "label": "Océano Pacífico",
+    "display_name": "Océano Pacífico",
+    "name_variants": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -15,
+    "longitude": -90,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "b21dc2ad-bc86-46a8-ad92-916f5c3cf4c3",
+    "place_code": "nl-9yqtxw",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "label": "Mar Pacífico",
+    "display_name": "Mar Pacífico",
+    "name_variants": "[]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -10,
+    "longitude": -80,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "place_code": "nl-xnfbx4",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": null,
+    "label": "Chancaillo",
+    "display_name": "Chancaillo",
+    "name_variants": "[\"Chancayllo\"]",
+    "tgn_id": null,
+    "hgis_id": null,
+    "whg_id": null,
+    "latitude": -11.56,
+    "longitude": -77.27,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+    "place_code": "nl-2gfhvm",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": null,
+    "label": "La Habana",
+    "display_name": "La Habana",
+    "name_variants": "[\"Havana\",\"La Havana\",\"Habana\"]",
+    "tgn_id": "1001206",
+    "hgis_id": "territorios892:139920",
+    "whg_id": "139920",
+    "latitude": 23.136,
+    "longitude": -82.383,
+    "coordinate_precision": "approximate"
+   },
+   {
+    "id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "place_code": "nl-96wh4w",
+    "updated_at": 1792884549405,
+    "tenant_id": null,
+    "merged_into": null,
+    "label": "Huachipa",
+    "display_name": "Huachipa",
+    "name_variants": "[\"Huachipas\",\"Guachipa\"]",
+    "tgn_id": "1024512",
+    "hgis_id": "lugares13k_rel:14164238",
+    "whg_id": "177581",
+    "latitude": -12.018079,
+    "longitude": -76.94768,
+    "coordinate_precision": null
+   }
+  ],
+  "links": [
+   {
+    "id": "02f30044-1202-41cc-8bf9-1693b6b5eb8c",
+    "place_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "description_id": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "0e502066-2368-42b0-88e3-d4d80df1a533",
+    "place_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "description_id": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "33bbaa36-7fc4-4727-90f4-abfef875e64d",
+    "place_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "description_id": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "41a22d15-640e-451c-abbf-67e0f5f39044",
+    "place_id": null
+   },
+   {
+    "id": "53afaf26-c54c-4285-b16a-1a84f0020a40",
+    "place_id": null
+   },
+   {
+    "id": "8064b814-cac7-48eb-af39-3cb3bca34f98",
+    "place_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "description_id": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "993d8f3e-8a81-4bd1-b066-c38bb0f7fb09",
+    "place_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "description_id": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "9c35c341-e43a-49a3-8ed1-a15f50dfc248",
+    "place_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "description_id": "f7145486-97e6-403e-b61a-efce253dc2f6",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "9d849d52-a8e9-42bd-bf67-32b32c68059e",
+    "place_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "description_id": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "b3bbc57b-ef97-4d7f-9027-c464d1f41ef7",
+    "place_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "description_id": "6586eef8-062d-46c5-a342-7a231859de27",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "b87b2542-f08d-450b-b72c-1f085b0172e5",
+    "place_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "description_id": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "c5db0091-b0e3-48f0-af33-1471f46c4c97",
+    "place_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "description_id": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   },
+   {
+    "id": "d0a47424-1e08-4d18-a63c-ad42d1128069",
+    "place_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "description_id": "2c2056ae-7751-40cb-9d41-2e1928285687",
+    "role": "mentioned",
+    "role_note": "",
+    "role_raw": "mentioned",
+    "created_at": 1777844551
+   }
+  ],
+  "ledger": [
+   {
+    "source_id": "06598ff5-88a5-426e-bfce-08fcba46d6d5",
+    "target_id": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+    "movedLinks": 0,
+    "droppedLinks": [],
+    "carried": {
+     "tgnId": "1001206",
+     "hgisId": "territorios892:139920",
+     "whgId": "139920"
+    }
+   },
+   {
+    "source_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+    "target_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "movedLinks": 5,
+    "droppedLinks": [],
+    "carried": {
+     "tgnId": "1024512",
+     "hgisId": "lugares13k_rel:14164238",
+     "whgId": "177581",
+     "coordinates": "-12.018079,-76.94768 (no precision)"
+    }
+   },
+   {
+    "source_id": "33795e81-ec92-4974-a11f-bc58316554b6",
+    "target_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "movedLinks": 0,
+    "droppedLinks": [],
+    "carried": null
+   },
+   {
+    "source_id": "4422273a-05c7-4f6e-a389-ea653a543a7c",
+    "target_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "movedLinks": 0,
+    "droppedLinks": [],
+    "carried": null
+   },
+   {
+    "source_id": "443b9b64-d153-462b-b21d-6f99938a920e",
+    "target_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "movedLinks": 3,
+    "droppedLinks": [],
+    "carried": {
+     "coordinates": "-11.56,-77.27 (approximate)"
+    }
+   },
+   {
+    "source_id": "44e29637-2f79-474e-bbac-b3e91b326663",
+    "target_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "movedLinks": 0,
+    "droppedLinks": [],
+    "carried": null
+   },
+   {
+    "source_id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+    "target_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "movedLinks": 1,
+    "droppedLinks": [
+     {
+      "id": "41a22d15-640e-451c-abbf-67e0f5f39044",
+      "descriptionId": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+      "placeId": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+      "role": "mentioned",
+      "roleNote": "",
+      "roleRaw": "mentioned",
+      "createdAt": 1777844551
+     },
+     {
+      "id": "53afaf26-c54c-4285-b16a-1a84f0020a40",
+      "descriptionId": "6586eef8-062d-46c5-a342-7a231859de27",
+      "placeId": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+      "role": "mentioned",
+      "roleNote": "",
+      "roleRaw": "mentioned",
+      "createdAt": 1777844551
+     }
+    ],
+    "carried": null
+   },
+   {
+    "source_id": "b21dc2ad-bc86-46a8-ad92-916f5c3cf4c3",
+    "target_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "movedLinks": 0,
+    "droppedLinks": [],
+    "carried": null
+   }
+  ],
+  "journal": [
+   {
+    "record_type": "description",
+    "record_id": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+    "kind": "link",
+    "diff": {
+     "id": "b87b2542-f08d-450b-b72c-1f085b0172e5",
+     "descriptionId": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+     "placeId": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+    "kind": "unlink",
+    "diff": {
+     "id": "b87b2542-f08d-450b-b72c-1f085b0172e5",
+     "descriptionId": "211f9bb9-e8ef-46f7-be41-0079beb5443d",
+     "placeId": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "2c2056ae-7751-40cb-9d41-2e1928285687",
+    "kind": "link",
+    "diff": {
+     "id": "d0a47424-1e08-4d18-a63c-ad42d1128069",
+     "descriptionId": "2c2056ae-7751-40cb-9d41-2e1928285687",
+     "placeId": "d885ce54-0052-42d5-b476-f6f992f82885",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "2c2056ae-7751-40cb-9d41-2e1928285687",
+    "kind": "unlink",
+    "diff": {
+     "id": "d0a47424-1e08-4d18-a63c-ad42d1128069",
+     "descriptionId": "2c2056ae-7751-40cb-9d41-2e1928285687",
+     "placeId": "443b9b64-d153-462b-b21d-6f99938a920e",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+    "kind": "link",
+    "diff": {
+     "id": "c5db0091-b0e3-48f0-af33-1471f46c4c97",
+     "descriptionId": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+     "placeId": "d885ce54-0052-42d5-b476-f6f992f82885",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+    "kind": "unlink",
+    "diff": {
+     "id": "c5db0091-b0e3-48f0-af33-1471f46c4c97",
+     "descriptionId": "5183bbca-6fcf-4d2f-af80-b253cae23dcc",
+     "placeId": "443b9b64-d153-462b-b21d-6f99938a920e",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+    "kind": "link",
+    "diff": {
+     "id": "8064b814-cac7-48eb-af39-3cb3bca34f98",
+     "descriptionId": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+     "placeId": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+    "kind": "unlink",
+    "diff": {
+     "id": "8064b814-cac7-48eb-af39-3cb3bca34f98",
+     "descriptionId": "5b9f436b-c8b0-4e3e-ac04-00602b8066e6",
+     "placeId": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+    "kind": "link",
+    "diff": {
+     "id": "02f30044-1202-41cc-8bf9-1693b6b5eb8c",
+     "descriptionId": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+     "placeId": "d885ce54-0052-42d5-b476-f6f992f82885",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+    "kind": "unlink",
+    "diff": {
+     "id": "02f30044-1202-41cc-8bf9-1693b6b5eb8c",
+     "descriptionId": "5c7673eb-453d-4e7c-a6a5-0bd6f49ec438",
+     "placeId": "443b9b64-d153-462b-b21d-6f99938a920e",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "6586eef8-062d-46c5-a342-7a231859de27",
+    "kind": "unlink",
+    "diff": {
+     "id": "53afaf26-c54c-4285-b16a-1a84f0020a40",
+     "descriptionId": "6586eef8-062d-46c5-a342-7a231859de27",
+     "placeId": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+    "kind": "unlink",
+    "diff": {
+     "id": "41a22d15-640e-451c-abbf-67e0f5f39044",
+     "descriptionId": "8016e45c-a50c-4f29-8ad5-c74ff5e0b333",
+     "placeId": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+    "kind": "link",
+    "diff": {
+     "id": "0e502066-2368-42b0-88e3-d4d80df1a533",
+     "descriptionId": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+     "placeId": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+    "kind": "unlink",
+    "diff": {
+     "id": "0e502066-2368-42b0-88e3-d4d80df1a533",
+     "descriptionId": "a4cbb466-fe58-4089-96d2-2c99d6be3505",
+     "placeId": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+    "kind": "link",
+    "diff": {
+     "id": "9d849d52-a8e9-42bd-bf67-32b32c68059e",
+     "descriptionId": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+     "placeId": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+    "kind": "unlink",
+    "diff": {
+     "id": "9d849d52-a8e9-42bd-bf67-32b32c68059e",
+     "descriptionId": "af7b084e-3b19-4428-891b-abdb5dcf6afe",
+     "placeId": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+    "kind": "link",
+    "diff": {
+     "id": "33bbaa36-7fc4-4727-90f4-abfef875e64d",
+     "descriptionId": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+     "placeId": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+    "kind": "unlink",
+    "diff": {
+     "id": "33bbaa36-7fc4-4727-90f4-abfef875e64d",
+     "descriptionId": "b1b2de72-77ec-43a9-a34a-1d6c4eed044c",
+     "placeId": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "f7145486-97e6-403e-b61a-efce253dc2f6",
+    "kind": "link",
+    "diff": {
+     "id": "9c35c341-e43a-49a3-8ed1-a15f50dfc248",
+     "descriptionId": "f7145486-97e6-403e-b61a-efce253dc2f6",
+     "placeId": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "description",
+    "record_id": "f7145486-97e6-403e-b61a-efce253dc2f6",
+    "kind": "unlink",
+    "diff": {
+     "id": "9c35c341-e43a-49a3-8ed1-a15f50dfc248",
+     "descriptionId": "f7145486-97e6-403e-b61a-efce253dc2f6",
+     "placeId": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+     "role": "mentioned",
+     "roleNote": "",
+     "roleRaw": "mentioned",
+     "createdAt": 1777844551
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "06598ff5-88a5-426e-bfce-08fcba46d6d5",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "db455f30-7b95-4798-8e75-7dd73af7a3e8"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "172ceea1-155e-45a1-b5a0-ba1e49f0d2c3",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "e69ec5b8-0674-4ead-8b11-990b68bbe055"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "2299d84e-7126-4c8c-8c34-525d3dc8c036",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Ilave\"]",
+      "new": "[\"Ilave\",\"Ylave\",\"Ylabe\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "33795e81-ec92-4974-a11f-bc58316554b6",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "7e206eb5-1c24-4cc5-b272-808942dd9979"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "4422273a-05c7-4f6e-a389-ea653a543a7c",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "7e206eb5-1c24-4cc5-b272-808942dd9979"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "443b9b64-d153-462b-b21d-6f99938a920e",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "d885ce54-0052-42d5-b476-f6f992f82885"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "44e29637-2f79-474e-bbac-b3e91b326663",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "7e206eb5-1c24-4cc5-b272-808942dd9979"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "7d20733e-1fc6-4765-b0b5-0c94ade3a421",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "2299d84e-7126-4c8c-8c34-525d3dc8c036"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+      "new": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+      "new": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+      "new": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "7e206eb5-1c24-4cc5-b272-808942dd9979",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]",
+      "new": "[\"Mar Pacífico\",\"Pacific\",\"Pacific Ocean\",\"Pacific Sea\",\"Pacífico\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "b21dc2ad-bc86-46a8-ad92-916f5c3cf4c3",
+    "kind": "update",
+    "diff": {
+     "mergedInto": {
+      "old": null,
+      "new": "7e206eb5-1c24-4cc5-b272-808942dd9979"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "kind": "update",
+    "diff": {
+     "latitude": {
+      "old": null,
+      "new": -11.56
+     },
+     "longitude": {
+      "old": null,
+      "new": -77.27
+     },
+     "coordinatePrecision": {
+      "old": "",
+      "new": "approximate"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "d885ce54-0052-42d5-b476-f6f992f82885",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[]",
+      "new": "[\"Chancayllo\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+    "kind": "update",
+    "diff": {
+     "label": {
+      "old": "Habana",
+      "new": "La Habana"
+     },
+     "displayName": {
+      "old": "Habana",
+      "new": "La Habana"
+     },
+     "nameVariants": {
+      "old": "[\"Havana\",\"La Habana\",\"La Havana\"]",
+      "new": "[\"Havana\",\"La Havana\",\"Habana\"]"
+     },
+     "tgnId": {
+      "old": null,
+      "new": "1001206"
+     },
+     "hgisId": {
+      "old": null,
+      "new": "territorios892:139920"
+     },
+     "whgId": {
+      "old": null,
+      "new": "139920"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "db455f30-7b95-4798-8e75-7dd73af7a3e8",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[\"Havana\",\"La Habana\",\"La Havana\"]",
+      "new": "[\"Havana\",\"La Habana\",\"La Havana\"]"
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "kind": "update",
+    "diff": {
+     "label": {
+      "old": "Guachipa",
+      "new": "Huachipa"
+     },
+     "displayName": {
+      "old": "Guachipa",
+      "new": "Huachipa"
+     },
+     "nameVariants": {
+      "old": "[\"Huachipa\",\"Huachipas\"]",
+      "new": "[\"Huachipas\",\"Guachipa\"]"
+     },
+     "tgnId": {
+      "old": null,
+      "new": "1024512"
+     },
+     "hgisId": {
+      "old": null,
+      "new": "lugares13k_rel:14164238"
+     },
+     "whgId": {
+      "old": null,
+      "new": "177581"
+     },
+     "latitude": {
+      "old": null,
+      "new": -12.018079
+     },
+     "longitude": {
+      "old": null,
+      "new": -76.94768
+     },
+     "coordinatePrecision": {
+      "old": "",
+      "new": null
+     }
+    }
+   },
+   {
+    "record_type": "place",
+    "record_id": "e69ec5b8-0674-4ead-8b11-990b68bbe055",
+    "kind": "update",
+    "diff": {
+     "nameVariants": {
+      "old": "[]",
+      "new": "[\"Huachipa\",\"Huachipas\"]"
+     }
+    }
+   }
+  ]
+ }
+}

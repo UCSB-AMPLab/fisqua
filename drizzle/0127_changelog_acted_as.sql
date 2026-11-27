@@ -1,0 +1,24 @@
+-- How the actor of a changelog row acted.
+--
+-- This migration adds `acted_as` to `changelog`. The command line lets a
+-- user act on a workspace they are not a user of: a platform admin, on
+-- any live workspace of kind `tenant`, and the workspace admin of a
+-- federation's lead tenant, on a member of that federation. A changelog
+-- row written by such a run records which of the two the actor acted
+-- as, beside `user_id`:
+--
+--   - `platform-admin`: the actor acted as a platform admin;
+--   - `lead-admin`: the actor acted as the admin of the federation's
+--     lead workspace, on a member;
+--   - NULL: the actor is a user of the workspace, or the row was written
+--     by the app.
+--
+-- The column is nullable with no default, and the CHECK takes only the
+-- two values or NULL. Every existing row reads NULL, and the app's
+-- writes, which never name the column, go on writing NULL.
+--
+-- The migration writes no row. `changelog` is append-only (0063); adding
+-- a column updates no row, so its triggers do not fire.
+--
+-- Version: v0.9.0
+ALTER TABLE changelog ADD COLUMN acted_as TEXT CHECK (acted_as IS NULL OR acted_as IN ('platform-admin', 'lead-admin'));
