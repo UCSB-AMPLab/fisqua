@@ -13,7 +13,7 @@
  * here so downstream test files share a single import surface for
  * tenant-aware fixtures.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
@@ -88,6 +88,8 @@ export async function applyMigrations() {
       "provider_name TEXT, " +
       "provider_url TEXT, " +
       "mets_base_url TEXT, " +
+      // Default interface language (migration 0113). Nullable.
+      "default_locale TEXT CHECK (default_locale IS NULL OR default_locale IN ('en','es')), " +
       // SQLite CHECK only rejects on FALSE (not NULL). The second
       // branch must explicitly guard descriptive_standard IS NOT NULL
       // so that `kind='tenant', descriptive_standard=NULL` does not
@@ -138,7 +140,34 @@ export async function applyMigrations() {
       "manifest_base_url TEXT, " +
       "storage_secret_prefix TEXT, " +
       // The optional review-tiles bucket (migration 0097).
-      "pipeline_review_tiles_bucket TEXT" +
+      "pipeline_review_tiles_bucket TEXT, " +
+      // The publisher the METS creator agent names (migration 0118).
+      "publisher_name TEXT, " +
+      "publisher_tax_id TEXT, " +
+      "publisher_location TEXT, " +
+      "publisher_url TEXT, " +
+      // The rest of the publisher record (migration 0119).
+      "publisher_email TEXT, " +
+      "publisher_logo_key TEXT, " +
+      "description_es TEXT, " +
+      "description_en TEXT, " +
+      "terms_of_use_es TEXT, " +
+      "terms_of_use_en TEXT, " +
+      "privacy_es TEXT, " +
+      "privacy_en TEXT, " +
+      "takedown_es TEXT, " +
+      "takedown_en TEXT, " +
+      // The citation templates and the licence move (migration 0120): the
+      // site template is for the colophon, the record template for
+      // description pages; the catalogue licence is on repositories.
+      "citation_template_site_es TEXT, " +
+      "citation_template_site_en TEXT, " +
+      "citation_template_record_es TEXT, " +
+      "citation_template_record_en TEXT, " +
+      // Where the materials are hosted, used in the attribution line
+      // (migration 0122).
+      "hosting_statement_es TEXT, " +
+      "hosting_statement_en TEXT" +
     ")",
   );
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS federations_slug_idx ON federations(slug)");
@@ -155,8 +184,9 @@ export async function applyMigrations() {
   // order), plus the three notification/language preference columns
   // migration 0074 adds: digest_frequency (default 'hourly'),
   // last_digest_at (the sweep's per-user clock) and locale, and the
-  // four area-admin flags migration 0107 adds after is_cataloguer.
-  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, is_records_admin INTEGER NOT NULL DEFAULT 0, is_authorities_admin INTEGER NOT NULL DEFAULT 0, is_imports_admin INTEGER NOT NULL DEFAULT 0, is_digitization_admin INTEGER NOT NULL DEFAULT 0, digest_frequency TEXT NOT NULL DEFAULT 'hourly', last_digest_at INTEGER, locale TEXT, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
+  // four area-admin flags migration 0107 adds after is_cataloguer, and
+  // the platform-admin flag migration 0114 adds.
+  await db.exec("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, email TEXT NOT NULL UNIQUE, name TEXT, is_admin INTEGER NOT NULL DEFAULT 0, is_super_admin INTEGER NOT NULL DEFAULT 0, is_collab_admin INTEGER NOT NULL DEFAULT 0, is_archive_user INTEGER NOT NULL DEFAULT 0, is_user_manager INTEGER NOT NULL DEFAULT 0, is_cataloguer INTEGER NOT NULL DEFAULT 0, is_records_admin INTEGER NOT NULL DEFAULT 0, is_authorities_admin INTEGER NOT NULL DEFAULT 0, is_imports_admin INTEGER NOT NULL DEFAULT 0, is_digitization_admin INTEGER NOT NULL DEFAULT 0, is_platform_admin INTEGER NOT NULL DEFAULT 0, digest_frequency TEXT NOT NULL DEFAULT 'hourly', last_digest_at INTEGER, locale TEXT, last_active_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, github_id TEXT UNIQUE)");
 
   // federation_memberships (migration 0049): the grant join table.
   // Declared after users + federations so both FKs resolve. Both FKs are
@@ -175,8 +205,9 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS fed_memberships_federation_idx ON federation_memberships(federation_id)");
 
   // audit_log table mirrors drizzle/0037, with the action CHECK as
-  // 0101 and 0108 widen it (scanner_token; set_user_role,
-  // set_federation_role, set_project_membership, invite_user) — same 12 columns,
+  // 0101, 0108 and 0124 widen it (scanner_token; set_user_role,
+  // set_federation_role, set_project_membership, invite_user;
+  // capture_qc_decision) — same 12 columns,
   // mixed FK delete behaviours (actor_user_id ON DELETE SET NULL
   // paired with denormalised actor_user_id_text NOT NULL for
   // forensic continuity; actor_tenant_id and target_tenant_id ON
@@ -194,7 +225,8 @@ export async function applyMigrations() {
       "action TEXT NOT NULL CHECK (action IN (" +
         "'create_tenant','soft_disable_tenant','reset_superadmin','login_as'," +
         "'edit_on_behalf','set_capability','set_quota','scanner_token'," +
-        "'set_user_role','set_federation_role','set_project_membership','invite_user'" +
+        "'set_user_role','set_federation_role','set_project_membership','invite_user'," +
+        "'capture_qc_decision'" +
       ")), " +
       "target_tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, " +
       "target_object_kind TEXT, " +
@@ -357,8 +389,98 @@ export async function applyMigrations() {
 
   // Archival management tables. repositories carries tenant_id NOT
   // NULL FK after id.
-  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, manifest_rights TEXT, attribution_en TEXT, attribution_es TEXT)");
+  await db.exec("CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY NOT NULL, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, code TEXT NOT NULL, name TEXT NOT NULL, short_name TEXT, country_code TEXT DEFAULT 'COL', country TEXT, city TEXT, address TEXT, website TEXT, notes TEXT, rights_text TEXT, display_title TEXT, subtitle TEXT, hero_image_url TEXT, enabled INTEGER DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, manifest_rights TEXT, attribution_en TEXT, attribution_es TEXT, " +
+    // The English subtitle and the ISDIAH record (migration 0119).
+    "subtitle_en TEXT, " +
+    "other_names TEXT CHECK (other_names IS NULL OR (json_valid(other_names) AND json_type(other_names) = 'array')), " +
+    "institution_type TEXT, logo_key TEXT, region TEXT, postal_code TEXT, telephone TEXT, email TEXT, " +
+    "holdings_es TEXT, holdings_en TEXT, history_es TEXT, history_en TEXT, " +
+    "opening_times_es TEXT, opening_times_en TEXT, access_conditions_es TEXT, access_conditions_en TEXT, " +
+    "accessibility_es TEXT, accessibility_en TEXT, reproduction_services_es TEXT, reproduction_services_en TEXT, " +
+    "description_language TEXT, " +
+    // The catalogue licence URI and the home-page order (migration 0120).
+    "catalogue_licence_uri TEXT, " +
+    "home_order INTEGER, " +
+    // The credit statement pair (migration 0121).
+    "credit_statement_es TEXT, credit_statement_en TEXT)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS repo_code_idx ON repositories(tenant_id, code)");
+
+  // Institution records (migration 0119): a federation's credit lines and
+  // a repository's funders, deleted with their parent, and a federation's
+  // controlled lists and authority sources, which RESTRICT it.
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS federation_credits (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE CASCADE, " +
+      "name TEXT NOT NULL, " +
+      "role TEXT NOT NULL CHECK (role IN ('partner','funder','developer','host')), " +
+      "url TEXT, " +
+      "logo_key TEXT, " +
+      "position INTEGER NOT NULL DEFAULT 0" +
+    ")",
+  );
+  await db.exec("CREATE INDEX IF NOT EXISTS federation_credits_federation_idx ON federation_credits (federation_id, position)");
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS repository_funders (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE, " +
+      "name TEXT NOT NULL, " +
+      "programme TEXT, " +
+      "project_id TEXT, " +
+      "url TEXT, " +
+      "position INTEGER NOT NULL DEFAULT 0" +
+    ")",
+  );
+  await db.exec("CREATE INDEX IF NOT EXISTS repository_funders_repository_idx ON repository_funders (repository_id, position)");
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS vocabulary_values (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, " +
+      // The relation lists (migration 0125).
+      "list TEXT NOT NULL CHECK (list IN ('entity_type','place_type','entity_role','place_role','role_group','relation_role','link_attribute','gender')), " +
+      "code TEXT NOT NULL, " +
+      "label_es TEXT, " +
+      "label_en TEXT, " +
+      "group_code TEXT, " +
+      "position INTEGER NOT NULL DEFAULT 0, " +
+      "external_scheme TEXT, " +
+      "external_uri TEXT, " +
+      "external_label TEXT, " +
+      "status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('approved','proposed','deprecated')), " +
+      "created_at INTEGER NOT NULL, " +
+      "updated_at INTEGER NOT NULL, " +
+      // Connector, inverse, hide-when-group and the label forms (migration 0125).
+      "connector_es TEXT, " +
+      "connector_en TEXT, " +
+      "inverse_code TEXT, " +
+      "hide_when_group TEXT, " +
+      "label_es_female TEXT, " +
+      "label_es_male TEXT, " +
+      "label_es_unrecorded TEXT, " +
+      "label_es_alone TEXT, " +
+      "label_en_female TEXT, " +
+      "label_en_male TEXT, " +
+      "label_en_unrecorded TEXT, " +
+      "label_en_alone TEXT" +
+    ")",
+  );
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS vocabulary_values_federation_list_code_idx ON vocabulary_values (federation_id, list, code)");
+  await db.exec("CREATE INDEX IF NOT EXISTS vocabulary_values_position_idx ON vocabulary_values (federation_id, list, position)");
+  await db.exec(
+    "CREATE TABLE IF NOT EXISTS authority_sources (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, " +
+      "key TEXT NOT NULL, " +
+      "label_es TEXT, " +
+      "label_en TEXT, " +
+      "url_template TEXT, " +
+      "applies_to TEXT CHECK (applies_to IS NULL OR (json_valid(applies_to) AND json_type(applies_to) = 'array')), " +
+      "position INTEGER NOT NULL DEFAULT 0, " +
+      "status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('approved','proposed','deprecated'))" +
+    ")",
+  );
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS authority_sources_federation_key_idx ON authority_sources (federation_id, key)");
+  await db.exec("CREATE INDEX IF NOT EXISTS authority_sources_position_idx ON authority_sources (federation_id, position)");
 
   // descriptions carries the union-schema column set: 9 dead
   // columns dropped (related_materials), 6 new + 3 legacy_ids JSON
@@ -414,7 +536,9 @@ export async function applyMigrations() {
   // entities.tenant_id (migration 0067) is the OPTIONAL owner: NULL =
   // federation-shared, set = owned by that tenant. Nullable with a real
   // FK and no index, exactly as the migration adds it.
-  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY NOT NULL, federation_id TEXT NOT NULL REFERENCES federations(id) ON DELETE RESTRICT, tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT, entity_code TEXT, display_name TEXT NOT NULL, sort_name TEXT NOT NULL, surname TEXT, given_name TEXT, entity_type TEXT NOT NULL, honorific TEXT, primary_function TEXT, primary_function_id TEXT REFERENCES vocabulary_terms(id) ON DELETE SET NULL, name_variants TEXT DEFAULT '[]', dates_of_existence TEXT, date_start TEXT, date_end TEXT, history TEXT, functions TEXT, sources TEXT, merged_into TEXT, wikidata_id TEXT, viaf_id TEXT, dbe_id TEXT, legacy_ids TEXT NOT NULL DEFAULT '[]', notes TEXT, internal_notes TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, gender TEXT, known_only_from_relation INTEGER NOT NULL DEFAULT 0, qualified_name TEXT, name_key TEXT)");
+  // Migration 0129: the duplicate-candidate name key, indexed with the federation.
+  await db.exec("CREATE INDEX IF NOT EXISTS entities_name_key_idx ON entities(federation_id, name_key)");
   await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS entity_code_idx ON entities(federation_id, entity_code)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_sort_name_idx ON entities(sort_name)");
   await db.exec("CREATE INDEX IF NOT EXISTS entity_wikidata_idx ON entities(wikidata_id)");
@@ -486,10 +610,33 @@ export async function applyMigrations() {
       "VALUES (new.rowid, new.label, new.display_name, new.name_variants); END",
   );
 
-  await db.exec("CREATE TABLE IF NOT EXISTS description_entities (id TEXT PRIMARY KEY NOT NULL, description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE CASCADE, entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE RESTRICT, role TEXT NOT NULL, role_note TEXT, role_raw TEXT, sequence INTEGER DEFAULT 0 NOT NULL, honorific TEXT, function TEXT, name_as_recorded TEXT, created_at INTEGER NOT NULL)");
+  // Migration 0125: `function` became `attributes.office`; `related_to`
+  // and `relation_certainty` mark a relation side, and the unique index
+  // takes `related_to`.
+  await db.exec("CREATE TABLE IF NOT EXISTS description_entities (id TEXT PRIMARY KEY NOT NULL, description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE CASCADE, entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE RESTRICT, role TEXT NOT NULL, role_note TEXT, role_raw TEXT, sequence INTEGER DEFAULT 0 NOT NULL, honorific TEXT, name_as_recorded TEXT, created_at INTEGER NOT NULL, related_to TEXT REFERENCES description_entities(id) ON DELETE NO ACTION, relation_certainty TEXT CHECK (relation_certainty IS NULL OR relation_certainty IN ('doubtful','inferred','derived')), attributes TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(attributes) AND json_type(attributes) = 'object'))");
   await db.exec("CREATE INDEX IF NOT EXISTS de_desc_idx ON description_entities(description_id)");
   await db.exec("CREATE INDEX IF NOT EXISTS de_entity_role_idx ON description_entities(entity_id, role)");
-  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS de_unique_idx ON description_entities(description_id, entity_id, role)");
+  await db.exec("CREATE UNIQUE INDEX IF NOT EXISTS de_unique_idx ON description_entities(description_id, entity_id, role, COALESCE(related_to, ''))");
+  await db.exec("CREATE INDEX IF NOT EXISTS de_related_to_idx ON description_entities(related_to) WHERE related_to IS NOT NULL");
+
+  // Migration 0126: a relation side must name a link on its own description.
+  // The four triggers as the file creates them, each on one line.
+  await db.exec("CREATE TRIGGER IF NOT EXISTS description_entities_related_to_insert BEFORE INSERT ON description_entities WHEN ( NEW.related_to IS NOT NULL AND NEW.related_to IS NOT NEW.id AND NOT EXISTS ( SELECT 1 FROM description_entities AS named WHERE named.id = NEW.related_to AND named.description_id = NEW.description_id ) ) OR EXISTS ( SELECT 1 FROM description_entities AS naming WHERE naming.related_to = NEW.id AND naming.id IS NOT NEW.id AND naming.description_id IS NOT NEW.description_id ) BEGIN SELECT RAISE(ABORT, 'a relation side must name a link on its own description'); END;");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS description_entities_related_to_update BEFORE UPDATE OF related_to ON description_entities WHEN NEW.related_to IS NOT NULL AND NEW.related_to IS NOT NEW.id AND NOT EXISTS ( SELECT 1 FROM description_entities AS named WHERE named.id = NEW.related_to AND named.description_id = NEW.description_id ) BEGIN SELECT RAISE(ABORT, 'a relation side must name a link on its own description'); END;");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS description_entities_related_to_move BEFORE UPDATE OF description_id ON description_entities WHEN ( NEW.related_to IS NOT NULL AND NEW.related_to IS NOT NEW.id AND NOT EXISTS ( SELECT 1 FROM description_entities AS named WHERE named.id = NEW.related_to AND named.description_id = NEW.description_id ) ) OR EXISTS ( SELECT 1 FROM description_entities AS naming WHERE naming.related_to = NEW.id AND naming.id IS NOT NEW.id AND naming.description_id IS NOT NEW.description_id ) BEGIN SELECT RAISE(ABORT, 'a relation side must name a link on its own description'); END;");
+  await db.exec("CREATE TRIGGER IF NOT EXISTS description_entities_id_fixed BEFORE UPDATE OF id ON description_entities WHEN NEW.id IS NOT OLD.id BEGIN SELECT RAISE(ABORT, 'a link''s id cannot be changed'); END;");
+
+  // Migration 0129: the stored duplicate-candidate tables, as the file
+  // creates them. The marking triggers are not in the mirror, so the rest
+  // of the suite writes without marks; a suite that tests them calls
+  // `applyDuplicateRecheckTriggers()` from `tests/helpers/duplicate-recheck.ts`.
+  await db.exec("CREATE TABLE IF NOT EXISTS duplicate_recheck (seq INTEGER PRIMARY KEY AUTOINCREMENT, entity_id TEXT NOT NULL, description_id TEXT NOT NULL DEFAULT '', marked_at INTEGER NOT NULL, UNIQUE (entity_id, description_id))");
+  await db.exec("CREATE TABLE IF NOT EXISTS duplicate_name_deletions (federation_id TEXT NOT NULL, deletion TEXT NOT NULL, entity_id TEXT NOT NULL, PRIMARY KEY (federation_id, deletion, entity_id))");
+  await db.exec("CREATE INDEX IF NOT EXISTS duplicate_name_deletions_entity_idx ON duplicate_name_deletions(entity_id)");
+  await db.exec("CREATE TABLE IF NOT EXISTS duplicate_candidates (id_a TEXT NOT NULL, id_b TEXT NOT NULL, federation_id TEXT NOT NULL, tenant_id TEXT NOT NULL, facts TEXT NOT NULL, weight INTEGER NOT NULL, computed_at INTEGER NOT NULL, PRIMARY KEY (tenant_id, id_a, id_b))");
+  await db.exec("CREATE INDEX IF NOT EXISTS duplicate_candidates_weight_idx ON duplicate_candidates(tenant_id, weight DESC)");
+  await db.exec("CREATE INDEX IF NOT EXISTS duplicate_candidates_id_a_idx ON duplicate_candidates(id_a)");
+  await db.exec("CREATE INDEX IF NOT EXISTS duplicate_candidates_id_b_idx ON duplicate_candidates(id_b)");
 
   await db.exec("CREATE TABLE IF NOT EXISTS description_places (id TEXT PRIMARY KEY NOT NULL, description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE CASCADE, place_id TEXT NOT NULL REFERENCES places(id) ON DELETE RESTRICT, role TEXT NOT NULL, role_note TEXT, role_raw TEXT, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS dp_desc_idx ON description_places(description_id)");
@@ -503,10 +650,11 @@ export async function applyMigrations() {
   await db.exec("CREATE INDEX IF NOT EXISTS drafts_user_idx ON drafts(user_id)");
 
   // changelog carries the stewardship-journal columns (migration 0063:
-  // run_id + kind) and is append-only at the DB level — the harness
+  // run_id + kind), how a command line actor acted (migration 0127:
+  // acted_as, NULL for a member and the app), and is append-only at the DB level — the harness
   // installs the same RAISE(ABORT) triggers as production so journal
   // immutability is testable.
-  await db.exec("CREATE TABLE IF NOT EXISTS changelog (id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL, record_type TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), note TEXT, diff TEXT NOT NULL, run_id TEXT, kind TEXT NOT NULL DEFAULT 'update' CHECK (kind IN ('create','update','delete','link','unlink')), created_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS changelog (id TEXT PRIMARY KEY NOT NULL, record_id TEXT NOT NULL, record_type TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), note TEXT, diff TEXT NOT NULL, run_id TEXT, kind TEXT NOT NULL DEFAULT 'update' CHECK (kind IN ('create','update','delete','link','unlink')), created_at INTEGER NOT NULL, acted_as TEXT CHECK (acted_as IS NULL OR acted_as IN ('platform-admin', 'lead-admin')))");
   await db.exec("CREATE INDEX IF NOT EXISTS changelog_record_idx ON changelog(record_id, record_type, created_at)");
   await db.exec("CREATE INDEX IF NOT EXISTS changelog_run_idx ON changelog(run_id)");
   await db.exec(
@@ -542,9 +690,11 @@ export async function applyMigrations() {
   // export_runs carries four Cloudflare Workflows tracking columns
   // added in drizzle/0019_export_workflow.sql plus federation_id
   // (migration 0055: nullable-with-FK federation attribution for
-  // aggregated publish runs); this harness mirrors them so the test
+  // aggregated publish runs) and tenant_id (migration 0115: the
+  // workspace the run was started in) and step_log (migration 0117:
+  // each plan step's start and end); this harness mirrors them so the test
   // pool stays in sync with app/db/schema.ts.
-  await db.exec("CREATE TABLE IF NOT EXISTS export_runs (id TEXT PRIMARY KEY NOT NULL, triggered_by TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'pending', selected_fonds TEXT NOT NULL, selected_types TEXT NOT NULL, federation_id TEXT REFERENCES federations(id), current_step TEXT, steps_completed INTEGER NOT NULL DEFAULT 0, total_steps INTEGER NOT NULL DEFAULT 0, record_counts TEXT, workflow_instance_id TEXT, current_step_started_at INTEGER, current_step_completed_at INTEGER, last_heartbeat_at INTEGER, error_message TEXT, started_at INTEGER, completed_at INTEGER, created_at INTEGER NOT NULL)");
+  await db.exec("CREATE TABLE IF NOT EXISTS export_runs (id TEXT PRIMARY KEY NOT NULL, triggered_by TEXT NOT NULL REFERENCES users(id), tenant_id TEXT REFERENCES tenants(id), status TEXT NOT NULL DEFAULT 'pending', selected_fonds TEXT NOT NULL, selected_types TEXT NOT NULL, federation_id TEXT REFERENCES federations(id), current_step TEXT, steps_completed INTEGER NOT NULL DEFAULT 0, total_steps INTEGER NOT NULL DEFAULT 0, record_counts TEXT, step_log TEXT, workflow_instance_id TEXT, current_step_started_at INTEGER, current_step_completed_at INTEGER, last_heartbeat_at INTEGER, error_message TEXT, started_at INTEGER, completed_at INTEGER, created_at INTEGER NOT NULL)");
   await db.exec("CREATE INDEX IF NOT EXISTS export_runs_status_idx ON export_runs(status)");
   await db.exec("CREATE INDEX IF NOT EXISTS export_runs_created_idx ON export_runs(created_at)");
 
@@ -857,6 +1007,9 @@ export async function cleanDatabase() {
   await db.exec("DROP TRIGGER IF EXISTS audit_log_no_update");
   await db.exec("DROP TRIGGER IF EXISTS audit_log_no_delete");
   await db.exec("DELETE FROM audit_log");
+  await db.exec("DELETE FROM duplicate_recheck");
+  await db.exec("DELETE FROM duplicate_name_deletions");
+  await db.exec("DELETE FROM duplicate_candidates");
   await db.exec(
     "CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log " +
       "WHEN NOT (" +
@@ -976,6 +1129,15 @@ export async function cleanDatabase() {
     // their set, and sets their delivery, so all four go before the
     // capture link's tables. Fetches (0100) RESTRICT their delivery.
     // Review runs (0103) RESTRICT their delivery, run and volume.
+    // Queue entries and operators (0112) RESTRICT scanners.
+    // Pairing (0123): codes RESTRICT tenants and SET NULL users; keys
+    // RESTRICT tenants.
+    "capture_pairing_limits",
+    "capture_pairing_codes",
+    "capture_scanner_keys",
+    "capture_queue_served",
+    "capture_queue_entries",
+    "capture_scanner_operators",
     "capture_review_runs",
     "capture_qc_fetches",
     "capture_qc_rotations",
@@ -983,6 +1145,7 @@ export async function cleanDatabase() {
     "capture_qc_sets",
     "capture_qc_reviewers",
     "capture_images",
+    "capture_calibration_shots",
     "capture_deliveries",
     "capture_scanners",
     // Publications (0088) RESTRICT volumes, runs and run volumes, so
@@ -1004,6 +1167,13 @@ export async function cleanDatabase() {
     "places",
     "entities",
     "vocabulary_terms",
+    // Institution records (0119): funders CASCADE with their repository
+    // and credits with their federation, but are wiped explicitly; values
+    // and sources RESTRICT their federation.
+    "repository_funders",
+    "federation_credits",
+    "vocabulary_values",
+    "authority_sources",
     "repositories",
     "projects",
     "magic_links",
@@ -1593,7 +1763,11 @@ const PIPELINE_PUBLICATIONS_DDL: readonly string[] = [
  * their route, a scanner only for a link delivery, and their openings,
  * and 0104's `review_declined_at` and 0110's `rejected_records` inline
  * at the end, in that order, where their ADD COLUMNs put them, as
- * 0109's `rotate_deg` is at the end of the images' columns.
+ * 0109's `rotate_deg` is at the end of the images' columns, and 0112's
+ * scanner `mode` and `mode_reported_at`, and 0123's `unit_name` and
+ * `device_id`, at the end of the scanners', and 0128's
+ * `calibration_status` and `calibration_skipped_reason` at the end of
+ * the deliveries', with its calibration shots last.
  * `applyMigrations()` runs them after
  * the pipeline volumes a delivery names.
  */
@@ -1612,6 +1786,10 @@ const CAPTURE_LINK_DDL: readonly string[] = [
   write_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  mode TEXT CHECK (mode IS NULL OR mode IN ('offline','backup','fisqua')),
+  mode_reported_at INTEGER,
+  unit_name TEXT,
+  device_id TEXT,
   CHECK (token_sha256 IS NOT NULL OR revoked_at IS NULL)
 )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS capture_scanners_tenant_idx ON capture_scanners (tenant_id)`,
@@ -1637,6 +1815,8 @@ const CAPTURE_LINK_DDL: readonly string[] = [
   write_id TEXT,
   review_declined_at INTEGER,
   rejected_records INTEGER NOT NULL DEFAULT 0 CHECK (rejected_records >= 0),
+  calibration_status TEXT CHECK (calibration_status IS NULL OR calibration_status IN ('present','skipped')),
+  calibration_skipped_reason TEXT CHECK (calibration_skipped_reason IS NULL OR calibration_status = 'skipped'),
   PRIMARY KEY (tenant_id, id),
   CHECK ((route = 'link') = (scanner_id IS NOT NULL)),
   CHECK ((state = 'superseded') = (superseded_by IS NOT NULL)),
@@ -1661,12 +1841,35 @@ const CAPTURE_LINK_DDL: readonly string[] = [
   preview_key TEXT,
   preview_sha256 TEXT CHECK (preview_sha256 IS NULL OR (length(preview_sha256) = 64 AND preview_sha256 NOT GLOB '*[^0-9a-f]*')),
   preview_bytes INTEGER,
-  record_status TEXT CHECK (record_status IS NULL OR record_status IN ('captured','in_review','approved','rejected')),
+  record_status TEXT CHECK (record_status IS NULL OR record_status IN ('captured','in_review','approved','rejected','excluded')),
   rotate_deg INTEGER CHECK (rotate_deg IS NULL OR rotate_deg IN (0, 90, 180, 270)),
   FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
   CHECK ((preview_key IS NULL) = (preview_sha256 IS NULL))
 )`,
   `CREATE INDEX IF NOT EXISTS capture_images_delivery_idx ON capture_images (tenant_id, delivery_id)`,
+  // 0128
+  `CREATE TABLE IF NOT EXISTS capture_calibration_shots (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  delivery_id TEXT NOT NULL,
+  seq INTEGER NOT NULL CHECK (seq >= 1),
+  capture_id TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  camera TEXT NOT NULL,
+  captured_at TEXT NOT NULL,
+  settings TEXT NOT NULL CHECK (json_valid(settings) AND json_type(settings) = 'object'),
+  applies_from_capture_id TEXT NOT NULL,
+  capture_key TEXT NOT NULL,
+  capture_sha256 TEXT NOT NULL CHECK (length(capture_sha256) = 64 AND capture_sha256 NOT GLOB '*[^0-9a-f]*'),
+  capture_bytes INTEGER,
+  preview_key TEXT,
+  preview_sha256 TEXT CHECK (preview_sha256 IS NULL OR (length(preview_sha256) = 64 AND preview_sha256 NOT GLOB '*[^0-9a-f]*')),
+  preview_bytes INTEGER,
+  rotate_deg INTEGER CHECK (rotate_deg IS NULL OR rotate_deg IN (0, 90, 180, 270)),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
+  CHECK ((preview_key IS NULL) = (preview_sha256 IS NULL))
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_calibration_shots_delivery_idx ON capture_calibration_shots (tenant_id, delivery_id, seq)`,
 ];
 
 /**
@@ -1674,7 +1877,9 @@ const CAPTURE_LINK_DDL: readonly string[] = [
  * statement by statement, as migration 0094 creates them and 0096
  * gives the rotations their key, which includes the image's role; and,
  * as 0100 adds them, the set's `carried_from`, the decision's
- * `set_revision`, the unit's fetches and the images' index by record.
+ * `set_revision`, the unit's fetches and the images' index by record;
+ * and, as 0111 rebuilds them, the `excluded` decision and the set's
+ * `excluded_count`.
  * The images' `record_status` (0100) is in the capture link's table.
  * The review runs of a delivery (0103) close the list. `applyMigrations()` runs them after the
  * capture link's tables.
@@ -1691,6 +1896,7 @@ const CAPTURE_QC_DDL: readonly string[] = [
   decided_count INTEGER NOT NULL DEFAULT 0,
   approved_count INTEGER NOT NULL DEFAULT 0,
   rejected_count INTEGER NOT NULL DEFAULT 0,
+  excluded_count INTEGER NOT NULL DEFAULT 0,
   notes_bytes INTEGER NOT NULL DEFAULT 0 CHECK (notes_bytes <= 1000000),
   state TEXT NOT NULL CHECK (state IN ('in_capture_qc','retakes_requested','approved')),
   state_entered_at INTEGER NOT NULL,
@@ -1698,7 +1904,7 @@ const CAPTURE_QC_DDL: readonly string[] = [
   carried_from TEXT,
   PRIMARY KEY (tenant_id, delivery_id),
   FOREIGN KEY (tenant_id, delivery_id) REFERENCES capture_deliveries(tenant_id, id) ON DELETE RESTRICT,
-  CHECK (approved_count + rejected_count = decided_count AND decided_count <= opening_count)
+  CHECK (approved_count + rejected_count + excluded_count = decided_count AND decided_count <= opening_count)
 )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS capture_qc_sets_decisions_idx ON capture_qc_sets (tenant_id, decisions_id)`,
   `CREATE INDEX IF NOT EXISTS capture_qc_sets_volume_idx ON capture_qc_sets (tenant_id, pipeline_volume_id)`,
@@ -1706,7 +1912,7 @@ const CAPTURE_QC_DDL: readonly string[] = [
   tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
   delivery_id TEXT NOT NULL,
   captua_record_id INTEGER NOT NULL,
-  decision TEXT NOT NULL CHECK (decision IN ('approved','rejected')),
+  decision TEXT NOT NULL CHECK (decision IN ('approved','rejected','excluded')),
   reason TEXT CHECK (reason IS NULL OR reason IN ('blur','glare','shadow','focus','exposure','dirt','framing','obstruction','other')),
   note TEXT CHECK (note IS NULL OR length(note) BETWEEN 1 AND 2000),
   decided_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -1779,6 +1985,99 @@ const CAPTURE_QC_DDL: readonly string[] = [
 )`,
   `CREATE INDEX IF NOT EXISTS capture_review_runs_delivery_idx ON capture_review_runs (tenant_id, delivery_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS capture_review_runs_volume_idx ON capture_review_runs (tenant_id, pipeline_volume_id, created_at)`,
+  // 0112
+  `CREATE TABLE IF NOT EXISTS capture_scanner_operators (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  scanner_id TEXT NOT NULL REFERENCES capture_scanners(id) ON DELETE RESTRICT,
+  username TEXT NOT NULL CHECK (length(username) BETWEEN 1 AND 256),
+  display_name TEXT NOT NULL CHECK (length(display_name) <= 256),
+  role TEXT NOT NULL CHECK (role IN ('admin','operator')),
+  active INTEGER NOT NULL CHECK (active IN (0,1)),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (scanner_id, username)
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_scanner_operators_tenant_idx ON capture_scanner_operators (tenant_id, scanner_id)`,
+  `CREATE TABLE IF NOT EXISTS capture_queue_entries (
+  id TEXT PRIMARY KEY NOT NULL,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  description_id TEXT NOT NULL REFERENCES descriptions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'queue' CHECK (origin IN ('queue','retake')),
+  action TEXT NOT NULL DEFAULT 'full-digitisation'
+    CHECK (action IN ('full-digitisation','full-rescan','spot-recapture','complete')),
+  note TEXT CHECK (note IS NULL OR length(note) <= 2000),
+  scanner_id TEXT REFERENCES capture_scanners(id) ON DELETE RESTRICT,
+  assignee_username TEXT,
+  added_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  added_at INTEGER NOT NULL,
+  changed_at INTEGER NOT NULL,
+  withdrawn_at INTEGER,
+  applied_at INTEGER,
+  collection_id TEXT,
+  skipped_at INTEGER,
+  skipped_reason TEXT CHECK (skipped_reason IS NULL OR length(skipped_reason) <= 2000),
+  acked_revision INTEGER,
+  revived_stamp INTEGER,
+  CHECK (assignee_username IS NULL OR scanner_id IS NOT NULL),
+  CHECK ((skipped_at IS NULL) = (skipped_reason IS NULL))
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_queue_entries_description_idx ON capture_queue_entries (tenant_id, description_id)`,
+  `CREATE INDEX IF NOT EXISTS capture_queue_entries_position_idx ON capture_queue_entries (tenant_id, position)`,
+  `CREATE INDEX IF NOT EXISTS capture_queue_entries_scanner_idx ON capture_queue_entries (tenant_id, scanner_id)`,
+  `CREATE TABLE IF NOT EXISTS capture_queue_served (
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  scanner_id TEXT NOT NULL REFERENCES capture_scanners(id) ON DELETE RESTRICT,
+  revision TEXT NOT NULL CHECK (length(revision) <= 64),
+  stamp INTEGER NOT NULL,
+  served_at INTEGER NOT NULL,
+  PRIMARY KEY (scanner_id, revision)
+)`,
+  `CREATE INDEX IF NOT EXISTS pipeline_run_chunks_tenant_idx ON pipeline_run_chunks (tenant_id, status)`,
+  `CREATE INDEX IF NOT EXISTS pipeline_run_volumes_tenant_idx ON pipeline_run_volumes (tenant_id, status, reported_at)`,
+  `CREATE INDEX IF NOT EXISTS descriptions_tenant_updated_idx ON descriptions (tenant_id, updated_at)`,
+  // 0116
+  `CREATE INDEX IF NOT EXISTS descriptions_tenant_root_id_idx ON descriptions (tenant_id, root_description_id, id)`,
+  `CREATE INDEX IF NOT EXISTS capture_queue_served_age_idx ON capture_queue_served (tenant_id, scanner_id, served_at)`,
+  // 0123
+  `CREATE TABLE IF NOT EXISTS capture_pairing_codes (
+  id TEXT PRIMARY KEY NOT NULL,
+  code_sha256 TEXT NOT NULL,
+  collect_secret_sha256 TEXT NOT NULL,
+  unit_name TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  current_tenant TEXT,
+  state TEXT NOT NULL CHECK (state IN ('waiting','approved','collected','void')),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  tenant_id TEXT REFERENCES tenants(id) ON DELETE RESTRICT,
+  approved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  approved_at INTEGER,
+  collect_by INTEGER,
+  scanner_revision_seen INTEGER,
+  keys_revision_seen INTEGER,
+  collected_at INTEGER,
+  poll_window_start INTEGER,
+  poll_window_calls INTEGER NOT NULL DEFAULT 0
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS capture_pairing_codes_code_idx ON capture_pairing_codes (code_sha256)`,
+  `CREATE INDEX IF NOT EXISTS capture_pairing_codes_expires_idx ON capture_pairing_codes (expires_at)`,
+  `CREATE TABLE IF NOT EXISTS capture_scanner_keys (
+  tenant_id TEXT PRIMARY KEY NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+  appliance_id TEXT NOT NULL,
+  bucket TEXT NOT NULL,
+  sealed TEXT,
+  age_recipient TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  stored_at INTEGER NOT NULL,
+  erased_at INTEGER,
+  erased_by TEXT
+)`,
+  `CREATE TABLE IF NOT EXISTS capture_pairing_limits (
+  key TEXT PRIMARY KEY NOT NULL,
+  window_start INTEGER NOT NULL,
+  count INTEGER NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS capture_pairing_limits_window_idx ON capture_pairing_limits (window_start)`,
 ];
 
-// @version v0.8.0
+// @version v0.9.0

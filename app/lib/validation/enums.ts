@@ -19,7 +19,7 @@
  * validator (the `test_images` autosave hang). `tests/db/enum-drift.test.ts`
  * pins each schema column's enum against the constant it must equal.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 // Description levels
@@ -38,6 +38,15 @@ export const ENTITY_TYPES = ["person", "family", "corporate"] as const;
 
 // EntityFunction certainty levels (from EntityFunction.Certainty)
 export const CERTAINTY_LEVELS = ["certain", "probable", "possible"] as const;
+
+// How a relation side is known when the document does not state it
+// (description_entities.relation_certainty, migration 0125): `doubtful`;
+// `inferred`, a role reference resolved to the only person in the
+// record with that role; `derived`, the side the document does not
+// give, taken from the other side. Null means the document states it.
+// These are Fisqua's own values, not a federation's vocabulary.
+export const RELATION_CERTAINTIES = ["doubtful", "inferred", "derived"] as const;
+export type RelationCertainty = (typeof RELATION_CERTAINTIES)[number];
 
 // Place types
 export const PLACE_TYPES = [
@@ -116,6 +125,20 @@ export const ENTITY_ROLE_GROUPS = [
 
 // Vocabulary term statuses
 export const VOCABULARY_STATUSES = ["approved", "proposed", "deprecated"] as const;
+
+// The roles a federation's credit lines carry (federation_credits.role).
+export const FEDERATION_CREDIT_ROLES = ["partner", "funder", "developer", "host"] as const;
+export type FederationCreditRole = (typeof FEDERATION_CREDIT_ROLES)[number];
+
+// The controlled lists each federation keeps in vocabulary_values.
+// `relation_role`, `link_attribute` and `gender` (migration 0125) hold
+// a federation's relation roles, the attribute keys a link may carry,
+// and the codes `entities.gender` takes.
+export const VOCABULARY_LISTS = [
+  "entity_type", "place_type", "entity_role", "place_role", "role_group",
+  "relation_role", "link_attribute", "gender",
+] as const;
+export type VocabularyList = (typeof VOCABULARY_LISTS)[number];
 
 // Function categories for vocabulary terms
 export const FUNCTION_CATEGORIES = [
@@ -362,9 +385,11 @@ export type CaptureLinkState = (typeof CAPTURE_LINK_STATES)[number];
 export const CAPTURE_FINAL_STATES = ["published", "refused", "superseded"] as const;
 
 // Capture QC decisions. Each opening of a delivery, one Captua
-// record, is approved or rejected for retake with one reason; `other`
-// needs a note. The values are the contract's, shared with Captua.
-export const CAPTURE_QC_DECISIONS = ["approved", "rejected"] as const;
+// record, is approved, rejected for retake with one reason (`other`
+// needs a note), or excluded as not a page (a test shot, a duplicate),
+// which asks for no retake and leaves its images out of processing.
+// The values are the contract's, shared with Captua.
+export const CAPTURE_QC_DECISIONS = ["approved", "rejected", "excluded"] as const;
 export type CaptureQcDecision = (typeof CAPTURE_QC_DECISIONS)[number];
 export const CAPTURE_QC_REASONS = [
   "blur", "glare", "shadow", "focus", "exposure", "dirt", "framing", "obstruction", "other",
@@ -378,8 +403,23 @@ export type CaptureQcSide = (typeof CAPTURE_QC_SIDES)[number];
 // The image roles a capture carries, as the manifest names them.
 export const CAPTURE_IMAGE_ROLES = ["left", "right", "single"] as const;
 // The states a delivery's decision set puts its volume in: some openings
-// decided and none rejected, any rejected, or every one approved.
+// decided and none rejected, any rejected, or every one approved or
+// excluded.
 // `preparing_review` comes from the review run, not from decisions.
 export const CAPTURE_QC_SET_STATES = ["in_capture_qc", "retakes_requested", "approved"] as const;
 export type CaptureQcSetState = (typeof CAPTURE_QC_SET_STATES)[number];
 
+// The digitization queue (0112). An entry's job, as contract 1.4's
+// `action`, and a scanner operator's role, as the unit sends it.
+export const CAPTURE_QUEUE_ACTIONS = ["full-digitisation", "full-rescan", "spot-recapture", "complete"] as const;
+export type CaptureQueueAction = (typeof CAPTURE_QUEUE_ACTIONS)[number];
+export const CAPTURE_QUEUE_ORIGINS = ["queue", "retake"] as const;
+export type CaptureQueueOrigin = (typeof CAPTURE_QUEUE_ORIGINS)[number];
+export const CAPTURE_SCANNER_MODES = ["offline", "backup", "fisqua"] as const;
+export type CaptureScannerMode = (typeof CAPTURE_SCANNER_MODES)[number];
+export const CAPTURE_PAIRING_STATES = ["waiting", "approved", "collected", "void"] as const;
+export type CapturePairingState = (typeof CAPTURE_PAIRING_STATES)[number];
+export const CAPTURE_OPERATOR_ROLES = ["admin", "operator"] as const;
+export type CaptureOperatorRole = (typeof CAPTURE_OPERATOR_ROLES)[number];
+
+// @version v0.9.0

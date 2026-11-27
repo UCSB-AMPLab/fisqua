@@ -35,6 +35,10 @@
  *     created with a NOT NULL `tenant_id`; SQL they run inside `sql`
  *     templates is checked by `tests/media-pipeline/raw-sql-scope.test.ts`,
  *     which this scanner cannot see
+ *   - `captureScannerKeys`, a workspace's stored scanner keys (migration
+ *     0123), keyed by `tenant_id`; the pairing codes of the same
+ *     migration are left out, since they are looked up by the code's
+ *     hash across tenants by design
  *
  * If a future schema change adds a scope column to another table, update
  * TENANT_TABLES / FEDERATION_TABLES below in lockstep with the migration.
@@ -171,7 +175,7 @@
  * tenant-scoped tables (users/repositories/descriptions). See the
  * TENANT_TABLES / FEDERATION_TABLES split below.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 
@@ -335,12 +339,22 @@ const TENANT_TABLES = [
   "captureQcReviewers",
   // The unit's fetches of a decision set — migration 0100, NOT NULL tenant_id.
   "captureQcFetches",
+  // A workspace's stored scanner keys — migration 0123, keyed by tenant_id.
+  // The pairing codes of the same migration are left out: they are looked
+  // up by the code's hash across tenants by design.
+  "captureScannerKeys",
 ] as const;
 const FEDERATION_TABLES = [
   "entities",
   "places",
   "vocabularyTerms",
   "authorityOperations",
+  // Institution records (migration 0119): a federation's credit lines,
+  // controlled lists and authority sources, each with a NOT NULL
+  // federation_id.
+  "federationCredits",
+  "vocabularyValues",
+  "authoritySources",
 ] as const;
 const DOMAIN_TABLES = [...TENANT_TABLES, ...FEDERATION_TABLES] as const;
 
@@ -1054,12 +1068,16 @@ describe("cross-tenant coverage", () => {
       "captureQcRotations",
       "captureQcReviewers",
       "captureQcFetches",
+      "captureScannerKeys",
     ]);
     expect(FEDERATION_TABLES).toEqual([
       "entities",
       "places",
       "vocabularyTerms",
       "authorityOperations",
+      "federationCredits",
+      "vocabularyValues",
+      "authoritySources",
     ]);
     expect(DOMAIN_TABLES).toEqual([
       "users",
@@ -1093,12 +1111,16 @@ describe("cross-tenant coverage", () => {
       "captureQcRotations",
       "captureQcReviewers",
       "captureQcFetches",
+      "captureScannerKeys",
       "entities",
       "places",
       "vocabularyTerms",
       "authorityOperations",
+      "federationCredits",
+      "vocabularyValues",
+      "authoritySources",
     ]);
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0
