@@ -1,8 +1,9 @@
 /**
  * Tests — media pipeline run spec builder
  *
+ * This suite pins what the run spec builder takes from where.
  * `buildRunSpec` turns rows already read from D1 into the run spec the
- * runner reads. This suite pins what it takes from where:
+ * runner reads. It pins:
  *
  *   - the tile root is the volume's reference code, copied byte for
  *     byte; a reference code outside the tile-root pattern is refused
@@ -20,7 +21,9 @@
  *   - every volume entry says it is not restricted, and a restricted
  *     volume is refused;
  *   - the cross-field page checks run in the builder too, naming the
- *     volume and the rule;
+ *     volume and the rule, among them a master key or an item PDF's
+ *     source key holding a control character
+ *     (`master_key_control_character`, `source_key_control_character`);
  *   - the default manifest resolver refuses until the manifest inputs
  *     have a source;
  *   - the resolved recipe as stored on the run volume is byte-identical
@@ -28,7 +31,7 @@
  *
  * Manifest values here come from a test resolver and are test values.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -293,6 +296,28 @@ describe("run spec builder", () => {
     expect(err.problems[0]).toMatchObject({ rule: "master_key_under_prefix", volumeId: "pv_out" });
   });
 
+  it("refuses a master key holding a control character, naming the volume and rule", () => {
+    for (const bad of ["a\nb.tif", "a\tb.tif", "a\u007fb.tif", "a\u0000b.tif", "a\u001fb.tif"]) {
+      const v = volumeEntry("pv_ctl", "co-ctl-001");
+      v.pages[0] = { ...v.pages[0], masterKey: `masters/co-ctl-001/${bad}` };
+      const err = thrown(() => buildRunSpec(input([v])));
+      expect(err.problems, JSON.stringify(bad)).toEqual([
+        { path: "volumes.0.pages.2.master_key", rule: "master_key_control_character", volumeId: "pv_ctl" },
+      ]);
+    }
+    // A normal Captua master passes.
+    const ok = volumeEntry("pv_ok", "co-ok-001");
+    ok.pages[0] = { ...ok.pages[0], masterKey: "masters/co-ok-001/co-ok-001-img_0001_c0.tif" };
+    expect(() => buildRunSpec(input([ok]))).not.toThrow();
+  });
+
+  it("refuses an item PDF whose source key holds a control character", () => {
+    const v = volumeEntry("pv_pdf_ctl", "pe-ctl-00001", { kind: "item_pdf", pages: 2 });
+    v.volume = { ...v.volume, mastersKey: "ingest/pe-ctl\n-00001.pdf" };
+    const err = thrown(() => buildRunSpec(input([v], "item_pdf")));
+    expect(err.problems).toEqual([{ path: "volumes.0.source.key", rule: "source_key_control_character", volumeId: "pv_pdf_ctl" }]);
+  });
+
   it("passes a resolver's refusal through with its code", () => {
     const spec = input([volumeEntry("pv", "co-m-001")]);
     spec.manifestResolver = () => {
@@ -340,7 +365,7 @@ describe("run spec builder", () => {
         metsBaseUrl: "https://files.example.test/mets",
       }),
     ]) {
-      const spec = { ...input([entry]), tenant, manifestResolver: manifestResolver("https://manifests.example.test") };
+      const spec = { ...input([entry]), tenant, manifestResolver: manifestResolver("https://manifests.example.test", null) };
       const built = buildRunSpec(spec);
       expect(() => validateRunSpec(JSON.parse(JSON.stringify(built)))).not.toThrow();
       expect(built.volumes[0].manifest.id).toBe("https://manifests.example.test/iiif/co-m-001/manifest.json");
@@ -384,4 +409,4 @@ describe("run spec builder", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

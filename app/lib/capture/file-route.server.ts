@@ -2,9 +2,9 @@
  * Capture File Route — Deliveries Registered from a Manifest File
  *
  * This module deals with the capture manifests an operator registers
- * from a file with the registration command
- * (`scripts/commands/register-capture-volumes.ts`), the route kept for a
- * Captua unit without a link token. Such a
+ * from a file with `fisqua capture register`
+ * (`scripts/lib/capture-cli/register.ts`), the route kept for a Captua
+ * unit without a link token. Such a
  * manifest is recorded as a delivery, as one sent over the link is, so
  * its volume goes through capture QC and is held from processing until
  * every opening is approved (`hold.server.ts`). The statements are the
@@ -29,12 +29,21 @@
  * decisions name. Its body digest is the file's, so the same document
  * sent over the link later with the same id gets this answer again. Its
  * notes are what the inventory reported without rejecting the volume
- * (`inventoryNotes`); its records and images are the manifest volume's,
+ * (`inventoryNotes`), after `sequence-reordered` when the caller gives
+ * the registered delivery's records (`previous`) and the new records
+ * hold them in another relative order (`reorderNotes`); its records and
+ * images are the manifest volume's,
  * each image with the sizes the masters listing gave and null for an
  * object the listing lacks, since the command refuses only a missing
- * master. The openings capture QC decides are the records `in_review` or
- * `approved`, so the `captured` records a staging test registers with
- * `--allow-captured` give pages but are not openings.
+ * master. The openings capture QC decides are the records read as
+ * `in_review` or `approved` (`qcStatusOf`, which reads a closed
+ * placeholder with an image as `in_review`), so the `captured` records a
+ * staging test registers with `--allow-captured` give pages but are not
+ * openings. The volume's calibration shots (contract 1.12, §13) and
+ * its statement about them are written as the link writes them
+ * (`calibrationOf`, `calibrationStatusOf`); the inventory has already
+ * refused a volume whose shot objects are missing
+ * (`calibration-object`), when the masters bucket was listed.
  *
  * Pages and images go `FILE_ROWS_PER_STATEMENT` to a statement. D1
  * refuses a statement over 100 KB, and a value written into the text
@@ -46,13 +55,15 @@
  * has; what can still pass the limit is the delivery row itself, when
  * its packed records and notes do.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { drizzle } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
   buildRegistrationStatements,
+  calibrationOf,
+  calibrationStatusOf,
   CaptureBudgetError,
   imagesOf,
   packJson,
@@ -65,6 +76,7 @@ import {
   openingCount,
   openingIdsOf,
   rejectedRecordCount,
+  reorderNotes,
   type CaptureManifest,
   type PlannedVolume,
 } from "./manifest";
@@ -165,6 +177,12 @@ export interface FileRegistrationInput {
   masters: { endpoint: string; bucket: string };
   /** The masters listing under the volume's prefix: full key to size. */
   listing: Map<string, number>;
+  /**
+   * The records of the volume's registered delivery, for a replacement,
+   * which `sequence-reordered` is noted against (`reorderNotes`); null or
+   * absent when there is none.
+   */
+  previous?: ReadonlyArray<{ captuaRecordId: number; sequence: number }> | null;
   now: number;
   newId: () => string;
 }
@@ -187,7 +205,7 @@ export async function fileRegistrationSql(input: FileRegistrationInput): Promise
     JSON.stringify({ state: "registered", manifestId: deliveryId, volumeId: volume.volumeId }),
   );
   const notes = await packProblems(
-    inventoryNotes(volume),
+    [...reorderNotes(v, input.previous ?? null), ...inventoryNotes(volume)],
     ROW_BUDGET_BYTES - byteLength(records) - byteLength(answer),
     (list) => JSON.stringify(list),
   );
@@ -205,6 +223,8 @@ export async function fileRegistrationSql(input: FileRegistrationInput): Promise
     rejectedRecords: rejectedRecordCount(v),
     openingIds: openingIdsOf(v),
     images: imagesOf(v, manifest.transfer.root, input.listing),
+    calibration: calibrationOf(v, manifest.transfer.root, input.listing),
+    calibrationStatus: calibrationStatusOf(v),
     answerBody: answer,
     now: input.now,
     newId: input.newId,
@@ -223,4 +243,4 @@ export async function fileRegistrationSql(input: FileRegistrationInput): Promise
   return { deliveryId, statements };
 }
 
-// @version v0.8.0
+// @version v0.9.0

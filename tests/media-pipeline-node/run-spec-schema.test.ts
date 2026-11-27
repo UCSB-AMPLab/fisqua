@@ -1,13 +1,14 @@
 /**
  * Tests — media pipeline run spec: JSON Schema and Zod agreement
  *
- * The run spec has two validators. The committed JSON Schema
+ * This suite checks that the two validators of the media pipeline's run
+ * spec agree. The committed JSON Schema
  * (`app/lib/pipeline/run-spec.schema.json`) is the contract the runner
- * vendors and validates against; inside the Worker, Fisqua validates
- * with `runSpecSchema`, a Zod schema written to mirror it, because a JSON
- * Schema engine compiles validators with `new Function`, which the
- * Workers runtime forbids. This suite checks, in the Node pool, that the
- * two give every fixture the same verdict:
+ * vendors and validates against; inside the Worker, Fisqua validates with
+ * `runSpecSchema`, a Zod schema written to mirror it, because a JSON
+ * Schema engine compiles validators with `new Function`, which the Workers
+ * runtime forbids. The suite checks, in the Node pool, that the two give
+ * every fixture the same verdict:
  *
  *   - the valid fixtures pass both;
  *   - the cross-field fixtures (`spec-invalid-cross-*`) pass both, since
@@ -18,6 +19,8 @@
  *     removed or malformed gets the same verdict from both;
  *   - a page digest, well formed, malformed, or on an item-PDF page, gets
  *     the same verdict from both;
+ *   - a volume's calibration objects (contract 1.12), each a key and its
+ *     digest, well formed or not, get the same verdict from both;
  *   - a page's quarter-turns, 1 to 3 on a volume run's page, any other
  *     value, or any value on an item-PDF page or a review run's page,
  *     gets the same verdict from both;
@@ -42,7 +45,7 @@
  * branches (`if: { required: ["review"] }`) require a property that the
  * branch itself does not define, which is also valid draft 2020-12.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -153,6 +156,35 @@ describe("page digests get the same verdict from both", () => {
   it.each(cases)("%s", (_name, doc, expected) => {
     const bySchema = validate(doc) as boolean;
     const byZod = runSpecSchema.safeParse(doc).success;
+    expect({ schema: bySchema, zod: byZod }).toEqual({ schema: expected, zod: expected });
+  });
+});
+
+describe("a volume's calibration shots get the same verdict from both", () => {
+  const DIGEST = "0123456789abcdef".repeat(4);
+  const volumeRun = specFixtures.find((f) => f.name === "spec-valid-small")!.doc as Record<string, any>;
+
+  function withCalibration(calibration: unknown): unknown {
+    const doc = structuredClone(volumeRun);
+    doc.volumes[0].calibration = calibration;
+    return doc;
+  }
+  const prefix = () => (volumeRun.volumes[0].source as { prefix: string }).prefix;
+
+  const cases: Array<[string, () => unknown, boolean]> = [
+    ["a shot's capture and preview", () => withCalibration([{ key: `${prefix()}calibration/a.cr3`, sha256: DIGEST }, { key: `${prefix()}calibration/a_preview.jpg`, sha256: DIGEST }]), true],
+    ["an empty list", () => withCalibration([]), false],
+    ["a shot without its digest", () => withCalibration([{ key: `${prefix()}calibration/a.cr3` }]), false],
+    ["a digest in upper case", () => withCalibration([{ key: `${prefix()}calibration/a.cr3`, sha256: DIGEST.toUpperCase() }]), false],
+    ["an empty key", () => withCalibration([{ key: "", sha256: DIGEST }]), false],
+    ["another field", () => withCalibration([{ key: `${prefix()}calibration/a.cr3`, sha256: DIGEST, camera: "c0" }]), false],
+    ["a list that is an object", () => withCalibration({ key: "x", sha256: DIGEST }), false],
+  ];
+
+  it.each(cases)("%s", (_name, doc, expected) => {
+    const d = doc();
+    const bySchema = validate(d) as boolean;
+    const byZod = runSpecSchema.safeParse(d).success;
     expect({ schema: bySchema, zod: byZod }).toEqual({ schema: expected, zod: expected });
   });
 });
@@ -301,4 +333,4 @@ describe("bucket and endpoint rules with review fields get the same verdict from
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

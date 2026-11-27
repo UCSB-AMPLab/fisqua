@@ -11,13 +11,13 @@
  * are not inherited by a wrangler environment, so this suite checks that
  * the top level says `production` and the staging block says `staging`,
  * and that the names come out as the runner expects. It also pins each
- * deployment's runner: staging and production both on the v1.2.0 image
- * by digest, with script version v1.2.0.
+ * deployment's runner: staging and production both on the v1.2.1 image
+ * by digest, with script version v1.2.1.
  *
  * The file is JSON with comments, so it is read with TypeScript's
  * config-file parser, which accepts comments and trailing commas.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -49,18 +49,18 @@ describe("PIPELINE_ENVIRONMENT in wrangler.jsonc", () => {
 describe("the runner pin in wrangler.jsonc", () => {
   const image = (digest: string) => `ghcr.io/ucsb-amplab/fisqua-media-pipeline@sha256:${digest}`;
 
-  it("pins staging to runner v1.2.0 by digest", () => {
+  it("pins staging to runner v1.3.0 by digest", () => {
     expect(config.env?.staging?.vars?.PIPELINE_RUNNER_IMAGE).toBe(
-      image("8a4b25275f348c3808a9b4771b022410307804b1a285d36755596bf7d0766a26"),
+      image("4d2834c63d63c5cc1b79365a3d4379688c7f96c2abcddb28626f6a4dac095502"),
     );
-    expect(config.env?.staging?.vars?.PIPELINE_SCRIPT_VERSION).toBe("v1.2.0");
+    expect(config.env?.staging?.vars?.PIPELINE_SCRIPT_VERSION).toBe("v1.3.0");
   });
 
-  it("pins production to runner v1.2.0 by digest", () => {
+  it("pins production to runner v1.3.0 by digest", () => {
     expect(config.vars?.PIPELINE_RUNNER_IMAGE).toBe(
-      image("8a4b25275f348c3808a9b4771b022410307804b1a285d36755596bf7d0766a26"),
+      image("4d2834c63d63c5cc1b79365a3d4379688c7f96c2abcddb28626f6a4dac095502"),
     );
-    expect(config.vars?.PIPELINE_SCRIPT_VERSION).toBe("v1.2.0");
+    expect(config.vars?.PIPELINE_SCRIPT_VERSION).toBe("v1.3.0");
   });
 });
 
@@ -79,4 +79,4 @@ describe("runnerKeyStoreName", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

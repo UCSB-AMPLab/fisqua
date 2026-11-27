@@ -33,7 +33,7 @@
  *     contract fails here until the runner's vendored copy is updated
  *     with it.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import schemaText from "../../app/lib/pipeline/run-spec.schema.json?raw";
@@ -59,7 +59,7 @@ function fixture(name: string): unknown {
   return structuredClone(value);
 }
 
-const SCHEMA_SHA256 = "d4e7667c9159f0f918d7998250cf4238af12c85b712f1d4c312bee750b5b1646";
+const SCHEMA_SHA256 = "01a5b714a71dbb3da5cd13ac0f5552bd7a913c2eb672082aa9294f91b195407a";
 
 // Schema-violation fixtures and the path the error must name (or a
 // path inside it, such as `stages.tile.run`).
@@ -423,4 +423,4 @@ describe("schema file", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

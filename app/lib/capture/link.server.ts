@@ -65,7 +65,19 @@
  *      one problem per key with its capture id and role (`missingObjects`):
  *      Captua sends a manifest only once every object it names is
  *      verified in the bucket, so a gap means the object was removed
- *      after upload and is for a person to look into. This is stricter
+ *      after upload and is for a person to look into. Each object of a
+ *      calibration shot (contract 1.12, §13) is looked for the same way,
+ *      and one missing is 422 `calibration-object`, listed beside any
+ *      `object-missing` (`missingCalibrationObjects`); a shot whose
+ *      `appliesFromCaptureId` names no capture of the volume, whose keys
+ *      are not those the contract fixes under `<stem>/calibration/`, or
+ *      whose capture id or keys are also a page image's or another
+ *      shot's, has already been refused at step 4
+ *      (`calibration-applies-from`, `calibration-key`,
+ *      `calibration-identity`). The listing gives names and sizes only,
+ *      so a shot's digest is checked here for its form; the media
+ *      pipeline verifies it against the object when it pulls it, as it
+ *      does a page's. This is stricter
  *      than the registration command, which refuses only a missing
  *      master and reports the others. Objects under the volume's prefix
  *      that the manifest does not name refuse nothing and are kept as the
@@ -85,7 +97,23 @@
  *      of the same volume, if any, becomes `superseded` in the same
  *      batch, and the approvals of the openings whose images the new
  *      manifest did not change come over to the new delivery with it
- *      (`carry.server.ts`). The answer is 200 `{state, manifestId, volumeId}`. The
+ *      (`carry.server.ts`). A replacement whose records the registered
+ *      delivery holds in another relative order is noted
+ *      `sequence-reordered` among the new delivery's problems
+ *      (`reorderNotes`), first, before the unlisted objects; it refuses
+ *      nothing. Each image row keeps the status its record is read as
+ *      (`qcStatusOf`), and the delivery's openings and rejected records
+ *      are counted by it, so a placeholder (contract 1.9) is held and
+ *      decided as that status is. The volume's calibration shots go to
+ *      `capture_calibration_shots` under the delivery (`calibrationOf`),
+ *      never to its images, in chunks sized by the bytes they take as SQL
+ *      literals (`shotChunks`), so a file delivery's statements stay within
+ *      D1's limit whatever the settings hold, and its statement about them to the
+ *      delivery's `calibration_status` and `calibration_skipped_reason`
+ *      (`calibrationStatusOf`); a manifest before 1.12 writes neither. A replacement with no page, whose open
+ *      placeholders hold the volume, writes no page: the volume keeps its
+ *      pages and expected count, its revision is raised, and the batch
+ *      lands when the volume carries this request's write time. The answer is 200 `{state, manifestId, volumeId}`. The
  *      delivery has route `link` and names the scanner; the registration
  *      command writes a manifest file's volumes with the same statements
  *      (`buildRegistrationStatements`), as deliveries with route `file`
@@ -146,7 +174,7 @@
  *
  * Nothing here logs a token, a hash or a body.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
@@ -173,11 +201,15 @@ import {
   checkCaptureManifest,
   isRotateDeg,
   MANIFEST_ID_PATTERN,
+  missingCalibrationObjects,
   openingIdsOf,
   MAX_FIELD_CHARS,
   openingCount,
   planVolumes,
+  qcStatusOf,
+  quotedName,
   rejectedRecordCount,
+  reorderNotes,
   transferRootProblem,
   type CaptureManifest,
   type CaptureProblem,
@@ -218,6 +250,42 @@ const READ_CHUNK = 50;
 const PAGES_PER_STATEMENT = 500;
 /** Images per insert, bound the same way. */
 const IMAGES_PER_STATEMENT = 300;
+/**
+ * The most a chunk of calibration shots may take, bound the same way, as
+ * its JSON's bytes plus its apostrophes: the size of the chunk written
+ * into a file delivery's SQL text as a literal, which doubles each
+ * apostrophe. Shots go to a chunk until the next would pass it, and one
+ * shot always goes. A shot's settings take at most `MAX_SETTINGS_BYTES`
+ * as JSON, which the chunk's JSON can at most double, and its other
+ * fields a few kilobytes, so even one shot alone stays well under it,
+ * and the statement round it under `MAX_FILE_STATEMENT_BYTES`.
+ */
+export const SHOT_CHUNK_BYTES = 80_000;
+
+/** The bytes a chunk takes as a SQL literal: its UTF-8 bytes, each apostrophe twice. */
+function literalBytes(json: string): number {
+  return new TextEncoder().encode(json).length + (json.match(/'/g)?.length ?? 0);
+}
+
+/** The shots in chunks of at most `SHOT_CHUNK_BYTES` as literals, in order, one shot at least to each. */
+export function shotChunks<T>(shots: T[], budget: number = SHOT_CHUNK_BYTES): T[][] {
+  const out: T[][] = [];
+  let chunk: T[] = [];
+  // The chunk's array as JSON: its brackets, each item, a comma between.
+  let size = 2;
+  for (const shot of shots) {
+    const bytes = literalBytes(JSON.stringify(shot));
+    if (chunk.length > 0 && size + 1 + bytes > budget) {
+      out.push(chunk);
+      chunk = [];
+      size = 2;
+    }
+    size += (chunk.length > 0 ? 1 : 0) + bytes;
+    chunk.push(shot);
+  }
+  if (chunk.length > 0) out.push(chunk);
+  return out;
+}
 
 export interface CaptureLinkDeps {
   db: DrizzleD1Database<any>;
@@ -253,7 +321,7 @@ const problemsBody = (problems: CaptureProblem[]) => ({ problems });
 // Authentication
 // ---------------------------------------------------------------------------
 
-interface Authenticated {
+export interface Authenticated {
   tenant: Tenant;
   scannerId: string;
 }
@@ -327,7 +395,7 @@ function idReused(id: string): Response {
   return json(
     409,
     problemsBody([
-      { rule: "id-reused", message: `The manifest id ${id} was delivered before with another body`, manifestId: id },
+      { rule: "id-reused", message: `The manifest id ${quotedName(id)} was delivered before with another body`, manifestId: id },
     ]),
   );
 }
@@ -541,12 +609,14 @@ export async function packRecords(v: CaptureVolume, budget: number = RECORDS_BUD
 
 /**
  * The `unlisted-object` notes of a scan of the volume's prefix: one per
- * object the scan kept, then `problems-truncated` counting the rest.
+ * object the scan kept, then `problems-truncated` counting the rest. The
+ * message quotes the key through `quotedName`, every control character
+ * written as `\uXXXX`.
  */
 export function unlistedNotes(stem: string, scan: { unlisted: Array<{ key: string; size: number }>; unlistedOmitted: number }): CaptureProblem[] {
   const notes: CaptureProblem[] = scan.unlisted.map((o) => ({
     rule: "unlisted-object",
-    message: `${o.key} is in the masters bucket and not in the manifest`,
+    message: `${quotedName(o.key)} is in the masters bucket and not in the manifest`,
     stem,
     objectKey: o.key,
     size: o.size,
@@ -594,14 +664,63 @@ async function refuse(ctx: DeliveryContext, status: 400 | 409 | 422, problems: C
 /**
  * The manifest's records, which capture QC decisions are made against
  * (`qc.server.ts`). Their images are rows of `capture_images` (`imagesOf`).
+ * A placeholder (contract 1.9) keeps its status `missing` and its
+ * `missingSide`, `closedReason` and `closedNote`, the note cut as a
+ * rejection note is and left out when cut to nothing, and any record its
+ * `requestId`; each field only when
+ * the manifest gives it, so the records of a manifest at 1.1 to 1.8 keep
+ * their four fields.
  */
 function recordsOf(v: CaptureVolume, noteChars: number = MAX_NOTE_CHARS) {
+  const cut = (note: string) => Array.from(note).slice(0, noteChars).join("");
   return v.records.map((r) => ({
     captuaRecordId: r.captuaRecordId,
     sequence: r.sequence,
     status: r.status,
-    rejectionNote: r.rejectionNote === null ? null : Array.from(r.rejectionNote).slice(0, noteChars).join(""),
+    rejectionNote: r.rejectionNote === null ? null : cut(r.rejectionNote),
+    ...(r.missingSide != null ? { missingSide: r.missingSide } : {}),
+    ...(r.closedReason != null ? { closedReason: r.closedReason } : {}),
+    // Left out when the budget leaves no room for notes: never stored empty.
+    ...(r.closedNote != null && cut(r.closedNote) !== "" ? { closedNote: cut(r.closedNote) } : {}),
+    ...(r.requestId != null ? { requestId: r.requestId } : {}),
   }));
+}
+
+/** A record as a delivery's `records` column keeps it (`recordsOf`). */
+export interface StoredRecord {
+  captuaRecordId: number;
+  sequence: number;
+  status: string;
+  rejectionNote?: string | null;
+  missingSide?: string;
+  closedReason?: string;
+  closedNote?: string;
+  requestId?: string;
+}
+
+/** The records of a delivery's `records` column, packed or not; none for a null column. */
+export async function readStoredRecords(stored: string | null): Promise<StoredRecord[]> {
+  return stored ? (JSON.parse(await unpackJson(stored)) as StoredRecord[]) : [];
+}
+
+/** The records of the volume's `registered` delivery, the one that holds it; null when it has none. */
+export async function readRegisteredRecords(
+  db: DrizzleD1Database<any>,
+  tenantId: string,
+  volumeId: string,
+): Promise<StoredRecord[] | null> {
+  const row = await db
+    .select({ records: captureDeliveries.records })
+    .from(captureDeliveries)
+    .where(
+      and(
+        eq(captureDeliveries.tenantId, tenantId),
+        eq(captureDeliveries.pipelineVolumeId, volumeId),
+        eq(captureDeliveries.state, "registered"),
+      ),
+    )
+    .get();
+  return row ? readStoredRecords(row.records) : null;
 }
 
 /** One image of an accepted manifest, with every object it names. */
@@ -617,7 +736,11 @@ export interface DeliveredImage {
   previewKey: string | null;
   previewSha256: string | null;
   previewBytes: number | null;
-  /** The status of the image's record in the manifest. */
+  /**
+   * The status the image's record is read as (`qcStatusOf`): its status
+   * in the manifest, a placeholder's read as `rejected`, `excluded` or
+   * `in_review`.
+   */
   recordStatus: string;
   /** The image's `rotateDeg`; null when the manifest left it out or gave null. */
   rotateDeg: number | null;
@@ -650,12 +773,75 @@ export function imagesOf(v: CaptureVolume, root: string, listing: Map<string, nu
         previewKey,
         previewSha256: i.previewSha256 ?? null,
         previewBytes: previewKey === null ? null : listing.get(previewKey) ?? null,
-        recordStatus: r.status,
+        recordStatus: qcStatusOf(r),
         // `planPages` has refused any other value before this is read.
         rotateDeg: isRotateDeg(i.rotateDeg) ? i.rotateDeg : null,
       };
     }),
   );
+}
+
+/** One calibration shot of an accepted manifest (contract §13), as `capture_calibration_shots` keeps it. */
+export interface DeliveredShot {
+  /** Its place in the manifest's list, from 1. */
+  seq: number;
+  captureId: string;
+  filename: string;
+  camera: string;
+  capturedAt: string;
+  /** The settings object as JSON text, as the manifest gives it. */
+  settings: string;
+  appliesFromCaptureId: string;
+  captureKey: string;
+  captureSha256: string;
+  captureBytes: number | null;
+  previewKey: string | null;
+  previewSha256: string | null;
+  previewBytes: number | null;
+  rotateDeg: number | null;
+}
+
+/**
+ * The manifest volume's calibration shots, none before 1.12, each with
+ * its objects by full key, their digests and the sizes the masters
+ * listing gave (null for an object the listing lacks, which the link
+ * refuses before this), and its `rotateDeg`, null when absent or null.
+ */
+export function calibrationOf(v: CaptureVolume, root: string, listing: Map<string, number>): DeliveredShot[] {
+  return (v.calibration ?? []).map((shot, i) => {
+    const captureKey = `${root}${shot.objectKey}`;
+    const previewKey = shot.previewObjectKey === undefined ? null : `${root}${shot.previewObjectKey}`;
+    return {
+      seq: i + 1,
+      captureId: shot.captureId,
+      filename: shot.filename,
+      camera: shot.camera,
+      capturedAt: shot.capturedAt,
+      settings: JSON.stringify(shot.settings),
+      appliesFromCaptureId: shot.appliesFromCaptureId,
+      captureKey,
+      captureSha256: shot.sha256,
+      captureBytes: listing.get(captureKey) ?? null,
+      previewKey,
+      previewSha256: shot.previewSha256 ?? null,
+      previewBytes: previewKey === null ? null : listing.get(previewKey) ?? null,
+      // `calibrationProblems` has refused any other value before this is read.
+      rotateDeg: isRotateDeg(shot.rotateDeg) ? shot.rotateDeg : null,
+    };
+  });
+}
+
+/**
+ * What a delivery row keeps of the volume's statement about its shots:
+ * the status, null when the volume says nothing, and a skip's reason,
+ * cut as a rejection note is and left out when cut to nothing.
+ */
+export function calibrationStatusOf(v: CaptureVolume): { status: "present" | "skipped" | null; skippedReason: string | null } {
+  const status = v.calibrationStatus ?? null;
+  const reason = status === "skipped" && v.skippedReason !== undefined
+    ? Array.from(v.skippedReason).slice(0, MAX_NOTE_CHARS).join("")
+    : "";
+  return { status, skippedReason: reason === "" ? null : reason };
 }
 
 /**
@@ -665,7 +851,10 @@ export function imagesOf(v: CaptureVolume, root: string, listing: Map<string, nu
  * `{rule, message, objectKey, captureId, role, kind}`, where
  * `objectKey` is the key as the manifest writes it (`objectKey` or
  * `previewObjectKey`, relative to `transfer.root`), `captureId` and
- * `role` are the image's, and `kind` is `capture` or `preview`.
+ * `role` are the image's, and `kind` is `capture` or `preview`. The
+ * message quotes the key through `quotedName`, every control character
+ * written as `\uXXXX`, as every refusal here quotes a value of the
+ * delivery (`id-reused`, `run-started`).
  */
 export function missingObjects(v: CaptureVolume, root: string, listing: Map<string, number>): CaptureProblem[] {
   const out: CaptureProblem[] = [];
@@ -677,7 +866,7 @@ export function missingObjects(v: CaptureVolume, root: string, listing: Map<stri
         if (listing.has(`${root}${key}`)) continue;
         out.push({
           rule: "object-missing",
-          message: `The ${kind} ${key} is named by the manifest and is not in the masters bucket`,
+          message: `The ${kind} ${quotedName(key)} is named by the manifest and is not in the masters bucket`,
           objectKey: key,
           captureId: i.captureId,
           role: i.role,
@@ -758,6 +947,10 @@ export function buildRegistrationStatements(
     /** The Captua record ids of those openings, which a retake's carried approvals are limited to. */
     openingIds: number[];
     images: DeliveredImage[];
+    /** The volume's calibration shots (`calibrationOf`); none when absent. */
+    calibration?: DeliveredShot[];
+    /** What the volume says of its shots (`calibrationStatusOf`); nothing when absent. */
+    calibrationStatus?: { status: "present" | "skipped" | null; skippedReason: string | null };
     answerBody: string;
     now: number;
     newId: () => string;
@@ -790,6 +983,17 @@ export function buildRegistrationStatements(
         WHERE EXISTS (SELECT 1 FROM descriptions d WHERE d.tenant_id = ${t} AND d.id = ${descriptionId} AND d.reference_code = ${code})
           AND NOT EXISTS (SELECT 1 FROM pipeline_volumes pv WHERE pv.tenant_id = ${t} AND (pv.description_id = ${descriptionId} OR pv.reference_code = ${code}))`,
       ),
+    );
+  } else if (count === 0) {
+    // A replacement with no page, only open placeholders (contract 1.9):
+    // the volume keeps its pages and expected count, which a pipeline
+    // volume needs at least one of, and is held by the new delivery. Its
+    // revision is raised, so a claim read before this write is refused.
+    out.push(
+      db
+        .update(pipelineVolumes)
+        .set({ updatedAt: now, pagesRevision: sql`${pipelineVolumes.pagesRevision} + 1` })
+        .where(and(eq(pipelineVolumes.tenantId, t), eq(pipelineVolumes.id, volumeId), volumeStillOpen(t, volumeId, now))),
     );
   } else {
     out.push(
@@ -849,8 +1053,13 @@ export function buildRegistrationStatements(
   // guarded by, carries this request's write time and page count, and
   // its pages are exactly the rows this request wrote. The supersede and
   // the delivery are written only then, so a delivery is never recorded
-  // as accepted over pages it did not write.
-  const landed = writesLanded(t, volumeId, now, count, pagePrefix);
+  // as accepted over pages it did not write. A replacement with no page
+  // wrote none: it landed when the volume carries this request's write time.
+  const landed =
+    count === 0 && v.action !== "register"
+      ? sql`${volumeStillOpen(t, volumeId, now)} AND EXISTS (SELECT 1 FROM pipeline_volumes lv
+          WHERE lv.tenant_id = ${t} AND lv.id = ${volumeId} AND lv.updated_at = ${now})`
+      : writesLanded(t, volumeId, now, count, pagePrefix);
 
   // The older registered delivery of the volume, before the new one is
   // written: at most one delivery per volume is registered (a partial
@@ -875,10 +1084,11 @@ export function buildRegistrationStatements(
       db,
       sql`INSERT INTO capture_deliveries (tenant_id, id, route, scanner_id, reference_code, pipeline_volume_id, body_sha256,
           state, problems, answer_status, answer_body, records, openings, rejected_records, received_at, superseded_by,
-          superseded_at, seq, write_id)
+          superseded_at, seq, write_id, calibration_status, calibration_skipped_reason)
         SELECT ${t}, ${w.manifestId}, ${w.route}, ${w.scannerId}, ${code}, ${volumeId}, ${w.digest},
           'registered', ${w.notes}, 200, ${w.answerBody}, ${w.records}, ${w.openings}, ${w.rejectedRecords}, ${now},
-          NULL, NULL, ${nextSeq(t)}, ${writeId}
+          NULL, NULL, ${nextSeq(t)}, ${writeId}, ${w.calibrationStatus?.status ?? null},
+          ${w.calibrationStatus?.skippedReason ?? null}
         WHERE EXISTS (SELECT 1 FROM pipeline_volumes v WHERE v.tenant_id = ${t} AND v.id = ${volumeId})
           AND ${landed}`,
     ),
@@ -903,6 +1113,32 @@ export function buildRegistrationStatements(
           json_extract(j.value, '$.captureBytes'), json_extract(j.value, '$.previewKey'),
           json_extract(j.value, '$.previewSha256'), json_extract(j.value, '$.previewBytes'),
           json_extract(j.value, '$.recordStatus'), json_extract(j.value, '$.rotateDeg')
+        FROM json_each(${chunk}) j
+        JOIN capture_deliveries d ON d.tenant_id = ${t} AND d.id = ${w.manifestId} AND d.state = 'registered'
+          AND d.write_id = ${writeId}`,
+      ),
+    );
+  }
+
+  // The calibration shots (contract §13), under the same delivery and
+  // write id as the images, in their own table: a shot is never an image
+  // of an opening, so nothing that reads `capture_images` meets it.
+  const shots = (w.calibration ?? []).map((shot) => ({ id: w.newId(), ...shot }));
+  for (const part of shotChunks(shots)) {
+    const chunk = JSON.stringify(part);
+    out.push(
+      rawBatchItem(
+        db,
+        sql`INSERT INTO capture_calibration_shots (id, tenant_id, delivery_id, seq, capture_id, filename, camera, captured_at,
+          settings, applies_from_capture_id, capture_key, capture_sha256, capture_bytes, preview_key, preview_sha256,
+          preview_bytes, rotate_deg)
+        SELECT json_extract(j.value, '$.id'), d.tenant_id, d.id, json_extract(j.value, '$.seq'),
+          json_extract(j.value, '$.captureId'), json_extract(j.value, '$.filename'), json_extract(j.value, '$.camera'),
+          json_extract(j.value, '$.capturedAt'), json_extract(j.value, '$.settings'),
+          json_extract(j.value, '$.appliesFromCaptureId'), json_extract(j.value, '$.captureKey'),
+          json_extract(j.value, '$.captureSha256'), json_extract(j.value, '$.captureBytes'),
+          json_extract(j.value, '$.previewKey'), json_extract(j.value, '$.previewSha256'),
+          json_extract(j.value, '$.previewBytes'), json_extract(j.value, '$.rotateDeg')
         FROM json_each(${chunk}) j
         JOIN capture_deliveries d ON d.tenant_id = ${t} AND d.id = ${w.manifestId} AND d.state = 'registered'
           AND d.write_id = ${writeId}`,
@@ -942,7 +1178,7 @@ function writesLanded(tenantId: string, volumeId: string, now: number, count: nu
 function runStarted(code: string, detail: string): CaptureProblem {
   return {
     rule: "run-started",
-    message: `A pipeline run has started or finished on the volume ${code} (${detail}); a Fisqua admin decides`,
+    message: `A pipeline run has started or finished on the volume ${quotedName(code)} (${detail}); a Fisqua admin decides`,
     referenceCode: code,
   };
 }
@@ -1055,13 +1291,21 @@ export async function handleManifestDelivery(deps: CaptureLinkDeps, request: Req
     throw err;
   }
   const listing = scan.present;
-  const missing = missingObjects(v, manifest.transfer.root, listing);
+  const missing = [
+    ...missingObjects(v, manifest.transfer.root, listing),
+    ...missingCalibrationObjects(v.stem, planned.calibration ?? [], listing),
+  ];
   if (missing.length > 0) return refuse(ctx, 422, missing);
   const [inventoried] = applyInventory([planned], new Map([[planned.mastersPrefix as string, listing]]));
   if (inventoried.action === "skip") return refuse(ctx, 422, inventoried.issues ?? []);
 
   // 7. The writes.
   const answerBody = JSON.stringify({ state: "registered", manifestId: id, volumeId: inventoried.volumeId });
+  // A replacement is compared with the delivery that holds the volume now (contract §10.3).
+  const reordered = reorderNotes(
+    v,
+    inventoried.action === "replace" ? await readRegisteredRecords(deps.db, tenant.id, inventoried.volumeId as string) : null,
+  );
   // The row's budget: the records first, then the answer, the notes the rest.
   let records: string;
   let packedAnswer: string;
@@ -1070,7 +1314,7 @@ export async function handleManifestDelivery(deps: CaptureLinkDeps, request: Req
     records = await packRecords(v);
     packedAnswer = await packJson(answerBody);
     notes = await packProblems(
-      unlistedNotes(v.stem, scan),
+      [...reordered, ...unlistedNotes(v.stem, scan)],
       ROW_BUDGET_BYTES - byteLength(records) - byteLength(packedAnswer),
       (list) => JSON.stringify(list),
     );
@@ -1099,6 +1343,8 @@ export async function handleManifestDelivery(deps: CaptureLinkDeps, request: Req
     rejectedRecords: rejectedRecordCount(v),
     openingIds: openingIdsOf(v),
     images: imagesOf(v, manifest.transfer.root, listing),
+    calibration: calibrationOf(v, manifest.transfer.root, listing),
+    calibrationStatus: calibrationStatusOf(v),
     answerBody: packedAnswer,
     now,
     newId: () => {
@@ -1482,4 +1728,4 @@ export async function handleVolumeStatus(deps: CaptureLinkDeps, request: Request
   return new Response(body, { status: 200, headers: JSON_HEADERS });
 }
 
-// @version v0.8.0
+// @version v0.9.0

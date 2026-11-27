@@ -34,11 +34,15 @@
  *     carries, naming that manifest), 1 to 100 refs;
  *   - the rate limit: 60 calls a minute per token, then 429 with
  *     `Retry-After`, and a fresh window after the minute turns;
+ *   - an `object-missing` refusal and an `unlisted-object` note quote
+ *     their key with every control character written as `\uXXXX`; a
+ *     delivery with a control character in any one field answers with
+ *     no raw control character in any message; `id-reused` quotes the id;
  *   - the routes answer without a session and with no redirect.
  *
  * Every value here is a test value: no real tenant, bucket, key or digest.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -66,8 +70,10 @@ import {
   handleManifestDelivery,
   handleVolumeStatus,
   MAX_MANIFEST_BYTES,
+  missingObjects,
   packJson,
   STATUS_BUDGET_BYTES,
+  unlistedNotes,
   unpackJson,
   type CaptureLinkDeps,
 } from "../../app/lib/capture/link.server";
@@ -434,6 +440,34 @@ describe("delivering a manifest", () => {
     expect(world.s3.requests.every((r) => r.keyId === "test-masters-list-key-id")).toBe(true);
   });
 
+  it("registers a volume with a record the unit gives as excluded, which is neither a page nor an opening", async () => {
+    const stem = "co-test-001";
+    const v = volume(stem);
+    // A test shot of the rig, excluded on the unit (contract 1.6), in place of the rejected record.
+    v.records[2] = rec(13, 3, "excluded", [image(stem, 3, 0, "single")]);
+    const m = manifest([v], { version: "1.6" });
+    upload(world.s3, m);
+    const a = await deliver(m);
+    expect(a.status).toBe(200);
+    expect(a.json).toMatchObject({ state: "registered", manifestId: m.id });
+    const pages = await pagesOf(a.json!.volumeId);
+    expect(pages.map((p) => p.page_key)).toEqual([
+      "co-test-001-img_0001_c0",
+      "co-test-001-img_0002_c0",
+      "co-test-001-img_0002_c1",
+      "co-test-001-img_0005_c0",
+    ]);
+    const row = await deliveryOf(m.id);
+    // Three openings (11, 12, 14), no retake owed: the excluded record holds nothing.
+    expect(row).toMatchObject({ openings: 3, rejected_records: 0 });
+    expect(JSON.parse(row.records).find((r: Json) => r.captuaRecordId === 13).status).toBe("excluded");
+    const images = await sqlRows(
+      "SELECT captua_record_id, record_status FROM capture_images WHERE delivery_id = ? AND captua_record_id = 13",
+      m.id,
+    );
+    expect(images).toEqual([{ captua_record_id: 13, record_status: "excluded" }]);
+  });
+
   it("keeps every object each image names, RAW captures included, with digests and sizes", async () => {
     const m = manifest([volume("co-test-001")]);
     upload(world.s3, m);
@@ -566,7 +600,7 @@ describe("delivering a manifest", () => {
     expect(a.json!.problems).toEqual([
       {
         rule: "object-missing",
-        message: "The capture co-test-001/captures/co-test-001-img_0001_c0.cr3 is named by the manifest and is not in the masters bucket",
+        message: 'The capture "co-test-001/captures/co-test-001-img_0001_c0.cr3" is named by the manifest and is not in the masters bucket',
         objectKey: "co-test-001/captures/co-test-001-img_0001_c0.cr3",
         captureId: "cap-co-test-001-img_0001_c0",
         role: "single",
@@ -574,7 +608,7 @@ describe("delivering a manifest", () => {
       },
       {
         rule: "object-missing",
-        message: "The capture co-test-001/captures/co-test-001-img_0003_c1.cr3 is named by the manifest and is not in the masters bucket",
+        message: 'The capture "co-test-001/captures/co-test-001-img_0003_c1.cr3" is named by the manifest and is not in the masters bucket',
         objectKey: "co-test-001/captures/co-test-001-img_0003_c1.cr3",
         captureId: "cap-co-test-001-img_0003_c1",
         role: "right",
@@ -836,7 +870,7 @@ describe("delivering a manifest", () => {
     expect(s.problems[100]).toEqual({ rule: "problems-truncated", message: expect.any(String), omitted: 7900 });
     expect(s.problems[0]).toEqual({
       rule: "unlisted-object",
-      message: "neogranadina/co-test-002/captures/co-test-002-img_0001_c0.cr3 is in the masters bucket and not in the manifest",
+      message: '"neogranadina/co-test-002/captures/co-test-002-img_0001_c0.cr3" is in the masters bucket and not in the manifest',
       stem: "co-test-002",
       objectKey: "neogranadina/co-test-002/captures/co-test-002-img_0001_c0.cr3",
       size: 1000,
@@ -947,7 +981,7 @@ describe("delivering a manifest", () => {
     expect(a.json!.problems).toEqual([
       {
         rule: "object-missing",
-        message: "The preview co-test-001/previews/co-test-001-img_0002_c1_preview.jpg is named by the manifest and is not in the masters bucket",
+        message: 'The preview "co-test-001/previews/co-test-001-img_0002_c1_preview.jpg" is named by the manifest and is not in the masters bucket',
         objectKey: "co-test-001/previews/co-test-001-img_0002_c1_preview.jpg",
         captureId: "cap-co-test-001-img_0002_c1",
         role: "right",
@@ -977,6 +1011,98 @@ describe("delivering a manifest", () => {
 // ---------------------------------------------------------------------------
 // Idempotency, supersede, refusal after a run
 // ---------------------------------------------------------------------------
+
+describe("a delivery holding a control character", () => {
+  /** Every `message` anywhere in an answer's JSON. */
+  const messagesOf = (j: unknown): string[] =>
+    j === null || typeof j !== "object"
+      ? []
+      : Array.isArray(j)
+        ? j.flatMap(messagesOf)
+        : Object.entries(j as Json).flatMap(([k, v]) => (k === "message" && typeof v === "string" ? [v] : messagesOf(v)));
+
+  it("answers with no raw control character in any message, whichever field holds one", async () => {
+    const raw = /[\u0000-\u001f\u007f]/;
+    const CTL = "\u007f\n\t\u0000";
+    const fields = [
+      "contract", "version", "kind", "id", "generatedAt", "generatedBy.system", "generatedBy.instance",
+      "generatedBy.systemVersion", "project.name", "transfer.channel", "transfer.root",
+      "project.captuaProjectId", "volumes.0.captuaCollectionId", "volumes.0.records.1.captuaRecordId",
+      "volumes.0.records.1.sequence",
+      "volumes.0.externalId", "volumes.0.stem", "volumes.0.title",
+      "volumes.0.records.1.status", "volumes.0.records.2.rejectionNote",
+      "volumes.0.records.1.images.0.captureId", "volumes.0.records.1.images.0.filename",
+      "volumes.0.records.1.images.0.role", "volumes.0.records.1.images.0.objectKey",
+      "volumes.0.records.1.images.0.sha256", "volumes.0.records.1.images.0.previewObjectKey",
+      "volumes.0.records.1.images.0.previewSha256", "volumes.0.records.0.images.0.pairId",
+      "volumes.0.records.1.images.0.rotateDeg",
+    ];
+    // A stray object holding the characters, so the answer carries an unlisted-object note too.
+    world.s3.objects.set(`${TEST_MASTERS_BUCKET}/${ROOT}co-test-001/captures/stray${CTL}.cr3`, {
+      bytes: new Uint8Array(1),
+      etag: "e",
+      contentType: null,
+      meta: {},
+    });
+    for (const path of fields) {
+      const m = manifest([volume("co-test-001")]);
+      upload(world.s3, m);
+      const parts = path.split(".");
+      let o: Json = m;
+      for (const k of parts.slice(0, -1)) o = o[k];
+      const k = parts[parts.length - 1];
+      o[k] = typeof o[k] === "string" ? `${o[k]}${CTL}` : CTL;
+      const a = await deliver(m);
+      for (const message of messagesOf(a.json)) expect(message, `${path}: ${JSON.stringify(message)}`).not.toMatch(raw);
+    }
+  });
+
+  it("quotes the id of a manifest delivered before with another body", async () => {
+    const m = manifest([volume("co-test-001")]);
+    upload(world.s3, m);
+    expect((await deliver(m)).status).toBe(200);
+    const again = await deliver({ ...m, project: { captuaProjectId: 1, name: "Another project" } });
+    expect(again.json!.problems).toEqual([
+      expect.objectContaining({ rule: "id-reused", message: `The manifest id "${m.id}" was delivered before with another body` }),
+    ]);
+  });
+});
+
+describe("an object-missing refusal", () => {
+  it("quotes the key with every control character written as \\uXXXX", () => {
+    const v = {
+      records: [
+        {
+          images: [
+            { captureId: "cap-1", role: "single", objectKey: "co-test-001/captures/a\u007fb.cr3", previewObjectKey: "co-test-001/previews/a\nb_preview.jpg" },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof missingObjects>[0];
+    const problems = missingObjects(v, "neogranadina/", new Map());
+    expect(problems.map((p) => p.message)).toEqual([
+      'The capture "co-test-001/captures/a\\u007fb.cr3" is named by the manifest and is not in the masters bucket',
+      'The preview "co-test-001/previews/a\\u000ab_preview.jpg" is named by the manifest and is not in the masters bucket',
+    ]);
+    for (const p of problems) expect(p.message).not.toMatch(/[\u0000-\u001f\u007f]/);
+  });
+});
+
+describe("an unlisted-object note", () => {
+  it("quotes the key with every control character written as \\uXXXX", () => {
+    const notes = unlistedNotes("co-test-001", { unlisted: [{ key: "neogranadina/co-test-001/captures/a\tb\u007f.cr3", size: 3 }], unlistedOmitted: 0 });
+    expect(notes).toEqual([
+      {
+        rule: "unlisted-object",
+        message: '"neogranadina/co-test-001/captures/a\\u0009b\\u007f.cr3" is in the masters bucket and not in the manifest',
+        stem: "co-test-001",
+        objectKey: "neogranadina/co-test-001/captures/a\tb\u007f.cr3",
+        size: 3,
+      },
+    ]);
+    expect(notes[0].message).not.toMatch(/[\u0000-\u001f\u007f]/);
+  });
+});
 
 describe("a repeated id", () => {
   it("gets the first answer verbatim for the same parsed body, whatever its key order and spacing", async () => {
@@ -1430,4 +1556,4 @@ describe("the routes", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0
