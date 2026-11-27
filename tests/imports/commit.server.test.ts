@@ -19,18 +19,29 @@
  * inserted on create, inserted or replaced in place on update, kept out of
  * the journal, and refused (by the plan step and again by the update batch)
  * for a description whose pages a pipeline run wrote; a blank OCR cell
- * keeps what is there.
+ * keeps what is there. An update whose only change is its OCR text still
+ * moves the description's `updated_at`, and journals nothing. A version
+ * that starts ahead of the clock moves strictly past it, on an update,
+ * an OCR-only update and a recompute, and the journal row carries the
+ * version written. A create batch leaves the version of a description
+ * that records one of its new codes as a former reference code. An
+ * update that changes a child's level moves its parent's version, and a
+ * child listed before its parent in one batch leaves both written, each
+ * with its journal row. An
+ * update batch or a recompute whose row was written after the step read
+ * it writes nothing and throws, so the Workflow runs the step again from
+ * a fresh read.
  *
  * Fixtures are REAL SBMAL rows over the verbatim DACS headers; the
  * hierarchy fixtures add a parent-reference-code column but invent no
  * archival metadata (placeholder container codes only). The OCR column's
  * cells are synthetic placeholders.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import {
   applyMigrations,
@@ -307,6 +318,186 @@ describe("import commit — create round-trip", () => {
   });
 });
 
+/**
+ * The D1 binding with `concurrent` run once, just before the first
+ * batch: a write that lands between a step's reads and its batch.
+ */
+function racedDb(concurrent: (d: D1Database) => Promise<unknown>) {
+  let done = false;
+  const raced = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          if (!done) {
+            done = true;
+            await concurrent(target);
+          }
+          return target.batch(statements);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return drizzle(raced);
+}
+
+describe("import commit — writes made from a stale read", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  // A write lands between the step's read and its batch. The batch then
+  // changes nothing and the step throws, which the Workflow answers by
+  // running the step again from a fresh read: the import's handling of
+  // a concurrent edit.
+  it("an update batch whose row was edited after it was read writes nothing and throws; the retry applies", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const seeded = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "item",
+    });
+    const s = await setup({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true });
+    const config = await loadCommitConfig(db(), s.store, {
+      runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: true,
+    });
+    const handVersion = Date.now() + 10_000;
+    const raced = racedDb((d) =>
+      d.prepare("UPDATE descriptions SET title = 'Hand edit', updated_at = ? WHERE id = ?").bind(handVersion, seeded.id).run());
+    await expect(processUpdateBatch(raced, s.store, config, config.updateCodes)).rejects.toThrow();
+    const after = (await db().select().from(descriptions).where(eq(descriptions.id, seeded.id)).get())!;
+    expect(after.title).toBe("Hand edit");
+    expect(after.updatedAt).toBe(handVersion);
+    expect(await db().select().from(changelog).where(eq(changelog.runId, s.runId)).all()).toEqual([]);
+
+    await processUpdateBatch(db(), s.store, config, config.updateCodes);
+    const retried = (await db().select().from(descriptions).where(eq(descriptions.id, seeded.id)).get())!;
+    expect(retried.title).toBe("Mexico. 1521-1605.");
+    expect(retried.updatedAt).toBeGreaterThan(handVersion);
+    const journal = (await db().select().from(changelog)
+      .where(and(eq(changelog.runId, s.runId), eq(changelog.recordId, seeded.id))).get())!;
+    expect(journal.createdAt).toBe(retried.updatedAt);
+    expect(JSON.parse(journal.diff).title).toEqual({ old: "Hand edit", new: "Mexico. 1521-1605." });
+  });
+
+  it("a recompute whose container was edited after it was read writes nothing and throws", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "PARENT 1", descriptionLevel: "fonds", childCount: 0,
+    });
+    const rows = [
+      { Reference_Code: "CHILD 1", Title: "First child", Date_Expressed: "1700", Parent_Ref: "PARENT 1" },
+    ] as unknown as Parameters<typeof makeSbmalCsv>[0];
+    const s = await setupWithCsv({
+      csv: makeSbmalCsv(rows, ["Parent_Ref"]),
+      bindings: [...SBMAL_DACS_BINDINGS, { source: "Parent_Ref", target: "parent" as const }],
+      updateExisting: false,
+    });
+    const config = await loadCommitConfig(db(), s.store, {
+      runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: false,
+    });
+    await processCreateBatch(db(), s.store, config, config.createCodes);
+    const handVersion = Date.now() + 10_000;
+    const raced = racedDb((d) =>
+      d.prepare("UPDATE descriptions SET title = 'Hand edit', updated_at = ? WHERE id = ?").bind(handVersion, parent.id).run());
+    await expect(recomputeStructuralCaches(raced, config)).rejects.toThrow();
+    const after = (await db().select().from(descriptions).where(eq(descriptions.id, parent.id)).get())!;
+    expect(after.childCount).toBe(0);
+    expect(after.updatedAt).toBe(handVersion);
+  });
+});
+
+describe("import commit — a child's level moves its parent's version", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  it("updates a child listed before its parent, both changed, and moves the parent past its own write", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    // CMD 2 is the parent, CMD 1 its child; the import changes both rows.
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 2", title: "Old parent", descriptionLevel: "file", childCount: 1,
+    });
+    const child = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old child", descriptionLevel: "file",
+      parentId: parent.id, rootDescriptionId: parent.id, depth: 1,
+    });
+    const s = await setup({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true });
+    const config = await loadCommitConfig(db(), s.store, {
+      runId: s.runId, uploadId: s.uploadId, repositoryId: s.repositoryId, updateExisting: true,
+    });
+    const out = await processUpdateBatch(db(), s.store, config, ["CMD 1", "CMD 2"]);
+    expect(out.updated).toBe(2);
+    const rows = await db().select().from(descriptions).where(inArray(descriptions.id, [child.id, parent.id])).all();
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(child.id)!.descriptionLevel).toBe("item");
+    expect(byId.get(parent.id)!.descriptionLevel).toBe("item");
+    expect(byId.get(parent.id)!.title).not.toBe("Old parent");
+    const journal = await db().select().from(changelog).where(eq(changelog.runId, s.runId)).all();
+    for (const id of [child.id, parent.id]) {
+      const entry = journal.find((j) => j.recordId === id)!;
+      expect(entry.createdAt).toBe(byId.get(id)!.updatedAt);
+    }
+  });
+
+  it("an update that changes a child's level moves the parent's version in the same batch", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "PARENT 1", descriptionLevel: "fonds", childCount: 1,
+    });
+    await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "file",
+      parentId: parent.id, rootDescriptionId: parent.id, depth: 1,
+    });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, parent.id));
+    const s = await setup({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true });
+    await driveCommit(s, true);
+    const child = (await db().select().from(descriptions)
+      .where(and(eq(descriptions.tenantId, tenantId), eq(descriptions.referenceCode, "CMD 1"))).get())!;
+    expect(child.descriptionLevel).toBe("item");
+    const after = (await db().select({ v: descriptions.updatedAt }).from(descriptions).where(eq(descriptions.id, parent.id)).get())!;
+    expect(after.v).toBeGreaterThan(ahead);
+  });
+});
+
+describe("import commit — former reference codes", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  // The import does not move the version of a description that records
+  // one of its new codes as a former reference code; the incremental
+  // publish's fingerprint covers such rows (module header).
+  it("a create batch leaves the version of a description recording one of its new codes as a former one", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const keeper = await createTestDescription({ tenantId, repositoryId: repo.id, referenceCode: "KEEPER 1" });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions)
+      .set({ legacyIds: JSON.stringify([{ provider: "former-reference-code", id: "CMD 2" }]), updatedAt: ahead })
+      .where(eq(descriptions.id, keeper.id));
+    const s = await setup({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false });
+    const { executed } = await driveCommit(s, false);
+    expect(executed.created).toBe(8);
+    const row = (await db().select({ v: descriptions.updatedAt }).from(descriptions)
+      .where(eq(descriptions.id, keeper.id)).get())!;
+    expect(row.v).toBe(ahead);
+  });
+});
+
 describe("import commit — update before-images", () => {
   beforeAll(async () => {
     await applyMigrations();
@@ -354,6 +545,24 @@ describe("import commit — update before-images", () => {
     expect(updateRow.kind).toBe("update");
     const diff = JSON.parse(updateRow.diff) as Record<string, { old: unknown; new: unknown }>;
     expect(diff.title).toEqual({ old: "Old title", new: "Mexico. 1521-1605." });
+  });
+
+  it("moves a version that is ahead of the clock strictly past it, and journals that version", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const seeded = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "item",
+    });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, seeded.id));
+    const s = await setup({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true });
+    await driveCommit(s, true);
+    const row = (await db().select({ updatedAt: descriptions.updatedAt }).from(descriptions)
+      .where(eq(descriptions.id, seeded.id)).get())!;
+    expect(row.updatedAt).toBeGreaterThan(ahead);
+    const journal = (await db().select({ createdAt: changelog.createdAt }).from(changelog)
+      .where(and(eq(changelog.runId, s.runId), eq(changelog.recordId, seeded.id))).get())!;
+    expect(journal.createdAt).toBe(row.updatedAt);
   });
 });
 
@@ -426,6 +635,36 @@ describe("import commit — structural-cache recompute", () => {
     expect(JSON.parse(parentJournal.diff)).toMatchObject({
       childCount: { old: 0, new: 2 },
     });
+  });
+
+  // A version ahead of the clock, as a save that moved it past the
+  // clock leaves it: each write moves it strictly past, and the journal
+  // row carries the version written, which a revert compares the row
+  // against.
+  it("moves a container's version that is ahead of the clock strictly past it, and journals that version", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "PARENT 1", title: "Existing container",
+      descriptionLevel: "fonds", childCount: 0,
+    });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, parent.id));
+    const rows = [
+      { Reference_Code: "CHILD 1", Title: "First child", Date_Expressed: "1700", Parent_Ref: "PARENT 1" },
+    ] as unknown as Parameters<typeof makeSbmalCsv>[0];
+    const s = await setupWithCsv({
+      csv: makeSbmalCsv(rows, ["Parent_Ref"]),
+      bindings: [...SBMAL_DACS_BINDINGS, { source: "Parent_Ref", target: "parent" as const }],
+      updateExisting: false,
+    });
+    await driveCommit(s, false);
+    const after = (await db().select({ updatedAt: descriptions.updatedAt }).from(descriptions)
+      .where(eq(descriptions.id, parent.id)).get())!;
+    expect(after.updatedAt).toBeGreaterThan(ahead);
+    const journal = (await db().select({ createdAt: changelog.createdAt }).from(changelog)
+      .where(and(eq(changelog.runId, s.runId), eq(changelog.recordId, parent.id))).get())!;
+    expect(journal.createdAt).toBe(after.updatedAt);
   });
 });
 
@@ -1092,6 +1331,89 @@ describe("import commit — bound OCR text becomes a page-1 row", () => {
     expect(await pagesOf(seeded.id)).toEqual([before]);
   });
 
+  // The OCR text is part of the description's published record, so an
+  // update whose only change is the text still moves the description's
+  // version. Each case first imports the same rows with a blank OCR
+  // cell, so the second run finds every descriptive field as it would
+  // write it, then sets an old version and imports the text.
+  const OLD_VERSION = 1_000;
+  async function versionOf(id: string): Promise<number> {
+    const row = await db().select({ updatedAt: descriptions.updatedAt }).from(descriptions)
+      .where(eq(descriptions.id, id)).get();
+    return row!.updatedAt;
+  }
+  async function importFieldsThenAge(id: string, version = OLD_VERSION) {
+    const first = await setup({ csv: csvWithOcr({}), bindings: OCR_BINDINGS, updateExisting: true });
+    await driveCommit(first, true);
+    await db().update(descriptions).set({ updatedAt: version }).where(eq(descriptions.id, id));
+  }
+
+  it("an OCR-only update moves a version that is ahead of the clock strictly past it", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "older wrenfield text" });
+    const ahead = Date.now() + 10_000;
+    await importFieldsThenAge(seeded.id, ahead);
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "newer pellmorrow text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    await driveCommit(s, true);
+    expect(await versionOf(seeded.id)).toBeGreaterThan(ahead);
+  });
+
+  it("an update that replaces only a migrated page's text moves the description's version, journalling nothing", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "older thistlecomb text" });
+    await importFieldsThenAge(seeded.id);
+    const startedAt = Date.now();
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "newer gorsewick text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(1);
+    expect(executed.updated).toBe(0);
+    expect((await pagesOf(seeded.id))[0].text).toBe("newer gorsewick text");
+    expect(await versionOf(seeded.id)).toBeGreaterThanOrEqual(startedAt);
+    expect(await journalFor(s.runId)).toEqual([]);
+  });
+
+  it("an update that gives only a page-1 row moves the description's version", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await importFieldsThenAge(seeded.id);
+    const startedAt = Date.now();
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "first brackenmoor text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(1);
+    expect(executed.updated).toBe(0);
+    expect(await pagesOf(seeded.id)).toHaveLength(1);
+    expect(await versionOf(seeded.id)).toBeGreaterThanOrEqual(startedAt);
+  });
+
+  it("an update whose OCR text and fields are unchanged leaves the description's version", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const seeded = await seedExisting(tenantId, "CMD 1");
+    await seedPage({ descriptionId: seeded.id, tenantId, pageSeq: 1, text: "same hollowmere text" });
+    await importFieldsThenAge(seeded.id);
+    const s = await setup({
+      csv: csvWithOcr({ "CMD 1": "same hollowmere text" }),
+      bindings: OCR_BINDINGS,
+      updateExisting: true,
+    });
+    const { executed } = await driveCommit(s, true);
+    expect(executed.ocrPagesWritten).toBe(0);
+    expect(await versionOf(seeded.id)).toBe(OLD_VERSION);
+  });
+
   it("refuses a run that would write OCR text to a description with pipeline pages, writing nothing", async () => {
     const tenantId = DEFAULT_TEST_TENANT_ID;
     const seeded = await seedExisting(tenantId, "CMD 1");
@@ -1170,3 +1492,5 @@ describe("import commit — bound OCR text becomes a page-1 row", () => {
     expect((await pagesOf(seeded.id))[0]).toMatchObject({ tenant_id: tenantId, text: "placeholder tenant text" });
   });
 });
+
+// @version v0.9.0

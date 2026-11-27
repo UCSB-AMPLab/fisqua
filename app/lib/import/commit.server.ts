@@ -57,8 +57,28 @@
  * (`createSnapshotDiff`); update rows journal the ordinary field diff
  * (`computeDiff`) — the before-images a revert reads. `created_by` is the
  * run author; `updated_at` is bumped on every touched row (the revert
- * conflict test reads it). There are NO deletes here — imports upsert,
+ * conflict test reads it), to the next version past the one read
+ * (`nextVersion`: the time of the write, or one past the stored version
+ * when that is ahead of the clock), and the paired journal row carries
+ * that version as its `created_at`, so a revert finds the row as the run
+ * left it. Each update batch and each recompute slice opens with a guard
+ * that every row it writes is still at the version read
+ * (`descriptionsAsReadGuard`), and each UPDATE is conditioned on it: a
+ * write that lands between the read and the batch fails the batch whole,
+ * and the step throws, so the Workflow runs it again from a fresh read
+ * whose before-images and versions are current. An update that changes
+ * a row's level or publication also moves its parent's version
+ * (`parentsVersionFollow`, at the end of the batch, once per parent the
+ * batch does not write itself), since the parent publishes its
+ * children's level. There are NO deletes here — imports upsert,
  * never delete (spec §5).
+ *
+ * A created code that some description records under
+ * `former-reference-code` stops being published as that description's
+ * former code once it is live. The import does not move those
+ * descriptions' versions: a version move would put a row the run wrote
+ * past its journal row, and a revert would then keep it as edited. The
+ * incremental publish's fingerprint covers those descriptions instead.
  *
  * ## Structural cache (spec §5)
  *
@@ -109,14 +129,18 @@
  *
  * The page rows a run writes are counted in `ocrPagesWritten`. A row
  * whose only change is its OCR text journals nothing and counts as
- * `unchanged`, since the description itself is not written.
+ * `unchanged`, since none of its fields is written; its `updated_at` is
+ * still moved, in the same batch as the page statement, because the
+ * text is part of the description's published record.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { descriptions, importUploads, ocrPages, stewardshipRuns, tenants } from "../../db/schema";
+import { nextVersion } from "../record-version.server";
+import { descriptionsAsReadGuard, parentsVersionFollow, type DescriptionAsRead } from "../description-versions.server";
 import type { DescriptionLevel, Standard } from "../standards/types";
 import {
   assertRunMessage,
@@ -994,6 +1018,8 @@ export async function processUpdateBatch(
   let updated = 0;
   let unchanged = 0;
   let ocrPagesWritten = 0;
+  const asRead: DescriptionAsRead[] = [];
+  const parentIds = new Set<string>();
   for (const code of batchCodes) {
     const assembled = records.get(code);
     const existing = currentByCode.get(code);
@@ -1009,6 +1035,7 @@ export async function processUpdateBatch(
     // OCR text goes to the description's page-1 row, written whether or
     // not the description's own fields change (module header).
     const ocrText = ocrTextOf(assembled.record);
+    let pageWritten = false;
     if (ocrText !== null) {
       const page = writablePage(pagesById.get(descriptionId));
       if (page === null) {
@@ -1023,6 +1050,7 @@ export async function processUpdateBatch(
           `),
         );
         ocrPagesWritten++;
+        pageWritten = true;
       } else if (page !== "refused" && page.text !== ocrText) {
         // Replaced only while the row is still the migrated page 1.
         statements.push(
@@ -1042,6 +1070,7 @@ export async function processUpdateBatch(
             ),
         );
         ocrPagesWritten++;
+        pageWritten = true;
       }
     }
     // legacyIds is merge-append, never replace (module header): the
@@ -1053,22 +1082,36 @@ export async function processUpdateBatch(
     const before: Record<string, unknown> = {};
     for (const key of Object.keys(boundFields)) before[key] = existing[key];
     const diff = computeDiff(before, boundFields);
-    if (!diff) {
+    if (!diff && !pageWritten) {
       unchanged++;
       continue; // idempotent no-op
     }
 
+    // A row whose only change is its OCR text moves its version alone:
+    // the text is part of its published record, but not of the journal,
+    // so nothing else is written or journalled for it (module header).
+    // The version is past the one read, whatever the clock, and the
+    // journal row carries it (module header).
+    // The write holds only while the row is at the version read; the
+    // batch's guard fails the whole batch otherwise (below).
+    const version = nextVersion(existing.updatedAt as number, now);
+    asRead.push({ id: descriptionId, version: existing.updatedAt as number });
     statements.push(
       db
         .update(descriptions)
-        .set({ ...boundFields, updatedBy: config.userId, updatedAt: now })
+        .set(diff ? { ...boundFields, updatedBy: config.userId, updatedAt: version } : { updatedAt: version })
         .where(
           and(
             eq(descriptions.tenantId, config.tenantId),
             eq(descriptions.id, descriptionId),
+            eq(descriptions.updatedAt, existing.updatedAt as number),
           ),
         ),
     );
+    if (!diff) {
+      unchanged++;
+      continue;
+    }
     statements.push(
       composeJournalEntry(db, {
         recordId: descriptionId,
@@ -1077,12 +1120,35 @@ export async function processUpdateBatch(
         kind: "update",
         diff,
         runId: config.runId,
-        now,
+        now: version,
       }),
     );
+    // A change of level or publication changes the parent's
+    // `children_level`, so the parent's version moves, at the end of the
+    // batch (below).
+    if (("descriptionLevel" in diff || "isPublished" in diff) && typeof existing.parentId === "string") {
+      parentIds.add(existing.parentId);
+    }
     updated++;
   }
 
+  // The parents' versions move after every row's own write, once per
+  // parent, so no parent's own conditioned write is overtaken by a
+  // child's bump. A parent the batch writes itself already has its
+  // version moved by that write, and its journal row carries it.
+  const followers = parentsVersionFollow(
+    db,
+    config.tenantId,
+    [...parentIds].filter((id) => !asRead.some((r) => r.id === id)),
+    now,
+  );
+  if (followers) statements.push(followers);
+
+  // The batch opens with a guard that every row it writes is still at
+  // the version read: a write that landed in between fails the batch
+  // whole, and the step throws, so the Workflow runs it again from a
+  // fresh read (module header).
+  if (asRead.length > 0) statements.unshift(descriptionsAsReadGuard(db, config.tenantId, asRead));
   if (statements.length > 0) {
     await db.batch(statements as [any, ...any[]]);
   }
@@ -1108,13 +1174,14 @@ export async function recomputeStructuralCaches(
   // per statement) so an import touching hundreds of distinct containers
   // never exceeds D1's 100-bound-parameter cap; child counts come from ONE
   // grouped query per chunk, never a query per parent.
-  const parents: { id: string; referenceCode: string; childCount: number }[] = [];
+  const parents: { id: string; referenceCode: string; childCount: number; updatedAt: number }[] = [];
   for (const slice of chunk(config.affectedParentRefCodes, IMPORT_BATCH_SIZE)) {
     const rows = (await db
       .select({
         id: descriptions.id,
         referenceCode: descriptions.referenceCode,
         childCount: descriptions.childCount,
+        updatedAt: descriptions.updatedAt,
       })
       .from(descriptions)
       .where(
@@ -1123,7 +1190,7 @@ export async function recomputeStructuralCaches(
           inArray(descriptions.referenceCode, slice),
         ),
       )
-      .all()) as { id: string; referenceCode: string; childCount: number }[];
+      .all()) as { id: string; referenceCode: string; childCount: number; updatedAt: number }[];
     parents.push(...rows);
   }
 
@@ -1146,20 +1213,27 @@ export async function recomputeStructuralCaches(
   }
 
   const now = Date.now();
-  const statements: unknown[] = [];
+  const groups: { read: DescriptionAsRead; statements: unknown[] }[] = [];
   let recomputed = 0;
   for (const parent of parents) {
     const actualCount = actualByParentId.get(parent.id) ?? 0;
     if (actualCount === parent.childCount) continue;
+    const version = nextVersion(parent.updatedAt, now);
+    const statements: unknown[] = [];
+    groups.push({ read: { id: parent.id, version: parent.updatedAt }, statements });
 
     statements.push(
       db
         .update(descriptions)
         // updatedBy = the run author, so the row's attribution agrees with
         // the journal row this batch pairs with it.
-        .set({ childCount: actualCount, updatedAt: now, updatedBy: config.userId })
+        .set({ childCount: actualCount, updatedAt: version, updatedBy: config.userId })
         .where(
-          and(eq(descriptions.tenantId, config.tenantId), eq(descriptions.id, parent.id)),
+          and(
+            eq(descriptions.tenantId, config.tenantId),
+            eq(descriptions.id, parent.id),
+            eq(descriptions.updatedAt, parent.updatedAt),
+          ),
         ),
     );
     statements.push(
@@ -1170,16 +1244,23 @@ export async function recomputeStructuralCaches(
         kind: "update",
         diff: { childCount: { old: parent.childCount, new: actualCount } },
         runId: config.runId,
-        now,
+        now: version,
       }),
     );
     recomputed++;
   }
 
   // Submit in bounded slices of whole update+journal PAIRS — a pair never
-  // splits across batches, so effect + journal still land together.
-  for (const slice of chunk(statements, IMPORT_BATCH_SIZE * 2)) {
-    if (slice.length > 0) await db.batch(slice as [any, ...any[]]);
+  // splits across batches, so effect + journal still land together. Each
+  // slice opens with a guard that its containers are still at the
+  // versions read; a write that landed in between fails the slice, and
+  // the step throws and runs again from a fresh read.
+  for (const slice of chunk(groups, IMPORT_BATCH_SIZE)) {
+    if (slice.length === 0) continue;
+    await db.batch([
+      descriptionsAsReadGuard(db, config.tenantId, slice.map((g) => g.read)),
+      ...slice.flatMap((g) => g.statements),
+    ] as [any, ...any[]]);
   }
   return { recomputed };
 }
@@ -1357,3 +1438,5 @@ export async function mintImportRun(
     .get();
   return minted ? { runId: id } : null;
 }
+
+// @version v0.9.0

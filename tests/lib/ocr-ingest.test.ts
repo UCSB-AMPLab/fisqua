@@ -17,11 +17,13 @@
  * through in one call, with a statement plan that stays inside D1's
  * per-invocation query limit; two overlapping calls each commit a whole
  * page set; an abandoned attempt's staging rows are cleared by a later
- * call; and a single page above 100 KB is stored through one bound
- * statement. The object store is an in-memory fake, so nothing here touches
+ * call; a single page above 100 KB is stored through one bound
+ * statement; and a call that replaces the pages moves the description's
+ * `updated_at`, while a repeat call or one that commits nothing leaves
+ * it. The object store is an in-memory fake, so nothing here touches
  * the network.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -137,6 +139,46 @@ describe("ingestOcrPages", () => {
     ).all<{ r: number }>();
     expect(hits.results.map((h) => h.r)).toEqual(first.map((row) => row.r));
     expect(await stagedCount()).toBe(0);
+  });
+
+  // The pages are the description's published OCR text, so a call that
+  // replaces them moves the description's version and a call that
+  // leaves them as they are does not.
+  const OLD_VERSION = 1_000;
+  const versionOf = async (id: string) =>
+    (await env.DB.prepare("SELECT updated_at AS v FROM descriptions WHERE id = ?").bind(id).first<{ v: number }>())!.v;
+  const age = (id: string) =>
+    env.DB.prepare("UPDATE descriptions SET updated_at = ? WHERE id = ?").bind(OLD_VERSION, id).run();
+
+  it("moves the description's version when it writes pages, and again when a later run replaces them", async () => {
+    put("r1", 2, "diezmo");
+    await age(OCR_IDS.descA1);
+    const firstAt = Date.now();
+    await ingestOcrPages(getTestDb(), reader, { ...base, runId: "run-1", pages: pages("r1", 2) });
+    const first = await versionOf(OCR_IDS.descA1);
+    expect(first).toBeGreaterThanOrEqual(firstAt);
+
+    put("r2", 1, "quinto");
+    await ingestOcrPages(getTestDb(), reader, { ...base, runId: "run-2", pages: pages("r2", 1) });
+    expect(await versionOf(OCR_IDS.descA1)).toBeGreaterThan(first);
+  });
+
+  it("leaves the description's version when called again with the same input", async () => {
+    put("r1", 2, "almojarifazgo");
+    const input = { ...base, runId: "run-1", pages: pages("r1", 2) };
+    await ingestOcrPages(getTestDb(), reader, input);
+    await age(OCR_IDS.descA1);
+    await ingestOcrPages(getTestDb(), reader, input);
+    expect(await versionOf(OCR_IDS.descA1)).toBe(OLD_VERSION);
+  });
+
+  it("leaves the description's version when a missing object stops the call", async () => {
+    put("r1", 1, "sisa");
+    await age(OCR_IDS.descA1);
+    await expect(
+      ingestOcrPages(getTestDb(), reader, { ...base, runId: "run-1", pages: pages("r1", 2) }),
+    ).rejects.toThrow();
+    expect(await versionOf(OCR_IDS.descA1)).toBe(OLD_VERSION);
   });
 
   it("rewrites the rows when the same run's text changes", async () => {
@@ -370,3 +412,5 @@ describe("ingestOcrPages", () => {
     expect((await rows(OCR_IDS.descA1))[0].text.length).toBe(150_000);
   });
 });
+
+// @version v0.9.0

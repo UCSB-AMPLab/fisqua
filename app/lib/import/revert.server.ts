@@ -49,17 +49,37 @@
  *
  * ## Edited-since test — compare against the run's LAST touch of the row
  *
- * A row the run touched carries `updated_at` equal to the LAST moment the
- * run wrote it (an import may write a row twice — a field update, then a
+ * A row the run touched carries `updated_at` equal to the version of the
+ * LAST write the run made to it, which that write's journal row carries
+ * as its `created_at` (an import may write a row twice — a field update, then a
  * childCount reconciliation). The edited-since test therefore compares
  * the row's current `updated_at` against the MAXIMUM `created_at` among
  * the target run's journal rows for that record (its `runTouchTime`). If
  * `current.updated_at > runTouchTime` the row was edited AFTER the run —
- * by hand, another run, or an authority op — so it is SKIPPED and counted
- * (never forced, never merged; spec §4). Equality means untouched-since:
- * revert proceeds. A compensating write bumps `updated_at` to the revert
- * clock, which is exactly what makes a second pass treat the row as
- * "edited since" — the idempotency that keeps a retry from double-writing.
+ * by hand, another run, an authority op, or any write that moved its
+ * version, such as an OCR ingest — so it is SKIPPED and counted (never
+ * forced, never merged; spec §4). Equality means untouched-since: revert
+ * proceeds. A compensating write moves `updated_at` past the version it
+ * read (`nextVersion`), and its journal row carries the new version,
+ * which is exactly what makes a second pass treat the row as "edited
+ * since" — the idempotency that keeps a retry from double-writing. Each
+ * restore and delete batch, and each container slice, opens with a guard
+ * that its rows are still at the versions read (`descriptionsAsReadGuard`);
+ * a write in between fails the batch, and the step runs again from a
+ * fresh read. A re-inserted row takes a version past its deleted version
+ * and the clock. A parent written in an earlier batch of the same import,
+ * then bumped by a later batch's change to a child's level, is kept by a
+ * revert as edited.
+ *
+ * ## Former reference codes
+ *
+ * A delete frees its row's reference code and a re-insert takes it
+ * again, which changes the published former codes of any description
+ * recording that code under `former-reference-code`. The revert does not
+ * move those descriptions' versions: a version move would put a row the
+ * target run wrote past its journal row, and the edited-since test would
+ * then keep a row it should revert. The incremental publish's
+ * fingerprint covers those descriptions instead.
  *
  * ## Deletes: children before parents, foreign children keep a container
  *
@@ -85,13 +105,15 @@
  * this compensating path (spec §4 — the ruled exception to the
  * imports-never-delete rule).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
 import { changelog, descriptions, stewardshipRuns } from "../../db/schema";
+import { nextVersion } from "../record-version.server";
+import { descriptionsAsReadGuard, parentsVersionFollow, type DescriptionAsRead } from "../description-versions.server";
 import {
   assertRunMessage,
   composeJournalEntry,
@@ -392,10 +414,11 @@ export async function processRestoreBatch(
     .where(and(eq(descriptions.tenantId, config.tenantId), inArray(descriptions.id, ids)))
     .all()) as Record<string, unknown>[];
   const currentById = new Map(current.map((r) => [r.id as string, r]));
-
   const now = Date.now();
   const statements: BatchItem<"sqlite">[] = [];
+  const asRead: DescriptionAsRead[] = [];
   let restored = 0;
+  const parentIds = new Set<string>();
   let skippedEdited = 0;
   for (const plan of batch) {
     const row = currentById.get(plan.recordId);
@@ -415,12 +438,18 @@ export async function processRestoreBatch(
       continue; // already at pre-run values (idempotent no-op)
     }
 
+    const version = nextVersion(row.updatedAt as number, now);
+    asRead.push({ id: plan.recordId, version: row.updatedAt as number });
     statements.push(
       db
         .update(descriptions)
-        .set({ ...plan.oldValues, updatedBy: config.userId, updatedAt: now })
+        .set({ ...plan.oldValues, updatedBy: config.userId, updatedAt: version })
         .where(
-          and(eq(descriptions.tenantId, config.tenantId), eq(descriptions.id, plan.recordId)),
+          and(
+            eq(descriptions.tenantId, config.tenantId),
+            eq(descriptions.id, plan.recordId),
+            eq(descriptions.updatedAt, row.updatedAt as number),
+          ),
         ),
     );
     statements.push(
@@ -431,12 +460,34 @@ export async function processRestoreBatch(
         kind: "update",
         diff,
         runId: config.runId,
-        now,
+        now: version,
       }),
     );
+    // Restoring a level or a publication changes the parent's
+    // `children_level`, so the parent's version moves, at the end of the
+    // batch (below).
+    if (("descriptionLevel" in diff || "isPublished" in diff) && typeof row.parentId === "string") {
+      parentIds.add(row.parentId);
+    }
     restored++;
   }
 
+  // The parents' versions move after every row's own write, once per
+  // parent, so no parent's own conditioned write is overtaken by a
+  // child's bump. A parent the batch writes itself already has its
+  // version moved by that write, and its journal row carries it.
+  const followers = parentsVersionFollow(
+    db,
+    config.tenantId,
+    [...parentIds].filter((id) => !asRead.some((r) => r.id === id)),
+    now,
+  );
+  if (followers) statements.push(followers);
+
+  // The batch opens with a guard that every row it writes is still at the
+  // version read: a write in between fails the batch, and the step runs
+  // again from a fresh read, which finds the row edited and keeps it.
+  if (asRead.length > 0) statements.unshift(descriptionsAsReadGuard(db, config.tenantId, asRead));
   if (statements.length > 0) await db.batch(statements as [any, ...any[]]);
   return { restored, skippedEdited };
 }
@@ -485,6 +536,7 @@ export async function processDeleteBatch(
 
   const now = Date.now();
   const statements: BatchItem<"sqlite">[] = [];
+  const asRead: DescriptionAsRead[] = [];
   const deletingIds = new Set<string>();
   let deleted = 0;
   let skippedEdited = 0;
@@ -525,9 +577,12 @@ export async function processDeleteBatch(
       }),
     );
     deletingIds.add(plan.recordId);
+    asRead.push({ id: plan.recordId, version: row.updatedAt as number });
     deleted++;
   }
 
+  // As the restore: a row written between the read and the batch fails it.
+  if (asRead.length > 0) statements.unshift(descriptionsAsReadGuard(db, config.tenantId, asRead));
   if (statements.length > 0) await db.batch(statements as [any, ...any[]]);
   return { deleted, skippedEdited, skippedForeignChildren };
 }
@@ -591,12 +646,26 @@ export async function processReinsertBatch(
       continue; // a since-created row holds this natural key
     }
 
+    // Past the deleted row's own version and the clock, so the row never
+    // returns at a version it, or a form open on it, already held.
+    const version = nextVersion(
+      typeof plan.row.updatedAt === "number" ? plan.row.updatedAt : 0,
+      now,
+    );
+    // Imported rows were stored with created_at in seconds; the snapshot
+    // carries the stored value, and a re-created row holds milliseconds.
+    const snapshotCreatedAt = plan.row.createdAt;
+    const createdAt =
+      typeof snapshotCreatedAt === "number" && snapshotCreatedAt < 1e11
+        ? snapshotCreatedAt * 1000
+        : snapshotCreatedAt;
     const values = {
       ...plan.row,
+      createdAt,
       id: plan.recordId,
       tenantId: config.tenantId,
       updatedBy: config.userId,
-      updatedAt: now,
+      updatedAt: version,
     } as typeof descriptions.$inferInsert;
 
     statements.push(db.insert(descriptions).values(values));
@@ -608,7 +677,7 @@ export async function processReinsertBatch(
         kind: "create",
         diff: createSnapshotDiff(values as Record<string, unknown>),
         runId: config.runId,
-        now,
+        now: version,
       }),
     );
     reinserted++;
@@ -636,10 +705,10 @@ export async function reconcileContainers(
   // per statement) so a run touching hundreds of distinct containers never
   // exceeds D1's 100-bound-parameter cap; child counts come from ONE
   // grouped query per chunk, never a query per parent.
-  const parents: { id: string; childCount: number }[] = [];
+  const parents: { id: string; childCount: number; updatedAt: number }[] = [];
   for (const slice of chunk(config.affectedParentIds, REVERT_BATCH_SIZE)) {
     const rows = (await db
-      .select({ id: descriptions.id, childCount: descriptions.childCount })
+      .select({ id: descriptions.id, childCount: descriptions.childCount, updatedAt: descriptions.updatedAt })
       .from(descriptions)
       .where(
         and(
@@ -647,7 +716,7 @@ export async function reconcileContainers(
           inArray(descriptions.id, slice),
         ),
       )
-      .all()) as { id: string; childCount: number }[];
+      .all()) as { id: string; childCount: number; updatedAt: number }[];
     parents.push(...rows);
   }
 
@@ -670,17 +739,26 @@ export async function reconcileContainers(
   }
 
   const now = Date.now();
-  const statements: BatchItem<"sqlite">[] = [];
+  const groups: { read: DescriptionAsRead; statements: BatchItem<"sqlite">[] }[] = [];
   let reconciled = 0;
   for (const parent of parents) {
     const actualCount = actualByParentId.get(parent.id) ?? 0;
     if (actualCount === parent.childCount) continue;
+    const version = nextVersion(parent.updatedAt, now);
+    const statements: BatchItem<"sqlite">[] = [];
+    groups.push({ read: { id: parent.id, version: parent.updatedAt }, statements });
 
     statements.push(
       db
         .update(descriptions)
-        .set({ childCount: actualCount, updatedAt: now, updatedBy: config.userId })
-        .where(and(eq(descriptions.tenantId, config.tenantId), eq(descriptions.id, parent.id))),
+        .set({ childCount: actualCount, updatedAt: version, updatedBy: config.userId })
+        .where(
+          and(
+            eq(descriptions.tenantId, config.tenantId),
+            eq(descriptions.id, parent.id),
+            eq(descriptions.updatedAt, parent.updatedAt),
+          ),
+        ),
     );
     statements.push(
       composeJournalEntry(db, {
@@ -690,7 +768,7 @@ export async function reconcileContainers(
         kind: "update",
         diff: { childCount: { old: parent.childCount, new: actualCount } },
         runId: config.runId,
-        now,
+        now: version,
       }),
     );
     reconciled++;
@@ -698,8 +776,15 @@ export async function reconcileContainers(
 
   // Submit in bounded slices of whole update+journal PAIRS — a pair never
   // splits across batches, so effect + journal still land together.
-  for (const slice of chunk(statements, REVERT_BATCH_SIZE * 2)) {
-    if (slice.length > 0) await db.batch(slice as [any, ...any[]]);
+  // Each slice opens with a guard that its containers are still at the
+  // versions read; a write in between fails the slice, and the step runs
+  // again from a fresh read.
+  for (const slice of chunk(groups, REVERT_BATCH_SIZE)) {
+    if (slice.length === 0) continue;
+    await db.batch([
+      descriptionsAsReadGuard(db, config.tenantId, slice.map((g) => g.read)),
+      ...slice.flatMap((g) => g.statements),
+    ] as [any, ...any[]]);
   }
   return { reconciled };
 }
@@ -880,3 +965,5 @@ export async function releaseRevertLock(
       ),
     );
 }
+
+// @version v0.9.0

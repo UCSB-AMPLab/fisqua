@@ -14,9 +14,16 @@
  * neither writes the description row nor touches the description's
  * OCR page rows, which hold the transcript.
  *
+ * The action writes only the fields a request carries. Each standard's
+ * form renders a subset of the description columns, so a save through
+ * the ISAD(G) form must leave the DACS- and RAD-only columns as stored,
+ * and the reverse; a field the request does not carry (the digital
+ * flag without its hidden marker, genre, a partial submission) is left
+ * unchanged, and the changelog records only the fields that changed.
+ *
  * Harness mirrors tests/admin/vocab-merge-split-action.test.ts.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -30,6 +37,8 @@ import { createTestDescription } from "../helpers/descriptions";
 import { tenantContext, userContext, type User } from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import { seedPage } from "../helpers/ocr-fixtures";
+import { getStandardConfig } from "../../app/lib/standards/registry";
+import type { Standard } from "../../app/lib/standards/types";
 // Instantiate the route module graph at file load so the in-test
 // `await import()` resolves from a warm module cache. A cold route-graph
 // import inside a timed test body can exceed testTimeout when this file
@@ -37,10 +46,13 @@ import { seedPage } from "../helpers/ocr-fixtures";
 // resource-constrained (2-core CI) runner.
 import "../../app/routes/_auth.admin.descriptions.$id";
 
-function buildContext(user: User): any {
+function buildContext(user: User, standard: Standard = "isadg"): any {
   const ctx = new RouterContextProvider();
   ctx.set(userContext, user);
-  ctx.set(tenantContext, makeTenantContext({ id: user.tenantId }));
+  ctx.set(
+    tenantContext,
+    makeTenantContext({ id: user.tenantId, descriptiveStandard: standard }),
+  );
   (ctx as any).cloudflare = { env };
   return ctx;
 }
@@ -99,7 +111,8 @@ function fullUpdateFields(repoId: string): Record<string, string> {
 async function runUpdate(
   user: User,
   descriptionId: string,
-  fields: Record<string, string>,
+  fields: Record<string, string> | Array<[string, string]>,
+  standard: Standard = "isadg",
 ) {
   const { action } = await import(
     "../../app/routes/_auth.admin.descriptions.$id"
@@ -114,7 +127,7 @@ async function runUpdate(
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       },
     ),
-    context: buildContext(user),
+    context: buildContext(user, standard),
     params: { id: descriptionId },
   } as any)) as any;
 }
@@ -140,6 +153,71 @@ async function seedAdminAndDescription() {
   return { admin, db, descId: desc.id as string, repoId };
 }
 
+// Every editable column populated with a valid value, so a record
+// carries data in the columns each standard's form leaves out. Written
+// straight to the row, as an import or an edit under another standard
+// would have left it.
+async function populateAll(db: any, descId: string, repoId: string) {
+  const { _action, hasDigital, ...columns } = fullUpdateFields(repoId);
+  await db
+    .update(schema.descriptions)
+    .set({ ...columns, hasDigital: hasDigital === "on" })
+    .where(eq(schema.descriptions.id, descId));
+}
+
+async function readRow(db: any, descId: string) {
+  return (await db
+    .select()
+    .from(schema.descriptions)
+    .where(eq(schema.descriptions.id, descId))
+    .get()) as Record<string, unknown>;
+}
+
+async function changelogDiffs(db: any, descId: string) {
+  const rows = await db
+    .select({ diff: schema.changelog.diff })
+    .from(schema.changelog)
+    .where(eq(schema.changelog.recordId, descId))
+    .all();
+  return rows.map((r: { diff: string }) => JSON.parse(r.diff));
+}
+
+// The columns a standard's edit form submits: every field its config
+// renders, less the ones that render without an input (referenceCode
+// is read-only, legacyIds is display-only, the linkers post their own
+// intents).
+function formColumns(standard: Standard): string[] {
+  const NO_INPUT = new Set(["referenceCode", "legacyIds", "entities", "places"]);
+  const cols = new Set<string>();
+  for (const section of getStandardConfig(standard).sections) {
+    for (const field of section.fields) {
+      if (!NO_INPUT.has(field.column)) cols.add(field.column);
+    }
+  }
+  return [...cols];
+}
+
+// The request a standard's form sends for the stored record, with
+// `changes` applied: one pair per rendered input, the hidden marker
+// before the digital checkbox, and "on" after it when it is checked.
+function formPayload(
+  standard: Standard,
+  stored: Record<string, string>,
+  changes: Record<string, string> = {},
+  checked = true,
+): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [["_action", "update"]];
+  for (const col of formColumns(standard)) {
+    if (col === "hasDigital") {
+      pairs.push(["hasDigital", ""]);
+      if (checked) pairs.push(["hasDigital", "on"]);
+      continue;
+    }
+    pairs.push([col, changes[col] ?? stored[col] ?? ""]);
+  }
+  return pairs;
+}
+
 describe("descriptions admin update action", () => {
   beforeAll(async () => {
     await applyMigrations();
@@ -153,7 +231,7 @@ describe("descriptions admin update action", () => {
     const { admin, db, descId, repoId } = await seedAdminAndDescription();
 
     const res = await runUpdate(admin, descId, fullUpdateFields(repoId));
-    expect(res).toEqual({ ok: true, message: "updated" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
 
     const row = await db
       .select()
@@ -206,14 +284,15 @@ describe("descriptions admin update action", () => {
     expect(row!.hasDigital).toBe(true);
   });
 
-  it("coerces absent genre to [] and absent resourceType to null", async () => {
+  it("leaves genre and resourceType as stored when the request does not carry them", async () => {
     const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
 
     const fields = fullUpdateFields(repoId);
     delete fields.genre;
     delete fields.resourceType;
     const res = await runUpdate(admin, descId, fields);
-    expect(res).toEqual({ ok: true, message: "updated" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
 
     const row = await db
       .select({
@@ -223,8 +302,17 @@ describe("descriptions admin update action", () => {
       .from(schema.descriptions)
       .where(eq(schema.descriptions.id, descId))
       .get();
-    expect(row!.genre).toBe("[]");
-    expect(row!.resourceType).toBeNull();
+    expect(row!.genre).toBe('["actas"]');
+    expect(row!.resourceType).toBe("text");
+  });
+
+  it("writes [] for a submitted blank genre over a stored list", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const res = await runUpdate(admin, descId, { ...fullUpdateFields(repoId), genre: "" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+    expect((await readRow(db, descId)).genre).toBe("[]");
   });
 
   it("ignores an ocrText field in a posted form and leaves the page rows alone", async () => {
@@ -238,7 +326,7 @@ describe("descriptions admin update action", () => {
 
     const fields = { ...fullUpdateFields(repoId), title: "Título cambiado", ocrText: "sobrescrito" };
     const res = await runUpdate(admin, descId, fields);
-    expect(res).toEqual({ ok: true, message: "updated" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
 
     const row = await db
       .select({ title: schema.descriptions.title })
@@ -302,7 +390,7 @@ describe("descriptions admin update action", () => {
 
     // Populate dimensions and medium first.
     let res = await runUpdate(admin, descId, fullUpdateFields(repoId));
-    expect(res).toEqual({ ok: true, message: "updated" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
 
     // Then submit the same update with both fields cleared. The
     // validator sees them as absent (empty maps to undefined), but the
@@ -314,7 +402,7 @@ describe("descriptions admin update action", () => {
     cleared.dimensions = "";
     cleared.medium = "";
     res = await runUpdate(admin, descId, cleared);
-    expect(res).toEqual({ ok: true, message: "updated" });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
 
     const row = await db
       .select({
@@ -341,3 +429,192 @@ describe("descriptions admin update action", () => {
     expect(res).toHaveProperty("modifiedAt");
   });
 });
+
+describe("descriptions admin update action: only submitted fields are written", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  const DACS_RAD_ONLY = [
+    "adminBiogHistory",
+    "acquisitionInfo",
+    "preferredCitation",
+    "systemOfArrangement",
+    "physicalCharacteristics",
+  ];
+  const ISADG_ONLY_UNDER_DACS = [
+    "uniformTitle",
+    "resourceType",
+    "genre",
+    "dateCertainty",
+    "dimensions",
+    "medium",
+    "imprint",
+    "editionStatement",
+    "seriesStatement",
+    "volumeNumber",
+    "issueNumber",
+    "pages",
+    "sectionTitle",
+    "publicationTitle",
+  ];
+
+  it("a save through the ISAD(G) form leaves the DACS and RAD columns as stored", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+    const before = await readRow(db, descId);
+
+    const payload = formPayload("isadg", fullUpdateFields(repoId), {
+      title: "Título nuevo",
+    });
+    for (const col of DACS_RAD_ONLY) {
+      expect(payload.some(([k]) => k === col)).toBe(false);
+    }
+    const res = await runUpdate(admin, descId, payload, "isadg");
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+
+    const after = await readRow(db, descId);
+    for (const col of DACS_RAD_ONLY) {
+      expect(after[col], col).toBe(before[col]);
+    }
+    expect(after.title).toBe("Título nuevo");
+    expect(await changelogDiffs(db, descId)).toEqual([
+      { title: { old: "Fondo Cabildo de Tunja", new: "Título nuevo" } },
+    ]);
+  });
+
+  it("a save through the DACS form leaves the ISAD(G)-only columns as stored", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+    const before = await readRow(db, descId);
+
+    const payload = formPayload("dacs", fullUpdateFields(repoId), {
+      extent: "43 legajos",
+    });
+    for (const col of ISADG_ONLY_UNDER_DACS) {
+      expect(payload.some(([k]) => k === col)).toBe(false);
+    }
+    const res = await runUpdate(admin, descId, payload, "dacs");
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+
+    const after = await readRow(db, descId);
+    for (const col of ISADG_ONLY_UNDER_DACS) {
+      expect(after[col], col).toBe(before[col]);
+    }
+    expect(after.extent).toBe("43 legajos");
+    expect(await changelogDiffs(db, descId)).toEqual([
+      { extent: { old: "42 legajos", new: "43 legajos" } },
+    ]);
+  });
+
+  it("a partial request changes only the field it carries", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+    const before = await readRow(db, descId);
+
+    const res = await runUpdate(admin, descId, {
+      _action: "update",
+      notes: "Nota cambiada",
+    });
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+
+    const after = await readRow(db, descId);
+    for (const [col, value] of Object.entries(before)) {
+      if (col === "notes" || col === "updatedAt" || col === "updatedBy") continue;
+      expect(after[col], col).toEqual(value);
+    }
+    expect(after.notes).toBe("Nota cambiada");
+    expect(await changelogDiffs(db, descId)).toEqual([
+      { notes: { old: "Nota pública", new: "Nota cambiada" } },
+    ]);
+  });
+
+  it("leaves hasDigital as stored when the request carries no marker", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+    expect((await readRow(db, descId)).hasDigital).toBe(true);
+
+    const fields = fullUpdateFields(repoId);
+    delete (fields as Record<string, string>).hasDigital;
+    const res = await runUpdate(admin, descId, fields);
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+    expect((await readRow(db, descId)).hasDigital).toBe(true);
+  });
+
+  it("clears hasDigital when the marker is present and the box unchecked", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const payload = formPayload("isadg", fullUpdateFields(repoId), {}, false);
+    const res = await runUpdate(admin, descId, payload);
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+    expect((await readRow(db, descId)).hasDigital).toBe(false);
+    expect(await changelogDiffs(db, descId)).toEqual([
+      { hasDigital: { old: true, new: false } },
+    ]);
+  });
+
+  it("records no changelog entry when nothing submitted changed", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const res = await runUpdate(admin, descId, formPayload("isadg", fullUpdateFields(repoId)));
+    expect(res).toMatchObject({ ok: true, message: "updated" });
+    expect(await changelogDiffs(db, descId)).toEqual([]);
+  });
+
+  it("refuses a blank title and leaves the stored one", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const res = await runUpdate(admin, descId, { ...fullUpdateFields(repoId), title: "  " });
+    expect(res.ok).toBe(false);
+    expect(res.errors?.title?.[0]).toBe("field_required");
+    expect((await readRow(db, descId)).title).toBe("Fondo Cabildo de Tunja");
+  });
+
+  it("refuses a blank repository and leaves the stored one", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const res = await runUpdate(admin, descId, { ...fullUpdateFields(repoId), repositoryId: "" });
+    expect(res.ok).toBe(false);
+    expect(res.errors?.repositoryId?.length).toBeGreaterThan(0);
+    expect((await readRow(db, descId)).repositoryId).toBe(repoId);
+  });
+
+  it("refuses a blanked mandatory field even when an untouched stored value is invalid", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+    // A legacy value outside the resource-type enum, in a field the
+    // request does not carry.
+    await env.DB.prepare("UPDATE descriptions SET resource_type = 'legacy-kind' WHERE id = ?")
+      .bind(descId)
+      .run();
+
+    const res = await runUpdate(admin, descId, { _action: "update", extent: "" });
+    expect(res.ok).toBe(false);
+    expect(res.errors?.extent?.[0]).toBe("field_required");
+    expect(res.errors?.resourceType).toBeUndefined();
+    expect((await readRow(db, descId)).extent).toBe("42 legajos");
+  });
+
+  it("still applies the optimistic lock to a partial request", async () => {
+    const { admin, db, descId, repoId } = await seedAdminAndDescription();
+    await populateAll(db, descId, repoId);
+
+    const res = await runUpdate(admin, descId, {
+      _action: "update",
+      _updatedAt: "1",
+      notes: "Nota cambiada",
+    });
+    expect(res.error).toBe("conflict");
+    expect((await readRow(db, descId)).notes).toBe("Nota pública");
+  });
+});
+
+// @version v0.9.0

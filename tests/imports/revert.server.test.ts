@@ -1,5 +1,5 @@
 /**
- * Tests — import revert step bodies (stewardship record spec §4)
+ * Tests — import revert step bodies
  *
  * Drives the ImportRevertWorkflow's step functions directly against the
  * real D1 harness with an in-memory staging store (the commit.server.test
@@ -14,23 +14,37 @@
  * (the original import's effects return via re-insert); a row edited
  * between run start and its batch (the edited-since test reads live
  * updated_at); a created container with foreign children skipped;
- * double-revert refused by the mint mutex; and the write-derived
- * reverted/kept counts.
+ * double-revert refused by the mint mutex; the write-derived
+ * reverted/kept counts; versions that start ahead of the clock move
+ * strictly past it, on the import's write and on the revert's, and the
+ * revert still treats the import's write as the run's own; and a
+ * description recording a deleted or re-created code as a former
+ * reference code keeps its version through both reverts. Any version
+ * past the run's is an edit: a row given a column the import left out,
+ * or new OCR pages, is kept. Two rows created by one import, one
+ * recording the other's code as a former one, are both deleted, in one
+ * batch or across batches. A re-inserted row takes a version past its
+ * deleted one and the clock. A restore batch or a container
+ * reconciliation whose row was written after the step read it writes
+ * nothing and throws, and the retry keeps the edit. Restoring a child's
+ * level moves its parent's version, and a child listed before its
+ * parent in one batch leaves both restored, each with its journal row.
  *
  * Fixtures are REAL SBMAL rows over the verbatim DACS headers; hierarchy
  * fixtures add placeholder container codes only — never invented archival
  * metadata.
  *
- * @version v0.6.0
+ * @version v0.9.0
  */
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { applyMigrations, cleanDatabase, DEFAULT_TEST_TENANT_ID } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
+import { seedPage } from "../helpers/ocr-fixtures";
 import { changelog, descriptions, stewardshipRuns } from "../../app/db/schema";
 import { createProfile } from "../../app/lib/import/profiles.server";
 import { createUpload } from "../../app/lib/import/uploads.server";
@@ -155,6 +169,7 @@ async function setupImport(opts: {
 async function driveCommit(
   ctx: { importRunId: string; uploadId: string; repositoryId: string; store: StagingStore },
   updateExisting: boolean,
+  BS = 50,
 ) {
   const config = await loadCommitConfig(db(), ctx.store, {
     runId: ctx.importRunId,
@@ -170,7 +185,6 @@ async function driveCommit(
     rejected: config.counts.rejected,
     pathCacheCapped: 0,
   };
-  const BS = 50;
   for (let i = 0; i < config.createCodes.length; i += BS) {
     const r = await processCreateBatch(db(), ctx.store, config, config.createCodes.slice(i, i + BS));
     executed.created += r.created;
@@ -372,6 +386,36 @@ describe("import revert — update round-trip (restore before-images)", () => {
       title: { old: "Mexico. 1521-1605.", new: "Old title" },
     });
   });
+
+  // A version ahead of the clock, as a save that moved it past the clock
+  // leaves it. The import moves it strictly past, the revert still
+  // recognises the import's write as the run's own, and moves it on again.
+  it("restores a row whose version is ahead of the clock, moving the version strictly past each time", async () => {
+    const store = memStore();
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const seeded = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "item",
+    });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, seeded.id));
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS),
+      bindings: SBMAL_DACS_BINDINGS,
+      updateExisting: true,
+      store,
+    });
+    await driveCommit({ ...s, store }, true);
+    const version = async () =>
+      (await db().select({ v: descriptions.updatedAt }).from(descriptions).where(eq(descriptions.id, seeded.id)).get())!.v;
+    const afterImport = await version();
+    expect(afterImport).toBeGreaterThan(ahead);
+
+    const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(result.counts.restored).toBe(1);
+    expect(result.counts.skippedEdited).toBe(0);
+    expect(await version()).toBeGreaterThan(afterImport);
+  });
 });
 
 describe("import revert — revert-of-revert re-applies the original", () => {
@@ -425,6 +469,62 @@ describe("import revert — revert-of-revert re-applies the original", () => {
       .where(eq(stewardshipRuns.id, rev1.revertRunId))
       .get();
     expect(rev1Row!.revertedByRunId).toBe(rev2.revertRunId);
+  });
+  // Imported rows carried created_at in seconds; the delete snapshot keeps
+  // whatever the row held, and a re-created row must hold milliseconds.
+  it("re-creates a row whose snapshot created_at is in seconds with milliseconds, and leaves milliseconds unchanged", async () => {
+    const store = memStore();
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false, store,
+    });
+    await driveCommit({ ...s, store }, false);
+    // The delete snapshot journals the row as it stands, so set the unit
+    // on the live rows before the first revert.
+    const SECONDS = 1_700_000_000;
+    const MILLIS = 1_700_000_000_123;
+    await db().update(descriptions).set({ createdAt: SECONDS })
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 1")));
+    await db().update(descriptions).set({ createdAt: MILLIS })
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 2")));
+    const rev1 = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(rev1.counts.deleted).toBe(8);
+
+    const rev2 = (await driveRevert({ ...s, store, targetRunId: rev1.revertRunId, message: "Undo the revert" }))!;
+    expect(rev2.counts.reinserted).toBe(8);
+    const back = (await db()
+      .select()
+      .from(descriptions)
+      .where(eq(descriptions.tenantId, s.tenantId))
+      .all()) as Record<string, unknown>[];
+    expect(back.find((r) => r.referenceCode === "CMD 1")!.createdAt).toBe(SECONDS * 1000);
+    expect(back.find((r) => r.referenceCode === "CMD 2")!.createdAt).toBe(MILLIS);
+  });
+
+  // A description outside the run that records one of the run's codes as
+  // a former reference code publishes it only while the code is free: the
+  // revert that deletes the row and the revert that re-creates it each
+  // move its version.
+  it("leaves the version of a description recording a deleted or re-created code as a former one", async () => {
+    const store = memStore();
+    const repo = await createTestRepository({ tenantId: DEFAULT_TEST_TENANT_ID });
+    const keeper = await createTestDescription({
+      tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: repo.id, referenceCode: "KEEPER 1",
+    });
+    await db().update(descriptions)
+      .set({ legacyIds: JSON.stringify([{ provider: "former-reference-code", id: "CMD 3" }]) })
+      .where(eq(descriptions.id, keeper.id));
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false, store,
+    });
+    await driveCommit({ ...s, store }, false);
+    const version = async () =>
+      (await db().select({ v: descriptions.updatedAt }).from(descriptions).where(eq(descriptions.id, keeper.id)).get())!.v;
+    const before = await version();
+    const rev1 = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(rev1.counts.deleted).toBe(8);
+    const rev2 = (await driveRevert({ ...s, store, targetRunId: rev1.revertRunId, message: "Undo the revert" }))!;
+    expect(rev2.counts.reinserted).toBe(8);
+    expect(await version()).toBe(before);
   });
 });
 
@@ -641,4 +741,269 @@ describe("reconcileContainers — many containers stay within D1 bounds", () => 
       .all();
     expect(journal).toHaveLength(120);
   });
+
+  it("moves a container's version that is ahead of the clock strictly past it", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const user = await createTestUser({ isAdmin: true, tenantId });
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "RC AHEAD", descriptionLevel: "fonds", childCount: 5,
+    });
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, parent.id));
+    const runId = crypto.randomUUID();
+    const config = {
+      runId, targetRunId: crypto.randomUUID(), tenantId, userId: user.id,
+      restores: [], deletes: [], reinserts: [], affectedParentIds: [parent.id], totalSteps: 1,
+    } as RevertConfig;
+    expect((await reconcileContainers(db(), config)).reconciled).toBe(1);
+    const row = (await db().select({ v: descriptions.updatedAt, n: descriptions.childCount }).from(descriptions)
+      .where(eq(descriptions.id, parent.id)).get())!;
+    expect(row.n).toBe(0);
+    expect(row.v).toBeGreaterThan(ahead);
+  });
 });
+
+/**
+ * The D1 binding with `concurrent` run once, just before the first
+ * batch: a write that lands between a step's reads and its batch.
+ */
+function racedDb(concurrent: (d: D1Database) => Promise<unknown>) {
+  let done = false;
+  const raced = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          if (!done) {
+            done = true;
+            await concurrent(target);
+          }
+          return target.batch(statements);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return drizzle(raced);
+}
+
+async function mintAndLoad(tenantId: string, userId: string, targetRunId: string) {
+  const minted = (await mintRevertRun(db(), { tenantId, userId, message: "Test revert run", targetRunId }))!;
+  return loadRevertConfig(db(), { runId: minted.runId });
+}
+
+describe("import revert — edited since the run is a version past the run's", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  // CMD 1 records CMD 5 as a former reference code. The import does not
+  // move a former-code holder's version, so the revert finds both rows
+  // as the run left them and deletes them.
+  const FORMER_BINDINGS = [
+    ...SBMAL_DACS_BINDINGS,
+    { source: "Former_Code", target: "legacyIds", provider: "former-reference-code" },
+  ];
+  const csvWithFormer = () =>
+    makeSbmalCsv(
+      SBMAL_REAL_ROWS.map((row) => ({ ...row, Former_Code: row.Reference_Code === "CMD 1" ? "CMD 5" : "" }) as typeof row),
+      ["Former_Code"],
+    );
+
+  for (const [label, batchSize] of [["in one batch", 50], ["one row per batch", 1]] as const) {
+    it(`deletes both rows when one records the other as a former code, created ${label}`, async () => {
+      const store = memStore();
+      const s = await setupImport({ csv: csvWithFormer(), bindings: FORMER_BINDINGS, updateExisting: false, store });
+      await driveCommit({ ...s, store }, false, batchSize);
+      const cmd1 = (await db().select().from(descriptions)
+        .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 1"))).get())!;
+      expect(cmd1.legacyIds).toContain("CMD 5");
+      const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+      expect(result.counts.skippedEdited).toBe(0);
+      expect(result.counts.deleted).toBe(8);
+      expect(await db().select().from(descriptions).where(eq(descriptions.tenantId, s.tenantId)).all()).toEqual([]);
+    });
+  }
+
+  it("keeps a row given a column the import left out", async () => {
+    const store = memStore();
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false, store,
+    });
+    await driveCommit({ ...s, store }, false);
+    await db().update(descriptions).set({ notes: "Nota del catalogador", updatedAt: Date.now() + 10_000 })
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 2")));
+    const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(result.counts.skippedEdited).toBe(1);
+    const kept = await db().select().from(descriptions)
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 2"))).get();
+    expect(kept?.notes).toBe("Nota del catalogador");
+  });
+
+  it("keeps a row whose OCR pages were written after the run", async () => {
+    const store = memStore();
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false, store,
+    });
+    await driveCommit({ ...s, store }, false);
+    const cmd3 = (await db().select().from(descriptions)
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 3"))).get())!;
+    // As an OCR ingest leaves it: new pages, and the version moved.
+    await seedPage({ descriptionId: cmd3.id, tenantId: s.tenantId, pageSeq: 1, text: "placeholder page text" });
+    await db().update(descriptions).set({ updatedAt: Date.now() + 10_000 }).where(eq(descriptions.id, cmd3.id));
+    const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(result.counts.skippedEdited).toBe(1);
+    expect(await db().select().from(descriptions).where(eq(descriptions.id, cmd3.id)).get()).toBeDefined();
+  });
+
+  it("still keeps a row whose columns were edited after the run", async () => {
+    const store = memStore();
+    const s = await setupImport({ csv: csvWithFormer(), bindings: FORMER_BINDINGS, updateExisting: false, store });
+    await driveCommit({ ...s, store }, false);
+    await db().update(descriptions).set({ title: "Hand edit", updatedAt: Date.now() + 10_000 })
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 2")));
+    const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(result.counts.skippedEdited).toBe(1);
+    expect(result.counts.deleted).toBe(7);
+  });
+
+  it("re-inserts a row with a version past both the deleted row's and the clock", async () => {
+    const store = memStore();
+    const s = await setupImport({
+      csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: false, store,
+    });
+    // The import runs on a clock ten seconds ahead, so the rows it creates,
+    // and the delete snapshots of them, hold versions ahead of the clock
+    // the reverts then run on.
+    const ahead = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(ahead);
+    try {
+      await driveCommit({ ...s, store }, false);
+    } finally {
+      clock.mockRestore();
+    }
+    const rev1 = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(rev1.counts.deleted).toBe(8);
+    const rev2 = (await driveRevert({ ...s, store, targetRunId: rev1.revertRunId, message: "Undo the revert" }))!;
+    expect(rev2.counts.reinserted).toBe(8);
+    const back = (await db().select().from(descriptions)
+      .where(and(eq(descriptions.tenantId, s.tenantId), eq(descriptions.referenceCode, "CMD 1"))).get())!;
+    expect(back.updatedAt).toBeGreaterThan(ahead);
+    const journal = (await db().select().from(changelog)
+      .where(and(eq(changelog.runId, rev2.revertRunId), eq(changelog.recordId, back.id))).get())!;
+    expect(journal.createdAt).toBe(back.updatedAt);
+  });
+});
+
+describe("import revert — writes made from a stale read", () => {
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+  beforeEach(async () => {
+    await cleanDatabase();
+  });
+
+  // A write lands between the step's read and its batch. The batch then
+  // changes nothing and the step throws; the Workflow runs the step again,
+  // and the fresh read finds the row edited since the run and keeps it.
+  it("a restore batch whose row was edited after it was read writes nothing and throws; the retry keeps the edit", async () => {
+    const store = memStore();
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const seeded = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "item",
+    });
+    const s = await setupImport({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true, store });
+    await driveCommit({ ...s, store }, true);
+    const config = await mintAndLoad(tenantId, s.userId, s.importRunId);
+    const handVersion = Date.now() + 10_000;
+    const raced = racedDb((d) =>
+      d.prepare("UPDATE descriptions SET title = 'Hand edit', updated_at = ? WHERE id = ?").bind(handVersion, seeded.id).run());
+    await expect(processRestoreBatch(raced, config, config.restores)).rejects.toThrow();
+    const after = (await db().select().from(descriptions).where(eq(descriptions.id, seeded.id)).get())!;
+    expect(after.title).toBe("Hand edit");
+    expect(await db().select().from(changelog).where(eq(changelog.runId, config.runId)).all()).toEqual([]);
+    const retried = await processRestoreBatch(db(), config, config.restores);
+    expect(retried.skippedEdited).toBe(1);
+  });
+
+  it("a container reconciliation whose row was edited after it was read writes nothing and throws", async () => {
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const user = await createTestUser({ isAdmin: true, tenantId });
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "RC RACE", descriptionLevel: "fonds", childCount: 5,
+    });
+    const config = {
+      runId: crypto.randomUUID(), targetRunId: crypto.randomUUID(), tenantId, userId: user.id,
+      restores: [], deletes: [], reinserts: [], affectedParentIds: [parent.id], totalSteps: 1,
+    } as RevertConfig;
+    const handVersion = Date.now() + 10_000;
+    const raced = racedDb((d) =>
+      d.prepare("UPDATE descriptions SET title = 'Hand edit', updated_at = ? WHERE id = ?").bind(handVersion, parent.id).run());
+    await expect(reconcileContainers(raced, config)).rejects.toThrow();
+    const after = (await db().select().from(descriptions).where(eq(descriptions.id, parent.id)).get())!;
+    expect(after.childCount).toBe(5);
+    expect(after.updatedAt).toBe(handVersion);
+  });
+
+  it("restores a child listed before its parent, both changed, and moves the parent past its own write", async () => {
+    const store = memStore();
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    // CMD 2 is the parent, CMD 1 its child; the import changes both rows.
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 2", title: "Old parent", descriptionLevel: "file", childCount: 1,
+    });
+    const child = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old child", descriptionLevel: "file",
+      parentId: parent.id, rootDescriptionId: parent.id, depth: 1,
+    });
+    const s = await setupImport({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true, store });
+    await driveCommit({ ...s, store }, true);
+    const config = await mintAndLoad(tenantId, s.userId, s.importRunId);
+    const order = [config.restores.find((r) => r.recordId === child.id)!, config.restores.find((r) => r.recordId === parent.id)!];
+    const out = await processRestoreBatch(db(), config, order);
+    expect(out).toEqual({ restored: 2, skippedEdited: 0 });
+    const rows = await db().select().from(descriptions).where(inArray(descriptions.id, [child.id, parent.id])).all();
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(child.id)!.title).toBe("Old child");
+    expect(byId.get(child.id)!.descriptionLevel).toBe("file");
+    expect(byId.get(parent.id)!.title).toBe("Old parent");
+    const journal = await db().select().from(changelog).where(eq(changelog.runId, config.runId)).all();
+    for (const id of [child.id, parent.id]) {
+      const entry = journal.find((j) => j.recordId === id)!;
+      expect(entry.createdAt).toBe(byId.get(id)!.updatedAt);
+    }
+  });
+
+  it("restoring a child's level moves its parent's version", async () => {
+    const store = memStore();
+    const tenantId = DEFAULT_TEST_TENANT_ID;
+    const repo = await createTestRepository({ tenantId });
+    const parent = await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "PARENT 1", descriptionLevel: "fonds", childCount: 1,
+    });
+    await createTestDescription({
+      tenantId, repositoryId: repo.id, referenceCode: "CMD 1", title: "Old title", descriptionLevel: "file",
+      parentId: parent.id, rootDescriptionId: parent.id, depth: 1,
+    });
+    const s = await setupImport({ csv: makeSbmalCsv(SBMAL_REAL_ROWS), bindings: SBMAL_DACS_BINDINGS, updateExisting: true, store });
+    await driveCommit({ ...s, store }, true);
+    const ahead = Date.now() + 10_000;
+    await db().update(descriptions).set({ updatedAt: ahead }).where(eq(descriptions.id, parent.id));
+    const result = (await driveRevert({ ...s, store, targetRunId: s.importRunId }))!;
+    expect(result.counts.restored).toBe(1);
+    const child = (await db().select().from(descriptions)
+      .where(and(eq(descriptions.tenantId, tenantId), eq(descriptions.referenceCode, "CMD 1"))).get())!;
+    expect(child.descriptionLevel).toBe("file");
+    const after = (await db().select({ v: descriptions.updatedAt }).from(descriptions).where(eq(descriptions.id, parent.id)).get())!;
+    expect(after.v).toBeGreaterThan(ahead);
+  });
+});
+
+// @version v0.9.0

@@ -21,8 +21,8 @@
  * than one D1 statement may carry. The pages are written first to
  * `ocr_pages_staging` under an attempt id this call mints, in as many
  * small statements as they need; then a single batch, which D1 runs as
- * one transaction, deletes the description's old pages, copies the
- * staged ones in, and clears them. Every statement in that batch is
+ * one transaction, moves the description's version, deletes its old
+ * pages, copies the staged ones in, and clears them. Every statement in that batch is
  * guarded by one condition: the attempt's staged rows are exactly pages
  * 1..N. A reader therefore sees the old pages or the new ones, never
  * some of each, and an incomplete attempt commits nothing. Because
@@ -66,12 +66,19 @@
  * the pipeline module implements over its storage adapter. Text is
  * stored as the object holds it; the pipeline writes it as NFC.
  *
- * @version v0.8.0
+ * THE DESCRIPTION'S VERSION MOVES WITH ITS PAGES. The pages are the
+ * description's published OCR text, so the batch that replaces them
+ * also moves the description's `updated_at` (`nextVersionSql`), under
+ * the same condition; a call that leaves the pages as they are, or
+ * commits nothing, leaves it as it was.
+ *
+ * @version v0.9.0
  */
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import * as schema from "~/db/schema";
 import { descriptions, ocrPages, ocrPagesStaging } from "~/db/schema";
+import { nextVersionSql } from "~/lib/record-version.server";
 
 export interface MediaObjectReader {
   /** UTF-8 text of the object, or null if it does not exist. */
@@ -254,6 +261,14 @@ async function commitAttempt(
   const replace = sql`(${complete} AND ${noBackfilled} AND NOT ${unchanged})`;
   const now = Date.now();
   await db.batch([
+    // The description's version moves with its pages, which are part of
+    // its published record. This statement runs first: once the old
+    // pages are deleted and the new ones copied in, `replace` no longer
+    // holds.
+    db
+      .update(descriptions)
+      .set({ updatedAt: nextVersionSql(descriptions.updatedAt, now) })
+      .where(and(eq(descriptions.tenantId, tenantId), eq(descriptions.id, descriptionId), replace)),
     db.delete(ocrPages).where(
       and(
         eq(ocrPages.tenantId, tenantId),
@@ -345,3 +360,5 @@ export async function ingestOcrPages(
     throw e;
   }
 }
+
+// @version v0.9.0
