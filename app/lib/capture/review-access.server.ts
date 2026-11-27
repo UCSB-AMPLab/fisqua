@@ -13,8 +13,9 @@
  * `GET /admin/capture/volumes/:volumeId/review-access`. Its checks, in
  * order: the tenant has the digitization capability (a bare 404
  * otherwise); the volume belongs to the tenant (404
- * `volume_not_found`); the caller is the volume's assigned reviewer or a
- * QC manager, an admin of the tenant or a steward of its federation, as
+ * `volume_not_found`); the caller is the volume's assigned reviewer or
+ * works in capture (`isQcWorker`: an admin of the tenant, its
+ * digitization admin, a steward of its federation or a staff grant), as
  * for recording decisions (a bare 403 otherwise); the federation has a
  * review-tiles bucket, a valid secret prefix and both secrets of
  * Fisqua's share key on it, named by `reviewShareSecretNames` (409
@@ -75,7 +76,7 @@
  * status codes, with `transport` for a call that got no answer: never a
  * token, a key id, a response body or an error message.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, sql } from "drizzle-orm";
@@ -89,7 +90,7 @@ import {
   reviewShareSecretNames,
   SECRET_PREFIX_PATTERN,
 } from "../pipeline/tenant-destination.server";
-import { isQcManager, readReviewerId } from "./qc.server";
+import { isQcWorker, readReviewerId } from "./qc.server";
 
 /** How long a download authorisation token lasts, in seconds. */
 export const REVIEW_ACCESS_SECONDS = 3600;
@@ -340,7 +341,7 @@ export async function reviewAccessLoader(
   if (!volume) return refusal(404, "volume_not_found");
 
   const reviewerId = await readReviewerId(db, tenant.id, volumeId);
-  if (reviewerId !== user.id && !(await isQcManager(db, tenant, user))) {
+  if (reviewerId !== user.id && !(await isQcWorker(db, tenant, user))) {
     throw new Response(null, { status: 403 });
   }
 
@@ -405,4 +406,4 @@ export async function reviewAccessLoader(
   return unavailable();
 }
 
-// @version v0.8.0
+// @version v0.9.0

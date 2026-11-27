@@ -10,20 +10,20 @@
  * `authMiddleware`. Repository, description-count, and child-list
  * queries are filtered by `tenant.id`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { Route } from "./+types/_auth.admin.descriptions.api.children.$parentId";
 import { tenantContext, userContext } from "../context";
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, asc, sql } = await import("drizzle-orm");
   const { descriptions, repositories } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const db = drizzle(context.cloudflare.env.DB);
@@ -110,3 +110,5 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   return Response.json(children);
 }
+
+// @version v0.9.0

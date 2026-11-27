@@ -9,14 +9,14 @@
  *
  *   - each refusal: the digitization capability off (a bare 404),
  *     another tenant's volume (404 `volume_not_found`), a caller who is
- *     neither the reviewer nor a QC manager (a bare 403), a federation
+ *     neither the reviewer nor works in capture (a bare 403), a federation
  *     without the review bucket or the share key's secrets (409
  *     `no_review_bucket`), a volume without readable deliveries (404
  *     `no_review_tiles`: none with a review run that reported
  *     `review_ready` and no purge recorded, finished or failed), and a share key whose `allowed.buckets` does
  *     not name the bucket (503 `review_storage_unavailable`);
  *   - the assigned reviewer, an admin and a steward each getting one
- *     token per delivery, each asked for with the prefix
+ *     token per delivery, and a federation staff grant let through, each asked for with the prefix
  *     `{tenant slug}/{deliveryId}/` read from D1, and the answer's shape;
  *   - a query string on the request changing no prefix;
  *   - no token, key id or secret in anything logged;
@@ -31,7 +31,7 @@
  *
  * Every value here is a test value: no real tenant, bucket, key or person.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { env } from "cloudflare:test";
@@ -47,7 +47,7 @@ import {
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeUserContext } from "../helpers/context";
 import { insertRow, seedReceivedVolumes, seedTenantDestination, TEST_SECRET_PREFIX } from "../helpers/media-pipeline";
 import {
@@ -513,6 +513,11 @@ describe("a fetch that fails before B2 answers", () => {
 // ---------------------------------------------------------------------------
 
 describe("tokens", () => {
+  it("lets a federation staff grant through on a volume not assigned to them", async () => {
+    const staff = await createGrantUser("staff", { name: "Test Staff" });
+    expect((await access({ user: staff })).status).toBe(200);
+  });
+
   for (const who of ["reviewer", "admin", "steward"] as const) {
     it(`gives the ${who} one token per readable delivery, each for a prefix read from D1`, async () => {
       const res = await access({ user: world[who] });
@@ -648,4 +653,4 @@ describe("the route", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

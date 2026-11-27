@@ -20,7 +20,7 @@
  * capability and read the run tenant-scoped through `getRun` (a
  * first-class `tenant_id` filter), so a cross-tenant run id 404s.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useEffect, useState } from "react";
@@ -32,6 +32,7 @@ import { requireCapability } from "../lib/tenant";
 import { useFormatters } from "../lib/use-formatters";
 import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs.$runId";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** One recorded readiness-check acceptance, as snapshotted on the run. */
 interface AcceptedFinding {
@@ -63,13 +64,21 @@ interface RevertCounts {
   skippedConflict: number;
 }
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("imports:runs.heading"),
+    heading("imports:title"),
+  );
+}
+
 export async function loader({ context, params }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { getRun } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -97,12 +106,12 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { getRun } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -113,6 +122,9 @@ export async function action({ context, params, request }: Route.ActionArgs) {
   if (formData.get("intent") !== "revert") {
     return { ok: false as const, error: "revertFailed" };
   }
+  // Reverting a run removes the records it brought in: administration,
+  // which a staff grant does not have, though committing one is work.
+  requireArea(user, "imports");
 
   // The target must be this tenant's completed, not-yet-reverted import or
   // revert. This read is the friendly path; the atomic mutex against a
@@ -530,4 +542,4 @@ export default function ImportRunDetailPage({ loaderData }: Route.ComponentProps
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

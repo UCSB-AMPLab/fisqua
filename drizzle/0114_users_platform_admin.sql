@@ -1,0 +1,19 @@
+-- The platform-admin flag.
+--
+-- This migration adds `is_platform_admin` to `users`. A person with the
+-- flag set is admitted to every workspace of kind `tenant` that is not
+-- disabled as a home member with every role flag on, whatever
+-- `users.tenant_id` holds; the platform tenant and disabled workspaces
+-- stay closed to them, and the flag does not make anyone an operator.
+-- The auth middleware reads the flag from this row on every request
+-- (`app/middleware/auth.server.ts`, `app/lib/platform-admin.server.ts`).
+--
+-- No route, form or loader writes the column. It is set and cleared only
+-- by the operator command `scripts/commands/set-platform-admin.ts`,
+-- which records each change in `audit_log`.
+--
+-- Every existing row reads 0, so no one gains access when this is
+-- applied.
+--
+-- Version: v0.9.0
+ALTER TABLE users ADD COLUMN is_platform_admin INTEGER NOT NULL DEFAULT 0;

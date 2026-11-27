@@ -17,14 +17,15 @@
  * received a rejection of the volume.
  *
  * The tenant must have the digitization capability (a bare 404
- * otherwise). The tenant's digitization admins and its federation's stewards see
- * every volume; a user assigned to review one of the tenant's volumes
+ * otherwise). Those who work in capture (`captureAccess(...).worker`:
+ * the tenant's digitization admins, its federation's stewards and its
+ * federation's staff grants) see every volume; a user assigned to review one of the tenant's volumes
  * sees only their own; anyone else gets a bare 403.
  *
  * "Open in viewer" opens a volume still under review in the capture QC
  * viewer.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -38,6 +39,14 @@ import { useFormatters } from "../lib/use-formatters";
 import { BADGE_SHAPE } from "../components/workflow/status-badge";
 import { CaptureEmptyState, CapturePageHeader } from "../components/capture/capture-parts";
 import type { Route } from "./+types/_auth.admin.capture.retakes";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("capture:retakes.title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
@@ -48,8 +57,8 @@ export async function loader({ context }: Route.LoaderArgs) {
   const { loadRetakes } = await import("~/lib/capture/retakes.server");
   const db = drizzle(context.cloudflare.env.DB);
   const access = await captureAccess(db, tenant, user);
-  if (!access.manager && !access.reviewer) throw new Response(null, { status: 403 });
-  return { volumes: await loadRetakes(db, tenant.id, user, access.manager, Date.now()) };
+  if (!access.worker && !access.reviewer) throw new Response(null, { status: 403 });
+  return { volumes: await loadRetakes(db, tenant.id, user, access.worker, Date.now()) };
 }
 
 /** The state chips' colour pairs: sent back, partial progress, waiting, and gone missing. */
@@ -181,4 +190,4 @@ function VolumeCard({ volume }: { volume: RetakeVolume }) {
   );
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

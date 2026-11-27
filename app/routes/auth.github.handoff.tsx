@@ -14,7 +14,7 @@
  *   1. Apex check — reject if running on the apex (404). The route is
  *      structurally absent from the apex; users mid-flow on the apex
  *      hit the apex callback, not this route.
- *   2. Resolve the request host's tenant via `getTenantFromRequest`. The
+ *   2. Resolve the request host's tenant via `resolveRequestTenant`. The
  *      resolver 404s on unknown hosts and on multi-level subdomains.
  *      Reject (404) if the tenant is the platform tenant — the platform
  *      host has no user session.
@@ -36,6 +36,13 @@
  *      interstitial CTA. The misleading "no account found" message
  *      previously shown to wrong-tenant users is now reserved for
  *      the genuinely-unknown-email case.
+ *      A live federation grant into the tenant's federation admits a
+ *      user of another tenant, and so does `is_platform_admin` on a
+ *      workspace of kind `tenant` that is not disabled
+ *      (`admitsAsPlatformAdmin`, `app/lib/platform-admin.server.ts`).
+ *      The email is unique, so it is the same user row. A platform
+ *      admin who is not admitted is never sent to the wrong-workspace
+ *      page; they get `/login?error=no-account`.
  *   7. First-login GitHub bind: if `user.githubId` is null,
  *      `UPDATE users SET github_id = ?` from the row's stored
  *      `githubId`. Subsequent sign-ins do NOT overwrite — the column
@@ -44,9 +51,13 @@
  *   8. Create session via `createSessionStorage(env.SESSION_SECRET)`
  *      and 302 to `/dashboard`. The `Set-Cookie` carries no
  *      `Domain=` attribute (the host-only-cookie invariant is pinned
- *      by `tests/sessions/cookie-scoping.test.ts`).
+ *      by `tests/sessions/cookie-scoping.test.ts`). When the user
+ *      has a saved `users.locale` and this browser has no `lang`
+ *      cookie on this host yet, the response also sets the `lang`
+ *      cookie from it, so the user's chosen language applies from the
+ *      first page after sign-in.
  *
- * @version v0.6.1
+ * @version v0.9.0
  */
 
 import { eq } from "drizzle-orm";
@@ -55,10 +66,16 @@ import type { Route } from "./+types/auth.github.handoff";
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
   const { isApexHost } = await import("../lib/github-auth.server");
-  const { getTenantFromRequest } = await import("../lib/tenant");
+  const { resolveRequestTenant } = await import("../lib/tenant");
   const { createSessionStorage } = await import("../sessions.server");
   const { consumeHandoff } = await import("../lib/oauth-handoff.server");
   const { users } = await import("../db/schema");
+  const { admitsAsPlatformAdmin } = await import(
+    "../lib/platform-admin.server"
+  );
+  const { signInLanguageCookie } = await import(
+    "../lib/language-cookie.server"
+  );
 
   // Apex check — this route is tenant-only. Apex 404s.
   if (isApexHost(request)) {
@@ -73,7 +90,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // out of this loader (React Router accepts thrown Response).
   let tenant;
   try {
-    tenant = await getTenantFromRequest(db, request);
+    tenant = await resolveRequestTenant(context, db, request);
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;
@@ -124,7 +141,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     });
   }
 
-  if (user.tenantId !== tenant.id) {
+  if (user.tenantId !== tenant.id && !admitsAsPlatformAdmin(user, tenant)) {
+    // A platform admin is never sent to the wrong-workspace page.
+    if (user.isPlatformAdmin === true) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login?error=no-account" },
+      });
+    }
     // A live federation grant admits a foreign-home user (mirrors
     // auth.verify): fall through to the session mint and let
     // authMiddleware resolve the grant's effective role per request.
@@ -186,13 +210,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const session = await getSession();
   session.set("userId", user.id);
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: "/dashboard",
-      "Set-Cookie": await commitSession(session),
-    },
-  });
+  const headers = new Headers({ Location: "/dashboard" });
+  headers.append("Set-Cookie", await commitSession(session));
+  const langCookie = await signInLanguageCookie(request, user.locale);
+  if (langCookie) headers.append("Set-Cookie", langCookie);
+
+  return new Response(null, { status: 302, headers });
 }
 
-// @version v0.6.1
+// @version v0.9.0

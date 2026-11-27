@@ -41,9 +41,11 @@
  * someone's shared working sets away.
  *
  * THE AREA GATE ON AUTHORITY HANDLISTS. Entities and places live
- * behind `requireArea(user, "authorities")` on their own surfaces, so a
- * handlist of them is openable only by those who pass that area — the
- * same helper, not a second permission system. Two consequences the
+ * behind `requireAreaWork(user, "authorities")` on their own surfaces,
+ * so a handlist of them is openable only by those who work in that area
+ * (its admins and a federation staff grant) — the same helper, not a
+ * second permission system. Moving another person's handlist to a new
+ * owner is administration and keeps `canAdministerArea`. Two consequences the
  * surfaces depend on. A share with someone who is not a workspace,
  * super or authorities admin is REFUSED with a 400 naming the reason, so the dialog's
  * dimming and the server agree rather than the dialog merely being
@@ -94,7 +96,7 @@
  * number of parameters as an empty one. Writes chunk under D1's
  * hundred-binding cap.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -108,7 +110,7 @@ import {
   users,
 } from "../db/schema";
 import { authorityScopeSql } from "./authority-ownership.server";
-import { canAdministerArea, requireArea } from "./user-access.server";
+import { canAdministerArea, canWorkInArea, requireAreaWork } from "./user-access.server";
 import type { Tenant, User } from "../context";
 
 /** records · entities · places, in the vocabulary the search tabs use. */
@@ -388,7 +390,7 @@ async function loadAccess(
   if (isAuthorityType(row.record_type)) {
     // The same gate the entities and places surfaces take — including
     // for the owner, who may have been demoted since making it.
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
   }
   return {
     id: row.id,
@@ -495,7 +497,7 @@ export async function createHandlist(
     );
   }
   if (recordType !== null && isAuthorityType(recordType)) {
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
   }
   refuseOversized(memberIds.length);
   await refuseDuplicateName(db, tenant, user.id, name, null);
@@ -952,7 +954,7 @@ export async function addMembers(
     // Fixing the type to an authority one puts the handlist behind the
     // authorities gate, so it takes that gate now rather than at the
     // next read.
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
   }
 
   const arriving = dedupe(input.memberIds);
@@ -1111,7 +1113,7 @@ export async function listForUser(
     const role: HandlistRole =
       row.owner_id === user.id ? "owner" : (row.share_role ?? "workspace");
     const locked =
-      isAuthorityType(row.record_type) && !canAdministerArea(user, "authorities");
+      isAuthorityType(row.record_type) && !canWorkInArea(user, "authorities");
     if (locked && role === "workspace") continue;
     summaries.push({
       id: row.id,
@@ -1771,3 +1773,5 @@ export async function listMemberIds(
     memberIds: await currentMemberIds(db, handlistId),
   };
 }
+
+// @version v0.9.0

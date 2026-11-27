@@ -12,7 +12,7 @@
  * surface. A UTF-8 BOM is prepended so Excel opens the accented column
  * names correctly (the same `utf-8-sig` reality the upload path accepts).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { tenantContext, userContext } from "../context";
@@ -20,13 +20,13 @@ import { requireCapability } from "../lib/tenant";
 import type { Route } from "./+types/_auth.admin.imports.template";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { canonicalTemplateCsv } = await import(
     "~/lib/import/canonical-template"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -46,3 +46,5 @@ export async function loader({ context }: Route.LoaderArgs) {
     },
   });
 }
+
+// @version v0.9.0

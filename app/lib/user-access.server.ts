@@ -26,6 +26,18 @@
  * users area, project creation and the project-role override.
  * `requireAdmin` (`permissions.server.ts`) remains the guard for them.
  *
+ * Doing an area's work is a separate question from administering it.
+ * `canWorkInArea` answers it: whoever administers the area works in it,
+ * and so does a holder of a federation `staff` grant, whose effective
+ * user carries `worksInEveryArea` (`grantEffectiveRoleFlags`). Staff
+ * open and act on every working area of a member workspace (records,
+ * authorities, imports, digitization) without any admin flag, so every
+ * check that stays on `canAdministerArea` or `requireArea` still
+ * excludes them. `requireAreaWork` is its guard form, with the same
+ * bare 403. A route that is work calls the work check; a route that is
+ * administration (users and roles, workspace settings, the scanner
+ * token, starting runs, publication) keeps the admin check.
+ *
  * `mayExportMachineReadable` holds the rule for the bulk
  * machine-readable export formats (CSV, EAD XML, JSON): workspace
  * admins, super admins, the admin of the area the exported record class
@@ -38,9 +50,9 @@
  * false, so an area admin at home is no area admin in a member tenant;
  * a steward grant carries `isAdmin` and passes every area as a
  * workspace admin. Operators impersonate the six role flags only, never
- * an area flag.
+ * an area flag, and never `worksInEveryArea`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { User } from "../context";
@@ -59,7 +71,7 @@ export type AreaFlag =
 /** The part of `User` the access checks read. */
 export type AccessUser = Pick<
   User,
-  "isAdmin" | "isSuperAdmin" | AreaFlag
+  "isAdmin" | "isSuperAdmin" | AreaFlag | "worksInEveryArea"
 >;
 
 /** Each area's admin flag. */
@@ -96,6 +108,24 @@ export function requireArea(user: AccessUser, area: AccessArea): void {
   }
 }
 
+/**
+ * Whether the user may do the work of `area`: whoever may administer
+ * it, and a federation staff grant (`worksInEveryArea`). Passing this
+ * check confers no administration of the area.
+ */
+export function canWorkInArea(user: AccessUser, area: AccessArea): boolean {
+  return canAdministerArea(user, area) || !!user.worksInEveryArea;
+}
+
+/**
+ * Throws a 403 Response unless the user may do the work of `area`.
+ */
+export function requireAreaWork(user: AccessUser, area: AccessArea): void {
+  if (!canWorkInArea(user, area)) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+}
+
 /** The area an export record class belongs to. */
 function areaOfRecordClass(recordClass: ExportRecordClass): AccessArea {
   return recordClass === "records" ? "records" : "authorities";
@@ -116,4 +146,4 @@ export function mayExportMachineReadable(
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -54,7 +54,7 @@
  *      confined, and `canReadRecords` admits a Reader and whoever passes
  *      the records area (workspace, super and records admins) only.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -1119,7 +1119,7 @@ describe("Reader", () => {
       isAuthoritiesAdmin: false,
       isImportsAdmin: false,
       hasAnyProjectMembership: false,
-      isCaptureManager: false,
+      isCaptureWorker: false,
       isCaptureReviewer: false,
     };
     const paths = (sections: ReturnType<typeof getSidebarSections>) =>
@@ -1178,4 +1178,4 @@ describe("area admins and the Reader rules", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

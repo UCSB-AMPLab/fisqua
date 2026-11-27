@@ -15,7 +15,7 @@
  * ownership arm (shared records, or this tenant's own), spelt out at
  * each query site. Nothing changes while every record is shared.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -31,6 +31,7 @@ import {
   PLACE_TYPES,
 } from "~/lib/validation/enums";
 import type { Route } from "./+types/_auth.admin.vocabularies.enums";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Vocab config
@@ -61,9 +62,18 @@ type VocabKey = keyof typeof VOCAB_MAP;
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data ? heading(`vocabularies:${data.vocabLabel}`) : null,
+    heading("vocabularies:page_title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const {
@@ -75,7 +85,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Checked here as well as in the layout: a data request for this
   // route alone runs this loader or action without the layout's.
@@ -194,10 +204,10 @@ interface PendingChange {
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   requireCapability(context.get(tenantContext), "vocabulary_hub");
 
   // Superadmin check for all mutations
@@ -570,3 +580,5 @@ export default function EnumVocabularyPage({
     </div>
   );
 }
+
+// @version v0.9.0

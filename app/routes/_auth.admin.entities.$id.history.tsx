@@ -12,7 +12,7 @@
  * Gated on the `authorities` capability; queries are
  * federation-scoped like every authority read.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -24,10 +24,21 @@ import {
   type HistoryEntry,
 } from "~/components/admin/operation-history";
 import type { Route } from "./+types/_auth.admin.entities.$id.history";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.entity?.displayName,
+    heading("authorities:histHeading"),
+    heading("entities:title"),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray } = await import("drizzle-orm");
   const { entities } = await import("~/db/schema");
@@ -36,7 +47,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -166,4 +177,4 @@ export default function EntityHistoryPage({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

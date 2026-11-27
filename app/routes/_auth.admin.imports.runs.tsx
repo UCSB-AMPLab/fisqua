@@ -12,7 +12,7 @@
  * runs tenant-scoped: `stewardship_runs` carries a first-class `tenant_id`,
  * so one tenant can never see another's runs.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useEffect } from "react";
@@ -23,14 +23,23 @@ import { requireCapability } from "../lib/tenant";
 import { useFormatters } from "../lib/use-formatters";
 import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.runs";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("imports:runs.heading"),
+    heading("imports:title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { listRuns } = await import("~/lib/import/runs.server");
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -153,4 +162,4 @@ export default function ImportRunsPage({ loaderData }: Route.ComponentProps) {
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

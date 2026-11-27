@@ -25,7 +25,7 @@
  * `discard`. Commit re-derives verdicts inside the Workflow under the
  * acceptances read from the upload row — never from client input.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -43,12 +43,23 @@ import { commitBlockedReason } from "../lib/import/commit-blocked";
 import { isPendingIntent, BusySpinner } from "../components/imports/busy-submit";
 import { DocsHelpLink } from "../components/help/docs-help-link";
 import type { Route } from "./+types/_auth.admin.imports.uploads.$uploadId";
+import { pageMeta, heading } from "../lib/page-title";
 
 type StepId = "upload" | "check" | "dryRun" | "import";
 type StepState = RailStepState;
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.upload?.filename,
+    heading("imports:report.heading"),
+    heading("imports:title"),
+  );
+}
+
 export async function loader({ context, params, request }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { repositories } = await import("~/db/schema");
@@ -58,7 +69,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
 
@@ -215,11 +226,11 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 }
 
 export async function action({ context, params, request }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
 
   const user = context.get(userContext);
-  requireArea(user, "imports");
+  requireAreaWork(user, "imports");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "imports");
   if (tenant.descriptiveStandard == null) {
@@ -1573,4 +1584,4 @@ function ImportPane({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

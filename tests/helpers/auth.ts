@@ -8,10 +8,27 @@
  * (= NEOGRANADINA_TENANT_ID); pass `tenantId` to assign a different
  * tenant for cross-tenant test scenarios.
  *
- * @version v0.4.0
+ * `createGrantUser` stands up a person who reaches the default tenant
+ * through a federation grant: a user row in another tenant (the second
+ * test tenant unless told otherwise), a `federation_memberships` row in
+ * the default tenant's federation with the given role, and the user as
+ * the auth middleware hands it to a loader under that grant, with the
+ * grant's effective flags applied (`applyGrantEffectiveRole`). Tests
+ * that check what a `staff` or `steward` grant may do use it in place of
+ * a hand-built flag set.
+ *
+ * @version v0.9.0
  */
-import { DEFAULT_TEST_TENANT_ID, getTestDb } from "./db";
-import { users } from "../../app/db/schema";
+import {
+  DEFAULT_TEST_FEDERATION_ID,
+  DEFAULT_TEST_TENANT_ID,
+  SECOND_TEST_TENANT_ID,
+  getTestDb,
+} from "./db";
+import { makeUserContext } from "./context";
+import { federationMemberships, users } from "../../app/db/schema";
+import { applyGrantEffectiveRole, type FederationRole } from "../../app/lib/federation.server";
+import type { User } from "../../app/context";
 
 /**
  * Creates a test user in the database and returns the user record.
@@ -51,3 +68,30 @@ export function createTestSessionCookie(userId: string, secret: string): string 
   // This placeholder returns the userId for direct injection.
   return userId;
 }
+
+/**
+ * Creates a user of another tenant with a `role` membership in the
+ * default tenant's federation, and returns the effective user a request
+ * under that grant carries.
+ */
+export async function createGrantUser(
+  role: FederationRole,
+  opts: { tenantId?: string; federationId?: string; name?: string } = {},
+): Promise<User> {
+  const homeTenantId = opts.tenantId ?? SECOND_TEST_TENANT_ID;
+  const federationId = opts.federationId ?? DEFAULT_TEST_FEDERATION_ID;
+  const row = await createTestUser({ tenantId: homeTenantId, name: opts.name ?? `Test ${role}` });
+  await getTestDb().insert(federationMemberships).values({
+    id: crypto.randomUUID(),
+    userId: row.id,
+    federationId,
+    role,
+    createdAt: Date.now(),
+  });
+  return applyGrantEffectiveRole(
+    makeUserContext({ id: row.id, tenantId: row.tenantId, email: row.email, name: row.name }),
+    { role, federationId, homeTenantId },
+  );
+}
+
+// @version v0.9.0
