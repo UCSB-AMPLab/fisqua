@@ -13,7 +13,12 @@
  * the description's OCR page rows, which the test seeds under the
  * description's own tenant.
  *
- * @version v0.8.0
+ * The role filter takes the codes the federation's lists hold, so each
+ * suite seeds the Neogranadina set; a code only another list holds is
+ * a filter all the same, and the loaders hand the pages the federation's
+ * role pickers.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -25,7 +30,10 @@ import {
   applyMigrations,
   cleanDatabase,
   DEFAULT_TEST_TENANT_ID,
+  DEFAULT_TEST_FEDERATION_ID,
 } from "../helpers/db";
+import { roleSetRows, seedRoleLists } from "../helpers/vocabulary";
+import { NEOGRANADINA_ROLES } from "../../scripts/data/vocabularies/neogranadina-roles";
 import { createTestUser } from "../helpers/auth";
 import { createTestPlace } from "../helpers/places";
 import { createTestEntity } from "../helpers/entities";
@@ -97,6 +105,7 @@ describe("place detail — linked-descriptions worklist", () => {
   });
   beforeEach(async () => {
     await cleanDatabase();
+    await seedRoleLists(DEFAULT_TEST_FEDERATION_ID, roleSetRows(NEOGRANADINA_ROLES));
   });
 
   async function seed() {
@@ -240,6 +249,20 @@ describe("place detail — linked-descriptions worklist", () => {
     expect(data.total).toBe(4);
   });
 
+  it("filters by a place role the federation's list holds, and hands the page its place options", async () => {
+    await seedRoleLists(DEFAULT_TEST_FEDERATION_ID, [
+      { list: "place_role", code: "seat", es: "Sede", en: "Seat", position: 8 },
+    ]);
+    const { ctxUser, place } = await seed();
+    const empty = await load(place.id, ctxUser, "?role=seat");
+    expect(empty.wl.role).toBe("seat");
+    expect(empty.total).toBe(0);
+    expect(empty.roles.placeOptions.map((o: any) => o.value)).toEqual([
+      "created", "subject", "mentioned", "sent_from", "sent_to", "published", "venue", "seat",
+    ]);
+    expect(empty.roles.labels.place.venue).toBe("Venue");
+  });
+
   it("paginates with a validated size and an honest total beyond the page", async () => {
     const { ctxUser, place } = await seed();
     // Off-menu size clamps to 25 (all four fit).
@@ -282,6 +305,7 @@ describe("entity detail — linked-descriptions worklist", () => {
   });
   beforeEach(async () => {
     await cleanDatabase();
+    await seedRoleLists(DEFAULT_TEST_FEDERATION_ID, roleSetRows(NEOGRANADINA_ROLES));
   });
 
   async function seed() {
@@ -369,6 +393,22 @@ describe("entity detail — linked-descriptions worklist", () => {
     expect(data.allCount).toBe(3);
   });
 
+  it("filters by a role only the federation's list holds, and hands the page its entity groups", async () => {
+    await seedRoleLists(DEFAULT_TEST_FEDERATION_ID, [
+      { list: "entity_role", code: "deponent", es: "Declarante", en: "Deponent", group: "legal", position: 99 },
+    ]);
+    const { ctxUser, entity } = await seed();
+    const data = await load(entity.id, ctxUser, "?role=deponent");
+    expect(data.wl.role).toBe("deponent");
+    expect(data.total).toBe(0);
+    expect(data.roles.entityGroups[0].key).toBe("production");
+    expect(data.roles.entityGroups.find((g: any) => g.key === "legal").options.at(-1)).toEqual({
+      value: "deponent",
+      label: "Deponent",
+    });
+    expect((await load(entity.id, ctxUser, "?role=bogus")).wl.role).toBeNull();
+  });
+
   it("searches entity-linked descriptions by title and code", async () => {
     const { ctxUser, entity } = await seed();
     const byTitle = await load(entity.id, ctxUser, "?dq=cabildo");
@@ -389,6 +429,7 @@ describe("place detail — repository filter and progressive disclosure", () => 
   });
   beforeEach(async () => {
     await cleanDatabase();
+    await seedRoleLists(DEFAULT_TEST_FEDERATION_ID, roleSetRows(NEOGRANADINA_ROLES));
   });
 
   /** Cúcuta with 6 links across TWO repositories:
@@ -613,3 +654,5 @@ describe("worklist row + unfold pure helpers", () => {
     expect(grouped[1].items[0].name).toBe("Cúcuta");
   });
 });
+
+// @version v0.9.0

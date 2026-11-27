@@ -18,10 +18,13 @@
  * leave the admin surface before the record reaches the page; the
  * same columns are hidden in the form.
  *
+ * The links show their roles' labels from the federation's lists
+ * (`readRolePickers`), as the admin description page shows them.
+ *
  * Open to Readers, workspace admins and super admins
  * (`requireRecordsReader`).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -31,6 +34,16 @@ import { tenantContext, userContext } from "../context";
 import { DescriptionForm } from "~/components/descriptions/description-form";
 import { PublishedRecordList } from "~/components/reader/published-record-list";
 import type { Route } from "./+types/_auth.records.$id";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.record?.title,
+    heading("reader:records_title"),
+  );
+}
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -60,8 +73,17 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     throw new Response("Not found", { status: 404 });
   }
 
+  // The links show their roles' labels from the federation's lists; a
+  // workspace without authorities shows no links, and reads none.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const { NO_ROLE_PICKERS } = await import("~/lib/role-options");
+  const roles = tenant.authoritiesEnabled
+    ? await readRolePickers(db, tenant.federationId, context)
+    : NO_ROLE_PICKERS;
+
   return {
     ...loaded,
+    roles,
     page,
     pageSize: READER_PAGE_SIZE,
     hiddenColumns: readerHiddenColumns(),
@@ -78,6 +100,7 @@ export default function RecordPage({ loaderData }: Route.ComponentProps) {
     repositories,
     entityLinks,
     placeLinks,
+    roles,
     page,
     pageSize,
     hiddenColumns,
@@ -134,6 +157,7 @@ export default function RecordPage({ loaderData }: Route.ComponentProps) {
           allowedLevels={[]}
           entityLinks={entityLinks}
           placeLinks={placeLinks}
+          roles={roles}
           standard={descriptiveStandard}
           authoritiesEnabled={authoritiesEnabled}
           hiddenColumns={hiddenColumns}
@@ -162,4 +186,4 @@ export default function RecordPage({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

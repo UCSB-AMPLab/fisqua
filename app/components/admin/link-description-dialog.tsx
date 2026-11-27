@@ -6,13 +6,18 @@
  * a typeahead that queries the descriptions FTS index and renders the
  * current link list as chips the operator can remove before saving.
  *
- * @version v0.3.0
+ * The role select offers `roleOptions`, the federation's approved roles
+ * for the record type, in order, each with its label, and starts on the
+ * first of them.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useFetcher } from "react-router";
 import { Search } from "lucide-react";
 import type { TFunction } from "i18next";
+import type { RoleOption } from "~/lib/role-options";
 
 interface SearchResult {
   id: string;
@@ -24,7 +29,7 @@ interface SearchResult {
 interface LinkDescriptionDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  roles: readonly string[];
+  roleOptions: RoleOption[];
   entityOrPlaceId: string;
   recordType: "entity" | "place";
   t: TFunction;
@@ -33,7 +38,7 @@ interface LinkDescriptionDialogProps {
 export function LinkDescriptionDialog({
   isOpen,
   onClose,
-  roles,
+  roleOptions,
   t,
 }: LinkDescriptionDialogProps) {
   const searchFetcher = useFetcher();
@@ -42,16 +47,17 @@ export function LinkDescriptionDialog({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDescription, setSelectedDescription] = useState<SearchResult | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>(roles[0]);
+  const firstRole = roleOptions[0]?.value ?? "";
+  const [selectedRole, setSelectedRole] = useState<string>(firstRole);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (isOpen) {
       setSearchQuery("");
       setSelectedDescription(null);
-      setSelectedRole(roles[0]);
+      setSelectedRole(firstRole);
     }
-  }, [isOpen, roles]);
+  }, [isOpen, firstRole]);
 
   // Focus dialog when opened
   useEffect(() => {
@@ -194,9 +200,9 @@ export function LinkDescriptionDialog({
                 onChange={(e) => setSelectedRole(e.target.value)}
                 className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm text-stone-700 focus:border-indigo focus:outline-none focus:ring-1 focus:ring-indigo"
               >
-                {roles.map((r) => (
-                  <option key={r} value={r}>
-                    {t(`role_${r}`)}
+                {roleOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </select>
@@ -233,3 +239,5 @@ export function LinkDescriptionDialog({
     </div>
   );
 }
+
+/* @version v0.9.0 */

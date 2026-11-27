@@ -44,7 +44,16 @@
  * mention count is one COUNT per row, which is what tells a reviewer
  * whether the name is load-bearing before they open anything.
  *
- * @version v0.8.0
+ * A card's proposed role shows the federation's label for it, read once
+ * for the page (`readRolePickers`) when the page holds any proposal. No
+ * role is assumed: a proposal whose role the list does not hold shows
+ * no link line, and accepting it from the queue, when its evidence
+ * resolves, is refused by `ruleAuthorityProposal` with the
+ * invalid-ruling message, so the reviewer rules it on its own page. The
+ * card reads the cited reference code as the core does
+ * (`evidenceReference`).
+ *
+ * @version v0.9.0
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -56,6 +65,8 @@ import {
   type FetcherWithComponents,
 } from "react-router";
 import { useTranslation } from "react-i18next";
+import { evidenceReference } from "~/lib/evidence-reference";
+import { entityRoleLabel, entityRoleOptions, placeRoleLabel, roleCode, type RolePickers } from "~/lib/role-options";
 import { Check, ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { hasCapability, requireCapability } from "../lib/tenant";
@@ -75,6 +86,7 @@ import type {
   ProposalType,
 } from "~/lib/pending-decisions.server";
 import type { Route } from "./+types/_auth.admin.decisions._index";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** Proposals rendered per page. */
 const PAGE_SIZE = 25;
@@ -113,8 +125,16 @@ function readStatus(value: string | null): QueueStatus {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("decisions:tabProposals"),
+    heading("decisions:surfaceName"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { canAdministerArea, requireArea } = await import("~/lib/user-access.server");
+  const { canWorkInArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const {
     listAuthorityProposals,
@@ -128,15 +148,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // Someone who can open only the vocabulary tab lands on it rather
   // than on a refusal: the sidebar and the dashboard send them there.
   const authorityTabs =
-    canAdministerArea(user, "authorities") && hasCapability(tenant, "authorities");
+    canWorkInArea(user, "authorities") && hasCapability(tenant, "authorities");
   if (
     !authorityTabs &&
-    canAdministerArea(user, "records") &&
+    canWorkInArea(user, "records") &&
     hasCapability(tenant, "vocabulary_hub")
   ) {
     throw redirect("/admin/decisions/vocabulary");
   }
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   requireCapability(tenant, "authorities");
 
   const db = drizzle(context.cloudflare.env.DB);
@@ -185,7 +205,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { and, eq, inArray } = await import("drizzle-orm");
   const refCodes = new Set<string>();
   for (const proposal of proposals) {
-    if (proposal.payload.evidenceRef) refCodes.add(proposal.payload.evidenceRef);
+    const evidenceCode = evidenceReference(proposal.payload.evidenceRef);
+    if (evidenceCode) refCodes.add(evidenceCode);
     for (const comment of proposal.comments) {
       if (comment.quoteRef) refCodes.add(comment.quoteRef);
     }
@@ -225,8 +246,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
   const mentionCounts: Record<string, number> = Object.fromEntries(counted);
 
+  // The cards' role labels come from the federation's lists; an empty
+  // page shows no roles, and reads none.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const { NO_ROLE_PICKERS } = await import("~/lib/role-options");
+  const roles = proposals.length > 0
+    ? await readRolePickers(db, tenant.federationId, context)
+    : NO_ROLE_PICKERS;
+
   return {
     proposals,
+    roles,
     status,
     page,
     hasNext,
@@ -242,14 +272,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { ruleAuthorityProposal, PROPOSAL_TYPES: TYPES } = await import(
     "~/lib/pending-decisions.server"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -330,6 +360,7 @@ export default function DecisionProposalsPage({
     refIds,
     mentionCounts,
     proposalTypes,
+    roles,
   } = loaderData;
   const [searchParams] = useSearchParams();
   const fetcher = useFetcher<ProposalRulingResult>();
@@ -440,6 +471,7 @@ export default function DecisionProposalsPage({
                 proposal={proposal}
                 proposalTypes={proposalTypes}
                 refIds={refIds}
+                roles={roles}
                 mentionCount={mentionCounts[proposal.id] ?? 0}
                 panel={openPanel?.id === proposal.id ? openPanel.kind : null}
                 onOpenPanel={(kind) =>
@@ -508,11 +540,19 @@ const RULING_LABEL_KEYS: Record<string, string> = {
   rejected: "ruledRejected",
 };
 
-/** Role labels are the description editor's — one vocabulary, one set of names. */
-const ROLE_NS = "descriptions_admin";
-
-/** The link role a proposal falls back to when nobody proposed one. */
-const DEFAULT_LINK_ROLE = "mentioned";
+/**
+ * A proposed role's label, when the federation's list for the proposed
+ * type holds the role approved, read as the core reads it (`roleCode`): a place's from the place roles, any
+ * other record's from the document roles. Null otherwise, so no role is
+ * assumed.
+ */
+function proposedRoleLabel(roles: RolePickers, type: string, raw: string | undefined): string | null {
+  const code = roleCode(raw);
+  if (!code) return null;
+  const offered = type === "place" ? roles.placeOptions : entityRoleOptions(roles);
+  if (!offered.some((o) => o.value === code)) return null;
+  return type === "place" ? placeRoleLabel(roles.labels, code) : entityRoleLabel(roles.labels, code);
+}
 
 /** Mono reference chips read the same everywhere on this surface. */
 const REF_CHIP_CLASS =
@@ -530,6 +570,7 @@ function ProposalCard({
   proposal,
   proposalTypes,
   refIds,
+  roles,
   mentionCount,
   panel,
   onOpenPanel,
@@ -543,6 +584,8 @@ function ProposalCard({
   proposalTypes: ProposalType[];
   /** Reference code → description id, resolved for the whole page. */
   refIds: Record<string, string>;
+  /** The federation's role pickers and labels. */
+  roles: RolePickers;
   /** Descriptions whose text carries the heading as a phrase. */
   mentionCount: number;
   panel: "reject" | null;
@@ -571,13 +614,15 @@ function ProposalCard({
   // The grounds, in one line each. A topic links to nothing, so the
   // link line is a non-topic affair; the sentence is split around its
   // reference slot so the code inside it can carry the link.
-  const evidenceRef = payload.evidenceRef;
+  // The line shows only for a role the federation's list holds; with
+  // any other, accepting here is refused and the detail page asks for one.
+  // Read as the ruling core reads it (`evidenceReference`).
+  const evidenceRef = evidenceReference(payload.evidenceRef);
+  const linkRoleText = proposedRoleLabel(roles, payload.proposedType, payload.proposedRole);
   const linkLine =
-    evidenceRef && payload.proposedType !== "topic"
+    evidenceRef && payload.proposedType !== "topic" && linkRoleText
       ? t("wouldLinkAs", {
-          role: t(
-            `${ROLE_NS}:role_${payload.proposedRole ?? DEFAULT_LINK_ROLE}`,
-          ),
+          role: linkRoleText,
           ref: REF_SLOT,
         }).split(REF_SLOT)
       : null;
@@ -749,4 +794,4 @@ function ProposalCard({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -1,11 +1,11 @@
 /**
  * Admin — Linked-description context card
  *
- * The record-type-agnostic rich card the merge and split workbenches
- * render for each linked description (spec §4 enhancement). One card =
- * one description, even when the description carries several junction
- * roles: the role chips list every role, and the whole card (all its
- * junction rows) is selected or assigned as a single unit.
+ * This component is the rich card, the same for every record type, that
+ * the merge and split workbenches render for each linked description. One
+ * card is one description, even when the description carries several
+ * junction roles: the role chips list every role, and the whole card (all
+ * its junction rows) is selected or assigned as a single unit.
  *
  * The card is presentation-only. All text extraction (the scope
  * snippet, offset-faithful highlight, place/repository lookups) happens
@@ -15,23 +15,18 @@
  * assignment list are selectable; the survivor side is not (its links
  * always stay).
  *
- * @version v0.4.3
+ * The role chips and the places in the metadata strip carry the labels
+ * the caller gives (`roleLabel`, `placeRoleLabel`), which come from the
+ * federation's lists. Every place shows its role's label before its
+ * name, whatever the role. A role held as a relation side asks for its
+ * relation role's label.
+ *
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
 import { MapPin, Archive } from "lucide-react";
 import type { LinkedDescriptionCardData } from "~/lib/authority-linked-context.server";
-
-/** Place roles that carry meaning worth labelling; `mentioned` is the
- * plain default and shows the place name alone. */
-const STRONG_PLACE_ROLES = new Set([
-  "venue",
-  "subject",
-  "created",
-  "sent_from",
-  "sent_to",
-  "published",
-]);
 
 export function LinkedDescriptionContextCard({
   card,
@@ -54,7 +49,8 @@ export function LinkedDescriptionContextCard({
   destinationLabel?: string;
   /** Whether the destination pill reads as the "active"/moved tone. */
   destinationActive?: boolean;
-  roleLabel: (role: string) => string;
+  /** A role's label; a relation side asks for its relation role's label. */
+  roleLabel: (role: string, relationSide?: boolean) => string;
   placeRoleLabel: (role: string) => string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
@@ -114,7 +110,7 @@ export function LinkedDescriptionContextCard({
                 key={`${r.role}-${i}`}
                 className="inline-block rounded-full bg-indigo-tint px-2 py-0.5 text-11 font-medium text-indigo-deep"
               >
-                {roleLabel(r.role)}
+                {roleLabel(r.role, r.relationSide)}
               </span>
             ))}
           </div>
@@ -130,9 +126,7 @@ export function LinkedDescriptionContextCard({
                 className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-stone-600"
               >
                 <MapPin className="h-3 w-3 text-stone-400" strokeWidth={1.5} />
-                {STRONG_PLACE_ROLES.has(p.role)
-                  ? `${placeRoleLabel(p.role)}: ${p.name}`
-                  : p.name}
+                {`${placeRoleLabel(p.role)}: ${p.name}`}
               </span>
             ))}
             {card.extent && <span>{card.extent}</span>}
@@ -151,7 +145,7 @@ export function LinkedDescriptionContextCard({
         {/* As recorded (entity workbenches only) */}
         {showAsRecordedLine && (
           <p className="mt-1.5 text-11 italic text-stone-500">
-            {t("ctxAsRecorded")} «{card.nameAsRecorded}»
+            {t("ctxAsRecorded")} “{card.nameAsRecorded}”
             {asRecordedRoleRaw && (
               <span className="not-italic"> · {asRecordedRoleRaw}</span>
             )}
@@ -199,3 +193,5 @@ export function LinkedDescriptionContextCard({
     </div>
   );
 }
+
+/* @version v0.9.0 */

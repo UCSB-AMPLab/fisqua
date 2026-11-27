@@ -35,6 +35,17 @@
  * `detail` is JSON-stringified onto the TEXT column; `null`/`undefined`
  * write SQL NULL, not the string `"null"`.
  *
+ * ## Function-carry rows
+ *
+ * A merge row whose detail carries `"carry":"functions"` records that
+ * the function rows of a record merged away before merges moved them
+ * were moved to its final survivor afterwards
+ * (`scripts/commands/carry-merged-functions.ts`). It is not a merge:
+ * it names the end of the merge chain, not the record merged into, and
+ * its date and user are the carry's. Every reader that shows or counts
+ * merges leaves it out with `notFunctionCarry`; the reader of the rows a
+ * merge moved (`mergeMovedFunctionIds`) keeps it.
+ *
  * ## Helper owns the id and the clock
  *
  * `id` is a fresh `crypto.randomUUID()`; `created_at` defaults to
@@ -42,9 +53,10 @@
  * sites keep their own second-precision `now` for other columns, so they
  * pass `Date.now()` here explicitly — the ledger is always epoch ms).
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
+import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
 import { authorityOperations } from "../db/schema";
@@ -95,3 +107,13 @@ export function logAuthorityOperation(
     createdAt: params.now ?? Date.now(),
   });
 }
+
+/**
+ * The condition that a ledger row is not a function-carry row, over
+ * its `detail` (a column, or raw SQL naming one).
+ */
+export function notFunctionCarry(detail: SQLWrapper): SQL {
+  return sql`coalesce(${detail}, '') NOT LIKE '%"carry":"functions"%'`;
+}
+
+// @version v0.9.0

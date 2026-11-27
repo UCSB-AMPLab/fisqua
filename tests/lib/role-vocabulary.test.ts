@@ -1,8 +1,8 @@
 /**
- * Tests — relationship-role vocabulary + grouped picker options
+ * Tests — the relationship-role constants
  *
- * This suite is the structural backstop for the relationship-role vocabulary.
- * It pins three contracts so drift fails loudly:
+ * This suite is the structural backstop for the relationship-role constants.
+ * It pins two contracts so drift fails loudly:
  *
  *  1. ENTITY_ROLES / PLACE_ROLES equal the CANONICAL zasqua-backend role
  *     sets measured directly from `catalog/models.py`
@@ -17,16 +17,12 @@
  *
  *  2. ENTITY_ROLE_GROUPS is a partition of ENTITY_ROLES — every enum
  *     value sits in exactly one of the 7 groups, no duplicates, nothing
- *     extra. This is what lets the grouped picker offer the whole
- *     vocabulary and only the vocabulary.
+ *     extra.
  *
- *  3. The picker option builders (`entityRoleOptionGroups`,
- *     `placeRoleOptions`) emit exactly the vocabulary values, grouped for
- *     entities and flat for places, each option carrying a translated
- *     label key (not a raw code) — so the linkers can never render free
- *     text or an untranslated option.
+ * The pickers do not read these constants: they take their options from
+ * the federation's lists (`tests/lib/role-options.test.ts`).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -34,10 +30,6 @@ import {
   PLACE_ROLES,
   ENTITY_ROLE_GROUPS,
 } from "../../app/lib/validation/enums";
-import {
-  entityRoleOptionGroups,
-  placeRoleOptions,
-} from "../../app/lib/role-options";
 
 // Canonical zasqua-backend vocabulary, transcribed from
 // `catalog/models.py` `DescriptionEntity.Role` (7 groups) and
@@ -121,45 +113,4 @@ describe("ENTITY_ROLE_GROUPS partitions ENTITY_ROLES", () => {
   });
 });
 
-describe("grouped entity picker offers exactly the vocabulary", () => {
-  const identity = (key: string) => key;
-  const groups = entityRoleOptionGroups(identity);
-
-  it("renders 7 optgroups keyed to ENTITY_ROLE_GROUPS", () => {
-    expect(groups.map((g) => g.key)).toEqual(EXPECTED_GROUP_KEYS);
-  });
-
-  it("emits every ENTITY_ROLES value once, and nothing else", () => {
-    const values = groups.flatMap((g) => g.options.map((o) => o.value));
-    expect(sorted(values)).toEqual(sorted(ENTITY_ROLES));
-  });
-
-  it("each option carries a translated role_<value> label key", () => {
-    for (const group of groups) {
-      for (const option of group.options) {
-        expect(option.label).toBe(`role_${option.value}`);
-      }
-    }
-  });
-
-  it("each group carries a translated role_group_<key> label", () => {
-    for (const group of groups) {
-      expect(group.label).toBe(`role_group_${group.key}`);
-    }
-  });
-});
-
-describe("flat place picker offers exactly the vocabulary", () => {
-  const identity = (key: string) => key;
-  const options = placeRoleOptions(identity);
-
-  it("emits the 7 PLACE_ROLES values in order", () => {
-    expect(options.map((o) => o.value)).toEqual([...PLACE_ROLES]);
-  });
-
-  it("each option carries a translated role_<value> label key", () => {
-    for (const option of options) {
-      expect(option.label).toBe(`role_${option.value}`);
-    }
-  });
-});
+// @version v0.9.0

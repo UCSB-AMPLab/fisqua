@@ -5,7 +5,13 @@
  * description, with typeahead search, role picker, and inline create-new
  * flow.
  *
- * @version v0.4.3
+ * The role picker offers the federation's approved place roles, in
+ * order (`roles`, from the page's loader), and a new link starts on the
+ * first of them. A link shows its role's label from the federation's
+ * list, and a code the list does not hold as the code. An edit also
+ * offers the link's current code when the list does not.
+ *
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -13,7 +19,7 @@ import { useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Pencil, X, Plus } from "lucide-react";
 import { SearchPopover } from "./search-popover";
-import { placeRoleOptions } from "~/lib/role-options";
+import { placeRoleLabel, withCurrentOption, type RolePickers } from "~/lib/role-options";
 
 export interface DescriptionPlaceLink {
   id: string;
@@ -29,6 +35,7 @@ export interface DescriptionPlaceLink {
 interface PlaceLinkerProps {
   descriptionId: string;
   links: DescriptionPlaceLink[];
+  roles: RolePickers;
   isEditing: boolean;
 }
 
@@ -41,18 +48,20 @@ interface SelectedPlace {
 export function PlaceLinker({
   descriptionId,
   links,
+  roles,
   isEditing,
 }: PlaceLinkerProps) {
   const { t } = useTranslation("descriptions_admin");
   const fetcher = useFetcher();
-  // Flat, localised role options — the picker can only offer the seven
-  // PLACE_ROLES values (see `~/lib/role-options`).
-  const roleOptions = placeRoleOptions(t);
+  // The federation's approved place roles; a new link starts on the first.
+  const roleOptions = roles.placeOptions;
+  const firstRole = roleOptions[0]?.value ?? "";
+  const labelOf = (link: DescriptionPlaceLink) => placeRoleLabel(roles.labels, link.role);
   const [showSearch, setShowSearch] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<SelectedPlace | null>(
     null
   );
-  const [addRole, setAddRole] = useState<string>("created");
+  const [addRole, setAddRole] = useState<string>(firstRole);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState("");
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
@@ -81,7 +90,7 @@ export function PlaceLinker({
   function resetAddForm() {
     setSelectedPlace(null);
     setShowSearch(false);
-    setAddRole("created");
+    setAddRole(firstRole);
   }
 
   function startEdit(link: DescriptionPlaceLink) {
@@ -129,7 +138,7 @@ export function PlaceLinker({
                     onChange={(e) => setEditRole(e.target.value)}
                     className="rounded border border-stone-200 px-2 py-1 text-sm"
                   >
-                    {roleOptions.map((o) => (
+                    {withCurrentOption(roleOptions, link.role, labelOf(link)).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
                       </option>
@@ -157,7 +166,7 @@ export function PlaceLinker({
                     {link.placeLabel}
                   </span>
                   <span className="rounded bg-indigo-tint px-1.5 py-0.5 text-xs font-medium text-indigo-deep">
-                    {t(`role_${link.role}`, link.role)}
+                    {labelOf(link)}
                   </span>
                 </div>
               )}
@@ -287,3 +296,5 @@ export function PlaceLinker({
     </div>
   );
 }
+
+/* @version v0.9.0 */

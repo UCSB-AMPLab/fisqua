@@ -7,10 +7,14 @@
  * import CLI to reject rows that would violate referential
  * integrity.
  *
- * @version v0.4.0
+ * A link's `role` is any code, trimmed and then non-empty: which codes a link may hold is
+ * the federation's `entity_role` or `place_role` list, checked when the
+ * link is written (`app/lib/link-roles.server.ts`), not a constant here.
+ *
+ * @version v0.9.0
  */
 import { z } from "zod/v4";
-import { ENTITY_ROLES, PLACE_ROLES, CERTAINTY_LEVELS } from "./enums";
+import { CERTAINTY_LEVELS } from "./enums";
 
 // --- DescriptionEntity ---
 
@@ -18,7 +22,7 @@ export const descriptionEntitySchema = z.object({
   id: z.string().uuid(),
   descriptionId: z.string().uuid(),
   entityId: z.string().uuid(),
-  role: z.enum(ENTITY_ROLES),
+  role: z.string().trim().min(1),
   roleNote: z.string().optional(),
   sequence: z.number().int().min(0).default(0),
   honorific: z.string().max(100).optional(), // documentary styling
@@ -44,7 +48,7 @@ export const descriptionPlaceSchema = z.object({
   id: z.string().uuid(),
   descriptionId: z.string().uuid(),
   placeId: z.string().uuid(),
-  role: z.enum(PLACE_ROLES),
+  role: z.string().trim().min(1),
   roleNote: z.string().optional(),
   createdAt: z.number().int(),
 });
@@ -96,3 +100,5 @@ export const updateEntityFunctionSchema = entityFunctionSchema
   .required({ id: true });
 
 export const importEntityFunctionSchema = entityFunctionSchema;
+
+// @version v0.9.0

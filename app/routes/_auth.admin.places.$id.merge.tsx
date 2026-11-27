@@ -15,10 +15,23 @@
  * Both merge sides load rich linked-description context cards
  * (`loadLinkedDescriptionCards`); the survivor's cards are read-only.
  *
- * @version v0.8.0
+ * The survivor's `updated_at` is set on every merge, even when no names
+ * fold, since the survivor publishes the loser's retired codes and
+ * current code among its own former codes. Each side's version moves past the one it holds,
+ * whatever the clock. A pair either side of which has been merged away
+ * since the workbench opened is refused with the conflict response, and
+ * nothing is written: the action checks the rows it reads, and the batch
+ * opens with a guard that fails it whole when either is merged by the
+ * time it writes.
+ *
+ * The loader reads the federation's role lists once (`readRolePickers`),
+ * and the cards show its labels for the place roles.
+ *
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
+import { placeRoleLabel } from "~/lib/role-options";
 import { redirect, useActionData } from "react-router";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
@@ -27,10 +40,21 @@ import {
   type ComparisonField,
 } from "~/components/admin/merge-workbench";
 import type { Route } from "./+types/_auth.admin.places.$id.merge";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.loser?.label,
+    heading("authorities:mergeHeading"),
+    heading("places:title"),
+  );
+}
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
   const { places } = await import("~/db/schema");
@@ -39,7 +63,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -81,14 +105,18 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     }
   }
 
-  return { loser, loserCards, survivor, survivorCards };
+  // The role labels come from the federation's lists.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const roles = await readRolePickers(db, tenant.federationId, context);
+
+  return { loser, loserCards, survivor, survivorCards, roles };
 }
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope, requireAuthorityMutation } = await import(
     "~/lib/authority-ownership.server"
   );
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, inArray, sql } = await import("drizzle-orm");
   const { places, descriptionPlaces, descriptions } = await import("~/db/schema");
@@ -97,7 +125,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -136,6 +164,17 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, loserId)))
     .get();
   if (!survivor || !loser) return { ok: false as const, error: "generic" as const };
+  // Neither side may have been merged away since the workbench opened: a
+  // survivor merged into another record would take the loser's links and
+  // codes off the published set, and a loser merged already has nothing
+  // left to give. The reload shows the pair as it now stands.
+  if (survivor.mergedInto || loser.mergedInto) {
+    return {
+      ok: false as const,
+      error: "conflict" as const,
+      modifiedAt: survivor.mergedInto ? survivor.updatedAt : loser.updatedAt,
+    };
+  }
 
   const formUpdatedAt = formData.get("_updatedAt") as string;
   const forceOverwrite = formData.get("_force") === "true";
@@ -232,21 +271,42 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const timestamp = Date.now();
+  // Each record's new version is past the one it holds, whatever the
+  // clock, so a save that read it before the merge fails after it.
+  const { nextVersionSql } = await import("~/lib/record-version.server");
+  // The batch opens with a guard that both records are still unmerged
+  // when it writes: `json()` of text that is not JSON raises the error
+  // that fails the batch, and D1 runs a batch as one transaction, so a
+  // merge that lands between the reads above and this batch leaves
+  // nothing of it written.
+  const unmerged = (placeId: string) =>
+    sql`(SELECT ${places.mergedInto} FROM ${places} WHERE ${places.id} = ${placeId}) IS NULL`;
+  const bothUnmergedGuard = db
+    .select({
+      unmerged: sql<number>`CASE WHEN ${unmerged(loserId)} AND ${unmerged(survivorId)} THEN 1 ELSE json('a place was merged since it was read') END`,
+    })
+    .from(sql`(SELECT 1)`);
   const batch: any[] = [
+    bothUnmergedGuard,
     ...linkStatements,
     db
       .update(places)
-      .set({ mergedInto: survivorId, updatedAt: timestamp })
+      .set({ mergedInto: survivorId, updatedAt: nextVersionSql(places.updatedAt, timestamp) })
       .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, loserId))),
   ];
-  if (addVariants) {
-    batch.push(
-      db
-        .update(places)
-        .set({ nameVariants: survivorVariants, updatedAt: timestamp })
-        .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, survivorId))),
-    );
-  }
+  // The survivor's version moves on every merge, since it publishes the
+  // loser's retired codes and current code as its own `former_codes`,
+  // whether or not names fold.
+  batch.push(
+    db
+      .update(places)
+      .set(
+        addVariants
+          ? { nameVariants: survivorVariants, updatedAt: nextVersionSql(places.updatedAt, timestamp) }
+          : { updatedAt: nextVersionSql(places.updatedAt, timestamp) },
+      )
+      .where(and(authorityScope(places, tenant.federationId, tenant.id), eq(places.id, survivorId))),
+  );
   batch.push(
     logAuthorityOperation(db, {
       federationId: tenant.federationId,
@@ -259,7 +319,20 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }),
   );
 
-  await db.batch(batch as any);
+  try {
+    await db.batch(batch as any);
+  } catch (err) {
+    // The guard failed when either record is now merged away: the same
+    // conflict as when the reads found it so.
+    const now = await db
+      .select({ id: places.id, mergedInto: places.mergedInto, updatedAt: places.updatedAt })
+      .from(places)
+      .where(and(authorityScope(places, tenant.federationId, tenant.id), inArray(places.id, [survivorId, loserId])))
+      .all();
+    const merged = now.find((p) => p.mergedInto !== null);
+    if (!merged) throw err;
+    return { ok: false as const, error: "conflict" as const, modifiedAt: merged.updatedAt };
+  }
   return redirect(`/admin/places/${survivorId}`);
 }
 
@@ -267,7 +340,7 @@ export default function PlaceMergeWorkbench({ loaderData }: Route.ComponentProps
   const { t } = useTranslation("authorities");
   const { t: tp } = useTranslation("places");
   const actionData = useActionData<typeof action>();
-  const { loser, loserCards, survivor, survivorCards } = loaderData;
+  const { loser, loserCards, survivor, survivorCards, roles } = loaderData;
 
   const coords = (r: typeof loser | null) =>
     r && r.latitude != null && r.longitude != null
@@ -330,11 +403,13 @@ export default function PlaceMergeWorkbench({ loaderData }: Route.ComponentProps
       loserCards={loserCards}
       survivorCards={survivorCards}
       showAsRecorded={false}
-      roleLabel={(role) => tp(`role_${role}`, role)}
-      placeRoleLabel={(role) => tp(`role_${role}`, role)}
+      roleLabel={(role) => placeRoleLabel(roles.labels, role)}
+      placeRoleLabel={(role) => placeRoleLabel(roles.labels, role)}
       comparisonFields={comparisonFields}
       conflictModifiedAt={conflictModifiedAt}
       t={t}
     />
   );
 }
+
+// @version v0.9.0

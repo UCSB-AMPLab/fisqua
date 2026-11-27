@@ -27,7 +27,15 @@
  * whose fields are all hidden is left out with them. The Reader record
  * page uses it for the columns that never leave the admin surface.
  *
- * @version v0.8.0
+ * A checkbox is posted with a hidden input of the same name before it,
+ * so the update action can tell an unchecked box from a field the
+ * request does not carry; the action writes only fields it carries.
+ *
+ * The entity and place linkers take the federation's role pickers and
+ * labels (`roles`) from the page's loader; a page that passes none gets
+ * empty pickers, and its links show their codes.
+ *
+ * @version v0.9.0
  */
 
 import type { ReactNode } from "react";
@@ -36,6 +44,7 @@ import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { FieldGuidance } from "./field-guidance";
 import { RESOURCE_TYPES } from "~/lib/validation/enums";
 import { getStandardConfig } from "~/lib/standards/registry";
+import { NO_ROLE_PICKERS, type RolePickers } from "~/lib/role-options";
 import { tStd } from "~/lib/i18n/standard-aware";
 import type {
   DescriptionLevel,
@@ -80,6 +89,11 @@ interface DescriptionFormProps {
   entityLinks?: DescriptionEntityLink[];
   placeLinks?: DescriptionPlaceLink[];
   /**
+   * The federation's role pickers and labels, from the parent route's
+   * loader (`readRolePickers`); the entity and place linkers render them.
+   */
+  roles?: RolePickers;
+  /**
    * Active descriptive standard, sourced from
    * `tenant.descriptiveStandard` in the parent route loader. Drives
    * which `StandardConfig` the renderer iterates.
@@ -107,6 +121,7 @@ export function DescriptionForm({
   errors,
   entityLinks = [],
   placeLinks = [],
+  roles = NO_ROLE_PICKERS,
   standard,
   authoritiesEnabled = true,
   hiddenColumns = [],
@@ -181,6 +196,7 @@ export function DescriptionForm({
                   repositories={repositories}
                   entityLinks={entityLinks}
                   placeLinks={placeLinks}
+                  roles={roles}
                   t={t}
                 />
               );
@@ -238,6 +254,7 @@ interface FieldRendererProps {
   repositories: Repository[];
   entityLinks: DescriptionEntityLink[];
   placeLinks: DescriptionPlaceLink[];
+  roles: RolePickers;
   t: TFn;
 }
 
@@ -252,6 +269,7 @@ function FieldRenderer({
   repositories,
   entityLinks,
   placeLinks,
+  roles,
   t,
 }: FieldRendererProps) {
   const value = description[field.column];
@@ -423,8 +441,13 @@ function FieldRenderer({
       if (!isEditing) {
         return <ReadOnlyField label={label} value={checked ? "Yes" : "No"} />;
       }
+      // A browser does not submit an unchecked checkbox. The hidden
+      // input under the same name, before it, tells the update action
+      // the request carries this field, so unchecked reads as false
+      // and a request without the name leaves the stored value alone.
       return (
         <div className="flex items-center gap-2">
+          <input type="hidden" name={field.column} value="" />
           <input
             type="checkbox"
             id={field.column}
@@ -474,6 +497,7 @@ function FieldRenderer({
         <EntityLinker
           descriptionId={description.id}
           links={entityLinks}
+          roles={roles}
           isEditing={isEditing}
         />
       );
@@ -484,6 +508,7 @@ function FieldRenderer({
         <PlaceLinker
           descriptionId={description.id}
           links={placeLinks}
+          roles={roles}
           isEditing={isEditing}
         />
       );
@@ -644,4 +669,4 @@ function ReadOnlyOrTextarea({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

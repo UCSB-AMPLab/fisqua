@@ -24,7 +24,23 @@
  * its forms on `intent` rather than `_action`, hence the field
  * override on `isPendingSubmission`.
  *
- * @version v0.8.0
+ * A merge or split of a function term moves the entities it reassigns
+ * to their new term in one statement, and each takes a version in
+ * milliseconds strictly past the one it holds when the statement writes
+ * it (`nextVersionSql`), so an entity editor form that read it before
+ * fails its version check. It moves the entities of the form that name
+ * the term when it reads them, and its batch opens with the guard that
+ * each still holds the version read and the term
+ * (`entitiesOnTermAsReadGuards`): an edit that lands between the read and
+ * the batch fails it whole, and the merge or split answers `conflict`.
+ * A save that changes the term's canonical
+ * name moves, the same way and in the same batch, the version of every
+ * entity whose primary function is the term, since each publishes that
+ * name. The save runs only while the term holds the name and version it
+ * read; one that another save or rename landed before writes nothing and
+ * answers `conflict`.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -43,6 +59,7 @@ import {
   isPendingSubmission,
 } from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.vocabularies.functions.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,15 +87,25 @@ interface LinkedEntity {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.term?.canonical,
+    heading("vocabularies:vocab_primary_functions"),
+    heading("vocabularies:page_title"),
+  );
+}
+
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Checked here as well as in the layout: a data request for this
   // route alone runs this loader or action without the layout's.
@@ -143,9 +170,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export async function action({ params, request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
-  const { and, eq, inArray, sql } = await import("drizzle-orm");
+  const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities, changelog } = await import("~/db/schema");
   const { vocabularyTermSchema } = await import("~/lib/validation/vocabulary");
   const { logAuthorityOperation } = await import(
@@ -153,7 +180,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Checked here as well as in the layout: a data request for this
   // route alone runs this loader or action without the layout's.
@@ -173,7 +200,10 @@ export async function action({ params, request, context }: Route.ActionArgs) {
   // The shared admin MergeDialog/SplitDialog submit the discriminator as
   // `_action`; the legacy vocab forms use `intent`. Accept either spelling.
   const intent = (formData.get("intent") ?? formData.get("_action")) as string;
+  // vocabulary_terms and changelog keep second-precision times; an
+  // entity's version is always milliseconds (`nextVersionSql`).
   const now = Math.floor(Date.now() / 1000);
+  const { nextVersionSql } = await import("~/lib/record-version.server");
   const id = params.id;
 
   // ---------------------------------------------------------------------------
@@ -202,16 +232,55 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       .get();
     if (!existing) return { error: "term_not_found" };
 
-    await db
-      .update(vocabularyTerms)
-      .set({
-        canonical: parsed.data.canonical,
-        category: parsed.data.category ?? null,
-        status: parsed.data.status,
-        notes: parsed.data.notes ?? null,
-        updatedAt: now,
+    // A new canonical name is every entity's published `primary_function`
+    // that names this term, so their versions move in the same batch, in
+    // milliseconds (`nextVersionSql`), while the term keeps its seconds.
+    // The batch opens with a guard that the term still holds the name and
+    // version read: a save or rename that landed in between fails the
+    // batch whole (`json()` of text that is not JSON raises), and this
+    // save answers with the conflict.
+    const termAsRead = db
+      .select({
+        asRead: sql<number>`CASE WHEN EXISTS (SELECT 1 FROM vocabulary_terms t WHERE t.id = ${id} AND t.canonical = ${existing.canonical} AND t.updated_at = ${existing.updatedAt}) THEN 1 ELSE json('the term changed since it was read') END`,
       })
-      .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)));
+      .from(sql`(SELECT 1)`);
+    try {
+      await db.batch([
+        termAsRead,
+        db
+          .update(vocabularyTerms)
+          .set({
+            canonical: parsed.data.canonical,
+            category: parsed.data.category ?? null,
+            status: parsed.data.status,
+            notes: parsed.data.notes ?? null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(vocabularyTerms.id, id),
+              eq(vocabularyTerms.federationId, tenant.federationId),
+              eq(vocabularyTerms.canonical, existing.canonical),
+            ),
+          ),
+        ...(existing.canonical !== parsed.data.canonical
+          ? [
+              db
+                .update(entities)
+                .set({ updatedAt: nextVersionSql(entities.updatedAt) })
+                .where(and(eq(entities.federationId, tenant.federationId), eq(entities.primaryFunctionId, id))),
+            ]
+          : []),
+      ] as any);
+    } catch (err) {
+      const current = await db
+        .select({ canonical: vocabularyTerms.canonical, updatedAt: vocabularyTerms.updatedAt })
+        .from(vocabularyTerms)
+        .where(and(eq(vocabularyTerms.id, id), eq(vocabularyTerms.federationId, tenant.federationId)))
+        .get();
+      if (current && current.canonical === existing.canonical && current.updatedAt === existing.updatedAt) throw err;
+      return { error: "conflict" };
+    }
 
     // Changelog
     const diff: Record<string, { old: unknown; new: unknown }> = {};
@@ -277,21 +346,36 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     // Reassignment + deprecation + the ledger row commit in one batch so
     // the ledger cannot fall out of step with the mutation. Entity
     // reassignment is federation-scoped so a cross-tenant id-guess in the
-    // linkIds payload cannot move entities between federations. The ledger
-    // is always epoch ms (Date.now()), not the second-precision `now` this
-    // route uses for vocabulary_terms.updated_at.
+    // linkIds payload cannot move entities between federations, and moves
+    // the entities of the form that are linked to the source term when
+    // read here. The batch opens with the guard that each of them still
+    // holds the version read and the source term: an edit that lands
+    // between this read and the batch fails it whole, and the merge
+    // answers `conflict`. Each entity moved takes `nextVersionSql`, in
+    // milliseconds, past the version it holds when the statement writes
+    // it, so an editor form that read it before fails its version check.
+    // The ledger is always epoch ms (Date.now()), not the
+    // second-precision `now` this route uses for
+    // vocabulary_terms.updated_at.
+    const {
+      readEntitiesOnTerm,
+      entitiesOnTermAsReadGuards,
+      entityChunks,
+      entitiesOnTermStillAsRead,
+      entityIdsRead,
+    } = await import("~/lib/entity-functions.server");
+    const scope = authorityScope(entities, tenant.federationId, tenant.id);
+    const moved = entityIds.length > 0 ? await readEntitiesOnTerm(db, id, scope, entityIds) : [];
     const mergeStatements: any[] = [];
-    if (entityIds.length > 0) {
+    if (moved.length > 0) {
       mergeStatements.push(
-        db
-          .update(entities)
-          .set({ primaryFunctionId: targetId, updatedAt: now })
-          .where(
-            and(
-              authorityScope(entities, tenant.federationId, tenant.id),
-              inArray(entities.id, entityIds)
-            )
-          )
+        ...entitiesOnTermAsReadGuards(db, id, moved),
+        ...entityChunks(moved).map((chunk) =>
+          db
+            .update(entities)
+            .set({ primaryFunctionId: targetId, updatedAt: nextVersionSql(entities.updatedAt) })
+            .where(and(scope, entityIdsRead(chunk), eq(entities.primaryFunctionId, id)))
+        )
       );
     }
     mergeStatements.push(
@@ -312,11 +396,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         sourceId: id,
         targetId,
         userId: user.id,
-        detail: { movedLinks: entityIds.length },
+        detail: { movedLinks: moved.length },
         now: Date.now(),
       })
     );
-    await db.batch(mergeStatements as any);
+    try {
+      await db.batch(mergeStatements as any);
+    } catch (err) {
+      if (await entitiesOnTermStillAsRead(db, id, moved)) throw err;
+      return { error: "conflict" };
+    }
 
     // Update entity counts on both. The counts are tenant-scoped so
     // they reflect the calling tenant only; vocabulary_terms itself
@@ -357,7 +446,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       recordId: id,
       recordType: "vocabulary_term",
       userId: user.id,
-      note: `Merged "${source.canonical}" into "${target.canonical}" (${entityIds.length} entities reassigned)`,
+      note: `Merged "${source.canonical}" into "${target.canonical}" (${moved.length} entities reassigned)`,
       diff: JSON.stringify({
         mergedInto: { old: null, new: targetId },
         status: { old: source.status, new: "deprecated" },
@@ -397,10 +486,25 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     // Term creation + entity moves + the ledger row commit in one batch so
     // the ledger cannot fall out of step with the mutation. Entity moves
     // are federation-scoped to prevent cross-federation reassignment via a
-    // crafted linkIds payload. The ledger is always epoch ms (Date.now()),
-    // not the second-precision `now` this route uses elsewhere.
+    // crafted linkIds payload, and move the entities of the form that are
+    // linked to the source term when read here, behind the same guard as
+    // the merge's: an edit between this read and the batch fails it whole
+    // and the split answers `conflict`. Each entity moved takes
+    // `nextVersionSql`, in milliseconds, past the version it holds when
+    // the statement writes it. The ledger is always epoch ms (Date.now()),
+    // not the second-precision `now` this route uses for vocabulary_terms.
+    const {
+      readEntitiesOnTerm,
+      entitiesOnTermAsReadGuards,
+      entityChunks,
+      entitiesOnTermStillAsRead,
+      entityIdsRead,
+    } = await import("~/lib/entity-functions.server");
+    const scope = authorityScope(entities, tenant.federationId, tenant.id);
+    const moved = entityIds.length > 0 ? await readEntitiesOnTerm(db, id, scope, entityIds) : [];
     const newId = crypto.randomUUID();
     const splitStatements: any[] = [
+      ...entitiesOnTermAsReadGuards(db, id, moved),
       db.insert(vocabularyTerms).values({
         id: newId,
         federationId: tenant.federationId,
@@ -412,17 +516,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         updatedAt: now,
       }),
     ];
-    if (entityIds.length > 0) {
+    if (moved.length > 0) {
       splitStatements.push(
-        db
-          .update(entities)
-          .set({ primaryFunctionId: newId, updatedAt: now })
-          .where(
-            and(
-              authorityScope(entities, tenant.federationId, tenant.id),
-              inArray(entities.id, entityIds)
-            )
-          )
+        ...entityChunks(moved).map((chunk) =>
+          db
+            .update(entities)
+            .set({ primaryFunctionId: newId, updatedAt: nextVersionSql(entities.updatedAt) })
+            .where(and(scope, entityIdsRead(chunk), eq(entities.primaryFunctionId, id)))
+        )
       );
     }
     splitStatements.push(
@@ -433,11 +534,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         sourceId: id,
         targetId: newId,
         userId: user.id,
-        detail: { movedLinks: entityIds.length },
+        detail: { movedLinks: moved.length },
         now: Date.now(),
       })
     );
-    await db.batch(splitStatements as any);
+    try {
+      await db.batch(splitStatements as any);
+    } catch (err) {
+      if (await entitiesOnTermStillAsRead(db, id, moved)) throw err;
+      return { error: "conflict" };
+    }
 
     // Update entity counts on both
     const [{ count: sourceCount }] = await db
@@ -476,9 +582,9 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       recordId: id,
       recordType: "vocabulary_term",
       userId: user.id,
-      note: `Split "${source.canonical}": created "${parsed.data.canonical}" with ${entityIds.length} entities`,
+      note: `Split "${source.canonical}": created "${parsed.data.canonical}" with ${moved.length} entities`,
       diff: JSON.stringify({
-        split: { newTermId: newId, newCanonical: parsed.data.canonical, entitiesMoved: entityIds.length },
+        split: { newTermId: newId, newCanonical: parsed.data.canonical, entitiesMoved: moved.length },
       }),
       createdAt: now,
     });
@@ -850,3 +956,5 @@ export default function AdminVocabularyFunctionDetailPage({
     </div>
   );
 }
+
+// @version v0.9.0

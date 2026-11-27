@@ -44,7 +44,18 @@
  * unapproved — and so a given reason rides along in the ledger row's
  * detail).
  *
- * @version v0.8.0
+ * A merge or split of a function term moves the entities it reassigns
+ * to their new term in one statement, and each takes a version in
+ * milliseconds strictly past the one it holds when the statement writes
+ * it (`nextVersionSql`), so an entity editor form that read it before
+ * fails its version check. The merge reads the entities on the source
+ * term first, and its batch opens with the guard that they are still
+ * exactly the entities on it, each at the version read
+ * (`entitiesOnTermAsReadGuards`): an edit or a new link that lands
+ * between the read and the batch fails it whole, and the merge answers
+ * `conflict`.
+ *
+ * @version v0.9.0
  */
 
 import { useEffect, useState } from "react";
@@ -62,6 +73,7 @@ import { useFormatters } from "~/lib/use-formatters";
 import { escapeLike } from "~/lib/sql-utils";
 import type { VocabularyNearMatch } from "~/lib/authority-duplicates.server";
 import type { Route } from "./+types/_auth.admin.decisions.vocabulary";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,8 +101,16 @@ type VocabActionResult =
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("decisions:tabVocabulary"),
+    heading("decisions:surfaceName"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, isNull, desc, sql } = await import("drizzle-orm");
   const { vocabularyTerms, users } = await import("~/db/schema");
@@ -99,7 +119,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Stated here because the route no longer nests inside the
   // vocabularies hub layout, which used to supply this gate.
@@ -229,7 +249,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const { vocabularyTerms, entities, changelog } = await import(
@@ -237,7 +257,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Stated here because the route no longer nests inside the
   // vocabularies hub layout, which used to supply this gate.
@@ -395,19 +415,21 @@ export async function action({ request, context }: Route.ActionArgs) {
 
       const now = Math.floor(Date.now() / 1000);
 
-      // Count the entities the reassignment below will move BEFORE the
-      // batch — the ledger's movedLinks must describe this merge, and the
-      // predicate matches the UPDATE's exactly.
-      const [{ count: movedLinks }] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(entities)
-        .where(
-          and(
-            authorityScope(entities, tenant.federationId, tenant.id),
-            eq(entities.primaryFunctionId, sourceId)
-          )
-        )
-        .all();
+      // Read the entities the reassignment below will move, with their
+      // versions, BEFORE the batch. The ledger's movedLinks counts them,
+      // and the batch opens with the guard that they are still exactly
+      // the entities on the source term, each at the version read: an
+      // edit to one of them, or an entity linked to the source term,
+      // that lands between this read and the batch fails it whole, and
+      // the merge answers `conflict`.
+      const {
+        readEntitiesOnTerm,
+        entitiesOnTermAsReadGuards,
+        entitiesOnTermStillAsRead,
+      } = await import("~/lib/entity-functions.server");
+      const scope = authorityScope(entities, tenant.federationId, tenant.id);
+      const moved = await readEntitiesOnTerm(db, sourceId, scope);
+      const movedLinks = moved.length;
 
       // Direction flip (duplicates-vocabulary design round): the
       // vocabulary card lets the admin pick the still-PROPOSED form as
@@ -432,19 +454,19 @@ export async function action({ request, context }: Route.ActionArgs) {
       // commit in one batch so the ledger cannot fall out of step with
       // the mutation. The target entityCount recompute and the
       // changelog write stay sequential after the batch (denormalised
-      // cache + display trail, matching the functions.$id merge). The
-      // ledger is always epoch ms (Date.now()), not this route's
-      // second-precision `now`.
+      // cache + display trail, matching the functions.$id merge). Each
+      // entity reassigned takes `nextVersionSql`, in milliseconds, past the
+      // version it holds when the statement writes it, so an editor form
+      // that read it before fails its version check. The ledger is always
+      // epoch ms (Date.now()), not this route's second-precision `now`,
+      // which only vocabulary_terms and changelog take.
+      const { nextVersionSql } = await import("~/lib/record-version.server");
       const batchStatements = [
+        ...entitiesOnTermAsReadGuards(db, sourceId, moved, scope),
         db
           .update(entities)
-          .set({ primaryFunctionId: targetId, updatedAt: now })
-          .where(
-            and(
-              authorityScope(entities, tenant.federationId, tenant.id),
-              eq(entities.primaryFunctionId, sourceId)
-            )
-          ),
+          .set({ primaryFunctionId: targetId, updatedAt: nextVersionSql(entities.updatedAt) })
+          .where(and(scope, eq(entities.primaryFunctionId, sourceId))),
         db
           .update(vocabularyTerms)
           .set({
@@ -490,7 +512,12 @@ export async function action({ request, context }: Route.ActionArgs) {
             ),
         );
       }
-      await db.batch(batchStatements as any);
+      try {
+        await db.batch(batchStatements as any);
+      } catch (err) {
+        if (await entitiesOnTermStillAsRead(db, sourceId, moved, scope)) throw err;
+        return { ok: false as const, error: "conflict" };
+      }
 
       // Update target entity count (federation-scoped).
       const [{ count }] = await db
@@ -840,4 +867,4 @@ export default function ReviewQueuePage({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

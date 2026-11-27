@@ -1,10 +1,11 @@
 /**
  * Admin — linked-description unfold panel (detail-page worklist)
  *
- * The leaner sibling of the merge/split context card (spec §5 worklist
- * round 3). Opening a worklist row un-truncates its own title in the row
- * itself; THIS panel adds only what the collapsed row does not already
- * show — never a second title, code, or role chip:
+ * This component is the unfold panel of the detail-page worklist, a leaner
+ * sibling of the merge and split context card. When a person opens a
+ * worklist row, the row shows its own title in full; THIS panel adds only
+ * what the collapsed row does not already show — never a second title,
+ * code, or role chip:
  *
  *   - the exact date range (mono) and extent · medium · repository;
  *   - the description's linked records grouped BY ROLE (one small-caps
@@ -21,7 +22,10 @@
  * or the full transcript fetched on "Show all". The full OCR transcript
  * is fetched only on that click (`&full=1`); it is never eager-shipped.
  *
- * @version v0.4.3
+ * An entity's relation sides form groups apart from the document roles
+ * of the same code, labelled from the relation roles.
+ *
+ * @version v0.9.0
  */
 
 import { useMemo, useRef, useState } from "react";
@@ -32,21 +36,26 @@ import type {
 } from "~/lib/authority-linked-context.server";
 import { findMatchRanges } from "~/lib/snippet-highlight";
 
-/** Group linked records by role, preserving first-appearance order. */
+/**
+ * Group linked records by role, preserving first-appearance order. A
+ * relation side forms a group apart from the document role of the same
+ * code, and its group says so (`relationSide: true`).
+ */
 export function groupByRole(
   items: CardPlace[],
-): { role: string; items: CardPlace[] }[] {
+): { role: string; relationSide?: true; items: CardPlace[] }[] {
   const order: string[] = [];
-  const byRole = new Map<string, CardPlace[]>();
+  const byKey = new Map<string, { role: string; relationSide?: true; items: CardPlace[] }>();
   for (const item of items) {
-    const existing = byRole.get(item.role);
-    if (existing) existing.push(item);
+    const key = `${item.relationSide ? "r" : "d"}:${item.role}`;
+    const existing = byKey.get(key);
+    if (existing) existing.items.push(item);
     else {
-      byRole.set(item.role, [item]);
-      order.push(item.role);
+      byKey.set(key, { role: item.role, ...(item.relationSide ? { relationSide: true as const } : {}), items: [item] });
+      order.push(key);
     }
   }
-  return order.map((role) => ({ role, items: byRole.get(role)! }));
+  return order.map((key) => byKey.get(key)!);
 }
 
 /** Exact date range, mono — the catalogued expression verbatim, falling
@@ -112,7 +121,8 @@ export function LinkedDescriptionUnfold({
   cardBasePath: string;
   /** Entity record: also render the description's entity groups. */
   showEntityGroups: boolean;
-  roleLabel: (role: string) => string;
+  /** A role's label; a relation side asks for its relation role's label. */
+  roleLabel: (role: string, relationSide?: boolean) => string;
   placeRoleLabel: (role: string) => string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
@@ -178,8 +188,8 @@ export function LinkedDescriptionUnfold({
         card.entities &&
         groupByRole(card.entities).map((g) => (
           <RoleGroup
-            key={`e-${g.role}`}
-            label={roleLabel(g.role)}
+            key={`e-${g.relationSide ? "r" : "d"}-${g.role}`}
+            label={roleLabel(g.role, g.relationSide)}
             items={g.items}
           />
         ))}
@@ -335,3 +345,5 @@ function RoleGroup({
     </div>
   );
 }
+
+/* @version v0.9.0 */

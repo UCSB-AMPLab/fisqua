@@ -45,10 +45,15 @@
  * requireAuthorityMint, so the gate and the ownership stamp on the new
  * record cannot disagree.
  *
- * @version v0.8.0
+ * `preparePairDecision` composes the filing of a pair's row without
+ * running it, for a ruling whose batch must file the row only if it lands
+ * (the pair merge).
+ *
+ * @version v0.9.0
  */
 
-import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   comments,
@@ -69,10 +74,14 @@ import {
   PLACE_TYPES,
 } from "./validation/enums";
 import { enqueueDecisionNotifications } from "./notifications.server";
+import { evidenceReference } from "./evidence-reference";
+import { roleCode } from "./role-options";
+import { entityLinkInsertOrFail, placeLinkInsertOrFail } from "./link-roles.server";
 import { composeJournalEntry, createSnapshotDiff } from "./stewardship.server";
 import type { AuthorityRecordType } from "./authority-ownership.server";
 import type { CommentAuthorRole } from "./validation/enums";
 import type { Tenant, User } from "../context";
+import { retryD1Read, type D1Site } from "./d1-overload";
 
 export const PROPOSAL_TYPES = [
   "person",
@@ -104,10 +113,11 @@ export interface AuthorityProposalPayload {
    */
   uncertain?: boolean;
   /**
-   * What the evidence says the record DOES in the cited document —
-   * an ENTITY_ROLES or PLACE_ROLES member, whichever enum the ruled
-   * type owns. A proposal that names one is offering a link, not just
-   * a name; the ruling turns it into a junction row.
+   * What the evidence says the record DOES in the cited document — a
+   * code of the federation's document or place roles, whichever the
+   * ruled type takes. A proposal that names one is offering a link,
+   * not just a name; the ruling turns it into a junction row when the
+   * federation's list holds the code approved.
    */
   proposedRole?: string;
   /**
@@ -148,10 +158,14 @@ export interface ProposalRulingInput {
   amendedInternalNote?: string;
   note?: string;
   /**
-   * Role for the evidence link, validated against the enum the ruled
-   * type owns. Absent falls to payload.proposedRole, then "mentioned"
-   * — the one value both enums carry and the weakest claim either can
-   * make.
+   * Role for the evidence link, as the decision page submits it. When
+   * given, even as an empty string, it decides: the proposed role is not
+   * used in its place. Absent, as from the queue's one-click accept,
+   * which has no selector, the payload's proposedRole is used. Either is
+   * read with `roleCode` (trimmed, then matched exactly) and must be
+   * approved in the federation's list for the ruled type; no role is
+   * assumed, so an acceptance that writes the link with neither is
+   * refused.
    */
   linkRole?: string;
   /** True skips creating the evidence link on accept. */
@@ -234,15 +248,25 @@ export async function countOpenVocabularyProposals(
 /**
  * Both pending-decision counts for the dashboard card, in parallel.
  * The dashboard loader calls it only for those who pass the records or
- * authorities area, and keeps each count only for its own area.
+ * authorities area, and keeps each count only for its own area. Each
+ * count is retried while D1 refuses it as overloaded (`retryD1Read`),
+ * logged as `pending_authority_proposals` and
+ * `pending_vocabulary_proposals` with `site`'s request and context.
  */
 export async function loadPendingDecisionCounts(
   db: DrizzleD1Database<any>,
   tenant: Tenant,
+  site: Omit<D1Site, "read"> = {},
 ): Promise<PendingDecisionCounts> {
   const [authorityProposals, vocabularyProposals] = await Promise.all([
-    countOpenAuthorityProposals(db, tenant),
-    countOpenVocabularyProposals(db, tenant),
+    retryD1Read(() => countOpenAuthorityProposals(db, tenant), undefined, undefined, {
+      ...site,
+      read: "pending_authority_proposals",
+    }),
+    retryD1Read(() => countOpenVocabularyProposals(db, tenant), undefined, undefined, {
+      ...site,
+      read: "pending_vocabulary_proposals",
+    }),
   ]);
   return { authorityProposals, vocabularyProposals };
 }
@@ -371,7 +395,7 @@ async function requireRulableDecision(
   id: string,
   kind: "authority-proposal",
 ) {
-  const { requireArea } = await import("./user-access.server");
+  const { requireAreaWork } = await import("./user-access.server");
   const { requireFederationSteward } = await import("./federation.server");
 
   const row = await db
@@ -390,7 +414,7 @@ async function requireRulableDecision(
     throw new Response("Not found", { status: 404 });
   }
   if (row.tenantId === tenant.id) {
-    requireArea(user, "authorities");
+    requireAreaWork(user, "authorities");
   } else {
     await requireFederationSteward(db, user, tenant);
   }
@@ -418,9 +442,13 @@ async function requireRulableDecision(
  *                       best-effort by design: an evidenceRef that
  *                       names nothing in this tenant's scope leaves
  *                       the mint standing and reports `linkedRef:
- *                       null`. A wrong ROLE, by contrast, is a 400 —
- *                       an unresolvable reference is a gap in the
- *                       evidence, a bad role is a caller error.
+ *                       null`. A missing or wrong ROLE, by contrast,
+ *                       is a 400: the role is the ruler's or the
+ *                       proposal's, approved in the federation's list,
+ *                       and none is assumed. An unresolvable reference
+ *                       is a gap in the evidence; a missing or bad role
+ *                       is a caller error. Skipping the link needs no
+ *                       role.
  *
  *   the external match  Only ever one the payload already proposed.
  *                       The form posts scheme + id; anything not in
@@ -430,7 +458,16 @@ async function requireRulableDecision(
  *
  * Both are settled BEFORE anything is minted, so a rejected role or an
  * unrecognised candidate 400s with the queue untouched rather than
- * after a record exists.
+ * after a record exists. Every write of an acceptance (the minted
+ * record and its journal row, the evidence link, the external match and
+ * the ruling itself) then goes in one batch: the evidence link's insert
+ * fails the batch when its role is no longer approved at the moment of
+ * the write, so a role deprecated after the check leaves nothing
+ * written and the question open, and the reviewer gets a 400. On a link proposal the confirmed match is a
+ * mutation of the existing target, so it also needs what mutating that
+ * record directly needs (`requireAuthorityMutation`: a steward for a
+ * shared record); without a match, accepting the link stays with
+ * whoever may rule the question.
  */
 export async function ruleAuthorityProposal(
   db: DrizzleD1Database<any>,
@@ -481,18 +518,35 @@ export async function ruleAuthorityProposal(
             ? "place"
             : "entity";
 
-  const linkRole = recordType ? resolveLinkRole(recordType, input, payload) : null;
+  // The description the evidence link would reach, read before anything
+  // is minted, so the role it needs is settled first too.
+  const evidenceTarget =
+    recordType && !input.skipLink ? await findEvidenceDescription(db, tenant, payload.evidenceRef) : null;
+  const linkRole = recordType
+    ? await resolveLinkRole(db, tenant, recordType, input, payload, evidenceTarget !== null)
+    : null;
   const confirmedCandidate = recordType
     ? matchExternalCandidate(payload, input.confirmedExternal)
     : null;
 
   let resultId: string | null = null;
+  // Every write of the ruling goes in one batch, so a refused evidence
+  // link leaves nothing of it: no record minted, the question open.
+  const writes: BatchItem<"sqlite">[] = [];
 
   if (input.ruling !== "rejected") {
     if (payload.action === "link") {
       resultId = await resolveLinkTarget(db, tenant, payload);
+      // Attaching a confirmed external match writes to the target
+      // record itself, so it takes the gate a direct mutation of that
+      // record takes: the authorities area on the tenant's own record,
+      // a steward on a shared one. Checked before anything is written.
+      if (confirmedCandidate && recordType !== null) {
+        const { requireAuthorityMutation } = await import("./authority-ownership.server");
+        await requireAuthorityMutation(db, user, tenant, recordType, [resultId]);
+      }
     } else if (type !== "topic") {
-      resultId = await mintFromProposal(
+      const mint = await prepareMint(
         db,
         user,
         tenant,
@@ -504,25 +558,21 @@ export async function ruleAuthorityProposal(
         sortName,
         { nameVariants, placeType, internalNote },
       );
+      resultId = mint.id;
+      writes.push(...mint.statements);
     }
     // topic mints nothing: the recorded ruling is the product.
   }
 
   let linkedRef: string | null = null;
   if (resultId !== null && recordType !== null) {
-    if (!input.skipLink) {
-      linkedRef = await linkEvidenceRecord(
-        db,
-        tenant,
-        recordType,
-        resultId,
-        payload.evidenceRef,
-        linkRole ?? "mentioned",
-        now,
-      );
+    if (evidenceTarget && linkRole) {
+      writes.push(evidenceLinkInsert(db, tenant.federationId, recordType, resultId, evidenceTarget, linkRole, now));
+      linkedRef = evidenceTarget.referenceCode;
     }
     if (confirmedCandidate) {
-      await db
+      writes.push(
+        db
         .insert(externalAuthorityLinks)
         .values({
           id: crypto.randomUUID(),
@@ -538,11 +588,13 @@ export async function ruleAuthorityProposal(
           createdAt: now,
           updatedAt: now,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing(),
+      );
     }
   }
 
-  await db
+  writes.push(
+    db
     .update(pendingDecisions)
     .set({
       status: "ruled",
@@ -559,7 +611,19 @@ export async function ruleAuthorityProposal(
           : {}),
       }),
     })
-    .where(eq(pendingDecisions.id, row.id));
+    .where(eq(pendingDecisions.id, row.id)),
+  );
+  try {
+    await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+  } catch (err) {
+    // The evidence link's role was deprecated after `resolveLinkRole`
+    // read it: the batch wrote nothing, and the question stays open.
+    const { isRefusedLinkRole } = await import("./link-roles.server");
+    if (isRefusedLinkRole(err)) {
+      throw new Response(`The ${recordType} role ${linkRole} is no longer approved`, { status: 400 });
+    }
+    throw err;
+  }
 
   // The ruling has committed; the filer can now be told about it.
   await enqueueDecisionNotifications(db, {
@@ -569,27 +633,51 @@ export async function ruleAuthorityProposal(
     now,
   });
 
-  return { id: row.id, ruling: input.ruling, resultId, linkedRef };
+  return { id: row.id, ruling: input.ruling, resultId, linkedRef, linkedRole: linkedRef ? linkRole : null };
 }
 
 /**
- * The role the evidence link will carry, checked against the enum the
- * ruled record type owns. "mentioned" is the fallback because it is
- * the one value both enums carry and the weakest claim either can
- * make: the heading appears in the record, and nothing more is
- * asserted. Checked on every non-rejected, non-topic ruling — not only
- * when a link is actually written — so a caller never gets silence for
- * a role the schema would refuse.
+ * The role the evidence link will carry: the ruler's `linkRole` when the
+ * ruling submits one, empty included, else the payload's `proposedRole`. It must be approved in the federation's
+ * list for the ruled record type (`readRoleVocabulary`); Fisqua assumes
+ * no role of its own. When the link will be written (`required`), a
+ * missing role is a 400 as well. When it will not, a role the ruler
+ * posted is still checked, so a caller never gets silence for a role
+ * the list refuses, and the payload's role is not.
  */
-function resolveLinkRole(
+async function resolveLinkRole(
+  db: DrizzleD1Database<any>,
+  tenant: Tenant,
   recordType: AuthorityRecordType,
   input: ProposalRulingInput,
   payload: AuthorityProposalPayload,
-): string {
-  const role = (input.linkRole ?? payload.proposedRole ?? "mentioned").trim();
-  const allowed: readonly string[] =
-    recordType === "place" ? PLACE_ROLES : ENTITY_ROLES;
-  if (!allowed.includes(role)) {
+  required: boolean,
+): Promise<string | null> {
+  // A submitted role decides, empty included; only a ruling that submits
+  // none (the queue's one-click accept) takes the proposal's.
+  const submitted = input.linkRole !== undefined;
+  const posted = roleCode(input.linkRole);
+  const role = required
+    ? submitted
+      ? posted
+      : roleCode(payload.proposedRole)
+    : input.skipLink
+      ? ""
+      : posted;
+  if (!role) {
+    if (required) throw new Response(`A ${recordType} role is required`, { status: 400 });
+    return null;
+  }
+  // The same condition the link writes carry (`link-roles.server.ts`),
+  // read first here so a refused role mints nothing.
+  const { isRoleApproved } = await import("./link-roles.server");
+  const approved = await retryD1Read(
+    () => isRoleApproved(db, tenant.federationId, recordType === "place" ? "place_role" : "entity_role", role),
+    undefined,
+    undefined,
+    { read: "decision_link_role" },
+  );
+  if (!approved) {
     throw new Response(`Unknown ${recordType} role: ${role}`, { status: 400 });
   }
   return role;
@@ -619,9 +707,8 @@ function matchExternalCandidate(
 }
 
 /**
- * Attach the ruled record to the description its evidence cites, and
- * return that description's reference code — or null when there is
- * nothing to attach it to.
+ * The description the evidence cites, read in the request tenant's
+ * scope, or null when there is nothing to attach the record to.
  *
  * The reference code is resolved inside the request tenant's scope,
  * which is also the decision's: a foreign-owned question 404s at the
@@ -629,65 +716,46 @@ function matchExternalCandidate(
  * own or a shared-space one being ruled from this tenant's session.
  * Another tenant's "CMD 2928" is therefore not a match — it is simply
  * absent, and the mint stands with no link.
- *
- * The insert is conflict-ignoring against the (description, record,
- * role) unique index, so re-running an acceptance cannot double-write.
  */
-async function linkEvidenceRecord(
+async function findEvidenceDescription(
   db: DrizzleD1Database<any>,
   tenant: Tenant,
+  evidenceRef: string | undefined,
+): Promise<{ id: string; referenceCode: string } | null> {
+  // The pages read the code the same way (`evidenceReference`), so they
+  // offer the link controls exactly when this finds a description.
+  const ref = evidenceReference(evidenceRef);
+  if (!ref) return null;
+  return (
+    (await db
+      .select({ id: descriptions.id, referenceCode: descriptions.referenceCode })
+      .from(descriptions)
+      .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.referenceCode, ref)))
+      .get()) ?? null
+  );
+}
+
+/**
+ * The statement attaching the ruled record to the evidence description
+ * under `role`, for the ruling's batch. It carries the role check of
+ * every link write (`link-roles.server.ts`) and fails the batch when the
+ * role is not approved at the moment of the write; a duplicate of an
+ * existing (description, record, role) link is ignored, and that link
+ * holds the reference.
+ */
+function evidenceLinkInsert(
+  db: DrizzleD1Database<any>,
+  federationId: string,
   recordType: AuthorityRecordType,
   recordId: string,
-  evidenceRef: string | undefined,
+  target: { id: string; referenceCode: string },
   role: string,
   now: number,
-): Promise<string | null> {
-  const ref = evidenceRef?.trim();
-  if (!ref) return null;
-
-  const target = await db
-    .select({
-      id: descriptions.id,
-      referenceCode: descriptions.referenceCode,
-    })
-    .from(descriptions)
-    .where(
-      and(
-        eq(descriptions.tenantId, tenant.id),
-        eq(descriptions.referenceCode, ref),
-      ),
-    )
-    .get();
-  if (!target) return null;
-
-  if (recordType === "place") {
-    await db
-      .insert(descriptionPlaces)
-      .values({
-        id: crypto.randomUUID(),
-        descriptionId: target.id,
-        placeId: recordId,
-        role: role as (typeof PLACE_ROLES)[number],
-        roleNote: null,
-        roleRaw: null,
-        createdAt: now,
-      })
-      .onConflictDoNothing();
-  } else {
-    await db
-      .insert(descriptionEntities)
-      .values({
-        id: crypto.randomUUID(),
-        descriptionId: target.id,
-        entityId: recordId,
-        role: role as (typeof ENTITY_ROLES)[number],
-        roleNote: null,
-        roleRaw: null,
-        createdAt: now,
-      })
-      .onConflictDoNothing();
-  }
-  return target.referenceCode;
+): BatchItem<"sqlite"> {
+  const base = { id: crypto.randomUUID(), descriptionId: target.id, role, roleNote: null, roleRaw: null, createdAt: now };
+  return recordType === "place"
+    ? placeLinkInsertOrFail(db, federationId, { ...base, placeId: recordId })
+    : entityLinkInsertOrFail(db, federationId, { ...base, entityId: recordId });
 }
 
 /** Validate a link proposal's target inside the tenant's visible scope. */
@@ -717,7 +785,12 @@ async function resolveLinkTarget(
   return target.id;
 }
 
-async function mintFromProposal(
+/**
+ * The record a ruling mints, and the statements that write it with its
+ * journal row, for the ruling's batch. The code and the owner are read
+ * here; nothing is written until the batch runs.
+ */
+async function prepareMint(
   db: DrizzleD1Database<any>,
   user: User,
   tenant: Tenant,
@@ -732,7 +805,7 @@ async function mintFromProposal(
     placeType?: string;
     internalNote?: string;
   } = {},
-): Promise<string> {
+): Promise<{ id: string; statements: BatchItem<"sqlite">[] }> {
   const { requireAuthorityMint } = await import(
     "./authority-ownership.server"
   );
@@ -776,19 +849,21 @@ async function mintFromProposal(
       createdAt: now,
       updatedAt: now,
     };
-    await db.batch([
-      db.insert(places).values(values),
-      composeJournalEntry(db, {
-        recordId: id,
-        recordType: "place",
-        userId: user.id,
-        kind: "create",
-        diff: createSnapshotDiff(values as Record<string, unknown>),
-        note: provenance,
-        now,
-      }),
-    ]);
-    return id;
+    return {
+      id,
+      statements: [
+        db.insert(places).values(values),
+        composeJournalEntry(db, {
+          recordId: id,
+          recordType: "place",
+          userId: user.id,
+          kind: "create",
+          diff: createSnapshotDiff(values as Record<string, unknown>),
+          note: provenance,
+          now,
+        }),
+      ],
+    };
   }
 
   if (!(ENTITY_TYPES as readonly string[]).includes(type)) {
@@ -820,19 +895,21 @@ async function mintFromProposal(
     createdAt: now,
     updatedAt: now,
   };
-  await db.batch([
-    db.insert(entities).values(values),
-    composeJournalEntry(db, {
-      recordId: id,
-      recordType: "entity",
-      userId: user.id,
-      kind: "create",
-      diff: createSnapshotDiff(values as Record<string, unknown>),
-      note: provenance,
-      now,
-    }),
-  ]);
-  return id;
+  return {
+    id,
+    statements: [
+      db.insert(entities).values(values),
+      composeJournalEntry(db, {
+        recordId: id,
+        recordType: "entity",
+        userId: user.id,
+        kind: "create",
+        diff: createSnapshotDiff(values as Record<string, unknown>),
+        note: provenance,
+        now,
+      }),
+    ],
+  };
 }
 
 
@@ -1077,6 +1154,74 @@ async function findOrCreatePairRow(
 }
 
 /**
+ * A pair's decision row for a ruling that writes in one batch: gated as
+ * `getOrCreatePairDecision` is, the row read by its key, and, when the
+ * pair has none, the INSERT that files it open, composed and not run.
+ * The caller puts `insert` in its batch ahead of the statements that rule
+ * the row by `key`, so a batch that fails leaves no row behind, and reads
+ * the row back by `key` once the batch has landed.
+ *
+ * `asRead` is the condition that the pair's row is still as read: none
+ * when none was read, or the row read, still open. A request that files
+ * or rules the pair in between (a "keep both", say) makes it false. The
+ * caller guards its batch with it, so such a batch fails whole and its
+ * ruling never overwrites the other, and asks `stillAsRead` after a
+ * failed batch to answer it as a conflict.
+ */
+export async function preparePairDecision(
+  db: DrizzleD1Database<any>,
+  user: User,
+  tenant: Tenant,
+  recordType: AuthorityRecordType,
+  idA: string,
+  idB: string,
+  now: number = Date.now(),
+): Promise<{
+  existing: typeof pendingDecisions.$inferSelect | undefined;
+  insert: BatchItem<"sqlite"> | null;
+  key: SQL;
+  asRead: SQL;
+  stillAsRead: () => Promise<boolean>;
+}> {
+  const { requireAuthorityMutation } = await import(
+    "./authority-ownership.server"
+  );
+  await requireAuthorityMutation(db, user, tenant, recordType, [idA, idB]);
+  const [a, b] = idA < idB ? [idA, idB] : [idB, idA];
+  const sourceRef = pairKey(a, b);
+  const key = and(
+    eq(pendingDecisions.federationId, tenant.federationId),
+    eq(pendingDecisions.kind, "duplicate-pair"),
+    eq(pendingDecisions.sourceRef, sourceRef),
+  )!;
+  const existing = await db.select().from(pendingDecisions).where(key).get();
+  const asRead = existing
+    ? sql`EXISTS (SELECT 1 FROM ${pendingDecisions} WHERE ${pendingDecisions.id} = ${existing.id} AND ${pendingDecisions.status} = 'open')`
+    : sql`NOT EXISTS (SELECT 1 FROM ${pendingDecisions} WHERE ${key})`;
+  const stillAsRead = async () =>
+    (await db.select({ ok: sql<number>`CASE WHEN ${asRead} THEN 1 ELSE 0 END` }).from(sql`(SELECT 1)`).get())?.ok === 1;
+  if (existing) return { existing, insert: null, key, asRead, stillAsRead };
+  const tenantId = await resolvePairTenantStamp(db, tenant, recordType, a, b);
+  const payload: DuplicatePairPayload = { recordType, pair: [a, b] };
+  const insert = db
+    .insert(pendingDecisions)
+    .values({
+      id: crypto.randomUUID(),
+      federationId: tenant.federationId,
+      tenantId,
+      kind: "duplicate-pair",
+      payload: JSON.stringify(payload),
+      sourceModule: "duplicate-scan",
+      sourceRef,
+      status: "open",
+      filedByUserId: user.id,
+      createdAt: now,
+    })
+    .onConflictDoNothing();
+  return { existing: undefined, insert, key, asRead, stillAsRead };
+}
+
+/**
  * Get a pair's decision row, filing it OPEN on first contact. Gated
  * exactly like a mutation of the pair itself
  * (`requireAuthorityMutation`'s pair rule), because filing the question
@@ -1204,3 +1349,5 @@ export async function ruledPairKeys(
   }
   return keys;
 }
+
+// @version v0.9.0

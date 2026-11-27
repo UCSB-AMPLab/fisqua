@@ -1,21 +1,24 @@
 /**
  * Admin — Split workbench (full-page)
  *
- * The record-type-agnostic split surface shared by entities and places
- * (spec §4, design handoff surface 2). Nothing copies silently: a
+ * This component is the full-page split surface, the same for every record
+ * type, that entities and places share. Nothing is copied silently: a
  * unified assignment table gives every field an Original / Both / New
- * choice (external-ID rows are exactly-one-side), both halves get
- * editable, distinct names, and the linked descriptions are divided by
- * rich context card. Confirm is gated until every row is assigned, the
- * two names differ, and a reason is present; the action writes the
- * reason into the ledger row's `detail.reason`.
+ * choice (external-ID rows go to exactly one side), both halves get
+ * editable, distinct names, and the linked descriptions are divided card
+ * by card, on the rich context card. Confirm stays disabled until every
+ * row is assigned, the two names differ, and a reason is present; the
+ * action writes the reason into the ledger row's `detail.reason`.
  *
  * A description is assigned AS ONE UNIT: one control routes all of that
  * description's junction rows to the new record together, so a
  * multi-role description never straddles the two halves. The ledger
  * still counts junction rows (`movedLinks`), unchanged by the grouping.
  *
- * @version v0.4.3
+ * The cards' role labels come from `roleLabel`, which a relation side
+ * asks for its relation role's label.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useMemo } from "react";
@@ -60,7 +63,7 @@ export function SplitWorkbench({
   recordCode: string;
   cards: LinkedDescriptionCardList;
   showAsRecorded: boolean;
-  roleLabel: (role: string) => string;
+  roleLabel: (role: string, relationSide?: boolean) => string;
   placeRoleLabel: (role: string) => string;
   fieldRows: SplitFieldRow[];
   nameVariantRows: SplitFieldRow[];
@@ -417,3 +420,5 @@ function SegButton({
     </button>
   );
 }
+
+/* @version v0.9.0 */

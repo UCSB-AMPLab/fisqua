@@ -22,7 +22,13 @@
  * shares them — and that same setting decides whether creating one
  * needs a steward.
  *
- * @version v0.8.0
+ * A function the form gives is written as an `entity_functions` row,
+ * one per line, in the same batch as the entity; a line that repeats an
+ * earlier one, case and spacing aside, is dropped
+ * (`distinctFunctionLines`). The `entities.functions` column is not
+ * written.
+ *
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -35,16 +41,26 @@ import { CollapsibleSection } from "~/components/admin/collapsible-section";
 import { NameVariantInput } from "~/components/forms/name-variant-input";
 import { LodLinkField } from "~/components/forms/lod-link-field";
 import { TypeaheadInput } from "~/components/admin/typeahead-input";
+import { resolveSubmittedTerm } from "~/lib/typeahead-term.server";
 import type { Route } from "./+types/_auth.admin.entities.new";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("entities:createTitle"),
+    heading("entities:title"),
+  );
+}
+
 export async function loader({ context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   return {};
@@ -56,7 +72,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, sql } = await import("drizzle-orm");
   const { entities, vocabularyTerms } = await import("~/db/schema");
@@ -64,7 +80,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { generateUniqueCode } = await import("~/lib/codes.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -164,8 +180,11 @@ export async function action({ request, context }: Route.ActionArgs) {
   const primaryFunction =
     (formData.get("primaryFunction") as string)?.trim() || undefined;
   // legalStatus dropped in 0036 (0% populated in production audit).
-  const functions =
-    (formData.get("functions") as string)?.trim() || undefined;
+  // One function per line, written as entity_functions rows below.
+  const { functionLines, newEntityFunctions } = await import("~/lib/entity-functions.server");
+  const { distinctFunctionLines } = await import("~/lib/function-duplicates");
+  const lines = distinctFunctionLines(functionLines(formData.get("functions") as string | null), []);
+  const functions = lines.join("\n") || undefined;
   const sources =
     (formData.get("sources") as string)?.trim() || undefined;
   const wikidataId =
@@ -207,9 +226,36 @@ export async function action({ request, context }: Route.ActionArgs) {
   let resolvedFunctionId: string | null = null;
   const primaryFunctionIdRaw = (formData.get("primaryFunctionId") as string)?.trim();
   const primaryFunctionText = parsed.data.primaryFunction ?? null;
+  let storedFunctionText = primaryFunctionText;
 
-  if (primaryFunctionIdRaw) {
-    resolvedFunctionId = primaryFunctionIdRaw;
+  // The hidden id bypasses the schema and must name a term of this
+  // tenant's federation, or the entity would point at, and recount,
+  // another federation's term. The id is kept while the text still
+  // names the pick (its current name, or its name as picked), and a
+  // merged term is followed to its survivor.
+  const functionResolution = primaryFunctionIdRaw
+    ? await resolveSubmittedTerm(
+        db,
+        tenant.federationId,
+        primaryFunctionIdRaw,
+        primaryFunctionText,
+        (formData.get("primaryFunctionSelectedText") as string)?.trim() || null
+      )
+    : null;
+  if (functionResolution?.kind === "missing") {
+    return {
+      ok: false as const,
+      errors: {
+        primaryFunction: ["Selected function no longer exists; reselect or retype it"],
+      },
+    };
+  }
+
+  if (functionResolution?.kind === "use") {
+    resolvedFunctionId = functionResolution.id;
+    // The text stored is the kept term's current name, whatever the
+    // request carried.
+    storedFunctionText = functionResolution.canonical;
   } else if (primaryFunctionText) {
     const { isNull } = await import("drizzle-orm");
     const existingTerm = await db
@@ -243,28 +289,33 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
   }
 
+  // The functions go to entity_functions, never to the column.
+  const { functions: _functionsText, ...entityData } = parsed.data;
+
   try {
-    await db.insert(entities).values({
+    await db.batch([
+      db.insert(entities).values({
       federationId: tenant.federationId,
       tenantId: ownerTenantId,
       id,
-      ...parsed.data,
+      ...entityData,
       surname: parsed.data.surname ?? null,
       givenName: parsed.data.givenName ?? null,
       honorific: parsed.data.honorific ?? null,
-      primaryFunction: parsed.data.primaryFunction ?? null,
+      primaryFunction: storedFunctionText,
       primaryFunctionId: resolvedFunctionId,
       datesOfExistence: parsed.data.datesOfExistence ?? null,
       dateStart: parsed.data.dateStart ?? null,
       dateEnd: parsed.data.dateEnd ?? null,
       history: parsed.data.history ?? null,
-      functions: parsed.data.functions ?? null,
       sources: parsed.data.sources ?? null,
       wikidataId: parsed.data.wikidataId ?? null,
       viafId: parsed.data.viafId ?? null,
       createdAt: now,
       updatedAt: now,
-    });
+      }),
+      ...newEntityFunctions(db, id, lines, now),
+    ]);
 
     // Update entity count on the vocabulary term
     if (resolvedFunctionId) {
@@ -281,7 +332,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       await db
         .update(vocabularyTerms)
         .set({ entityCount: entityCountForTerm, updatedAt: now })
-        .where(eq(vocabularyTerms.id, resolvedFunctionId));
+        .where(
+          and(
+            eq(vocabularyTerms.id, resolvedFunctionId),
+            eq(vocabularyTerms.federationId, tenant.federationId)
+          )
+        );
     }
   } catch (e) {
     if (String(e).includes("UNIQUE constraint failed")) {
@@ -605,3 +661,5 @@ function FieldTextarea({
     </div>
   );
 }
+
+// @version v0.9.0
