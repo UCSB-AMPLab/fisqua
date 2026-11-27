@@ -5,7 +5,15 @@
  * (Live, Pending publish, Pending removal) used across the descriptions
  * list and edit pages.
  *
- * @version v0.4.2
+ * `getPublishStatus` reads a description's export mark
+ * (`last_exported_at`), which the publish's fonds descriptions step
+ * sets on every published description it writes into its fonds' file,
+ * digitised or not, and clears on the unpublished ones it leaves out. A
+ * published description is Live when its mark is at or after its last
+ * edit and Pending publish otherwise; an unpublished one that still
+ * carries a mark is Pending removal until a publish of its fonds.
+ *
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";

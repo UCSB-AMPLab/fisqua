@@ -15,7 +15,7 @@
  * fonds > series > file tree builds the expected three keys with
  * the right children at each).
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { generateChildrenMap } from "../../app/lib/export/children.server";
@@ -160,5 +160,24 @@ describe("generateChildrenMap", () => {
     const root = makeRow({ childCount: 0 });
     const map = generateChildrenMap([root]);
     expect(map.size).toBe(0);
+  });
+});
+
+describe("generateChildrenMap: counts published children only", () => {
+  it("gives a child the number of its published children, not the stored child count", () => {
+    // The fonds stores two children; only series1 is in the published rows, and series1 stores 3 but has one published child.
+    const parent = makeRow({ id: "f", parentId: null, referenceCode: "co-x", childCount: 2 });
+    const child = makeRow({ id: "s1", parentId: "f", referenceCode: "co-x-001", descriptionLevel: "series", childCount: 3 });
+    const grandchild = makeRow({ id: "i1", parentId: "s1", referenceCode: "co-x-001-d001", descriptionLevel: "item", childCount: 0 });
+    const map = generateChildrenMap([parent, child, grandchild]);
+    expect(map.get("co-x")).toHaveLength(1);
+    expect(map.get("co-x")![0]).toMatchObject({ reference_code: "co-x-001", child_count: 1, has_children: true });
+    expect(map.get("co-x-001")![0]).toMatchObject({ child_count: 0, has_children: false });
+  });
+
+  it("gives a child whose children are all unpublished no children", () => {
+    const parent = makeRow({ id: "f", parentId: null, referenceCode: "co-x", childCount: 1 });
+    const child = makeRow({ id: "s1", parentId: "f", referenceCode: "co-x-001", descriptionLevel: "series", childCount: 4 });
+    expect(generateChildrenMap([parent, child]).get("co-x")![0]).toMatchObject({ child_count: 0, has_children: false });
   });
 });

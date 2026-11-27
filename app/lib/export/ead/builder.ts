@@ -11,8 +11,8 @@
  * ordering EAD3's RNG enforces.
  *
  * Template literals plus the shared `escapeXml`/`el` helpers from
- * `app/lib/export/xml/escape.ts` keep the Worker bundle small — same
- * pattern as `app/lib/export/mets-builder.ts`. Mitigation of XML
+ * `app/lib/export/xml/escape.ts` keep the Worker bundle small, as in
+ * the Dublin Core builder. Mitigation of XML
  * injection through interpolated description content is
  * structural: every interpolated value flows through `escapeXml`,
  * including legacyId provider/value pairs at every `<unitid type="...">`
@@ -61,7 +61,7 @@
  * `level="collection"` would assert an archival relationship between
  * fonds that does not exist.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { escapeXml, el, sanitiseRefForKey } from "../xml/escape";
@@ -77,8 +77,7 @@ const NS_XLINK = "http://www.w3.org/1999/xlink";
 // Mappings
 // ---------------------------------------------------------------------------
 
-// Two-letter / three-letter language code → human-readable label, mirrors the
-// shape used in `mets-builder.ts`. The EAD3 schema's `langcode`
+// Two-letter / three-letter language code → human-readable label. The EAD3 schema's `langcode`
 // pattern accepts any well-formed ISO code; the label is purely the
 // human-readable form interpolated as element text.
 const LANGUAGE_MAP: Record<string, string> = {
@@ -108,17 +107,21 @@ const LANGUAGE_MAP: Record<string, string> = {
  *                  from `tenant.descriptiveStandard`.
  * @param createDate ISO-8601 timestamp recorded inside `<control>` →
  *                  `<maintenancehistory>` → `<eventdatetime>`. Format
- *                  matches what the publish pipeline already passes to
- *                  `buildMetsXml` (METS_HDR `CREATEDATE`).
+ *                  is what the publish pipeline passes
+ *                  (`Date.prototype.toISOString`).
  *
  * @returns EAD3 v1.1.1 document as a UTF-8 string. Empty string when
  *          `fondsRows` is empty (matches the publish pipeline's
  *          "no rows → no file" semantics for already-empty fonds slices).
  *
- * @throws  When `fondsRows` is non-empty but no row has
- *          `descriptionLevel === "fonds"` — that's a caller-side
- *          contract violation (the per-fonds slice must include the
- *          fonds row itself) and is preferable to silently emitting a
+ * @param rootId   The id of the fonds' root description, which becomes the
+ *                  `<archdesc>` whatever its level: a root may be a
+ *                  `collection` as well as a `fonds`. Without it the
+ *                  row at level `fonds` is taken as the root.
+ *
+ * @throws  When `fondsRows` is non-empty but holds no root row — a
+ *          caller-side contract violation (the per-fonds slice must
+ *          include the root itself), preferable to silently emitting a
  *          finding aid with no top-of-hierarchy element.
  */
 export function buildEad3(
@@ -126,16 +129,43 @@ export function buildEad3(
   repos: ReadonlyMap<string, EadRepository>,
   profile: EadProfile,
   createDate: string,
+  rootId?: string,
 ): string {
   if (fondsRows.length === 0) return "";
 
-  const fonds = fondsRows.find((r) => r.descriptionLevel === "fonds");
+  const fonds = rootId
+    ? fondsRows.find((r) => r.id === rootId)
+    : fondsRows.find((r) => r.descriptionLevel === "fonds");
   if (!fonds) {
-    throw new Error("buildEad3: no fonds-level row in input");
+    throw new Error("buildEad3: no root row in input");
   }
 
   const repo = repos.get(fonds.repositoryId);
+  const descendants = fondsRows.filter((r) => r !== fonds);
 
+  let xml = buildEad3Open(fonds, repo, profile, createDate, descendants.length > 0);
+  for (const row of descendants) {
+    xml += buildEad3Component(row, repo);
+  }
+  xml += buildEad3Close(descendants.length > 0);
+  return xml;
+}
+
+/**
+ * The publish document up to its first `<c>`: the XML declaration,
+ * `<ead>`, `<control>`, `<archdesc>` with the fonds row's `<did>` and
+ * children, and `<dsc>` when the fonds has descendants. With
+ * `buildEad3Component` and `buildEad3Close` it lets the publish step
+ * write a fonds' document a batch of rows at a time; `buildEad3` is
+ * the three run over the whole fonds, so both paths give the same bytes.
+ */
+export function buildEad3Open(
+  fonds: EadInput,
+  repo: EadRepository | undefined,
+  profile: EadProfile,
+  createDate: string,
+  hasDescendants: boolean,
+): string {
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
   xml += `<ead xmlns="${NS_EAD}" xmlns:xlink="${NS_XLINK}" audience="external">\n`;
 
@@ -153,15 +183,18 @@ export function buildEad3(
   xml += renderArchdescChildren(fonds, profile);
 
   // <dsc> — descendants (series/file/item/etc.) as <c> blocks.
-  const descendants = fondsRows.filter((r) => r.descriptionLevel !== "fonds");
-  if (descendants.length > 0) {
-    xml += `    <dsc>\n`;
-    for (const row of descendants) {
-      xml += renderC(row, repo);
-    }
-    xml += `    </dsc>\n`;
-  }
+  if (hasDescendants) xml += `    <dsc>\n`;
+  return xml;
+}
 
+/** One descendant's `<c>` block; `repo` is the fonds row's repository. */
+export function buildEad3Component(row: EadInput, repo: EadRepository | undefined): string {
+  return renderC(row, repo);
+}
+
+/** The closing tags after the last `<c>`. */
+export function buildEad3Close(hasDescendants: boolean): string {
+  let xml = hasDescendants ? `    </dsc>\n` : "";
   xml += `  </archdesc>\n`;
   xml += `</ead>\n`;
   return xml;
@@ -528,11 +561,11 @@ function renderC(row: EadInput, repo: EadRepository | undefined): string {
   return c;
 }
 
-// el is imported for symmetry with mets-builder.ts; not currently used
+// el is imported for symmetry with the Dublin Core builder; not currently used
 // at the top level because every <archdesc> child needs <p>-wrapped
 // content rather than bare element text. Kept on the import line so a
 // future refactor that introduces bare-text emission has the helper in
 // hand without re-import churn.
 void el;
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

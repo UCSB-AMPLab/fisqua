@@ -12,7 +12,7 @@
  * declaration for the typecheck step to pass without first running a
  * wrangler build.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 interface Env {
   DB: D1Database;
@@ -23,7 +23,6 @@ interface Env {
   // It stays bound until Neogranadina's record is adopted in both
   // environments.
   MANIFESTS_BUCKET: R2Bucket;
-  METS_BUCKET: R2Bucket;
   // Media pipeline run specs and the copies a publication keeps. Bound
   // to the bucket `PIPELINE_SPEC_BUCKET` names in the same environment.
   SPEC_BUCKET: R2Bucket;

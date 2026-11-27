@@ -11,72 +11,64 @@
  * A description's `mets_url` is built from its tenant's `mets_base_url`
  * as `{base}/{reference_code}.xml`, with `?` and `#` removed from the
  * code and trailing slashes from the base, the same address the IIIF
- * manifest's `seeAlso` names. A tenant without a base exports no
- * `mets_url`; the data contract makes the field optional.
+ * manifest's `seeAlso` names. It is the site's METS address for the
+ * record, and every description has one, digitised or not: the file at
+ * that address is written by the site's engine, which builds one per
+ * description. A description of a tenant without a base carries
+ * `mets_url: null`; the key is written on every description.
  *
- * @version v0.8.0
+ * Every description carries `modified_at`, the UTC calendar date of its
+ * `updated_at` (`modifiedAtDate`), and none when that is empty.
+ *
+ * The formatter is the same for every tenant: no rule names a tenant,
+ * repository, fonds or reference-code pattern. `children_level` is the
+ * description level of a description's published children
+ * (`childrenLevel`), and `publication_title` is the stored value.
+ *
+ * @version v0.9.0
  */
 
 import type { ExportDescription } from "./types";
-import { LANGUAGE_MAP, LEVEL_HIERARCHY } from "./constants";
+import { LANGUAGE_MAP, modifiedAtDate } from "./constants";
+import { LEVEL_HIERARCHY } from "../description-levels";
+import { DESCRIPTION_LEVELS } from "../validation/enums";
 
-/**
- * Infer the archival level of a description's children.
- * Ported from Django _children_level in export_frontend_data.py.
- */
-export function childrenLevel(
-  refCode: string | null,
-  level: string,
-  childRefs: string[]
-): string | null {
-  const ref = refCode ?? "";
+/** A published child of a description, as `childrenLevel` reads it. */
+export interface ExportChild {
+  referenceCode: string;
+  descriptionLevel: string;
+}
 
-  if (/-caj\d+$/.test(ref)) return "carpeta";
-  if (/-car\d+$/.test(ref)) return "item";
-  if (/-leg\d+$/.test(ref)) return "item";
-  if (/-tom\d+$/.test(ref)) return "item";
-  if (/-t\d+$/.test(ref)) return "item";
-  if (/-aht-\d+$/.test(ref)) return "item";
-  if (/-cab-\d+$/.test(ref)) return "item";
-
-  if (level === "fonds" && childRefs.length > 0) {
-    const sample = childRefs.slice(0, 20);
-    const hasCaja = sample.some((r) => r.includes("-caj"));
-    const hasTomo = sample.some((r) => r.includes("-tom") || r.includes("-t0"));
-    const hasCarpeta = sample.some((r) => r.includes("-car"));
-    const hasLegajo = sample.some(
-      (r) =>
-        /-aht-\d+$/.test(r) || /-leg\d+$/.test(r) || /-cab-\d+$/.test(r)
-    );
-
-    const types = [hasCaja, hasTomo, hasCarpeta, hasLegajo].filter(
-      Boolean
-    ).length;
-    if (types > 1) return null;
-    if (hasCaja) return "caja";
-    if (hasTomo) return "tomo";
-    if (hasCarpeta) return "carpeta";
-    if (hasLegajo) return "legajo";
-  }
-
-  return LEVEL_HIERARCHY[level] ?? null;
+/** Where a level sorts in a tie: its rank, then its place in the level list. */
+function levelOrder(level: string): [number, number] {
+  const index = (DESCRIPTION_LEVELS as readonly string[]).indexOf(level);
+  return [LEVEL_HIERARCHY[level] ?? Number.MAX_SAFE_INTEGER, index < 0 ? Number.MAX_SAFE_INTEGER : index];
 }
 
 /**
- * Return the publication title for PE-BN CDIP items, null for everything else.
- * Matches Django logic: repo code starts with 'pe-bn' and ref code contains 'cdip'.
+ * The level of a description's children: null when it has no published
+ * children, otherwise the description level they share, or, when they
+ * mix levels, the most common one. A tie goes to the broader level
+ * (`LEVEL_HIERARCHY`), then to the earlier in `DESCRIPTION_LEVELS`, and
+ * levels outside both to the lower code point, so the result does not
+ * depend on the order the children are given in.
  */
-export function publicationTitle(
-  refCode: string,
-  repoCode: string
-): string | null {
-  if (repoCode.startsWith("pe-bn") && refCode.includes("cdip")) {
-    return "Colección Documental de la Independencia del Perú";
-  }
-  return null;
+export function childrenLevel(children: ExportChild[]): string | null {
+  if (children.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const c of children) counts.set(c.descriptionLevel, (counts.get(c.descriptionLevel) ?? 0) + 1);
+  return [...counts.entries()].sort(([la, na], [lb, nb]) => {
+    if (na !== nb) return nb - na;
+    const [ra, ia] = levelOrder(la);
+    const [rb, ib] = levelOrder(lb);
+    return ra - rb || ia - ib || (la < lb ? -1 : la > lb ? 1 : 0);
+  })[0][0];
 }
 
-/** The METS address of a description, or undefined when the tenant has no base. */
+/**
+ * The METS address of a description under its tenant's base, or
+ * undefined when the tenant has none.
+ */
 export function metsUrl(referenceCode: string, metsBaseUrl: string | null | undefined): string | undefined {
   const base = (metsBaseUrl ?? "").trim().replace(/\/+$/, "");
   if (!base) return undefined;
@@ -89,6 +81,9 @@ export function metsUrl(referenceCode: string, metsBaseUrl: string | null | unde
  * createdBy, updatedBy) are excluded. `formerReferenceCodes` are the
  * reference codes the description was published under before
  * (`former-codes.server.ts`); the field is omitted when there are none.
+ * `children` are the description's published children, whatever order
+ * they come in; `child_count` and `has_children` are counted from them, so
+ * an unpublished child is not counted.
  */
 export function formatDescription(
   row: {
@@ -117,19 +112,22 @@ export function formatDescription(
     imprint: string | null;
     editionStatement: string | null;
     seriesStatement: string | null;
+    publicationTitle?: string | null;
     uniformTitle: string | null;
     sectionTitle: string | null;
     pages: string | null;
     creatorDisplay: string | null;
     placeDisplay: string | null;
+    updatedAt?: number | null;
   },
   repo: { code: string; country: string | null },
   parentRefCode: string | null,
-  childRefs: string[],
+  children: ExportChild[],
   metsBaseUrl: string | null = null,
   formerReferenceCodes: string[] = []
 ): ExportDescription {
   const mets = metsUrl(row.referenceCode, metsBaseUrl);
+  const modifiedAt = modifiedAtDate(row.updatedAt);
   return {
     id: row.id,
     repository_code: repo.code,
@@ -145,16 +143,13 @@ export function formatDescription(
     date_start: row.dateStart,
     parent_id: row.parentId,
     parent_reference_code: parentRefCode,
-    has_children: row.childCount > 0,
-    child_count: row.childCount,
-    children_level: childrenLevel(
-      row.referenceCode,
-      row.descriptionLevel,
-      childRefs
-    ),
+    // Counted from the published children, not the stored child_count, which counts unpublished children too.
+    has_children: children.length > 0,
+    child_count: children.length,
+    children_level: childrenLevel(children),
     has_digital: row.hasDigital ?? false,
     iiif_manifest_url: row.iiifManifestUrl ?? "",
-    ...(mets ? { mets_url: mets } : {}),
+    mets_url: mets || null,
     ...(formerReferenceCodes.length > 0
       ? { former_reference_codes: formerReferenceCodes }
       : {}),
@@ -172,7 +167,7 @@ export function formatDescription(
     related_materials: null,
     finding_aids: row.findingAids,
     notes: row.notes,
-    publication_title: publicationTitle(row.referenceCode, repo.code),
+    publication_title: row.publicationTitle || null,
     imprint: row.imprint,
     edition_statement: row.editionStatement,
     series_statement: row.seriesStatement,
@@ -181,7 +176,8 @@ export function formatDescription(
     pages: row.pages,
     creator_display: row.creatorDisplay,
     place_display: row.placeDisplay,
+    ...(modifiedAt ? { modified_at: modifiedAt } : {}),
   };
 }
 
-// @version v0.8.0
+// @version v0.9.0

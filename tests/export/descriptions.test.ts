@@ -1,29 +1,30 @@
 /**
  * Tests — description export formatter
  *
- * This suite pins the three pure helpers that shape a D1 description
- * row into the public-export JSON payload: `formatDescription` (the
- * field-level transformer), `publicationTitle` (the
- * "title + dateExpression" composite string the public view renders
- * as the page heading), and `childrenLevel` (computes the level
- * label for the next hierarchy tier so the public breadcrumb /
- * navigation can show "Files" or "Items" rather than the raw
- * descriptive standard's level token).
+ * This suite pins the pure helpers that shape a D1 description row
+ * into the public-export JSON payload: `formatDescription` (the
+ * field-level transformer) and `childrenLevel` (the level of a
+ * description's children, which the public tree uses to label them).
+ * Neither reads a tenant, repository or reference code: a
+ * description's `children_level` is the description level its
+ * published children share (the most common one when they mix, ties
+ * going to the broader level), or null when it has none, and
+ * `publication_title` is the stored value. Every description has a
+ * `mets_url`, its METS address under the tenant's base, whether or not
+ * it is digitised, and null only when the tenant has no base.
  *
  * The formatter strips internal-only columns (e.g. `legacyIds`,
  * `pathCache`), preserves the ISAD(G) elements, and collapses
  * empty strings to `null` so the frontend's JSON consumers don't
  * have to discriminate "" vs missing.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import {
   childrenLevel,
-  publicationTitle,
   formatDescription,
 } from "../../app/lib/export/descriptions.server";
-import { formatRepositories } from "../../app/lib/export/repositories.server";
 import type { ExportDescription } from "../../app/lib/export/types";
 
 // ---------------------------------------------------------------------------
@@ -115,85 +116,89 @@ function makeRepoRow(overrides: Record<string, unknown> = {}) {
 // childrenLevel
 // ---------------------------------------------------------------------------
 
+const kid = (referenceCode: string, descriptionLevel: string) => ({ referenceCode, descriptionLevel });
+
 describe("childrenLevel", () => {
-  it("returns 'carpeta' for ref codes ending in -caj\\d+", () => {
-    expect(childrenLevel("co-ahr-gob-caj001", "fonds", [])).toBe("carpeta");
+  it("is null when there are no published children", () => {
+    expect(childrenLevel([])).toBeNull();
   });
 
-  it("returns 'item' for ref codes ending in -car\\d+", () => {
-    expect(childrenLevel("co-ahr-gob-caj001-car001", "file", [])).toBe("item");
+  it("is the level the children share", () => {
+    expect(childrenLevel([kid("x-1", "file"), kid("x-2", "file")])).toBe("file");
+    expect(childrenLevel([kid("x-1", "series")])).toBe("series");
   });
 
-  it("returns 'item' for ref codes ending in -leg\\d+", () => {
-    expect(childrenLevel("co-ahjci-mfc-leg001", "file", [])).toBe("item");
+  it("is the most common level when the children mix levels", () => {
+    expect(childrenLevel([kid("x-1", "item"), kid("x-2", "file"), kid("x-3", "item")])).toBe("item");
   });
 
-  it("returns 'item' for ref codes ending in -tom\\d+", () => {
-    expect(childrenLevel("co-ahr-gob-tom001", "file", [])).toBe("item");
+  it("breaks a tie by the level hierarchy, the broader level first, whatever the order given", () => {
+    expect(childrenLevel([kid("x-1", "item"), kid("x-2", "file")])).toBe("file");
+    expect(childrenLevel([kid("x-2", "file"), kid("x-1", "item")])).toBe("file");
+    expect(childrenLevel([kid("x-1", "subseries"), kid("x-2", "series")])).toBe("series");
+    // Two levels of the same rank: the order of DESCRIPTION_LEVELS decides.
+    expect(childrenLevel([kid("x-1", "volume"), kid("x-2", "file")])).toBe("file");
+    expect(childrenLevel([kid("x-1", "collection"), kid("x-2", "subfonds")])).toBe("subfonds");
   });
 
-  it("returns 'item' for ref codes ending in -t\\d+", () => {
-    expect(childrenLevel("co-ahr-gob-t01", "file", [])).toBe("item");
+  it("reads nothing from reference codes", () => {
+    expect(childrenLevel([kid("co-ahr-gob-caj001", "file"), kid("co-ahr-gob-caj002", "file")])).toBe("file");
+    expect(childrenLevel([kid("co-ahrb-not-n1-001", "file")])).toBe("file");
+  });
+});
+
+describe("formatDescription: children_level", () => {
+  it("is null for a description with no published children, whatever its code, level or child count", () => {
+    for (const [referenceCode, descriptionLevel, childCount] of [
+      ["co-ahr-gob-caj001", "file", 0],
+      ["co-ahr-gob-caj001-car001", "file", 3],
+      ["co-ahrb-not-n1", "subfonds", 2],
+      ["co-ahr-gob", "fonds", 0],
+    ] as const) {
+      const row = makeDescriptionRow({ referenceCode, descriptionLevel, childCount });
+      expect(formatDescription(row, makeRepoRow(), null, []).children_level).toBeNull();
+    }
   });
 
-  it("returns 'item' for ref codes ending in -aht-\\d+", () => {
-    expect(childrenLevel("co-ahrb-aht-001", "file", [])).toBe("item");
+  it("is the level of its published children", () => {
+    const row = makeDescriptionRow({ referenceCode: "co-ahr-gob-caj001", childCount: 2 });
+    const children = [kid("co-ahr-gob-caj001-car001", "file"), kid("co-ahr-gob-caj001-car002", "file")];
+    expect(formatDescription(row, makeRepoRow(), null, children).children_level).toBe("file");
+  });
+});
+
+describe("formatDescription: child_count", () => {
+  it("counts the published children it is given, not the stored child count", () => {
+    const row = makeDescriptionRow({ referenceCode: "co-ahrb-aht", descriptionLevel: "fonds", childCount: 134 });
+    const children = [kid("co-ahrb-aht-003", "series"), kid("co-ahrb-aht-004", "series")];
+    const out = formatDescription(row, makeRepoRow(), null, children);
+    expect(out.child_count).toBe(2);
+    expect(out.has_children).toBe(true);
   });
 
-  it("returns 'item' for ref codes ending in -cab-\\d+", () => {
-    expect(childrenLevel("co-ahrb-cab-001", "file", [])).toBe("item");
-  });
-
-  it("returns 'caja' when fonds children are all -caj refs", () => {
-    const childRefs = ["co-ahr-gob-caj001", "co-ahr-gob-caj002"];
-    expect(childrenLevel("co-ahr-gob", "fonds", childRefs)).toBe("caja");
-  });
-
-  it("returns 'tomo' when fonds children are all -tom refs", () => {
-    const childRefs = ["co-ahr-gob-tom001", "co-ahr-gob-tom002"];
-    expect(childrenLevel("co-ahr-gob", "fonds", childRefs)).toBe("tomo");
-  });
-
-  it("returns 'tomo' when fonds children are -t0 refs", () => {
-    const childRefs = ["co-ahr-gob-t01", "co-ahr-gob-t02"];
-    expect(childrenLevel("co-ahr-gob", "fonds", childRefs)).toBe("tomo");
-  });
-
-  it("returns null when fonds children are mixed types", () => {
-    const childRefs = ["co-ahr-gob-caj001", "co-ahr-gob-tom001"];
-    expect(childrenLevel("co-ahr-gob", "fonds", childRefs)).toBeNull();
-  });
-
-  it("returns LEVEL_HIERARCHY fallback for series", () => {
-    expect(childrenLevel(null, "series", [])).toBe("subseries");
-  });
-
-  it("returns LEVEL_HIERARCHY fallback for file", () => {
-    expect(childrenLevel(null, "file", [])).toBe("item");
-  });
-
-  it("returns null for unknown level with no ref code match", () => {
-    expect(childrenLevel(null, "unknown-level", [])).toBeNull();
+  it("has no children when none of its stored children is published", () => {
+    const out = formatDescription(makeDescriptionRow({ childCount: 2 }), makeRepoRow(), null, []);
+    expect(out.child_count).toBe(0);
+    expect(out.has_children).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// publicationTitle
+// publication_title
 // ---------------------------------------------------------------------------
 
-describe("publicationTitle", () => {
-  it("returns CDIP title for pe-bn repo with series_statement", () => {
-    expect(publicationTitle("pe-bn-cdip-001", "pe-bn")).toBe(
-      "Colección Documental de la Independencia del Perú"
-    );
+describe("formatDescription: publication_title", () => {
+  it("exports the stored value", () => {
+    const row = makeDescriptionRow({ publicationTitle: "Boletín de Historia" });
+    expect(formatDescription(row, makeRepoRow(), null, []).publication_title).toBe("Boletín de Historia");
   });
 
-  it("returns null for non-pe-bn repo", () => {
-    expect(publicationTitle("co-ahr-gob-caj001", "co-ahr")).toBeNull();
-  });
-
-  it("returns null for pe-bn repo without cdip in ref code", () => {
-    expect(publicationTitle("pe-bn-other-001", "pe-bn")).toBeNull();
+  it("exports none when none is stored, whatever the repository or series statement", () => {
+    const repo = makeRepoRow({ code: "pe-bn", country: "Perú" });
+    const item = makeDescriptionRow({ referenceCode: "pe-bn-cdip-t01-v01-001", seriesStatement: "Tomo I, vol. 1" });
+    expect(formatDescription(item, repo, null, []).publication_title).toBeNull();
+    const blank = makeDescriptionRow({ publicationTitle: "" });
+    expect(formatDescription(blank, makeRepoRow(), null, []).publication_title).toBeNull();
   });
 });
 
@@ -220,7 +225,7 @@ describe("formatDescription", () => {
     expect(result.parent_reference_code).toBeNull();
     expect(result.has_children).toBe(false);
     expect(result.child_count).toBe(0);
-    expect(result.children_level).toBe("item"); // -car\d+ match
+    expect(result.children_level).toBeNull(); // no children
     expect(result.has_digital).toBe(true);
     expect(result.mets_url).toBe(
       "https://manifests.zasqua.org/mets/co-ahr-gob-caj001-car001.xml"
@@ -253,14 +258,31 @@ describe("formatDescription", () => {
     expect(result.mets_url).toBe("https://manifests.zasqua.org/mets/co-ahr-gobtest.xml");
   });
 
-  it("exports no mets_url when the tenant has no METS base", () => {
+  it("exports mets_url as null when the tenant has no METS base", () => {
     const row = makeDescriptionRow();
     const repo = makeRepoRow();
     for (const base of [null, "", "  "]) {
       const result = formatDescription(row, repo, null, [], base);
-      expect(result).not.toHaveProperty("mets_url");
+      expect(result).toHaveProperty("mets_url", null);
     }
-    expect(formatDescription(row, repo, null, [])).not.toHaveProperty("mets_url");
+    expect(formatDescription(row, repo, null, [])).toHaveProperty("mets_url", null);
+  });
+
+  it("gives every description its METS address under the tenant's base, digitised or not", () => {
+    const repo = makeRepoRow();
+    const base = "https://manifests.zasqua.org/mets";
+    for (const digital of [
+      { hasDigital: true, iiifManifestUrl: null },
+      { hasDigital: false, iiifManifestUrl: "https://iiif.example.org/m.json" },
+      { hasDigital: null, iiifManifestUrl: "https://iiif.example.org/m.json" },
+      { hasDigital: false, iiifManifestUrl: null },
+    ]) {
+      const result = formatDescription(makeDescriptionRow(digital), repo, null, [], base);
+      expect(result, JSON.stringify(digital)).toHaveProperty(
+        "mets_url",
+        "https://manifests.zasqua.org/mets/co-ahr-gob-caj001-car001.xml",
+      );
+    }
   });
 
   it("sets parent_reference_code when provided", () => {
@@ -303,92 +325,28 @@ describe("isPublished filtering", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// formatRepositories
-// ---------------------------------------------------------------------------
+describe("modified_at (description)", () => {
+  const call = (updatedAt: unknown) =>
+    formatDescription(makeDescriptionRow({ updatedAt: updatedAt }), makeRepoRow(), null, []);
 
-describe("formatRepositories", () => {
-  it("nests root_descriptions and computes description_count", () => {
-    const repo = makeRepoRow({
-      rightsText: "Reproduction by permission only.",
-    });
-
-    const rootDesc: ExportDescription = {
-      id: "desc-root",
-      repository_code: "co-ahr",
-      country: "Colombia",
-      reference_code: "co-ahr-gob",
-      local_identifier: "GOB",
-      title: "Gobernación",
-      description_level: "fonds",
-      date_expression: null,
-      date_start: null,
-      parent_id: null,
-      parent_reference_code: null,
-      has_children: true,
-      child_count: 5,
-      children_level: "caja",
-      has_digital: false,
-      iiif_manifest_url: "",
-      mets_url: "https://manifests.zasqua.org/mets/co-ahr-gob.xml",
-      scope_content: null,
-      ocr_text: "some text",
-      extent: null,
-      arrangement: null,
-      access_conditions: null,
-      reproduction_conditions: null,
-      language: null,
-      location_of_originals: null,
-      location_of_copies: null,
-      related_materials: null,
-      finding_aids: null,
-      notes: null,
-      publication_title: null,
-      imprint: null,
-      edition_statement: null,
-      series_statement: null,
-      uniform_title: null,
-      section_title: null,
-      pages: null,
-      creator_display: null,
-      place_display: null,
-    };
-
-    const childDesc: ExportDescription = {
-      ...rootDesc,
-      id: "desc-child",
-      reference_code: "co-ahr-gob-caj001",
-      parent_id: "desc-root",
-      parent_reference_code: "co-ahr-gob",
-      description_level: "file",
-      has_children: false,
-      child_count: 0,
-    };
-
-    // 23-06: counts come from a precomputed map; only the (small) root set
-    // is passed in as already-formatted descriptions.
-    const counts = new Map<string, number>([["co-ahr", 2]]);
-    void childDesc;
-    const result = formatRepositories([repo], counts, [rootDesc]);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].code).toBe("co-ahr");
-    expect(result[0].description_count).toBe(2);
-    expect(result[0].root_descriptions).toHaveLength(1);
-    expect(result[0].root_descriptions[0].reference_code).toBe("co-ahr-gob");
-    // root_descriptions should not contain ocr_text
-    expect("ocr_text" in result[0].root_descriptions[0]).toBe(false);
-    expect(result[0].image_reproduction_text).toBe(
-      "Reproduction by permission only."
-    );
+  it("is the UTC calendar date of updated_at in milliseconds", () => {
+    expect(call(1700000000000).modified_at).toBe("2023-11-14");
   });
 
-  it("handles repositories with no descriptions", () => {
-    const repo = makeRepoRow({ code: "empty-repo" });
-    const result = formatRepositories([repo], new Map(), []);
+  it("reads a value below 1e11 as seconds", () => {
+    expect(call(1700000000).modified_at).toBe("2023-11-14");
+  });
 
-    expect(result).toHaveLength(1);
-    expect(result[0].description_count).toBe(0);
-    expect(result[0].root_descriptions).toHaveLength(0);
+  it("keeps the UTC date just before and at midnight UTC", () => {
+    expect(call(1710028799999).modified_at).toBe("2024-03-09");
+    expect(call(1710028800000).modified_at).toBe("2024-03-10");
+  });
+
+  it("omits the field when updated_at is null or not finite", () => {
+    for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(call(value)).not.toHaveProperty("modified_at");
+    }
   });
 });
+
+// @version v0.9.0

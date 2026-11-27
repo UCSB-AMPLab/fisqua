@@ -18,10 +18,14 @@
  * Each place carries its `id`, the stable string id it keeps across
  * publishes, which the engine's place explorer matches map features on.
  *
- * @version v0.8.0
+ * Every place carries `modified_at`, the UTC calendar date of its
+ * `updated_at` (`modifiedAtDate`), and none when that is empty.
+ *
+ * @version v0.9.0
  */
 
 import type { ExportPlace } from "./types";
+import { modifiedAtDate } from "./constants";
 
 /**
  * Map a D1 place row to ExportPlace.
@@ -44,7 +48,9 @@ export function formatPlace(row: {
   tgnId: string | null;
   hgisId: string | null;
   whgId: string | null;
+  updatedAt?: number | null;
 }, formerCodes: string[] = []): ExportPlace {
+  const modifiedAt = modifiedAtDate(row.updatedAt);
   return {
     id: row.id,
     label: row.label,
@@ -71,6 +77,7 @@ export function formatPlace(row: {
     // as null in export shape for snapshot continuity.
     wikidata_id: null,
     ...(formerCodes.length > 0 ? { former_codes: formerCodes } : {}),
+    ...(modifiedAt ? { modified_at: modifiedAt } : {}),
   };
 }
 

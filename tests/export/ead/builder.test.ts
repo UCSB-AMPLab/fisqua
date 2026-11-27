@@ -20,7 +20,7 @@
  *   - Two `legacyIds` providers ("ca", "django") so the primary +
  *     secondary unitid emission scheme is exercised end-to-end.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { describe, it, expect } from "vitest";
@@ -114,7 +114,7 @@ describe("buildEad3 — common structural invariants", () => {
     const noFondsRows = sampleFondsRows.filter((r) => r.descriptionLevel !== "fonds");
     expect(() =>
       buildEad3(noFondsRows, sampleRepositoryById, ISADG_EAD_PROFILE, CREATE_DATE),
-    ).toThrow(/no fonds-level row/i);
+    ).toThrow(/no root row/i);
   });
 });
 

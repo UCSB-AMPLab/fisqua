@@ -7,7 +7,7 @@
  * issuing follow-up fetches. Keyed by reference code rather than UUID
  * so that the published JSON stays human-readable.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
 import type { ExportChildEntry } from "./types";
@@ -72,8 +72,9 @@ export function generateChildrenMap(
       title: child.title,
       description_level: child.descriptionLevel,
       date_expression: child.dateExpression,
-      has_children: child.childCount > 0,
-      child_count: child.childCount,
+      // Counted from the published rows, not the stored child_count, which counts unpublished children too.
+      has_children: (childrenByParentId.get(child.id)?.length ?? 0) > 0,
+      child_count: childrenByParentId.get(child.id)?.length ?? 0,
       has_digital: child.hasDigital ?? false,
     }));
 
@@ -82,3 +83,5 @@ export function generateChildrenMap(
 
   return result;
 }
+
+// @version v0.9.0
