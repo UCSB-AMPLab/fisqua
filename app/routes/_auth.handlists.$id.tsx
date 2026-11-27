@@ -49,7 +49,11 @@
  * its reason — the same treatment the index gives the row they clicked
  * to get here. An absent or foreign handlist stays a 404.
  *
- * @version v0.8.0
+ * ADD TO THE DIGITIZATION QUEUE. On a workspace with the digitization
+ * capability, someone who works in capture (`canQueue`) can add a
+ * records handlist's members to the queue, in its order, from the header.
+ *
+ * @version v0.9.0
  */
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -72,6 +76,8 @@ import {
 import { Pager } from "~/components/ui/pager";
 import { useFormatters } from "~/lib/use-formatters";
 import { tenantContext, userContext } from "../context";
+import { hasCapability } from "~/lib/tenant";
+import { AddToQueueButton } from "~/components/capture/add-to-queue";
 import { DeleteHandlistDialog } from "~/components/handlists/delete-handlist-dialog";
 import { RenameHandlistDialog } from "~/components/handlists/rename-handlist-dialog";
 import { ShareHandlistDialog } from "~/components/handlists/share-handlist-dialog";
@@ -86,6 +92,7 @@ import type {
   HandlistShareRole,
 } from "~/lib/handlists.server";
 import type { Route } from "./+types/_auth.handlists.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** Rows per page — the same 25 the search results use. */
 const PAGE_SIZE = 25;
@@ -112,6 +119,15 @@ type ActionResult =
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data && !data.locked ? data.handlist.name : null,
+    heading("handlists:title"),
+  );
+}
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -157,6 +173,14 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     ? await listShareCandidates(db, tenant, user, params.id)
     : [];
 
+  // The digitization queue's add button: a records handlist, the
+  // capability, then capture management.
+  let canQueue = false;
+  if (detail.recordType === "records" && hasCapability(tenant, "digitization")) {
+    const { captureAccess } = await import("~/lib/capture/screens.server");
+    canQueue = (await captureAccess(db, tenant, user)).worker;
+  }
+
   return {
     locked: false as const,
     handlist: {
@@ -184,6 +208,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     // that does not disturb the pages it cannot see.
     allMemberIds: detail.members.map((m) => m.memberId),
     candidates,
+    canQueue,
     page,
     pageSize: PAGE_SIZE,
     // The ceiling travels in the payload rather than being repeated
@@ -364,7 +389,8 @@ type LoadedDetail = Extract<
 
 function HandlistDetail({ data }: { data: LoadedDetail }) {
   const { t } = useTranslation("handlists");
-  const { handlist, members, allMemberIds, candidates, page, pageSize } = data;
+  const { handlist, members, allMemberIds, candidates, canQueue, page, pageSize } = data;
+  const { t: tq } = useTranslation("capture");
   const { formatNumber, formatIsoDateTime } = useFormatters();
   // Mono stamps stay ISO in both locales, on the reader's calendar, so
   // "saved" and "updated" are the same day when the reader's clock
@@ -533,6 +559,14 @@ function HandlistDetail({ data }: { data: LoadedDetail }) {
               {handlist.canEdit ? t("roleCanEdit") : t("roleViewOnly")}
             </span>
           )}
+
+          {canQueue ? (
+            <AddToQueueButton
+              target={{ handlistId: handlist.id }}
+              label={tq("dqueue.add_handlist")}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3.5 text-13 font-semibold text-stone-700 hover:bg-stone-50 disabled:cursor-wait disabled:opacity-50"
+            />
+          ) : null}
 
           {/* Export is offered to everyone who can open the handlist —
               the format tier is settled on the export page, by role.
@@ -984,4 +1018,4 @@ function ChoiceButton({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

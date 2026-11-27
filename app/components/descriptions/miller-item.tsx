@@ -2,14 +2,25 @@
  * Miller Item
  *
  * This component is one row inside a Miller column — reference code,
- * title, child-count chevron, and selected/hover state.
+ * title, level pill, child-count chevron, and selected/hover state. Inside the
+ * Descriptions screen's actions provider a description row also carries
+ * the small actions button (`DescriptionActionsTrigger`), which opens
+ * the add-to-handlist and add-to-queue menu without selecting the row;
+ * a repository row carries none.
  *
- * @version v0.4.0
+ * The title takes the full width of the first line, up to two lines.
+ * The level pill follows the reference code on the second line and
+ * wraps below it when the level name is long; the right side of the
+ * first line holds only the child count, the actions button and the
+ * chevron.
+ *
+ * @version v0.9.0
  */
 
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TreeItem } from "./miller-columns";
+import { DescriptionActionsTrigger } from "./description-actions";
 
 // ---------------------------------------------------------------------------
 // Level badge colour mapping
@@ -80,25 +91,27 @@ export function MillerItem({
           <p className="line-clamp-2 font-sans text-sm leading-snug">
             {item.title}
           </p>
-          <div className="mt-0.5 flex items-center gap-2">
+          {/* Second line: reference code, then the level pill. The pill
+              sits here, not beside the title, so a long description-level name
+              never takes width from the title. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span
               className={`text-xs ${isSelected || isAncestor ? "text-white/70" : "text-stone-500"}`}
             >
               {item.referenceCode}
             </span>
+            <span
+              data-testid="level-pill"
+              className={`inline-block rounded-full px-1.5 py-px text-10 font-medium ${
+                isSelected || isAncestor
+                  ? "bg-white/20 text-white"
+                  : badgeStyle
+              }`}
+            >
+              {levelLabel}
+            </span>
           </div>
         </div>
-
-        {/* Level badge */}
-        <span
-          className={`inline-block flex-none whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
-            isSelected || isAncestor
-              ? "bg-white/20 text-white"
-              : badgeStyle
-          }`}
-        >
-          {levelLabel}
-        </span>
 
         {/* Child count */}
         {item.childCount > 0 && (
@@ -110,6 +123,8 @@ export function MillerItem({
             ({item.childCount})
           </span>
         )}
+
+        <DescriptionActionsTrigger target={item} tone={isSelected || isAncestor ? "dark" : "light"} />
 
         {/* Expand arrow */}
         {item.childCount > 0 && (
@@ -123,3 +138,5 @@ export function MillerItem({
     </div>
   );
 }
+
+// @version v0.9.0

@@ -3,12 +3,14 @@
  *
  * This component is one column of the Miller-columns explorer.
  * Virtualised so each column scrolls smoothly across thousands of
- * siblings.
+ * siblings. Rows vary in height (a title wraps to two lines, a level
+ * pill can wrap under its reference code), so each virtual row is
+ * measured after it renders; 72 px is only the first estimate.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { MillerItem } from "./miller-item";
@@ -63,10 +65,19 @@ export function MillerColumn({
 
   const useVirtual = filteredItems.length > VIRTUAL_THRESHOLD;
 
+  // Measured heights are cached by key. Keying by the record id, as React
+  // does for the rows, keeps a height with its record when the filter
+  // changes which records sit at which index.
+  const getItemKey = useCallback(
+    (index: number) => filteredItems[index].id,
+    [filteredItems],
+  );
+
   const virtualizer = useVirtualizer({
+    getItemKey,
     count: useVirtual ? filteredItems.length : 0,
     getScrollElement: () => listRef.current,
-    estimateSize: () => 56,
+    estimateSize: () => 72,
     enabled: useVirtual,
   });
 
@@ -101,12 +112,13 @@ export function MillerColumn({
               return (
                 <div
                   key={item.id}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
                     left: 0,
                     width: "100%",
-                    height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
@@ -135,3 +147,5 @@ export function MillerColumn({
     </div>
   );
 }
+
+// @version v0.9.0

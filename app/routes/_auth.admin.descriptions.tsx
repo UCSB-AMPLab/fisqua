@@ -29,6 +29,16 @@
  * place lists behave, and the two surfaces are deliberately kept in
  * step.
  *
+ * ACTIONS WITHOUT OPENING THE PAGE. In both views every description
+ * row carries a small actions button whose menu adds the description
+ * to a handlist, to the digitization queue, or adds the descriptions
+ * below it to the queue; the file tree's preview pane shows the same
+ * actions as buttons. The repository rows at the root of the tree get
+ * none. The loader computes `canQueue` once per page (the digitization
+ * capability, then `captureAccess(...).worker`), and the queue actions
+ * show only under it. The count for "below" is asked for when a menu
+ * opens, not per row (`description-actions.tsx`).
+ *
  * Tenant attribution comes from request context, populated by
  * `authMiddleware`. Every read/update/delete of `descriptions` and
  * `repositories` is filtered by `tenant.id`.
@@ -54,7 +64,14 @@
  * tenant.descriptiveStandard` read from `tenantContext`. Level
  * labels — even in a future breadcrumb — stay flat.
  *
- * @version v0.8.0
+ * Every tree write moves the version of each row whose published
+ * content it changes, past the version the row holds (`nextVersionSql`):
+ * a reorder moves both swapped siblings, a move the moved row and both
+ * parents, a delete the parent. A delete also moves the descriptions
+ * that record the freed code as a former reference code
+ * (`formerCodeHoldersFollow`).
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -64,6 +81,10 @@ import { Plus, Search, Check } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { MillerColumns } from "~/components/descriptions/miller-columns";
 import { MetadataPreview } from "~/components/descriptions/metadata-preview";
+import {
+  DescriptionActionsProvider,
+  DescriptionActionsTrigger,
+} from "~/components/descriptions/description-actions";
 import { BulkActionBar } from "~/components/admin/bulk-action-bar";
 import { toggleSelection } from "~/lib/list-selection";
 import { DataTable } from "~/components/data-table/data-table";
@@ -76,6 +97,7 @@ import type {
   Table,
 } from "~/components/data-table/data-table";
 import type { Route } from "./+types/_auth.admin.descriptions";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,6 +111,7 @@ interface DescriptionRow {
   repositoryName: string | null;
   hasDigital: boolean;
   parentReferenceCode: string | null;
+  childCount: number;
 }
 
 interface Repository {
@@ -101,8 +124,15 @@ interface Repository {
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("descriptions_admin:page_title"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, gt, lt, asc, desc, eq, like, isNotNull, sql } = await import(
     "drizzle-orm"
@@ -110,7 +140,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { descriptions, repositories } = await import("~/db/schema");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -118,9 +148,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const view = url.searchParams.get("view") || "tree";
 
+  // Whether the rows offer the digitization queue: the capability, then
+  // capture management. Once per page, never per row.
+  const queueAccess = async () => {
+    const { hasCapability } = await import("~/lib/tenant");
+    if (!hasCapability(tenant, "digitization")) return false;
+    const { captureAccess } = await import("~/lib/capture/screens.server");
+    return (await captureAccess(db, tenant, user)).worker;
+  };
+
   // Tree view — MillerColumns handles its own data loading
   if (view !== "columns") {
-    return { view: "tree" as const };
+    return { view: "tree" as const, canQueue: await queueAccess() };
   }
 
   // -------------------------------------------------------------------
@@ -246,6 +285,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         query: search,
         filters: { level: validLevel, repoId: validRepoId, hasDigital: hasDigitalFilter },
         repositories: allRepos,
+        canQueue: await queueAccess(),
       };
     }
   }
@@ -280,6 +320,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       repositoryName: repositories.name,
       hasDigital: descriptions.hasDigital,
       parentReferenceCode: parentDesc,
+      childCount: descriptions.childCount,
     })
     .from(descriptions)
     .leftJoin(repositories, eq(descriptions.repositoryId, repositories.id))
@@ -309,6 +350,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     query: search,
     filters: { level: validLevel, repoId: validRepoId, hasDigital: hasDigitalFilter },
     repositories: allRepos,
+    canQueue: await queueAccess(),
   };
 }
 
@@ -333,14 +375,14 @@ const LEVEL_BADGE_STYLES: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, and, asc, sql } = await import("drizzle-orm");
   const { descriptions } = await import("~/db/schema");
   const { isValidChildLevel } = await import("~/lib/description-levels");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
@@ -416,10 +458,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       const current = siblings[currentIdx];
       const target = siblings[targetIdx];
 
-      // Swap position values
+      // Swap position values. A position orders the parent's published
+      // children file, so each row's version moves with its position.
+      const { nextVersionSql } = await import("~/lib/record-version.server");
       await db
         .update(descriptions)
-        .set({ position: target.position })
+        .set({ position: target.position, updatedAt: nextVersionSql(descriptions.updatedAt) })
         .where(
           and(
             eq(descriptions.tenantId, tenant.id),
@@ -428,7 +472,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         );
       await db
         .update(descriptions)
-        .set({ position: current.position })
+        .set({ position: current.position, updatedAt: nextVersionSql(descriptions.updatedAt) })
         .where(
           and(
             eq(descriptions.tenantId, tenant.id),
@@ -527,6 +571,8 @@ export async function action({ request, context }: Route.ActionArgs) {
         .all();
       const newPosition = newSiblings.length;
 
+      const { nextVersionSql } = await import("~/lib/record-version.server");
+
       // Update the moved description
       await db
         .update(descriptions)
@@ -538,7 +584,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           pathCache: newParent.pathCache
             ? `${newParent.pathCache}/${desc.id}`
             : desc.id,
-          updatedAt: Date.now(),
+          updatedAt: nextVersionSql(descriptions.updatedAt),
         })
         .where(
           and(
@@ -575,9 +621,14 @@ export async function action({ request, context }: Route.ActionArgs) {
           )
           .get();
         if (oldParent) {
+          // Each parent's count is part of its published record, so its
+          // version moves with the count, past the version it holds.
           await db
             .update(descriptions)
-            .set({ childCount: Math.max(0, oldParent.childCount - 1) })
+            .set({
+              childCount: Math.max(0, oldParent.childCount - 1),
+              updatedAt: nextVersionSql(descriptions.updatedAt),
+            })
             .where(
               and(
                 eq(descriptions.tenantId, tenant.id),
@@ -590,7 +641,10 @@ export async function action({ request, context }: Route.ActionArgs) {
       // Increment new parent's childCount
       await db
         .update(descriptions)
-        .set({ childCount: newParent.childCount + 1 })
+        .set({
+          childCount: newParent.childCount + 1,
+          updatedAt: nextVersionSql(descriptions.updatedAt),
+        })
         .where(
           and(
             eq(descriptions.tenantId, tenant.id),
@@ -605,6 +659,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     // Delete from tree
     // -----------------------------------------------------------------
     case "delete": {
+      // Deleting a record is administration, which a staff grant does not have.
+      requireArea(user, "records");
       const descriptionId = formData.get("descriptionId") as string;
       if (!descriptionId) {
         return Response.json({ ok: false, error: "missing_fields" });
@@ -614,6 +670,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         .select({
           childCount: descriptions.childCount,
           parentId: descriptions.parentId,
+          referenceCode: descriptions.referenceCode,
         })
         .from(descriptions)
         .where(
@@ -636,15 +693,23 @@ export async function action({ request, context }: Route.ActionArgs) {
         });
       }
 
-      // Delete (entity/place links cascade per schema)
-      await db
-        .delete(descriptions)
-        .where(
-          and(
-            eq(descriptions.tenantId, tenant.id),
-            eq(descriptions.id, descriptionId)
-          )
-        );
+      // Delete (entity/place links cascade per schema). The descriptions
+      // that record its code as a former one publish it again once the
+      // code is free, so their versions move in the same batch
+      // (`formerCodeHoldersFollow`).
+      const { formerCodeHoldersFollow } = await import("~/lib/export/former-codes.server");
+      const holders = formerCodeHoldersFollow(db, tenant.id, [desc.referenceCode]);
+      await db.batch([
+        db
+          .delete(descriptions)
+          .where(
+            and(
+              eq(descriptions.tenantId, tenant.id),
+              eq(descriptions.id, descriptionId)
+            )
+          ),
+        ...(holders ? [holders] : []),
+      ] as any);
 
       // Decrement parent's childCount
       if (desc.parentId) {
@@ -659,9 +724,15 @@ export async function action({ request, context }: Route.ActionArgs) {
           )
           .get();
         if (parent) {
+          // The count is part of the parent's published record: its
+          // version moves with it, past the version it holds.
+          const { nextVersionSql } = await import("~/lib/record-version.server");
           await db
             .update(descriptions)
-            .set({ childCount: Math.max(0, parent.childCount - 1) })
+            .set({
+              childCount: Math.max(0, parent.childCount - 1),
+              updatedAt: nextVersionSql(descriptions.updatedAt),
+            })
             .where(
               and(
                 eq(descriptions.tenantId, tenant.id),
@@ -691,6 +762,7 @@ export default function AdminDescriptionsPage({
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeView = (loaderData as any).view || "tree";
+  const canQueue = Boolean((loaderData as any).canQueue);
 
   const handleSelectItem = useCallback((item: TreeItem | null) => {
     setSelectedItem(item);
@@ -751,12 +823,17 @@ export default function AdminDescriptionsPage({
 
       {/* View content */}
       {activeView === "tree" ? (
-        <TreeView
-          selectedItem={selectedItem}
-          onSelectItem={handleSelectItem}
-        />
+        <DescriptionActionsProvider canQueue={canQueue}>
+          <TreeView
+            selectedItem={selectedItem}
+            onSelectItem={handleSelectItem}
+            canQueue={canQueue}
+          />
+        </DescriptionActionsProvider>
       ) : (
-        <ColumnView loaderData={loaderData as any} />
+        <DescriptionActionsProvider canQueue={canQueue}>
+          <ColumnView loaderData={loaderData as any} />
+        </DescriptionActionsProvider>
       )}
     </div>
   );
@@ -769,9 +846,11 @@ export default function AdminDescriptionsPage({
 function TreeView({
   selectedItem,
   onSelectItem,
+  canQueue,
 }: {
   selectedItem: TreeItem | null;
   onSelectItem: (item: TreeItem | null) => void;
+  canQueue: boolean;
 }) {
   const fetcher = useFetcher();
 
@@ -784,6 +863,7 @@ function TreeView({
         item={selectedItem}
         fetcher={fetcher}
         onItemDeleted={() => onSelectItem(null)}
+        canQueue={canQueue}
       />
     </>
   );
@@ -927,6 +1007,21 @@ function ColumnView({ loaderData }: { loaderData: any }) {
           ) : (
             <span className="text-stone-400">{"\u2014"}</span>
           ),
+      },
+      {
+        id: "_actions",
+        header: () => null,
+        enableHiding: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <DescriptionActionsTrigger
+            target={{
+              id: row.original.id,
+              title: row.original.title,
+              childCount: row.original.childCount ?? 0,
+            }}
+          />
+        ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1075,3 +1170,5 @@ function ColumnView({ loaderData }: { loaderData: any }) {
     </div>
   );
 }
+
+// @version v0.9.0
