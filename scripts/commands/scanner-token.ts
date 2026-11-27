@@ -2,11 +2,12 @@
 /**
  * Scanner Token — Make, Replace or Revoke a Capture Unit's Link Token
  *
+ * This script makes, replaces or revokes a capture unit's link token.
  * Under the Captua exchange contract a Captua unit delivers its capture
  * manifests to Fisqua itself and asks after its volumes, with a bearer
- * token of its own. This command, beside the one that mints the
- * unit's bucket keys (`provision-appliance-key.ts`), makes that token,
- * replaces it, or revokes it. It runs on the operator's machine.
+ * token of its own; this script manages that token. It runs on the
+ * operator's machine, beside the one that mints the unit's bucket keys
+ * (`provision-appliance-key.ts`).
  *
  *   make      gives the tenant's scanner a token, creating the scanner
  *             when the tenant has none; refused when its token is live
@@ -14,7 +15,7 @@
  *             on its next call
  *   revoke    revokes the scanner's token, effective on its next call
  *
- * A tenant has one scanner, named with the unit's short id
+ * A tenant has one scanner, named with the unit's appliance id
  * (`--appliance`, the id its bucket keys carry). The token is 32 random
  * bytes as 64 lowercase hex characters. Fisqua keeps only its SHA-256;
  * the command prints the token once, after reading the write back, for
@@ -38,10 +39,10 @@
  * `--target` picks the database: `staging` (`--env staging`) or
  * `production`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
-import { execFileSync } from "node:child_process";
+import { runD1 } from "../lib/d1-cli";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -91,7 +92,7 @@ export function parseArgs(argv: string[]): ScannerTokenCliOptions {
     else throw new Error(`Unknown argument: ${a}`);
   }
   if (!tenant) throw new Error("--tenant is required");
-  if (action === "make" && appliance === null) throw new Error("make needs --appliance, the unit's short id");
+  if (action === "make" && appliance === null) throw new Error("make needs --appliance, the unit's appliance id");
   if (appliance !== null && !SCANNER_NAME_PATTERN.test(appliance)) {
     throw new Error(`Not an appliance id: ${appliance} (lowercase letters, digits and hyphens, 1 to 32 characters)`);
   }
@@ -114,7 +115,7 @@ function providersFor(options: ScannerTokenCliOptions): ScannerTokenProviders {
     },
     // Applied with wrangler's own output and prompts on the terminal.
     applyFile: (file) => {
-      execFileSync("npx", [...d1Args(options.target), `--file=${file}`], { stdio: "inherit" });
+      runD1([...d1Args(options.target), `--file=${file}`], { stdio: "inherit" });
     },
     removeFile: (file) => fs.rmSync(file, { force: true }),
     now: () => Date.now(),
@@ -149,4 +150,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-// @version v0.8.0
+// @version v0.9.0

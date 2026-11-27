@@ -1,53 +1,128 @@
 /**
  * Digitization — Scanner
  *
- * This page shows the tenant's Captua scanner and lets the people who
- * manage capture work, the tenant's digitization admins and its federation's
- * stewards, make, replace and revoke its link token. The tenant must
- * have the digitization capability (a bare 404 otherwise, from the
- * loader and the action alike) and anyone else gets a bare 403.
+ * This page shows the tenant's Captua scanner to the people who work in
+ * capture (`captureAccess(...).worker`), and lets those who manage it
+ * (`captureAccess(...).manager`: the tenant's digitization admins and
+ * its federation's stewards) pair a unit by the code it shows, make,
+ * replace and revoke its link token, and erase the stored bucket keys.
+ * These are administration: a worker who does not manage, such as a
+ * federation staff grant, reads the device section, the token's dates
+ * and the storage note without any control and is told that only
+ * digitization administrators change the token (`canManage`), and the
+ * action refuses them. The tenant must have the digitization
+ * capability (a bare 404 otherwise, from the loader and the action
+ * alike) and anyone else gets a bare 403.
  *
- * Three sections. Device: the scanner's name, the workspace, and when
- * the unit last called Fisqua, with a badge for where the link stands
- * (not linked, waiting for the first call, linked, revoked). Token: one
- * of four states. With no token, Make token. Just made, the token itself
- * in a read-only field, shown once, with Copy token and Done. Active,
- * when the token was made and last used, with Replace token and Revoke.
- * Revoked, when, and that the unit's calls are refused, with Make token. Storage: a note that an administrator
- * sets the scanner's bucket and keys.
+ * Four sections. Device: the scanner's appliance id (the name the
+ * operator chose when minting its bucket keys), the linked unit's name
+ * and device id once a pairing has stored them (in the scanner
+ * `loadScanner` gives), the workspace, when the unit last called Fisqua,
+ * and the mode it last reported (offline, backup or Fisqua) with when,
+ * with a badge for where the link stands (not linked, waiting for the
+ * first call, linked, revoked). Pair a unit, for managers only: with
+ * stored keys that can be delivered, a code field and Look up, then a
+ * confirmation of what the unit sent with its code, and Approve; without
+ * them, or once they are erased, a sentence that Fisqua holds no bucket
+ * keys for the workspace (and when they were erased), and no field.
+ * Token: one of four states. With no token, Make token. Just made, the
+ * token itself in a read-only field, shown once, with Copy token and
+ * Done. Active, when the token was made and last used, with Replace token
+ * and Revoke. Revoked, when, and that the unit's calls are refused, with
+ * Make token. Storage: a note that a unit receives the bucket keys when
+ * it is paired, once an operator has stored them, and, for managers while
+ * the keys can be delivered, Erase stored keys.
  *
- * Replace and Revoke each open a confirmation step in place of the
- * buttons, which says what the unit loses, before anything is posted.
- * With no scanner yet, Make token first asks for the unit's short id,
- * the name in its key file, which the scanner then keeps; the page
- * checks it as the server does. Every action posts to this route's
- * action with the scanner's version as the page saw it, and is carried
- * out by `scannerTokenAction` (`scanner.server.ts`), which audits it.
- * React Router refuses a post whose `Origin` names another host before
- * the action runs. A new token arrives only in the answer to the
- * action that made it and lives in the page's state until Done; the
- * loader never returns it, and nothing writes it to the URL, the
- * session or storage. The action's data answer carries
- * `Cache-Control: private, no-store`, and `headers` gives a document
- * answer (a post without JavaScript, whose HTML holds the action's data)
- * the same, since React Router keeps only cookies from an action's own
- * headers there.
+ * Replace, Revoke and Erase stored keys each open a confirmation step in
+ * place of their button, which says what is lost, before anything is
+ * posted; Revoke also asks why (reset or replaced; lost, stolen or
+ * compromised) and posts the reason. After Look up, the page shows the
+ * code's confirmation the same way. The page keeps one confirmation open
+ * at a time. These confirmations and the error messages are in
+ * `scanner-parts.tsx`. With no scanner yet, Make token first asks for the
+ * unit's appliance id, the name in its key file, which the scanner then
+ * keeps; the page checks it as the server does. Every action posts to
+ * this route's action, the token and pairing actions with the scanner's
+ * version as the page saw it and the pairing and erasing actions with the
+ * stored keys' revision, and is carried out by `scannerTokenAction`
+ * (`scanner.server.ts`), which audits it. An error is shown only in the
+ * section the request was sent from, only once the answer has arrived,
+ * and not after a confirmation has been opened since (`shownError`).
+ * While a request is in flight the buttons that open a confirmation are
+ * disabled. When a confirmation closes, and once nothing is in flight,
+ * focus returns to the button that opened it, or to the code field for a
+ * pairing, and to that section when the button is gone or disabled,
+ * unless the person has moved focus elsewhere in the meantime (the
+ * focused element is then neither the page's body nor absent).
+ * Cancel also dismisses an error shown with the confirmation. After an
+ * approval the code field is emptied and the page says when the unit
+ * collects its settings; the page does not poll, and the device section
+ * shows the new unit after the next load. After a compromised revoke or
+ * an erasure the page says whether the stored keys were erased and
+ * whether Fisqua's operators were told, and, when none was, asks the
+ * administrator to contact one directly (`actionNotice`). React Router
+ * refuses a post whose `Origin` names another host before the action
+ * runs. A new
+ * token arrives only in the answer to the action that made it and lives
+ * in the page's state until Done; the loader never returns it, and
+ * nothing writes it to the URL, the session or storage. The action's data
+ * answer carries `Cache-Control: private, no-store`, and `headers` gives
+ * a document answer (a post without JavaScript, whose HTML holds the
+ * action's data) the same, since React Router keeps only cookies from an
+ * action's own headers there.
  *
- * @version@version v0.8.0
+ * The loader also gives managers `storedKeys`, the state of the scanner
+ * keys Fisqua stores for the tenant (the appliance id, whether they can
+ * be delivered, when they were erased, and their revision, which an
+ * approval and an erasure post back as `keysSeen`), or null when none
+ * were stored; a worker who does not manage always gets null. It carries
+ * no key material. The action also takes the two pairing intents,
+ * `pair_lookup` and `pair_approve`, a revoke's `reason`, and `erase_keys`
+ * (`scanner.server.ts`). It names the environment for the B2 key names
+ * and the stored keys' binding from `CAPTURE_PAIRING_ENVIRONMENT`
+ * (`pairingEnvironment`), and gives the action the Worker secret that
+ * opens the stored keys and the environment to open them for (the
+ * setting only when it is exactly `production` or `staging`, as the
+ * collect route reads it), so that an approval is refused when they
+ * cannot be opened, and the sender of the keys-erased notice to the
+ * operators.
+ *
+ * @version v0.9.0
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { data, useFetcher } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Copy, Lock } from "lucide-react";
 import { grantContext, impersonationContext, tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { useFormatters } from "../lib/use-formatters";
-import type { DeviceState, ScannerActionResult, ScannerView } from "../lib/capture/scanner.server";
+import type { DeviceState, PairingView, ScannerActionResult } from "../lib/capture/scanner.server";
 import { SCANNER_NAME_PATTERN } from "../lib/capture/token";
 import { BADGE_SHAPE } from "../components/workflow/status-badge";
 import { CapturePageHeader } from "../components/capture/capture-parts";
+import {
+  actionNotice,
+  Confirm,
+  Field,
+  focusAfterClose,
+  PairConfirm,
+  PRIMARY,
+  SECONDARY,
+  shownError,
+  type ActionArea,
+  type ActionNotice,
+  type RevokeReason,
+} from "../components/capture/scanner-parts";
 import type { Route } from "./+types/_auth.admin.capture.scanner";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("capture:scanner.title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
@@ -55,11 +130,18 @@ export async function loader({ context }: Route.LoaderArgs) {
   const user = context.get(userContext);
   const { drizzle } = await import("drizzle-orm/d1");
   const { captureAccess } = await import("~/lib/capture/screens.server");
-  const { loadScanner, NO_SCANNER_VERSION } = await import("~/lib/capture/scanner.server");
-  const access = await captureAccess(drizzle(context.cloudflare.env.DB), tenant, user);
-  if (!access.manager) throw new Response(null, { status: 403 });
+  const { loadScanner, loadStoredKeysState, NO_SCANNER_VERSION } = await import("~/lib/capture/scanner.server");
+  const db = drizzle(context.cloudflare.env.DB);
+  const access = await captureAccess(db, tenant, user);
+  if (!access.worker) throw new Response(null, { status: 403 });
   const scanner = await loadScanner(context.cloudflare.env.DB, tenant.id);
-  return { scanner, version: scanner?.version ?? NO_SCANNER_VERSION, workspace: tenant.name };
+  return {
+    scanner,
+    version: scanner?.version ?? NO_SCANNER_VERSION,
+    workspace: tenant.name,
+    canManage: access.manager,
+    storedKeys: access.manager ? await loadStoredKeysState(db, tenant.id) : null,
+  };
 }
 
 const NO_STORE = "private, no-store";
@@ -77,9 +159,28 @@ export async function action({ request, context }: Route.ActionArgs) {
   const impersonation = context.get(impersonationContext);
   const { drizzle } = await import("drizzle-orm/d1");
   const { scannerTokenAction, statusOf } = await import("~/lib/capture/scanner.server");
-  const d1 = context.cloudflare.env.DB;
+  const { sendScannerKeysErasedEmail } = await import("~/lib/email.server");
+  const { getAppConfig } = await import("~/lib/config.server");
+  const { pairingEnvironment } = await import("~/lib/capture/appliance-key-names");
+  const env = context.cloudflare.env;
+  const d1 = env.DB;
+  // The private key is a Worker secret, which the generated `Env` type does not list.
+  const secrets = env as unknown as { CAPTURE_KEYS_PRIVATE_JWK?: string };
   const result = await scannerTokenAction(
-    { d1, db: drizzle(d1), now: () => Date.now(), newId: () => crypto.randomUUID() },
+    {
+      d1,
+      db: drizzle(d1),
+      now: () => Date.now(),
+      newId: () => crypto.randomUUID(),
+      environment: pairingEnvironment(env.CAPTURE_PAIRING_ENVIRONMENT),
+      keysPrivateJwk: secrets.CAPTURE_KEYS_PRIVATE_JWK,
+      keysEnvironment:
+        env.CAPTURE_PAIRING_ENVIRONMENT === "production" || env.CAPTURE_PAIRING_ENVIRONMENT === "staging"
+          ? env.CAPTURE_PAIRING_ENVIRONMENT
+          : null,
+      sendKeysErased: (to, locale, notice) =>
+        sendScannerKeysErasedEmail(env.RESEND_API_KEY, to, notice, getAppConfig(env), locale),
+    },
     await request.formData(),
     tenant,
     {
@@ -98,56 +199,164 @@ const DEVICE_STYLES: Record<DeviceState, string> = {
   revoked: "bg-madder-tint text-madder-deep",
 };
 
-const PRIMARY =
-  "inline-flex h-11 items-center gap-2 rounded-md bg-indigo px-4 font-sans text-sm font-semibold text-parchment hover:bg-indigo-deep disabled:cursor-not-allowed disabled:opacity-30";
-const SECONDARY =
-  "inline-flex h-11 items-center gap-2 rounded-md border border-stone-200 bg-white px-4 font-sans text-sm font-semibold text-indigo hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30";
-const DESTRUCTIVE =
-  "inline-flex h-11 items-center gap-2 rounded-md bg-madder px-4 font-sans text-sm font-semibold text-parchment hover:bg-madder-deep disabled:cursor-not-allowed disabled:opacity-30";
-
-type Confirming = "replace" | "revoke" | null;
+type Confirming = "replace" | "revoke" | "erase" | "pair" | null;
 
 export default function CaptureScannerPage({ loaderData }: Route.ComponentProps) {
   const { t } = useTranslation("capture");
   const { formatDate, formatDateTime } = useFormatters();
-  const { scanner, version, workspace } = loaderData;
+  const { scanner, version, workspace, canManage, storedKeys } = loaderData;
   const fetcher = useFetcher<ScannerActionResult>();
   const [token, setToken] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Confirming>(null);
+  // The section the last request was sent from; null once a confirmation
+  // has been opened since, which dismisses that request's error.
+  const [sentFrom, setSentFrom] = useState<ActionArea | null>(null);
+  const [code, setCode] = useState("");
+  const [pairing, setPairing] = useState<PairingView | null>(null);
+  const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const revokeReason = useRef<RevokeReason | null>(null);
   const busy = fetcher.state !== "idle";
 
-  // A new token is taken out of the answer once, into this page's state.
+  // A new token is taken out of the answer once, into this page's state;
+  // a looked-up code opens its confirmation, and the other successes
+  // close whichever confirmation was open.
   const answer = fetcher.data;
   useEffect(() => {
-    if (answer && answer.ok && answer.token) {
-      setToken(answer.token);
-      setConfirming(null);
-    } else if (answer && answer.ok) {
-      setConfirming(null);
+    if (!answer) return;
+    if (!answer.ok) {
+      if (sentFrom === "pair") {
+        setPairing(null);
+        setConfirming((c) => (c === "pair" ? null : c));
+      }
+      return;
     }
+    if (answer.step === "pair_lookup") {
+      setPairing(answer.pairing);
+      setConfirming("pair");
+      return;
+    }
+    setConfirming(null);
+    setPairing(null);
+    if ("token" in answer && answer.token) setToken(answer.token);
+    if (answer.step === "pair_approve") setCode("");
+    const shown = actionNotice(answer, revokeReason.current);
+    if (shown) setNotice(shown);
+    // `sentFrom` is read as it was when this answer's request was sent.
   }, [answer]);
+
+  // When a confirmation closes (Cancel, an error that closes it, or
+  // success), focus goes back to what opened it: its button, or the code
+  // field for a pairing. After a success the fetcher stays busy while the
+  // page's data is reloaded, and the button is disabled, or gone once the
+  // new data arrives (Revoke after the token is revoked, Erase after the
+  // keys are erased), so the close is remembered (`closed`) and focus is
+  // moved once nothing is in flight: to the button if it is there and
+  // enabled, otherwise to its section (`focusAfterClose`). A new token
+  // takes focus itself.
+  const replaceButton = useRef<HTMLButtonElement>(null);
+  const revokeButton = useRef<HTMLButtonElement>(null);
+  const eraseButton = useRef<HTMLButtonElement>(null);
+  const codeField = useRef<HTMLInputElement>(null);
+  const pairHeading = useRef<HTMLHeadingElement>(null);
+  const tokenHeading = useRef<HTMLHeadingElement>(null);
+  const storageSection = useRef<HTMLElement>(null);
+  const lastOpen = useRef<Confirming>(null);
+  const closed = useRef<Confirming>(null);
+  useEffect(() => {
+    const was = lastOpen.current;
+    lastOpen.current = confirming;
+    closed.current = confirming === null && was !== null ? was : null;
+  }, [confirming]);
+  useEffect(() => {
+    const kind = closed.current;
+    if (kind === null) return;
+    const [opener, section] =
+      kind === "replace"
+        ? [replaceButton.current, tokenHeading.current]
+        : kind === "revoke"
+          ? [revokeButton.current, tokenHeading.current]
+          : kind === "erase"
+            ? [eraseButton.current, storageSection.current]
+            : [codeField.current, pairHeading.current];
+    const step = focusAfterClose({ busy, newToken: token !== null, opener });
+    if (step === "wait") return;
+    closed.current = null;
+    // Focus moved by the person while the request was in flight stays where they put it.
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) return;
+    if (step === "opener") opener?.focus();
+    else if (step === "section") section?.focus();
+  }, [confirming, busy, token]);
 
   const done = () => {
     setToken(null);
     fetcher.reset();
   };
 
-  const post = (intent: "make" | "replace" | "revoke", name?: string) => {
-    const form: Record<string, string> = { intent, seen: version };
-    if (intent !== "make") form.confirm = "yes";
-    if (name !== undefined) form.name = name;
+  /** Opens one confirmation and closes any other. */
+  const open = (kind: Exclude<Confirming, null>) => {
+    setConfirming(kind);
+    setNotice(null);
+    setSentFrom(null);
+    if (kind !== "pair") setPairing(null);
+  };
+
+  const submit = (from: ActionArea, form: Record<string, string>) => {
+    setSentFrom(from);
+    setNotice(null);
     fetcher.submit(form, { method: "post" });
   };
 
+  /** Closes the open confirmation, and dismisses an error shown with it. */
+  const cancel = () => {
+    setConfirming(null);
+    setPairing(null);
+    setSentFrom(null);
+  };
+
+  const post = (intent: "make" | "replace" | "revoke", extra: { name?: string; reason?: RevokeReason } = {}) => {
+    const form: Record<string, string> = { intent, seen: version };
+    if (intent !== "make") form.confirm = "yes";
+    if (extra.name !== undefined) form.name = extra.name;
+    if (extra.reason !== undefined) form.reason = extra.reason;
+    revokeReason.current = intent === "revoke" ? (extra.reason ?? null) : null;
+    submit("token", form);
+  };
+
+  const lookUp = () => {
+    // Typing in the code field: a confirmation closed by Look up gives no focus back.
+    lastOpen.current = null;
+    setConfirming(null);
+    setPairing(null);
+    submit("pair", { intent: "pair_lookup", code });
+  };
+
+  const approve = () => {
+    if (!pairing || !storedKeys) return;
+    submit("pair", {
+      intent: "pair_approve",
+      code: pairing.code,
+      seen: version,
+      keysSeen: String(storedKeys.revision),
+      confirm: "yes",
+    });
+  };
+
+  const erase = () => {
+    if (!storedKeys) return;
+    submit("erase", { intent: "erase_keys", keysSeen: String(storedKeys.revision), confirm: "yes" });
+  };
+
   const device: DeviceState = scanner?.deviceState ?? "not_linked";
-  const error =
-    answer && !answer.ok
-      ? answer.error === "changed"
-        ? t("scanner.error_changed")
-        : answer.error === "invalid_name"
-          ? t("scanner.unit_name_invalid")
-          : t("scanner.error_failed")
-      : null;
+  const errorIn = (from: ActionArea): string | null => shownError(t, from, { busy, sentFrom, answer });
+  const noticeIn = (from: ActionArea): ReactNode =>
+    notice && notice.area === from ? (
+      <p role="status" className="mt-4 font-sans text-sm text-stone-600">
+        {t(`scanner.${notice.key}`)}
+      </p>
+    ) : null;
+  const tokenError = errorIn("token");
+  const eraseError = errorIn("erase");
 
   return (
     <div className="mx-auto max-w-4xl px-2 py-6">
@@ -162,24 +371,107 @@ export default function CaptureScannerPage({ loaderData }: Route.ComponentProps)
             <span className={`${BADGE_SHAPE} ${DEVICE_STYLES[device]}`}>{t(`scanner.device.${device}`)}</span>
           </div>
           <dl className="mt-4 grid gap-4 sm:grid-cols-3">
-            <Field label={t("scanner.name")}>
+            <Field label={t("scanner.appliance_id")}>
               {scanner ? <span className="font-mono">{scanner.name}</span> : <span className="text-stone-500">{t("scanner.name_none")}</span>}
             </Field>
+            {scanner?.unitName ? <Field label={t("scanner.unit_name")}>{scanner.unitName}</Field> : null}
+            {scanner?.deviceId ? (
+              <Field label={t("scanner.device_id")} hint={t("scanner.device_id_hint")}>
+                <span className="font-mono">{scanner.deviceId}</span>
+              </Field>
+            ) : null}
             <Field label={t("scanner.workspace")}>{workspace}</Field>
             <Field label={t("scanner.last_called")}>
               {scanner?.lastSeenAt ? formatDateTime(scanner.lastSeenAt) : t("scanner.never")}
+            </Field>
+            <Field label={t("scanner.mode_label")}>
+              {scanner?.mode ? (
+                <>
+                  {t(`scanner.mode.${scanner.mode}`)}
+                  {scanner.modeReportedAt ? (
+                    <span className="block text-xs text-stone-500">
+                      {t("scanner.mode_reported", { date: formatDateTime(scanner.modeReportedAt) })}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-stone-500">{t("scanner.mode_none")}</span>
+              )}
             </Field>
           </dl>
           <p className="mt-4 font-sans text-xs text-stone-500">{t("scanner.call_note")}</p>
         </section>
 
+        {canManage ? (
+          <section aria-labelledby="scanner-pair" className="rounded-lg border border-stone-200 bg-white p-6">
+            <h2
+              id="scanner-pair"
+              ref={pairHeading}
+              tabIndex={-1}
+              className="font-serif text-lg font-semibold text-stone-700 focus:outline-none"
+            >
+              {t("scanner.pair_heading")}
+            </h2>
+            {storedKeys?.usable ? (
+              <>
+                {confirming === "pair" && pairing ? (
+                  <PairConfirm pairing={pairing} workspace={workspace} busy={busy} onCancel={cancel} onApprove={approve} />
+                ) : (
+                  <PairForm
+                    code={code}
+                    onCode={setCode}
+                    busy={busy}
+                    error={errorIn("pair")}
+                    onLookUp={lookUp}
+                    inputRef={codeField}
+                  />
+                )}
+                {noticeIn("pair")}
+              </>
+            ) : (
+              <>
+                {storedKeys?.erasedAt ? (
+                  <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+                    <Field label={t("scanner.pair_keys_erased")}>{formatDateTime(storedKeys.erasedAt)}</Field>
+                  </dl>
+                ) : null}
+                <p className="mt-4 font-sans text-sm text-stone-600">{t("scanner.pair_no_keys")}</p>
+              </>
+            )}
+          </section>
+        ) : null}
+
         <section aria-labelledby="scanner-token" className="rounded-lg border border-stone-200 bg-white p-6">
-          <h2 id="scanner-token" className="font-serif text-lg font-semibold text-stone-700">
+          <h2
+            id="scanner-token"
+            ref={tokenHeading}
+            tabIndex={-1}
+            className="font-serif text-lg font-semibold text-stone-700 focus:outline-none"
+          >
             {t("scanner.token_heading")}
           </h2>
 
           {token ? (
             <NewToken token={token} onDone={done} />
+          ) : !canManage ? (
+            <>
+              {scanner?.tokenState === "active" ? (
+                <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+                  <Field label={t("scanner.token_field")}>
+                    <span className="font-mono">{t("scanner.token_hidden")}</span>
+                  </Field>
+                  <Field label={t("scanner.made")}>{scanner.tokenCreatedAt ? formatDate(scanner.tokenCreatedAt) : t("scanner.never")}</Field>
+                  <Field label={t("scanner.last_used")}>
+                    {scanner.lastSeenAt ? formatDateTime(scanner.lastSeenAt) : t("scanner.never")}
+                  </Field>
+                </dl>
+              ) : scanner?.tokenState === "revoked" && scanner.revokedAt ? (
+                <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+                  <Field label={t("scanner.revoked_at")}>{formatDateTime(scanner.revokedAt)}</Field>
+                </dl>
+              ) : null}
+              <p className="mt-4 font-sans text-sm text-stone-600">{t("scanner.manage_note")}</p>
+            </>
           ) : scanner?.tokenState === "active" ? (
             <>
               <dl className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -191,21 +483,22 @@ export default function CaptureScannerPage({ loaderData }: Route.ComponentProps)
                   {scanner.lastSeenAt ? formatDateTime(scanner.lastSeenAt) : t("scanner.never")}
                 </Field>
               </dl>
-              {confirming ? (
+              {confirming === "replace" || confirming === "revoke" ? (
                 <Confirm
+                  key={confirming}
                   kind={confirming}
                   busy={busy}
-                  onCancel={() => setConfirming(null)}
-                  onConfirm={() => post(confirming)}
+                  onCancel={cancel}
+                  onConfirm={(reason) => post(confirming, { reason })}
                 />
               ) : (
                 <>
                   <p className="mt-4 font-sans text-sm text-stone-600">{t("scanner.replace_note")}</p>
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <button type="button" className={SECONDARY} onClick={() => setConfirming("replace")}>
+                    <button type="button" ref={replaceButton} className={SECONDARY} disabled={busy} onClick={() => open("replace")}>
                       {t("scanner.replace")}
                     </button>
-                    <button type="button" className={DESTRUCTIVE} onClick={() => setConfirming("revoke")}>
+                    <button type="button" ref={revokeButton} className={SECONDARY} disabled={busy} onClick={() => open("revoke")}>
                       {t("scanner.revoke")}
                     </button>
                   </div>
@@ -231,31 +524,124 @@ export default function CaptureScannerPage({ loaderData }: Route.ComponentProps)
                   </button>
                 </div>
               ) : (
-                <FirstToken busy={busy} onMake={(name) => post("make", name)} />
+                <FirstToken busy={busy} onMake={(name) => post("make", { name })} />
               )}
             </>
           )}
 
-          {error ? (
+          {noticeIn("token")}
+          {tokenError ? (
             <p role="alert" className="mt-4 font-sans text-sm text-madder-deep">
-              {error}
+              {tokenError}
             </p>
           ) : null}
         </section>
 
         <section
+          ref={storageSection}
+          tabIndex={-1}
           aria-label={t("scanner.storage_label")}
-          className="flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-6 py-4"
+          className="rounded-lg border border-stone-200 bg-stone-50 px-6 py-4 focus:outline-none"
         >
-          <Lock className="h-4 w-4 shrink-0 text-stone-500" strokeWidth={1.5} aria-hidden="true" />
-          <p className="font-sans text-sm text-stone-600">{t("scanner.storage_note")}</p>
+          <div className="flex items-center gap-3">
+            <Lock className="h-4 w-4 shrink-0 text-stone-500" strokeWidth={1.5} aria-hidden="true" />
+            <p className="font-sans text-sm text-stone-600">{t("scanner.storage_note")}</p>
+          </div>
+          {canManage && storedKeys?.usable ? (
+            confirming === "erase" ? (
+              <Confirm kind="erase" busy={busy} onCancel={cancel} onConfirm={erase} />
+            ) : (
+              <div className="mt-4">
+                <button type="button" ref={eraseButton} className={SECONDARY} disabled={busy} onClick={() => open("erase")}>
+                  {t("scanner.erase")}
+                </button>
+              </div>
+            )
+          ) : null}
+          {noticeIn("erase")}
+          {eraseError ? (
+            <p role="alert" className="mt-4 font-sans text-sm text-madder-deep">
+              {eraseError}
+            </p>
+          ) : null}
         </section>
       </div>
     </div>
   );
 }
 
-/** Make token for a tenant with no scanner yet: asks for the unit's short id first. */
+/**
+ * The code field and Look up. The field takes what is typed as it is;
+ * the server normalises the code. Look up is disabled while the field is
+ * empty or a request is in flight, and an error is tied to the field.
+ */
+function PairForm({
+  code,
+  onCode,
+  busy,
+  error,
+  onLookUp,
+  inputRef,
+}: {
+  code: string;
+  onCode: (code: string) => void;
+  busy: boolean;
+  error: string | null;
+  onLookUp: () => void;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
+  const { t } = useTranslation("capture");
+  const fieldId = useId();
+  const hintId = useId();
+  const errorId = useId();
+  const empty = code.trim() === "";
+  return (
+    <form
+      className="mt-4"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!empty && !busy) onLookUp();
+      }}
+    >
+      <p className="font-sans text-sm text-stone-600">{t("scanner.pair_intro")}</p>
+      <label htmlFor={fieldId} className="mt-4 block font-sans text-sm font-medium text-indigo">
+        {t("scanner.pair_code")}
+      </label>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <input
+          ref={inputRef}
+          id={fieldId}
+          name="code"
+          value={code}
+          onChange={(e) => onCode(e.currentTarget.value)}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          inputMode="text"
+          aria-invalid={error !== null}
+          aria-describedby={error ? `${hintId} ${errorId}` : hintId}
+          className={`block w-full max-w-[12rem] rounded-md border bg-white px-3 py-2 font-mono text-[15px] text-indigo focus:outline-none focus:ring-1 ${
+            error ? "border-madder focus:border-madder focus:ring-madder" : "border-stone-200 focus:border-indigo focus:ring-indigo"
+          }`}
+        />
+        <button type="submit" className={PRIMARY} disabled={busy || empty}>
+          {t("scanner.pair_lookup")}
+        </button>
+      </div>
+      <p id={hintId} className="mt-1 font-sans text-xs text-stone-500">
+        {t("scanner.pair_code_hint")}
+      </p>
+      {error ? (
+        <p id={errorId} role="alert" className="mt-1 font-sans text-xs text-madder-deep">
+          {error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** Make token for a tenant with no scanner yet: asks for the unit's appliance id first. */
 function FirstToken({ busy, onMake }: { busy: boolean; onMake: (name: string) => void }) {
   const { t } = useTranslation("capture");
   const fieldId = useId();
@@ -276,7 +662,7 @@ function FirstToken({ busy, onMake }: { busy: boolean; onMake: (name: string) =>
       }}
     >
       <label htmlFor={fieldId} className="font-sans text-sm font-medium text-indigo">
-        {t("scanner.unit_name")}
+        {t("scanner.appliance_id")}
       </label>
       <input
         id={fieldId}
@@ -293,11 +679,11 @@ function FirstToken({ busy, onMake }: { busy: boolean; onMake: (name: string) =>
         }`}
       />
       <p id={hintId} className="mt-1 font-sans text-xs text-stone-500">
-        {t("scanner.unit_name_hint")}
+        {t("scanner.appliance_id_hint")}
       </p>
       {showError ? (
         <p id={errorId} className="mt-1 font-sans text-xs text-madder-deep">
-          {t("scanner.unit_name_invalid")}
+          {t("scanner.appliance_id_invalid")}
         </p>
       ) : null}
       <div className="mt-4">
@@ -306,15 +692,6 @@ function FirstToken({ busy, onMake }: { busy: boolean; onMake: (name: string) =>
         </button>
       </div>
     </form>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="font-sans text-xs font-medium text-stone-500">{label}</dt>
-      <dd className="mt-1 font-sans text-[15px] text-indigo">{children}</dd>
-    </div>
   );
 }
 
@@ -378,37 +755,4 @@ function NewToken({ token, onDone }: { token: string; onDone: () => void }) {
   );
 }
 
-function Confirm({
-  kind,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  kind: "replace" | "revoke";
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const { t } = useTranslation("capture");
-  const titleId = useId();
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), []);
-  return (
-    <div role="group" aria-labelledby={titleId} className="mt-4 rounded-md border border-madder p-4">
-      <h3 id={titleId} ref={heading} tabIndex={-1} className="font-sans text-[15px] font-semibold text-indigo focus:outline-none">
-        {t(`scanner.confirm_${kind}_title`)}
-      </h3>
-      <p className="mt-1 font-sans text-sm text-stone-600">{t(`scanner.confirm_${kind}_body`)}</p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <button type="button" className={SECONDARY} onClick={onCancel} disabled={busy}>
-          {t("scanner.cancel")}
-        </button>
-        <button type="button" className={kind === "revoke" ? DESTRUCTIVE : PRIMARY} onClick={onConfirm} disabled={busy}>
-          {t(`scanner.confirm_${kind}`)}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// @version@version v0.8.0
+// @version v0.9.0

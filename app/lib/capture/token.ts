@@ -24,11 +24,11 @@
  * spelling; `bodyDigest` is the SHA-256 of that text. The contract asks
  * for bodies to be compared as parsed JSON, not as bytes.
  *
- * `SCANNER_NAME_PATTERN` is the unit's short id, the one its bucket keys
+ * `SCANNER_NAME_PATTERN` is the unit's appliance id, the one its bucket keys
  * are named with: lowercase letters, digits and hyphens, 1 to 32
  * characters.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 export const SCANNER_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
@@ -177,4 +177,4 @@ export function bodyDigest(value: unknown): Promise<string> {
   return sha256Hex(canonicalJson(value));
 }
 
-// @version v0.8.0
+// @version v0.9.0

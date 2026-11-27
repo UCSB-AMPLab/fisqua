@@ -18,6 +18,10 @@
  *      row updated; details payload includes one entry.
  *   6. POST set_capability no-op → no audit row written; tenant row
  *      unchanged (idempotent UX, no DB churn).
+ *   7. GET a tenant whose stored scanner keys are erased → the erasure
+ *      time and the names of the two B2 keys to revoke; nothing while
+ *      the keys are usable or none were stored, and never the sealed
+ *      text.
  *
  * The impersonate-form-renders test (test 10 in the plan) is covered
  * structurally by the GET tests + the route component shape: we
@@ -27,7 +31,7 @@
  * component renders ARE exercised by the React Router type-checker
  * during build.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -183,6 +187,43 @@ describe("/operator/tenants/:slug — detail loader", () => {
     }
   });
 
+  async function seedStoredKeys(erased: boolean): Promise<void> {
+    await env.DB.prepare(
+      "INSERT INTO capture_scanner_keys (tenant_id, appliance_id, bucket, sealed, age_recipient, revision, stored_at, erased_at, erased_by) " +
+        "VALUES (?, 'rig-1', 'test-masters', ?, 'age1testrecipient', 2, 1000, ?, ?)",
+    )
+      .bind(DEFAULT_TEST_TENANT_ID, erased ? null : "test-sealed-text", erased ? 5000 : null, erased ? "test-user" : null)
+      .run();
+  }
+
+  async function loadNeogranadina(): Promise<Record<string, unknown>> {
+    const { loader } = await import("../../app/routes/_operator.tenants.$slug");
+    return (await loader({
+      request: new Request("https://platform.fisqua.test/operator/tenants/neogranadina"),
+      context: buildContext(),
+      params: { slug: "neogranadina" },
+    } as any)) as Record<string, unknown>;
+  }
+
+  it("GET — gives the erasure time and the two B2 key names while the stored scanner keys are erased", async () => {
+    await seedStoredKeys(true);
+    const result = await loadNeogranadina();
+    expect(result.erasedScannerKeys).toEqual({
+      erasedAt: 5000,
+      writeKeyName: "fisqua-neogranadina-appliance-rig-1",
+      readKeyName: "fisqua-neogranadina-appliance-rig-1-read",
+    });
+    expect(JSON.stringify(result)).not.toContain("test-sealed-text");
+  });
+
+  it("GET — gives no erased keys while the stored keys are usable, or when none were stored", async () => {
+    expect((await loadNeogranadina()).erasedScannerKeys).toBeNull();
+    await seedStoredKeys(false);
+    const result = await loadNeogranadina();
+    expect(result.erasedScannerKeys).toBeNull();
+    expect(JSON.stringify(result)).not.toContain("test-sealed-text");
+  });
+
   it("POST set_capability — flipping vocab_hub off writes one audit row + updates tenant", async () => {
     const { action } = await import(
       "../../app/routes/_operator.tenants.$slug"
@@ -263,4 +304,4 @@ describe("/operator/tenants/:slug — detail loader", () => {
   });
 });
 
-// @version v0.4.0
+// @version v0.9.0

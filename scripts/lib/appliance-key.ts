@@ -46,8 +46,11 @@
  *
  * Names. The upload key is `fisqua-{slug}[-staging]-appliance-{id}` and
  * the read key `fisqua-{slug}[-staging]-appliance-{id}-read`
- * (`applianceKeyName`), from the tenant's slug as the runner keys are,
- * with `-staging` on staging, and the appliance's short id: lowercase
+ * (`applianceKeyName`, which checks its arguments and takes the name from
+ * `applianceKeyNames` in `app/lib/capture/appliance-key-names.ts`, the
+ * rule the Worker also names the keys by), from the tenant's slug as the
+ * runner keys are,
+ * with `-staging` on staging, and the appliance id: lowercase
  * letters, digits and hyphens, 1 to 32 characters
  * (`APPLIANCE_ID_PATTERN`), not ending in `-read`, so that no
  * appliance's upload key can carry another appliance's read key name.
@@ -59,10 +62,11 @@
  * `fisqua-appliance` (`KEYCHAIN_SERVICE`), accounts `{key name}-id` and
  * `{key name}-secret` (`keychainAccounts`), from which the operator
  * hands them to the appliance. `macKeychain` writes them with
- * `security add-generic-password -U`, the value passed as an argument
- * through `execFileSync` (never a shell string), its output discarded,
- * and an error that names the account and exit status but not the
- * command line, which holds the value. The log carries the key's name,
+ * `writeGenericPassword` (`scripts/lib/keychain.ts`) and `-U`: `security -i`
+ * is started with no secret in its argument list, where any process of the
+ * same user could read it, and receives the value on stdin as hexadecimal.
+ * Its output is discarded, and an error names the service, the account and
+ * the exit status, never the value. The log carries the key's name,
  * its id (which is not secret) and the two account names, never the
  * secret. The writer is part of the providers, so the tests never touch
  * the real Keychain.
@@ -72,13 +76,13 @@
  * prints the key as unchecked, and `--apply` stops. Nothing is written
  * to D1 or GitHub.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
-import { execFileSync } from "node:child_process";
+import { applianceKeyNames } from "../../app/lib/capture/appliance-key-names";
+import { runSecurity, writeGenericPassword, type SecurityRun } from "./keychain";
 import {
   findRecordBucket,
-  nameBase,
   ProvisionStop,
   resolveTenantStorage,
   SLUG_PATTERN,
@@ -103,10 +107,10 @@ export type ApplianceAccess = "write" | "read";
 
 export const APPLIANCE_ACCESS_VALUES: readonly ApplianceAccess[] = ["write", "read"];
 
-/** The capabilities, name suffix and log wording of each access. */
-const ACCESS: Record<ApplianceAccess, { capabilities: string[]; suffix: string; verbs: string; noun: string }> = {
-  write: { capabilities: B2_APPLIANCE_CAPABILITIES, suffix: "", verbs: "list and write", noun: "appliance" },
-  read: { capabilities: B2_APPLIANCE_READ_CAPABILITIES, suffix: "-read", verbs: "list and read", noun: "appliance read key" },
+/** The capabilities and log wording of each access. */
+const ACCESS: Record<ApplianceAccess, { capabilities: string[]; verbs: string; noun: string }> = {
+  write: { capabilities: B2_APPLIANCE_CAPABILITIES, verbs: "list and write", noun: "appliance" },
+  read: { capabilities: B2_APPLIANCE_READ_CAPABILITIES, verbs: "list and read", noun: "appliance read key" },
 };
 
 /** The Keychain service the appliance keys are stored under. */
@@ -124,7 +128,7 @@ export interface ApplianceProviders {
 export interface ApplianceStepOptions {
   /** The tenant's slug. */
   slug: string;
-  /** The appliance's short id. */
+  /** The appliance id. */
   appliance: string;
   target: Target;
   apply: boolean;
@@ -159,7 +163,7 @@ export function applianceKeyName(
   if (!SLUG_PATTERN.test(tenantSlug)) throw new ProvisionStop(`Not a tenant slug: ${tenantSlug}`);
   checkApplianceId(applianceId);
   checkApplianceAccess(access);
-  return `fisqua-${nameBase(tenantSlug, target)}-appliance-${applianceId}${ACCESS[access].suffix}`;
+  return applianceKeyNames(tenantSlug, applianceId, target === "staging" ? "staging" : "production")[access];
 }
 
 /** The Keychain accounts that hold a key's id and secret. */
@@ -167,21 +171,13 @@ export function keychainAccounts(keyName: string): { id: string; secret: string 
   return { id: `${keyName}-id`, secret: `${keyName}-secret` };
 }
 
-/** Writes to the macOS login Keychain through `security`, the value never logged. */
-export const macKeychain: KeychainWriter = (service, account, value) => {
-  try {
-    execFileSync("security", ["add-generic-password", "-U", "-s", service, "-a", account, "-w", value], {
-      stdio: "ignore",
-    });
-  } catch (err) {
-    // The error's message repeats the command line, which holds the value.
-    const status = (err as { status?: number | null }).status;
-    throw new ProvisionStop(
-      `security add-generic-password failed for the Keychain account ${account}` +
-        (status == null ? "" : ` (exit ${status})`),
-    );
-  }
-};
+/** A writer to the macOS login Keychain through `security`, the value never in its arguments or logged. */
+export function keychainWriterOver(run: SecurityRun): KeychainWriter {
+  return (service, account, value) => writeGenericPassword(run, service, account, value, true);
+}
+
+/** Writes to the macOS login Keychain through `security`, the value on stdin only. */
+export const macKeychain: KeychainWriter = keychainWriterOver(runSecurity);
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
@@ -292,4 +288,4 @@ export async function provisionApplianceKey(
   log(`  [create] stored its id and secret in the Keychain, service ${KEYCHAIN_SERVICE}, accounts ${accounts.id} and ${accounts.secret}`);
 }
 
-// @version v0.8.0
+// @version v0.9.0
