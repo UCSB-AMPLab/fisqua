@@ -1,15 +1,15 @@
 /**
  * Tests — possible-duplicates queue + ledger history
  *
- * Covers the deterministic candidate computation (pure helpers and the
- * duplicates tab's loader), the tab's two rulings — keep both and
- * merge — the capability gates on loader AND action, the per-record
- * operation-history loader, the sidebar badge counts, and the
- * show-merged survivor-name join added to the entities list loader.
- * Harness mirrors `authority-workbench.test.ts`: a
- * `RouterContextProvider` carrying userContext + tenantContext with
- * `cloudflare.env` attached; the acting user is a lead-tenant admin
- * (i.e. a federation steward).
+ * This suite covers the possible-duplicates queue and the ledger history:
+ * the deterministic candidate computation (pure helpers and the duplicates
+ * tab's loader), the tab's two rulings — keep both and merge — the
+ * capability gates on loader AND action, the per-record operation-history
+ * loader, the sidebar badge counts, and the survivor-name join of the
+ * entities list loader's show-merged view. Its harness mirrors
+ * `authority-workbench.test.ts`: a `RouterContextProvider` carrying
+ * userContext + tenantContext with `cloudflare.env` attached; the acting
+ * user is a lead-tenant admin (i.e. a federation steward).
  *
  * The two rulings are asserted through their durable trail rather than
  * their return value: keep both must leave a ruled `kept_both` decision
@@ -19,7 +19,10 @@
  * null — so the empty-reason rejection the old worklist carried is
  * gone and is asserted gone.
  *
- * @version v0.7.0
+ * A `split` between two records excludes their pair as a `separate`
+ * does, from the worklist and from the badge.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -31,18 +34,21 @@ import {
   applyMigrations,
   cleanDatabase,
   DEFAULT_TEST_FEDERATION_ID,
+  DEFAULT_TEST_TENANT_ID,
 } from "../helpers/db";
 import { createTestUser } from "../helpers/auth";
 import { createTestEntity } from "../helpers/entities";
 import { createTestPlace } from "../helpers/places";
 import { tenantContext, userContext, type User, type Tenant } from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
+import { evidenceFields, evidenceFor } from "../helpers/merge-evidence";
 import {
   normaliseName,
   datesOverlap,
   computeDuplicateCandidates,
   isEditDistanceOne,
   pairKey,
+  showsDuplicateBadge,
 } from "../../app/lib/authority-duplicates.server";
 import "../../app/routes/_auth.admin.decisions.duplicates";
 import "../../app/routes/_auth.admin.entities.$id.history";
@@ -56,12 +62,12 @@ function buildContext(user: User, tenant?: Tenant): any {
   return ctx;
 }
 
-function form(fields: Record<string, string>): Request {
+function form(fields: Record<string, string>, extra: Array<[string, string]> = []): Request {
   return new Request(
     "http://neogranadina.fisqua.test/admin/entities/duplicates",
     {
       method: "POST",
-      body: new URLSearchParams(fields),
+      body: new URLSearchParams([...Object.entries(fields), ...extra]),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     },
   );
@@ -74,6 +80,27 @@ function get(url: string): Request {
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
+
+describe("which pages pay for the duplicates badge", () => {
+  it("is only the duplicates worklist", () => {
+    expect(showsDuplicateBadge("/admin/decisions/duplicates")).toBe(true);
+    expect(showsDuplicateBadge("/admin/decisions/duplicates/")).toBe(true);
+    expect(showsDuplicateBadge("/admin/decisions/Duplicates")).toBe(true);
+    expect(showsDuplicateBadge("/admin/decisions/%64uplicates")).toBe(true);
+    expect(showsDuplicateBadge("/admin/decisions/%E0%A4%A")).toBe(false);
+    for (const path of [
+      "/admin/entities",
+      "/admin/entities/e-1/merge",
+      "/admin/places",
+      "/admin/decisions",
+      "/admin/decisions/pair",
+      "/admin/decisions/duplicates-archive",
+      "/dashboard",
+    ]) {
+      expect(showsDuplicateBadge(path), path).toBe(false);
+    }
+  });
+});
 
 describe("duplicate candidate computation (pure)", () => {
   it("normaliseName lowercases, strips accents and punctuation, collapses space", () => {
@@ -311,10 +338,30 @@ describe("entities duplicates worklist", () => {
       sortName: "Perez, Juan",
       entityCode: "ne-dupb01",
     });
+    // The pair as the scheduled recheck would have stored it.
+    await storePair(a.id, b.id);
     return { user, ctxUser, a, b };
   }
 
-  it("loader surfaces accent-normalised collisions and excludes merged-away records", async () => {
+  async function storePair(idA: string, idB: string, weight = 4) {
+    const [x, y] = idA < idB ? [idA, idB] : [idB, idA];
+    const facts = {
+      warning: null,
+      offices: ["Alcalde ordinario"],
+      associates: [],
+      documents: [],
+      dates: { a: null, b: null, overlap: false },
+      places: [],
+      more: { associates: 0, documents: 0, places: 0 },
+    };
+    await env.DB.prepare(
+      "INSERT INTO duplicate_candidates (id_a, id_b, federation_id, tenant_id, facts, weight, computed_at) VALUES (?, ?, ?, ?, ?, ?, 1)",
+    )
+      .bind(x, y, DEFAULT_TEST_FEDERATION_ID, DEFAULT_TEST_TENANT_ID, JSON.stringify(facts), weight)
+      .run();
+  }
+
+  it("loader surfaces stored pairs and skips pairs with a merged-away record", async () => {
     const { ctxUser, a, b } = await seedCollision();
     // A third same-name record already merged away must not appear.
     const survivor = await createTestEntity({
@@ -323,13 +370,14 @@ describe("entities duplicates worklist", () => {
       sortName: "Else",
       entityCode: "ne-surv02",
     });
-    await createTestEntity({
+    const gone = await createTestEntity({
       id: crypto.randomUUID(),
       displayName: "Juan Pérez",
       sortName: "Perez, Juan",
       entityCode: "ne-dupc01",
       mergedInto: survivor.id,
     });
+    await storePair(a.id, gone.id, 9);
 
     const { loader } = await import(
       "../../app/routes/_auth.admin.decisions.duplicates"
@@ -340,7 +388,9 @@ describe("entities duplicates worklist", () => {
       params: {},
     } as any);
 
-    expect(data.totalPairs).toBe(1);
+    // The total is the stored row count; the job removes the merged-away
+    // record's row on its next run.
+    expect(data.pairs).toHaveLength(1);
     const ids = [data.pairs[0].a.id, data.pairs[0].b.id].sort();
     expect(ids).toEqual([a.id, b.id].sort());
   });
@@ -359,6 +409,35 @@ describe("entities duplicates worklist", () => {
       detail: JSON.stringify({ reason: "namesakes" }),
       createdAt: Date.now(),
     });
+
+    const { loader } = await import(
+      "../../app/routes/_auth.admin.decisions.duplicates"
+    );
+    const data: any = await loader({
+      request: get("/admin/decisions/duplicates"),
+      context: buildContext(ctxUser),
+      params: {},
+    } as any);
+    expect(data.totalPairs).toBe(0);
+  });
+
+  it("loader excludes a pair with a split between them, as getSeparatePairs reads it", async () => {
+    const { user, ctxUser, a, b } = await seedCollision();
+    const db = drizzle(env.DB);
+    await db.insert(schema.authorityOperations).values({
+      id: crypto.randomUUID(),
+      federationId: DEFAULT_TEST_FEDERATION_ID,
+      recordType: "entity",
+      operation: "split",
+      sourceId: a.id,
+      targetId: b.id,
+      userId: user.id,
+      detail: JSON.stringify({ movedLinks: 2 }),
+      createdAt: Date.now(),
+    });
+    const { getSeparatePairs, pairKey } = await import("../../app/lib/authority-duplicates.server");
+    const pairs = await getSeparatePairs(db, DEFAULT_TEST_FEDERATION_ID, "entity");
+    expect([...pairs]).toEqual([pairKey(a.id, b.id)]);
 
     const { loader } = await import(
       "../../app/routes/_auth.admin.decisions.duplicates"
@@ -467,7 +546,7 @@ describe("entities duplicates worklist", () => {
         survivorId: a.id,
         loserId: b.id,
         reason: "one man, two spellings",
-      }),
+      }, evidenceFields(await evidenceFor(b.id, a.id))),
       context: buildContext(ctxUser),
       params: {},
     } as any);
@@ -801,32 +880,27 @@ describe("badge counts + survivor-name join", () => {
     await cleanDatabase();
   });
 
-  it("getDuplicateBadgeCounts counts exact-name collision pairs and subtracts dismissals", async () => {
+  it("getDuplicateBadgeCounts counts the workspace's stored entity pairs and the place name collisions, minus dismissed places", async () => {
     const user = await createTestUser({ isAdmin: true });
-    const a = await createTestEntity({
-      displayName: "Same Name",
-      sortName: "Same",
-      entityCode: "ne-bdg001",
-    });
-    const b = await createTestEntity({
-      id: crypto.randomUUID(),
-      displayName: "same name",
-      sortName: "Same",
-      entityCode: "ne-bdg002",
-    });
     const db = drizzle(env.DB);
     const { getDuplicateBadgeCounts } = await import(
       "../../app/lib/authority-duplicates.server"
     );
+    const a = await createTestPlace({ displayName: "Same Name", placeCode: "nl-bdg001" });
+    const b = await createTestPlace({ id: crypto.randomUUID(), displayName: "same name", placeCode: "nl-bdg002" });
+    await env.DB.prepare(
+      "INSERT INTO duplicate_candidates (id_a, id_b, federation_id, tenant_id, facts, weight, computed_at) VALUES ('x1', 'x2', ?, ?, '{}', 3, 1)",
+    )
+      .bind(DEFAULT_TEST_FEDERATION_ID, DEFAULT_TEST_TENANT_ID)
+      .run();
 
-    const before = await getDuplicateBadgeCounts(db, DEFAULT_TEST_FEDERATION_ID);
-    expect(before.entities).toBe(1);
-    expect(before.places).toBe(0);
+    const before = await getDuplicateBadgeCounts(db, DEFAULT_TEST_FEDERATION_ID, DEFAULT_TEST_TENANT_ID);
+    expect(before).toEqual({ entities: 1, places: 1 });
 
     await db.insert(schema.authorityOperations).values({
       id: crypto.randomUUID(),
       federationId: DEFAULT_TEST_FEDERATION_ID,
-      recordType: "entity",
+      recordType: "place",
       operation: "separate",
       sourceId: a.id,
       targetId: b.id,
@@ -834,8 +908,8 @@ describe("badge counts + survivor-name join", () => {
       detail: JSON.stringify({ reason: "different" }),
       createdAt: Date.now(),
     });
-    const after = await getDuplicateBadgeCounts(db, DEFAULT_TEST_FEDERATION_ID);
-    expect(after.entities).toBe(0);
+    const after = await getDuplicateBadgeCounts(db, DEFAULT_TEST_FEDERATION_ID, DEFAULT_TEST_TENANT_ID);
+    expect(after).toEqual({ entities: 1, places: 0 });
   });
 
   it("the entities list loader attaches survivor names to merged rows when showMerged is on", async () => {

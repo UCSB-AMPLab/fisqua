@@ -7,11 +7,17 @@
  * runs through the parent form action so the audit log stays owned by the
  * server.
  *
- * @version v0.4.1
+ * The search for the record or term to merge into loads the list
+ * route's `_search` JSON through a fetcher (`mergeSearchPath`), which
+ * runs that route's loader alone; a plain fetch of the address would be
+ * a document request, which renders the list page and fails.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Form } from "react-router";
+import { Form, useFetcher } from "react-router";
+import { currentSearchResults, mergeSearchPath } from "~/lib/merge-search";
 import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
 import {
@@ -67,7 +73,11 @@ export function MergeDialog({
   // Steps: 1 = select target, 2 = reassign links
   const [step, setStep] = useState<1 | 2>(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  // The list route answers `_search` with JSON; a fetcher runs its loader
+  // alone and returns the array (`mergeSearchPath`).
+  const searchFetcher = useFetcher<SearchResult[]>();
+  // The query the last load was made for: an earlier query's answer is not shown.
+  const [requestedFor, setRequestedFor] = useState<string | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<SearchResult | null>(
     null
   );
@@ -80,7 +90,6 @@ export function MergeDialog({
     if (isOpen) {
       setStep(1);
       setSearchQuery("");
-      setSearchResults([]);
       setSelectedTarget(null);
       setSelectedLinkIds(new Set(links.map((l) => l.id)));
     }
@@ -95,30 +104,17 @@ export function MergeDialog({
 
   // Search with debounce
   useEffect(() => {
-    if (!searchQuery.trim() || step !== 1) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          _search: "true",
-          q: searchQuery.trim(),
-          exclude: sourceId,
-        });
-        const res = await fetch(`${searchEndpoint}?${params}`);
-        if (res.ok) {
-          const data = (await res.json()) as SearchResult[];
-          setSearchResults(data);
-        }
-      } catch {
-        // Silently fail search
-      }
+    if (!searchQuery.trim() || step !== 1) return;
+    const timer = setTimeout(() => {
+      setRequestedFor(searchQuery.trim());
+      searchFetcher.load(mergeSearchPath(searchEndpoint, searchQuery, sourceId));
     }, 300);
-
     return () => clearTimeout(timer);
+    // `load` is stable across renders; the fetcher object is not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, searchEndpoint, sourceId, step]);
+  const searchResults: SearchResult[] =
+    step === 1 ? currentSearchResults<SearchResult>(searchQuery, requestedFor, searchFetcher.data, searchFetcher.state) : [];
 
   const handleSelectTarget = useCallback(
     (result: SearchResult) => {
@@ -338,3 +334,5 @@ export function MergeDialog({
     </div>
   );
 }
+
+// @version v0.9.0

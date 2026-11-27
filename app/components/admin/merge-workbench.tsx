@@ -1,14 +1,15 @@
 /**
  * Admin — Merge workbench (full-page)
  *
- * The record-type-agnostic merge surface shared by entities and places
- * (spec §4, design handoff surface 1). The route wrapper loads the
- * loser (`:id`) with its linked descriptions and — once a survivor is
- * chosen — the survivor, then renders this component. Survivor
- * selection and direction-swap are URL transitions (the loader
- * re-renders the server-side comparison); the client state here is the
- * per-card move/stay checklist, the fold-names toggle, and the required
- * reason.
+ * This component is the full-page merge surface, the same for every record
+ * type, that entities and places share. The route wrapper loads the loser
+ * (`:id`) with its linked descriptions and — once a survivor is chosen —
+ * the survivor, then renders this component. Survivor selection and
+ * direction-swap are URL transitions (the loader re-renders the
+ * server-side comparison); the client state here is the per-card move/stay
+ * checklist, the fold-names toggle, the reason (required for a place
+ * merge, an optional note for an entity merge) and an entity merge's
+ * evidence.
  *
  * Both sides render rich linked-description context cards. The
  * merged-away side is selectable per card (all of a card's junction
@@ -18,16 +19,32 @@
  * seeds its move set from the loader's full `allLinkIds`, so the cap is
  * a display bound, never a data-loss one.
  *
- * Confirm is gated: disabled until a survivor is set AND the reason is
- * non-empty. The action performs the soft merge (loser keeps its page
+ * Confirm is gated: disabled until a survivor is set AND, for a place
+ * merge, the reason is non-empty, or, for an entity merge, the evidence
+ * is complete (below). The action performs the soft merge (loser keeps its page
  * with `mergedInto` set) and writes the reason into the ledger row's
- * `detail.reason`.
+ * `detail.reason`. A merge the action refuses without writing (a
+ * relation repoint that would collide, say) comes back as `refusal`, a
+ * sentence shown above the comparison.
  *
- * @version v0.4.3
+ * An entity merge passes `evidence`, the two records' linked
+ * descriptions: the page then shows `MergeEvidencePanel` under the
+ * comparison, the reason becomes an optional note, and Confirm waits on
+ * a fact and a description for each record (`evidenceReady`) instead of
+ * on the reason. The panel's choices are its own list, apart from the
+ * link cards' move selection: citing a description never moves a link,
+ * and moving a link never cites it. A place merge passes no `evidence`,
+ * and its reason stays required.
+ *
+ * The survivor typeahead loads the list route's `_search` JSON through a
+ * fetcher (`mergeSearchPath`), so React Router runs that route's loader
+ * alone and returns its array.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Form, useNavigate } from "react-router";
+import { Form, useFetcher, useNavigate } from "react-router";
 import {
   ArrowRight,
   ArrowLeftRight,
@@ -39,11 +56,21 @@ import {
 } from "lucide-react";
 import { LinkedDescriptionContextCard } from "./linked-description-context-card";
 import {
+  EvidenceHiddenInputs,
+  MergeEvidencePanel,
+  evidenceReady,
+  usePrunedEvidence,
+  type EvidenceShape,
+  type EvidenceSide,
+  type EvidenceValue,
+} from "./merge-evidence-panel";
+import {
   WorkbenchActionBar,
   ACTION_BAR_META_ROW_CLASSES,
 } from "./workbench-action-bar";
 import type { LinkedDescriptionCardList } from "~/lib/authority-linked-context.server";
 import { useFormatters } from "~/lib/use-formatters";
+import { currentSearchResults, mergeSearchPath } from "~/lib/merge-search";
 
 export interface ComparisonField {
   key: string;
@@ -77,6 +104,8 @@ export function MergeWorkbench({
   placeRoleLabel,
   comparisonFields,
   conflictModifiedAt,
+  refusal = null,
+  evidence = null,
   t,
 }: {
   eyebrow: string;
@@ -88,10 +117,14 @@ export function MergeWorkbench({
   loserCards: LinkedDescriptionCardList;
   survivorCards: LinkedDescriptionCardList | null;
   showAsRecorded: boolean;
-  roleLabel: (role: string) => string;
+  roleLabel: (role: string, relationSide?: boolean) => string;
   placeRoleLabel: (role: string) => string;
   comparisonFields: ComparisonField[];
   conflictModifiedAt: number | null;
+  /** The action's refusal of the merge, as a sentence to show; nothing was written. */
+  refusal?: string | null;
+  /** An entity merge: the two records and their linked descriptions, for the evidence panel. */
+  evidence?: { sides: [EvidenceSide, EvidenceSide]; shape?: EvidenceShape } | null;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const navigate = useNavigate();
@@ -106,6 +139,8 @@ export function MergeWorkbench({
 
   const [addVariants, setAddVariants] = useState(false);
   const [reason, setReason] = useState("");
+  // Kept to the descriptions offered now: a reload after a refusal drops a citation whose link is gone.
+  const [cited, setCited] = usePrunedEvidence(evidence?.sides);
 
   // Reset selection when the loser's link set changes (survivor swap).
   useEffect(() => {
@@ -130,7 +165,9 @@ export function MergeWorkbench({
     });
   };
 
-  const confirmDisabled = !survivor || reason.trim().length === 0;
+  // An entity merge waits on its evidence, its note optional; a place merge on its reason.
+  const ready = evidence ? evidenceReady(cited, evidence.sides) : reason.trim().length > 0;
+  const confirmDisabled = !survivor || !ready;
   const moveIdList = useMemo(() => Array.from(moveLinkIds), [moveLinkIds]);
 
   return (
@@ -145,6 +182,16 @@ export function MergeWorkbench({
       <p className="mt-2 max-w-[60ch] font-serif text-base leading-[1.6] text-indigo-soft">
         {t("mergeIntro")}
       </p>
+
+      {/* Refusal notice */}
+      {refusal && (
+        <div role="alert" className="mt-6 rounded-lg border border-madder-soft bg-madder-tint px-4 py-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-madder-deep" strokeWidth={1.5} />
+            <p className="flex-1 text-13 text-madder-deep">{refusal}</p>
+          </div>
+        </div>
+      )}
 
       {/* Conflict notice */}
       {conflictModifiedAt != null && (
@@ -178,9 +225,10 @@ export function MergeWorkbench({
                     addVariants={addVariants}
                     moveIdList={moveIdList}
                     force
+                    evidence={evidence ? cited : null}
                     className="inline-flex items-center gap-2 rounded-md border border-madder-soft bg-white px-4 py-2 text-13 font-semibold text-madder-deep hover:bg-madder-wash"
                     label={t("conflictProceed")}
-                    disabled={reason.trim().length === 0}
+                    disabled={!ready}
                   />
                 )}
               </div>
@@ -393,6 +441,13 @@ export function MergeWorkbench({
               <p className="text-13 text-stone-500">{t("mergeFoldNamesHelper")}</p>
             </div>
           </div>
+
+          {/* Evidence — entity merges only, apart from the move selection above */}
+          {evidence && (
+            <div className="mt-8 rounded-lg border border-stone-200 px-4 py-4">
+              <MergeEvidencePanel sides={evidence.sides} shape={evidence.shape} value={cited} onChange={setCited} />
+            </div>
+          )}
         </>
       ) : (
         <div className="mt-8 flex flex-col items-center gap-3 rounded-lg border border-stone-200 py-12">
@@ -413,7 +468,11 @@ export function MergeWorkbench({
               className="text-11 font-semibold uppercase tracking-wide text-stone-500"
             >
               {t("reasonLabel")}{" "}
-              <span className="text-madder-deep">{t("reasonRequired")}</span>
+              {evidence ? (
+                <span className="text-stone-400">{t("reasonOptional")}</span>
+              ) : (
+                <span className="text-madder-deep">{t("reasonRequired")}</span>
+              )}
             </label>
             <input
               id="merge-reason"
@@ -433,6 +492,7 @@ export function MergeWorkbench({
                 reason={reason}
                 addVariants={addVariants}
                 moveIdList={moveIdList}
+                evidence={evidence ? cited : null}
                 className={`inline-flex items-center gap-2 rounded-md bg-indigo px-4 py-2.5 text-13 font-semibold text-parchment ${
                   confirmDisabled
                     ? "cursor-not-allowed opacity-30"
@@ -497,7 +557,7 @@ function CardList({
 }: {
   list: LinkedDescriptionCardList;
   showAsRecorded: boolean;
-  roleLabel: (role: string) => string;
+  roleLabel: (role: string, relationSide?: boolean) => string;
   placeRoleLabel: (role: string) => string;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
@@ -539,6 +599,7 @@ function MergeConfirmForm({
   disabled,
   force,
   icon,
+  evidence = null,
 }: {
   loserId: string;
   survivorId: string;
@@ -551,6 +612,8 @@ function MergeConfirmForm({
   disabled: boolean;
   force?: boolean;
   icon?: boolean;
+  /** The evidence an entity merge posts. */
+  evidence?: EvidenceValue | null;
 }) {
   return (
     <Form method="post">
@@ -562,6 +625,7 @@ function MergeConfirmForm({
       <input type="hidden" name="reason" value={reason} />
       <input type="hidden" name="addVariants" value={addVariants ? "true" : "false"} />
       <input type="hidden" name="linkIds" value={JSON.stringify(moveIdList)} />
+      {evidence && <EvidenceHiddenInputs value={evidence} />}
       <button type="submit" disabled={disabled} className={className}>
         {icon && <GitMerge className="h-4 w-4" strokeWidth={1.5} />}
         {label}
@@ -585,34 +649,30 @@ function SurvivorTypeahead({
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<TypeaheadResult[]>([]);
   const [focused, setFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The list route's loader answers `_search` with JSON. Loaded through a
+  // fetcher, as the description editor's search popover loads it, React
+  // Router runs that loader alone and hands back the array; a plain
+  // fetch of the URL is a document request, which renders the list page
+  // with the array as its data and fails.
+  const fetcher = useFetcher<TypeaheadResult[]>();
+  // The query the last load was made for: an earlier query's answer is not shown.
+  const [requestedFor, setRequestedFor] = useState<string | null>(null);
+  const results = currentSearchResults<TypeaheadResult>(query, requestedFor, fetcher.data, fetcher.state);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
+    if (!query.trim()) return;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          _search: "true",
-          q: query.trim(),
-          exclude: excludeId,
-        });
-        const res = await fetch(`${searchEndpoint}?${params}`);
-        if (res.ok) {
-          setResults((await res.json()) as TypeaheadResult[]);
-        }
-      } catch {
-        /* silent */
-      }
+    timer.current = setTimeout(() => {
+      setRequestedFor(query.trim());
+      fetcher.load(mergeSearchPath(searchEndpoint, query, excludeId));
     }, 300);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
+    // `fetcher.load` is stable across renders; the fetcher object is not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, searchEndpoint, excludeId]);
 
   return (
@@ -660,3 +720,5 @@ function SurvivorTypeahead({
     </div>
   );
 }
+
+/* @version v0.9.0 */

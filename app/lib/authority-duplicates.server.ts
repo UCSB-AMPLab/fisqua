@@ -1,9 +1,11 @@
 /**
  * Authority duplicates — deterministic candidate computation
  *
- * The possible-duplicates worklist (spec §4) computes its candidate
- * pairs deterministically in the loader — no background jobs, no
- * persisted candidate table. This module owns that computation:
+ * The place side of the possible-duplicates worklist (spec §4)
+ * computes its candidate pairs deterministically in the loader — no
+ * background jobs, no persisted candidate table. (Entity pairs are
+ * stored by the scheduled recheck and read by `duplicate-stored.server`.)
+ * This module owns that computation:
  *
  *   - `normaliseName` — the collision key: lowercase, Unicode
  *     accent-stripped (NFD + combining-mark removal), punctuation
@@ -16,7 +18,9 @@
  *     and shared external id when present), ranks by signal count,
  *     and excludes any pair with a `separate` ledger operation
  *     between them in either direction — the durable do-not-relink
- *     dismissal store (spec §4, the Sowing / UPDB rejection pattern).
+ *     dismissal store (spec §4, the Sowing / UPDB rejection pattern) —
+ *     and any pair with a `split` between them, since a record split
+ *     off another is not its duplicate.
  *     A second pass then compares the bucket keys against each other
  *     at edit distance 1 and emits the cross-bucket pairs as
  *     `near-spelling` candidates: Fortuni / Fortuny, Catalá /
@@ -34,14 +38,20 @@
  *     variants the reference was built to catch all differ inside the
  *     surname with the rest of the name identical, so they survive
  *     the change of key.
- *   - `getDuplicateBadgeCounts` — the CHEAP approximation behind the
- *     sidebar badge, computed only while the current request is inside
- *     the authorities section (the `_auth` layout gates it): exact
- *     lowercase-name collision pairs per record type (a single GROUP
- *     BY scan, no accent normalisation), minus dismissed pairs whose
- *     two records still collide. It deliberately trades exactness for
- *     cost — the accent-normalised worklist can find MORE pairs than
- *     the badge counts. The worklist page shows the exact number.
+ *   - `getDuplicateBadgeCounts` — the counts behind the sidebar badge,
+ *     computed only while the current request is on the duplicates
+ *     worklist (the `_auth` layout gates it). Entities are the
+ *     workspace's stored pairs in `duplicate_candidates` minus the
+ *     pairs separated or ruled since, the same number the worklist's
+ *     total shows.
+ *     Places are still the CHEAP approximation: exact lowercase-name
+ *     collision pairs (a single GROUP BY scan, no accent
+ *     normalisation), minus dismissed pairs (a `separate` or a `split`
+ *     between them) whose two records still collide. The
+ *     accent-normalised place worklist can find MORE pairs than the
+ *     badge counts; the worklist page shows the exact number. Each of
+ *     its statements is retried while D1 refuses it as overloaded
+ *     (`retryD1Read`), under a `duplicate_badge_` name.
  *   - `computeVocabularyNearMatches` — the vocabulary side of the
  *     duplicates-vocabulary design round: a proposed term sitting in
  *     the review queue next to an already-approved term that is
@@ -57,10 +67,12 @@
  *     shared-prefix-plus-suffix-set check catches pairs edit distance
  *     alone would miss without opening the door to unrelated terms.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { yearOf } from "./duplicate-facts";
+import { retryD1Read, type D1Site } from "./d1-overload";
 
 export interface CandidateRecord {
   id: string;
@@ -117,12 +129,7 @@ export function normaliseName(name: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Leading four-digit year of a date string, or null. */
-export function yearOf(date: string | null | undefined): number | null {
-  if (!date) return null;
-  const m = date.match(/^(\d{4})/);
-  return m ? parseInt(m[1], 10) : null;
-}
+export { yearOf } from "./duplicate-facts";
 
 /**
  * True when both records carry at least one parseable year and their
@@ -248,7 +255,7 @@ const MAX_NEAR_PAIRS = 100;
  * Compute ranked duplicate candidates in two passes: exact
  * normalised-name collisions first, then cross-bucket pairs whose
  * keys are one edit apart (`near-spelling`). `separatePairs` is the
- * set of `pairKey`s with a `separate` ledger operation between them —
+ * set of `pairKey`s with a `separate` or `split` ledger operation between them —
  * those pairs never resurface, from either pass. Callers pass only
  * active (non-merged-away) records. Output is bounded in both passes
  * (see the cap constants); the `truncated` flag reports when anything
@@ -381,6 +388,7 @@ function makePair(
 /**
  * Fetch the set of `pairKey`s dismissed as not-duplicates: every
  * `separate` ledger operation for the record type in this federation,
+ * and every `split` (a record split off another is not its duplicate),
  * both directions collapsed to the unordered key.
  */
 export async function getSeparatePairs(
@@ -388,7 +396,7 @@ export async function getSeparatePairs(
   federationId: string,
   recordType: "entity" | "place",
 ): Promise<Set<string>> {
-  const { and, eq } = await import("drizzle-orm");
+  const { and, eq, inArray } = await import("drizzle-orm");
   const { authorityOperations } = await import("../db/schema");
   const rows = await db
     .select({
@@ -400,7 +408,7 @@ export async function getSeparatePairs(
       and(
         eq(authorityOperations.federationId, federationId),
         eq(authorityOperations.recordType, recordType),
-        eq(authorityOperations.operation, "separate"),
+        inArray(authorityOperations.operation, ["separate", "split"]),
       ),
     )
     .all();
@@ -412,10 +420,31 @@ export async function getSeparatePairs(
 }
 
 /**
- * Cheap sidebar-badge counts: exact lowercase-name collision pairs
- * per record type, minus dismissed pairs whose records still collide.
- * One GROUP BY scan + one indexed join per type — an approximation
- * (no accent normalisation), never the worklist's exact number.
+ * Whether a request's page shows the pending-decisions badge, and so
+ * pays for `getDuplicateBadgeCounts`: only the duplicates worklist
+ * itself, since each count scans every entity and place.
+ */
+export function showsDuplicateBadge(pathname: string): boolean {
+  // The router matches case-insensitively and after decoding, so the
+  // same page can arrive as `/admin/decisions/Duplicates` or with
+  // percent-escapes; compare the form it matches.
+  let path = pathname;
+  try {
+    path = decodeURIComponent(pathname);
+  } catch {
+    // A malformed escape: compare the path as given.
+  }
+  path = path.toLowerCase();
+  return path === "/admin/decisions/duplicates" || path.startsWith("/admin/decisions/duplicates/");
+}
+
+/**
+ * Sidebar-badge counts. Entities: the rows of `duplicate_candidates`
+ * for the request tenant (for the whole federation when no tenant is
+ * passed), minus the pairs separated or ruled since they were stored. Places: exact lowercase-name collision
+ * pairs, minus dismissed pairs whose records still collide — one GROUP
+ * BY scan + one indexed join, an approximation (no accent
+ * normalisation), never the worklist's exact number.
  *
  * `ownerTenantId` narrows the count to what the request tenant can
  * actually SEE after migration 0067: the federation-shared records plus
@@ -431,13 +460,15 @@ export async function getDuplicateBadgeCounts(
   db: DrizzleD1Database<any>,
   federationId: string,
   ownerTenantId?: string,
+  site: Omit<D1Site, "read"> = {},
 ): Promise<{ entities: number; places: number }> {
   const { sql } = await import("drizzle-orm");
+  const read = <T>(name: string, run: () => Promise<T>): Promise<T> =>
+    retryD1Read(run, undefined, undefined, { ...site, read: name });
 
-  async function countFor(
-    table: "entities" | "places",
-    recordType: "entity" | "place",
-  ): Promise<number> {
+  async function placeCount(): Promise<number> {
+    const table = "places";
+    const recordType = "place";
     // Ownership arm per aliased occurrence of the authority table. With
     // no owner supplied it collapses to `1 = 1`, leaving the statement
     // byte-equivalent to its pre-0067 shape.
@@ -446,19 +477,19 @@ export async function getDuplicateBadgeCounts(
         ? sql`1 = 1`
         : sql`(${sql.raw(alias)}.tenant_id IS NULL OR ${sql.raw(alias)}.tenant_id = ${ownerTenantId})`;
 
-    const groups = (await db.all(sql`
+    const groups = (await read("duplicate_badge_place_groups", () => db.all(sql`
       SELECT COUNT(*) AS c
       FROM ${sql.raw(table)} t
       WHERE t.federation_id = ${federationId} AND t.merged_into IS NULL
         AND ${owned("t")}
       GROUP BY lower(t.display_name)
       HAVING c > 1
-    `)) as Array<{ c: number }>;
+    `))) as Array<{ c: number }>;
     let pairs = 0;
     for (const g of groups) pairs += (g.c * (g.c - 1)) / 2;
     if (pairs === 0) return 0;
 
-    const dismissed = (await db.all(sql`
+    const dismissed = (await read("duplicate_badge_place_dismissed", () => db.all(sql`
       SELECT COUNT(DISTINCT CASE
         WHEN ao.source_id < ao.target_id
           THEN ao.source_id || '|' || ao.target_id
@@ -469,19 +500,46 @@ export async function getDuplicateBadgeCounts(
       JOIN ${sql.raw(table)} b ON b.id = ao.target_id
       WHERE ao.federation_id = ${federationId}
         AND ao.record_type = ${recordType}
-        AND ao.operation = 'separate'
+        AND ao.operation IN ('separate', 'split')
         AND a.merged_into IS NULL AND b.merged_into IS NULL
         AND ${owned("a")} AND ${owned("b")}
         AND lower(a.display_name) = lower(b.display_name)
-    `)) as Array<{ c: number }>;
+    `))) as Array<{ c: number }>;
     return Math.max(0, pairs - (dismissed[0]?.c ?? 0));
   }
 
-  const [entityCount, placeCount] = await Promise.all([
-    countFor("entities", "entity"),
-    countFor("places", "place"),
-  ]);
-  return { entities: entityCount, places: placeCount };
+  async function entityCount(): Promise<number> {
+    const row = (await read("duplicate_badge_stored", () =>
+      db.get(
+        ownerTenantId === undefined
+          ? sql`SELECT COUNT(*) AS c FROM duplicate_candidates WHERE federation_id = ${federationId}`
+          : sql`SELECT COUNT(*) AS c FROM duplicate_candidates WHERE tenant_id = ${ownerTenantId}`,
+      ),
+    )) as { c: number } | undefined;
+    const stored = row?.c ?? 0;
+    // Without a tenant there is no workspace whose rulings apply.
+    if (ownerTenantId === undefined || stored === 0) return stored;
+    // The same subtraction the worklist's total makes: pairs separated
+    // or ruled since they were stored are not open.
+    const { ruledPairKeys } = await import("./pending-decisions.server");
+    const { countDismissedStored } = await import("./duplicate-stored.server");
+    const dismissed = await read("duplicate_badge_separated", () =>
+      getSeparatePairs(db, federationId, "entity"),
+    );
+    const ruled = await read("duplicate_badge_ruled", () =>
+      ruledPairKeys(db, { id: ownerTenantId, federationId } as any, "entity"),
+    );
+    for (const key of ruled) {
+      dismissed.add(key);
+    }
+    return Math.max(
+      0,
+      stored - (await countDismissedStored(db, ownerTenantId, dismissed, { ...site, read: "duplicate_badge_dismissed_stored" })),
+    );
+  }
+
+  const [entities, places] = await Promise.all([entityCount(), placeCount()]);
+  return { entities, places };
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,9 @@
  * runs the auth guard, loads the sidebar payload — projects the
  * caller belongs to, plus
  * admin visibility flags — and renders the three-column shell:
- * sidebar, top bar, outlet. The shell manages the sidebar collapse
+ * sidebar, top bar, outlet. The Fisqua version and the partner logos
+ * sit at the foot of the sidebar, so the content column holds the page
+ * alone. The shell manages the sidebar collapse
  * state and the mobile drawer, exposing both through the outlet
  * context so nested pages can react.
  *
@@ -13,7 +15,7 @@
  * after resolving the request `Host` header) and surfaces the
  * capability flags to the `<Sidebar>` so capability-off nav surfaces
  * are hidden. On a tenant with the digitization capability it also
- * reads whether the user manages capture work or reviews one of the
+ * reads whether the user works in capture or reviews one of the
  * tenant's volumes, which decides the Digitization section's items.
  *
  * Two middlewares run before any loader or action under this layout:
@@ -24,7 +26,22 @@
  * the same kind of member (`access`) to the sidebar, which shows each
  * kind only what it can open.
  *
- * @version v0.8.0
+ * The loader also gives the top bar its workspace switcher: the
+ * person's home workspace and every active workspace of a federation
+ * they hold a grant in, or, for a platform admin outside an
+ * impersonation session, every workspace of kind `tenant` that is not
+ * disabled (`liveWorkspaces`, `app/lib/platform-admin.server.ts`). The
+ * platform-admin flag is read from the user row for this request.
+ *
+ * Every read the loader makes, its own and those of the helpers it
+ * calls, is retried while D1 refuses it as overloaded (`retryD1Read`,
+ * `app/lib/d1-overload.ts`), under a name of its own and with the
+ * request and its context. A refusal that outlasts the retries fails the
+ * request; the app's `handleError` records it and the root
+ * `serviceBusyMiddleware` answers 503 with the busy page in place of the
+ * router's 500.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect } from "react";
@@ -37,9 +54,9 @@ import {
   userContext,
 } from "../context";
 import { Sidebar } from "../components/layout/sidebar";
-import { Footer } from "../components/layout/footer";
 import { ImpersonationBanner } from "../components/layout/impersonation-banner";
 import { WorkspaceSwitcher } from "../components/layout/workspace-switcher";
+import { FisquaMark } from "../components/landing/landing-mark";
 import type { Route } from "./+types/_auth";
 
 export const middleware = [
@@ -78,27 +95,40 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // crowdsourcing tree, and on this host that tree holds this
   // tenant's work only.
   const db = drizzle(env.DB);
-  const membershipRows = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .where(
-      and(
-        eq(projectMembers.userId, user.id),
-        eq(projects.tenantId, tenant.id),
-      ),
-    )
-    .limit(1);
+  const { retryD1Read } = await import("../lib/d1-overload");
+  const site = { request, context };
+  const read = <T,>(name: string, run: () => Promise<T>): Promise<T> =>
+    retryD1Read(run, undefined, undefined, { ...site, read: name });
+  const membershipRows = await read("layout_project_membership", () =>
+    db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          eq(projectMembers.userId, user.id),
+          eq(projects.tenantId, tenant.id),
+        ),
+      )
+      .limit(1)
+      .all(),
+  );
   const hasAnyProjectMembership = membershipRows.length > 0;
 
   // What kind of member this is, for the sidebar: a Reader with no
   // other role sees only the records pages, a member with no access
   // sees none. The same rule `confineMemberAccess` enforces.
   const { memberAccess } = await import("../lib/reader.server");
-  const access = await memberAccess(db, tenant, user, {
-    hasGrant: context.get(grantContext) !== null,
-    isImpersonating: impersonating !== null,
-  });
+  const access = await memberAccess(
+    db,
+    tenant,
+    user,
+    {
+      hasGrant: context.get(grantContext) !== null,
+      isImpersonating: impersonating !== null,
+    },
+    site,
+  );
 
   // Surface only the capability flags the sidebar needs;
   // structurally matches `SidebarTenant` so the prop typecheck is a
@@ -118,37 +148,35 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Who the user is to capture work, for the Digitization section: read
   // only where the capability is on, since the section is gone elsewhere.
-  let capture = { manager: false, reviewer: false };
+  let capture = { manager: false, worker: false, reviewer: false };
   if (tenant.digitizationEnabled) {
     const { captureAccess } = await import("../lib/capture/screens.server");
-    capture = await captureAccess(db, tenant, user);
+    capture = await captureAccess(db, tenant, user, site);
   }
 
   // Pending-decisions badge for its sidebar entry: the whole open
   // queue, not one tab — candidate duplicate pairs plus open authority
   // proposals plus proposed vocabulary terms. Computed only for those
-  // who pass the authorities area on authorities-on tenants AND only while the current request is
-  // inside the authorities section: the duplicates part is two
-  // GROUP BY scans over lower(display_name) (which no index serves)
-  // plus a join over the separate ledger rows, and running that on
-  // every admin navigation is disproportionate for a badge. Pages
-  // outside /admin/entities, /admin/places, and /admin/decisions
-  // render the nav entry without a pill; within the section the pill
-  // is always fresh.
+  // who pass the authorities area on authorities-on tenants, and only
+  // on the duplicates worklist itself (`showsDuplicateBadge`): the
+  // duplicates part is two GROUP BY scans over lower(display_name),
+  // which no index serves, over every entity and place, plus a join
+  // over the ledger. On a federation of 82,000 records one scan reads
+  // about 164,000 rows, and running it on every page of the
+  // authorities section overloaded D1. Every other page renders the
+  // nav entry without a pill. A stored candidate list will
+  // make the count cheap enough to show everywhere.
   // The duplicates part is the CHEAP approximation (exact
   // lowercase-name collision pairs minus dismissed pairs), not the
   // worklist's accent-normalised number; see `getDuplicateBadgeCounts`.
   let duplicateCount = 0;
-  const { canAdministerArea } = await import("../lib/user-access.server");
-  const pathname = new URL(request.url).pathname;
-  const inAuthoritiesSection =
-    pathname.startsWith("/admin/entities") ||
-    pathname.startsWith("/admin/places") ||
-    pathname.startsWith("/admin/decisions");
+  const { canWorkInArea } = await import("../lib/user-access.server");
+  const { showsDuplicateBadge } = await import("../lib/authority-duplicates.server");
+  const onDuplicatesPage = showsDuplicateBadge(new URL(request.url).pathname);
   if (
-    inAuthoritiesSection &&
+    onDuplicatesPage &&
     tenant.authoritiesEnabled &&
-    canAdministerArea(user, "authorities")
+    canWorkInArea(user, "authorities")
   ) {
     const { getDuplicateBadgeCounts } = await import(
       "../lib/authority-duplicates.server"
@@ -161,11 +189,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     // Vocabulary proposals join the count only for someone who can open
     // the vocabulary tab (the records area, on a tenant with the hub).
     const [counts, pending] = await Promise.all([
-      getDuplicateBadgeCounts(db, tenant.federationId, tenant.id),
-      loadPendingDecisionCounts(db, tenant),
+      getDuplicateBadgeCounts(db, tenant.federationId, tenant.id, site),
+      loadPendingDecisionCounts(db, tenant, site),
     ]);
     const vocabularyTab =
-      canAdministerArea(user, "records") && tenant.vocabularyHubEnabled;
+      canWorkInArea(user, "records") && tenant.vocabularyHubEnabled;
     duplicateCount =
       counts.entities +
       counts.places +
@@ -183,7 +211,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
   // Workspace switcher (multi-workspace users only): the user's home
   // tenant plus every active tenant in a federation they hold a grant
-  // into. Single-workspace users get `null` and the top bar renders
+  // into, or, for a platform admin, every live workspace, since they
+  // are at home in each. Single-workspace users get `null` and the top bar renders
   // the tenant name as plain text — the switcher affordance exists
   // only where there is somewhere to switch to. Links are absolute
   // (sessions are host-scoped; a first hop may ask for a sign-in).
@@ -192,42 +221,62 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   {
     const { federationMemberships, tenants } = await import("../db/schema");
     const { inArray, isNull, and: andOp, eq: eqOp } = await import("drizzle-orm");
-    const grants = await db
-      .select({ federationId: federationMemberships.federationId })
-      .from(federationMemberships)
-      .where(eqOp(federationMemberships.userId, user.id))
-      .all();
+    const { liveWorkspaces, readIsPlatformAdmin } = await import(
+      "../lib/platform-admin.server"
+    );
+    let byId: Map<string, { id: string; slug: string; name: string }> | null = null;
+    if (
+      impersonating === null &&
+      (await read("layout_platform_admin", () => readIsPlatformAdmin(db, user.id)))
+    ) {
+      byId = new Map(
+        (await read("layout_live_workspaces", () => liveWorkspaces(db))).map((t) => [t.id, t]),
+      );
+    }
+    const grants = byId
+      ? []
+      : await read("layout_federation_grants", () =>
+          db
+            .select({ federationId: federationMemberships.federationId })
+            .from(federationMemberships)
+            .where(eqOp(federationMemberships.userId, user.id))
+            .all(),
+        );
     if (grants.length > 0) {
       const fedIds = grants.map((g) => g.federationId);
-      const reachable = await db
-        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
-        .from(tenants)
-        .where(
-          andOp(
-            inArray(tenants.federationId, fedIds),
-            eqOp(tenants.status, "active"),
-            isNull(tenants.disabledAt),
-          ),
-        )
-        .all();
-      const home = await db
-        .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
-        .from(tenants)
-        .where(eqOp(tenants.id, user.tenantId))
-        .get();
-      const byId = new Map(reachable.map((t) => [t.id, t]));
+      const reachable = await read("layout_reachable_workspaces", () =>
+        db
+          .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+          .from(tenants)
+          .where(
+            andOp(
+              inArray(tenants.federationId, fedIds),
+              eqOp(tenants.status, "active"),
+              isNull(tenants.disabledAt),
+            ),
+          )
+          .all(),
+      );
+      const home = await read("layout_home_workspace", () =>
+        db
+          .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+          .from(tenants)
+          .where(eqOp(tenants.id, user.tenantId))
+          .get(),
+      );
+      byId = new Map(reachable.map((t) => [t.id, t]));
       if (home) byId.set(home.id, home);
-      if (byId.size > 1) {
-        const reqUrl = new URL(request.url);
-        const hostSuffix = reqUrl.hostname.split(".").slice(1).join(".");
-        workspaces = [...byId.values()]
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((t2) => ({
-            name: t2.name,
-            url: `${reqUrl.protocol}//${t2.slug}.${hostSuffix}${reqUrl.port ? ":" + reqUrl.port : ""}/dashboard`,
-            current: t2.id === tenant.id,
-          }));
-      }
+    }
+    if (byId && byId.size > 1) {
+      const reqUrl = new URL(request.url);
+      const hostSuffix = reqUrl.hostname.split(".").slice(1).join(".");
+      workspaces = [...byId.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((t2) => ({
+          name: t2.name,
+          url: `${reqUrl.protocol}//${t2.slug}.${hostSuffix}${reqUrl.port ? ":" + reqUrl.port : ""}/dashboard`,
+          current: t2.id === tenant.id,
+        }));
     }
   }
 
@@ -321,12 +370,7 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
           name in stone-500 sans. Per design-system §Chrome. */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50 px-4">
         <div className="flex items-center">
-          <img
-            src="/brand/fisqua-mark.svg"
-            alt=""
-            className="h-7 w-7"
-            aria-hidden="true"
-          />
+          <FisquaMark className="h-7 w-7 shrink-0" color="var(--verdigris)" />
           <span className="ml-2 font-display text-2xl font-semibold leading-none text-verdigris">
             Fisqua
           </span>
@@ -369,9 +413,10 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
                   isRecordsAdmin: loaderData.user.isRecordsAdmin,
                   isAuthoritiesAdmin: loaderData.user.isAuthoritiesAdmin,
                   isImportsAdmin: loaderData.user.isImportsAdmin,
+                  worksInEveryArea: loaderData.user.worksInEveryArea,
                   hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
                   access: loaderData.access,
-                  isCaptureManager: loaderData.capture.manager,
+                  isCaptureWorker: loaderData.capture.worker,
                   isCaptureReviewer: loaderData.capture.reviewer,
                 }}
                 tenant={loaderData.tenant}
@@ -393,9 +438,10 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
               isRecordsAdmin: loaderData.user.isRecordsAdmin,
               isAuthoritiesAdmin: loaderData.user.isAuthoritiesAdmin,
               isImportsAdmin: loaderData.user.isImportsAdmin,
+              worksInEveryArea: loaderData.user.worksInEveryArea,
               hasAnyProjectMembership: loaderData.hasAnyProjectMembership,
               access: loaderData.access,
-              isCaptureManager: loaderData.capture.manager,
+              isCaptureWorker: loaderData.capture.worker,
               isCaptureReviewer: loaderData.capture.reviewer,
             }}
             tenant={loaderData.tenant}
@@ -415,16 +461,15 @@ export default function CatalogacionLayout({ loaderData }: Route.ComponentProps)
             className={
               isFocusedSurface
                 ? "min-h-0 flex-1"
-                : "flex-1 overflow-y-auto px-6 pb-16 pt-6"
+                : "flex-1 overflow-y-auto px-6 py-6"
             }
           >
             <Outlet />
           </div>
-          {!isFocusedSurface && <Footer />}
         </div>
       </div>
     </div>
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

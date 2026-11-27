@@ -1,13 +1,14 @@
 /**
  * Tests — merges and splits move only the request tenant's links
  *
- * A shared entity or place can be linked from descriptions in several
- * tenants of its federation. The merge workbench, the split workbench
- * and the pair merge on the decisions surface each move links from one
- * record to another. This suite gives a shared record one link from the
- * acting tenant and one from a second tenant, has a workspace admin of
- * the federation's lead tenant (a steward of the shared space) merge or
- * split it naming both link ids, and pins that:
+ * This suite pins that merges and splits move only the request tenant's
+ * links. A shared entity or place can be linked from descriptions in
+ * several tenants of its federation. The merge workbench, the split
+ * workbench and the pair merge on the decisions surface each move links
+ * from one record to another. The suite gives a shared record one link
+ * from the acting tenant and one from a second tenant, has a workspace
+ * admin of the federation's lead tenant (a steward of the shared space)
+ * merge or split it naming both link ids, and pins that:
  *
  *   - the acting tenant's link moves (or, on a collision with the
  *     survivor, is dropped as before);
@@ -19,7 +20,7 @@
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -42,11 +43,13 @@ import { createTestEntity } from "../helpers/entities";
 import { createTestPlace } from "../helpers/places";
 import { tenantContext, userContext, type User } from "../../app/context";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
-import { action as entityMerge } from "../../app/routes/_auth.admin.entities.$id.merge";
+import { action as entityMergeAction } from "../../app/routes/_auth.admin.entities.$id.merge";
 import { action as placeMerge } from "../../app/routes/_auth.admin.places.$id.merge";
 import { action as entitySplit } from "../../app/routes/_auth.admin.entities.$id.split";
 import { action as placeSplit } from "../../app/routes/_auth.admin.places.$id.split";
 import { rulePairMerge } from "../../app/lib/pair-merge.server";
+import { mergeWithEvidence, withEvidence } from "../helpers/merge-evidence";
+const entityMerge = withEvidence(entityMergeAction);
 
 const A = DEFAULT_TEST_TENANT_ID;
 const B = SECOND_TEST_TENANT_ID;
@@ -204,7 +207,7 @@ describe("merges and splits and the request tenant", () => {
     await entityLink("lb", descB, loser.id);
     await entityLink("sb", descB, survivor.id);
 
-    const result = await rulePairMerge(
+    const result = await mergeWithEvidence(
       db(),
       admin,
       makeTenantContext({ id: A }),

@@ -21,7 +21,9 @@
  *     is server-enforced, review HARDEN 2), `"both"` rejected on
  *     exactly-one-side external-ID keys (HARDEN 3), and the happy path
  *     (new record created, external id moved to the assigned side,
- *     links moved, lands on the original).
+ *     links moved, lands on the original); the new record gets a copy
+ *     of the source's function rows, in order, and the source keeps its
+ *     own.
  *   - merge link ownership: a linkId belonging to a different record is
  *     skipped, never repointed (HARDEN 4); junction collisions land in
  *     `detail.droppedLinks` with the loser's row deleted.
@@ -35,7 +37,7 @@
  *   - show-merged: the list loader excludes merged-away rows by default
  *     and includes them when `showMerged=true`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -61,6 +63,7 @@ import "../../app/routes/_auth.admin.places.$id.split";
 import "../../app/routes/_auth.admin.entities.$id";
 import "../../app/routes/_auth.admin.places.$id";
 import "../../app/routes/_auth.admin.entities";
+import { withEvidence } from "../helpers/merge-evidence";
 
 function buildContext(user: User, tenant?: Tenant): any {
   const ctx = new RouterContextProvider();
@@ -132,7 +135,7 @@ describe("merge workbench action", () => {
     await cleanDatabase();
   });
 
-  it("rejects an empty reason", async () => {
+  it("refuses a merge without evidence, whatever its reason", async () => {
     const { ctxUser, source, target } = await setupPair();
     const { action } = await import(
       "../../app/routes/_auth.admin.entities.$id.merge"
@@ -140,7 +143,7 @@ describe("merge workbench action", () => {
     const result = await action({
       request: form({
         _action: "merge",
-        reason: "   ",
+        reason: "same name",
         loserId: source.id,
         survivorId: target.id,
         linkIds: "[]",
@@ -148,14 +151,12 @@ describe("merge workbench action", () => {
       context: buildContext(ctxUser),
       params: { id: source.id },
     } as any);
-    expect(result).toEqual({ ok: false, error: "reason" });
+    expect(result).toEqual({ ok: false, error: "evidence_facts" });
   });
 
   it("reassigns links, marks the loser merged, and writes the reason to the ledger", async () => {
     const { ctxUser, source, target, linkId } = await setupPair();
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     const db = drizzle(env.DB);
 
     const redirected: any = await action({
@@ -203,9 +204,7 @@ describe("merge workbench action", () => {
 
   it("returns a conflict when the loser moved since the form loaded", async () => {
     const { ctxUser, source, target } = await setupPair();
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     const result: any = await action({
       request: form({
         _action: "merge",
@@ -224,9 +223,7 @@ describe("merge workbench action", () => {
 
   it("folds the loser's names into the survivor's variants when requested", async () => {
     const { ctxUser, source, target } = await setupPair();
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     const db = drizzle(env.DB);
     try {
       await action({
@@ -437,6 +434,45 @@ describe("split workbench action", () => {
       "these are two different people",
     );
   });
+
+  it("copies the source's function rows to the new record, in order, each function once, and keeps the source's", async () => {
+    const { ctxUser, source } = await setupSplit();
+    for (const [n, fn, src] of [[1, "Alcalde", "acta 1"], [2, "Regidor", null], [3, "Alcalde", null]] as const) {
+      await env.DB.prepare(
+        "INSERT INTO entity_functions (id, entity_id, function, source, created_at, updated_at) VALUES (?, ?, ?, ?, 1, 1)"
+      ).bind(`f-${n}`, source.id, fn, src).run();
+    }
+    const { action } = await import("../../app/routes/_auth.admin.entities.$id.split");
+    const res: any = await action({
+      request: splitForm({
+        _action: "split",
+        reason: "two people",
+        nameA: "Person A",
+        nameB: "Person B",
+        choices: JSON.stringify({
+          datesOfExistence: "original", history: "original", wikidataId: "original", viafId: "original", dbeId: "original",
+        }),
+        linkIds: "[]",
+        _updatedAt: String(source.updatedAt),
+      }),
+      context: buildContext(ctxUser),
+      params: { id: source.id },
+    } as any);
+    expect(res.status).toBe(302);
+    const fns = async (entityId: string) =>
+      (
+        await env.DB.prepare("SELECT id, function, source FROM entity_functions WHERE entity_id = ? ORDER BY rowid")
+          .bind(entityId).all<{ id: string; function: string; source: string | null }>()
+      ).results;
+    const created = await env.DB.prepare("SELECT id, functions FROM entities WHERE display_name = 'Person B'")
+      .first<{ id: string; functions: string | null }>();
+    expect(created!.functions).toBeNull();
+    const copied = await fns(created!.id);
+    // The second "Alcalde" is a function the copy holds already: it is not copied again.
+    expect(copied.map((r) => [r.function, r.source])).toEqual([["Alcalde", "acta 1"], ["Regidor", null]]);
+    expect(copied.some((r) => r.id.startsWith("f-"))).toBe(false);
+    expect((await fns(source.id)).map((r) => r.id)).toEqual(["f-1", "f-2", "f-3"]);
+  });
 });
 
 describe("superseded derivation + show-merged filter", () => {
@@ -449,9 +485,7 @@ describe("superseded derivation + show-merged filter", () => {
 
   it("getOperationActor resolves the merge actor and date", async () => {
     const { ctxUser, source, target } = await setupPair();
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     try {
       await action({
         request: form({
@@ -696,9 +730,7 @@ describe("merge link ownership + droppedLinks capture (review round 1)", () => {
       createdAt: now,
     });
 
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     await action({
       request: form({
         _action: "merge",
@@ -752,9 +784,7 @@ describe("merge link ownership + droppedLinks capture (review round 1)", () => {
       createdAt: Date.now(),
     });
 
-    const { action } = await import(
-      "../../app/routes/_auth.admin.entities.$id.merge"
-    );
+    const action = withEvidence((await import("../../app/routes/_auth.admin.entities.$id.merge")).action);
     await action({
       request: form({
         _action: "merge",
@@ -1070,4 +1100,4 @@ describe("old detail-route merge/split intents are gone (DEFECT 1 regression)", 
   });
 });
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -1,11 +1,12 @@
 /**
  * DuplicatePairCard — the list unit for a scan-found duplicate pair.
  *
- * Two authority records answer to one name. Fisqua's scan finds the
- * pair but does not recommend on identity — it asks — so the ask slot
- * always carries the outlined-saffron judgement material via
- * `AskPanel`'s `judgement` state, never the filled recommendation
- * panel `VocabularyTermCard` uses.
+ * This component is the list unit for a duplicate pair the scan found: two
+ * authority records that answer to one name. Fisqua's scan finds the pair
+ * but does not recommend on identity — it asks — so the ask slot always
+ * carries the outlined-saffron judgement material through `AskPanel`'s
+ * `judgement` state, never the filled recommendation panel
+ * `VocabularyTermCard` uses.
  *
  * Each pane separates two registers with a hairline: provenance prose
  * above is evidence of identity, the thing an admin actually reasons
@@ -28,7 +29,16 @@
  * on the card, even when it names a survivor. The open question above
  * it stays saffron regardless of what the direction line says.
  *
- * @version v0.7.0
+ * `signals` are the chips under the heading: what the scan found for the
+ * pair (the same name or a near spelling, overlapping dates with both
+ * spans, a shared external id), already translated. They inform the
+ * reader and are not evidence: a merge still needs a fact and the
+ * descriptions that show it, chosen in the merge dialog.
+ *
+ * Entity pairs pass `facts` instead of `signals`: the stored facts block
+ * (`DuplicateFacts`), shown in the same place under the heading.
+ *
+ * @version v0.9.0
  */
 
 import { ChevronRight, Merge } from "lucide-react";
@@ -91,6 +101,8 @@ export function DuplicatePairCard({
   right,
   question,
   directionNote,
+  signals = [],
+  facts,
   children,
   pending,
   onLookCloser,
@@ -108,6 +120,10 @@ export function DuplicatePairCard({
    *  survives and why. A statement of consequence, never a
    *  recommendation; the question above it stays open. */
   directionNote?: React.ReactNode;
+  /** What the scan found, pre-translated, one chip each. Informative only. */
+  signals?: string[];
+  /** Entities: the stored facts block (`DuplicateFacts`), shown under the heading. */
+  facts?: React.ReactNode;
   /** The comment thread — pass a `DecisionThread`. */
   children?: React.ReactNode;
   /** Disables the three actions while a ruling is in flight. */
@@ -120,12 +136,26 @@ export function DuplicatePairCard({
   onMerge: () => void;
 }) {
   const { t } = useTranslation("decisions");
+  const { t: ta } = useTranslation("authorities");
   return (
     <div className="rounded-lg border border-stone-200 px-6 pb-4 pt-5 transition-shadow duration-150 hover:shadow-sm">
       <h3 className="font-serif text-2xl font-semibold leading-tight tracking-[-0.01em] text-indigo">
         {object}
       </h3>
       <p className="mt-[3px] text-13 text-stone-500">{contextLine}</p>
+      {signals.length > 0 ? (
+        <ul className="mt-2.5 flex flex-wrap items-center gap-1.5" aria-label={ta("duplicates.signals_label")}>
+          {signals.map((signal) => (
+            <li
+              key={signal}
+              className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-0.5 text-xs leading-normal text-stone-600"
+            >
+              {signal}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {facts}
 
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <PairPane record={left} />

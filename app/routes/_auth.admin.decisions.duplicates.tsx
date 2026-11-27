@@ -4,11 +4,13 @@
  * This route shows the two authority duplicates queues — entities and
  * places — as one tab of the Pending decisions surface, switched by
  * `?type=` (entities by default) and filtered by `?status=` (open by
- * default). Candidates are still computed deterministically on every
- * request by `computeDuplicateCandidates` over the federation's active
- * records; the scan library is untouched. What changed is the unit of
- * work: the old two-column worklist row is now a `DuplicatePairCard`,
- * the card language the rest of this surface already speaks.
+ * default). Entity candidates are the pairs the scheduled recheck
+ * stored in `duplicate_candidates`, read for the workspace in weight
+ * order with the facts that support each (`duplicate-stored.server`);
+ * place candidates are still computed on every request by
+ * `computeDuplicateCandidates` over the federation's active records.
+ * Each pair is shown as a `DuplicatePairCard`, the card language the
+ * rest of this surface already speaks.
  *
  * A card is a question, not a form. The scan finds a pair but does not
  * recommend on identity, so the ask stays saffron and open; the
@@ -33,7 +35,25 @@
  * the ruling to the server function, and turns a thrown `Response`
  * into a translated line. The reason is optional on both dialogs —
  * `rulePairKeepBoth` accepts null, and the earlier worklist's
- * required-reason rejection went with the worklist.
+ * required-reason rejection went with the worklist. A merge refused
+ * because its relation repoints would collide (`LinkCollisionError`) is
+ * answered with the description, the entity and the role it names.
+ * An entity merge carries the evidence its panel collected, a fact and a
+ * cited description on each side (`evidenceFromForm`); the server
+ * refuses one without it, and the route answers with the refusal's
+ * evidence code and, for a missing fact, what the submitted records are
+ * (`shape`), which words the refusal. A place merge carries none. An
+ * open dialog reads its pair from the loader's current data
+ * (`currentPair`). The loader reads no descriptions for that panel. The merge dialog loads
+ * the two records' descriptions through a fetcher from
+ * `/admin/decisions/evidence` when it opens, showing a short loading line
+ * until they arrive (`evidenceSidesFor`), and React Router loads them
+ * again after a ruling is submitted, so a citation whose link has gone is
+ * pruned. A place card shows as chips the signals the scan computed:
+ * the same name or a near spelling, a shared external id. An entity
+ * card shows the stored facts instead (`DuplicateFacts`): the
+ * shared-document warning, offices, associates, documents, dates and
+ * places. The chips and the facts inform; they are not evidence.
  *
  * Ruled pairs are subtracted from BOTH dismissal stores: the `separate`
  * ledger operations the scan has always excluded, unioned with ruled
@@ -42,13 +62,18 @@
  * reads those ruled rows back, newest first, so a ruling stays
  * retrievable without being reopenable.
  *
+ * The count line above the queue (`DuplicateCountLine`) gives the full
+ * number of candidate pairs and, for several, says they are sorted by
+ * match strength; one pair has no order, so its line says only that it
+ * is a candidate pair.
+ *
  * Gating is what the moved pages carried: admin plus the `authorities`
  * capability on loader and action. The pair rule itself lives inside
  * the two server functions — unrestricted when this tenant owns both
  * records, steward-gated otherwise, 404 when either belongs to another
  * tenant.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -70,11 +95,24 @@ import {
 } from "~/components/admin/duplicate-pair-card";
 import { PairMergeDialog } from "~/components/admin/pair-merge-dialog";
 import { useFormatters } from "~/lib/use-formatters";
-import type { CandidateRecord } from "~/lib/authority-duplicates.server";
+import type { CandidateRecord, MatchSignal } from "~/lib/authority-duplicates.server";
+import type { PairFacts } from "~/lib/duplicate-facts";
+import { DuplicateFacts } from "~/components/admin/duplicate-facts";
+import {
+  evidenceErrorKey,
+  evidenceFormEntries,
+  evidenceShape,
+  type EvidenceShape,
+  type EvidenceSide,
+  type EvidenceValue,
+} from "~/components/admin/merge-evidence-panel";
+import { isEvidenceError } from "~/lib/merge-facts";
 // Type-only: `pending-decisions.server` must never reach the client
 // bundle, so only the payload shape travels through this import.
 import type { DuplicatePairPayload } from "~/lib/pending-decisions.server";
+import type { EvidenceError } from "~/lib/merge-facts";
 import type { Route } from "./+types/_auth.admin.decisions.duplicates";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** Cap the rendered queue; the count line reflects the full number. */
 const MAX_PAIRS = 50;
@@ -122,13 +160,19 @@ interface PairSide {
   /** First provenance line, already cut; null when none is recorded. */
   provenance: string | null;
   descriptionCount: number;
+  /** The record's span of dates, for the overlapping-dates chip; entities only. */
+  dates: string | null;
 }
 
-interface PairView {
+export interface PairView {
   /** The decision `sourceRef` — sorted-id pair key. */
   key: string;
   a: PairSide;
   b: PairSide;
+  /** Places: what the scan found for the pair, as the card's chips show it. Empty for entities. */
+  signals: MatchSignal[];
+  /** Entities: the stored facts that support the pair, with current names. */
+  facts?: PairFacts;
   comments: ThreadComment[];
 }
 
@@ -151,7 +195,13 @@ interface RuledPairRow {
  */
 type PairRulingResult =
   | { ok: true; ruling: "kept_both" | "merged" }
-  | { ok: false; code: "conflict" | "generic" };
+  | { ok: false; code: "conflict" | "generic" }
+  | { ok: false; code: EvidenceError; shape: EvidenceShape }
+  | {
+      ok: false;
+      code: "relation_collision";
+      collision: { referenceCode: string; entityCode: string; role: string | null };
+    };
 
 /**
  * The scan's record shape plus the two columns the card needs and the
@@ -162,6 +212,73 @@ type ScanRecord = CandidateRecord & {
   entityType?: EntityType;
   sources?: string | null;
 };
+
+/** What `/admin/decisions/evidence` answers: the descriptions of the pair's two records, by entity id. */
+export interface EvidenceAnswer {
+  a: string;
+  b: string;
+  descriptions?: Record<string, EvidenceSide["descriptions"]>;
+  /** The pair is no longer two live records of the workspace (after its merge, say). */
+  gone?: true;
+}
+
+/** Whether `answer` is for `pair`, in either order. */
+function answersPair(pair: Pick<PairView, "a" | "b">, answer: EvidenceAnswer | undefined): answer is EvidenceAnswer {
+  return !!answer && ((answer.a === pair.a.id && answer.b === pair.b.id) || (answer.a === pair.b.id && answer.b === pair.a.id));
+}
+
+/** Whether the evidence route has said `pair` is gone: the dialog for it is closed. */
+export function evidenceGone(pair: PairView | null, answer: EvidenceAnswer | undefined): boolean {
+  return !!pair && answersPair(pair, answer) && answer.gone === true;
+}
+
+/** The address of the pair's evidence descriptions. */
+export function evidencePath(pair: Pick<PairView, "a" | "b">): string {
+  return `/admin/decisions/evidence?${new URLSearchParams({ a: pair.a.id, b: pair.b.id })}`;
+}
+
+/**
+ * The address the open dialog's evidence fetcher should load now, or
+ * null: no merge dialog is open, the fetcher holds this pair's answer
+ * already (its descriptions, or word that it has gone), or a load of its
+ * own is in flight.
+ */
+export function evidenceToLoad(
+  pair: PairView | null,
+  answer: EvidenceAnswer | undefined,
+  state: "idle" | "loading" | "submitting",
+): string | null {
+  if (!pair || state !== "idle" || answersPair(pair, answer)) return null;
+  return evidencePath(pair);
+}
+
+/**
+ * The evidence panel's sides for `pair` from what the evidence route
+ * answered, or null while no answer for this pair has arrived (another
+ * pair's answer, or none yet).
+ */
+export function evidenceSidesFor(pair: PairView, answer: EvidenceAnswer | undefined): [EvidenceSide, EvidenceSide] | null {
+  if (!answersPair(pair, answer) || answer.gone || !answer.descriptions) return null;
+  return [
+    { entityId: pair.a.id, name: pair.a.name, code: pair.a.code, descriptions: answer.descriptions[pair.a.id] ?? [] },
+    { entityId: pair.b.id, name: pair.b.name, code: pair.b.code, descriptions: answer.descriptions[pair.b.id] ?? [] },
+  ];
+}
+
+/**
+ * The pair as the loader holds it now, found by its key. When the pair
+ * has left the queue, the snapshot taken as the dialog opened stands in.
+ * A dialog reads its pair through this, so the evidence it offers and
+ * its wording follow a revalidation.
+ */
+export function currentPair(pairs: readonly PairView[], opened: PairView): PairView {
+  return pairs.find((p) => p.key === opened.key) ?? opened;
+}
+
+/** What the pair's records are, for the wording of the merge's evidence panel. */
+function evidenceShapeOf(pair: PairView) {
+  return evidenceShape(pair.a.entityType, pair.b.entityType);
+}
 
 /**
  * The pane's evidence line: the first non-empty line of the record's
@@ -184,9 +301,53 @@ function firstProvenanceLine(sources: string | null | undefined): string | null 
 // Loader
 // ---------------------------------------------------------------------------
 
+/**
+ * The count line above the queue: the FULL candidate count, with a
+ * trailing "+" when the computation itself was capped, the words for
+ * one pair or for several (`dupCountLine_one`, `dupCountLine_other`),
+ * and a showing-of note when the render cap hides pairs.
+ */
+export function DuplicateCountLine({
+  totalPairs,
+  truncated,
+  shown,
+}: {
+  totalPairs: number;
+  truncated: boolean;
+  shown: number;
+}) {
+  const { t: ta } = useTranslation("authorities");
+  return (
+    <p className="mt-6 text-13 nums text-stone-500">
+      <span className="font-semibold text-indigo">
+        {totalPairs}
+        {truncated ? "+" : ""}
+      </span>{" "}
+      {ta("dupCountLine", { count: totalPairs })}
+      {(shown < totalPairs || truncated) && (
+        <span className="text-stone-400">
+          {" · "}
+          {ta("dupShowing", {
+            shown,
+            total: `${totalPairs}${truncated ? "+" : ""}`,
+          })}
+        </span>
+      )}
+    </p>
+  );
+}
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("decisions:tabDuplicates"),
+    heading("decisions:surfaceName"),
+  );
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, desc, eq, inArray, isNull, or, sql } = await import(
     "drizzle-orm"
@@ -202,12 +363,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { computeDuplicateCandidates, getSeparatePairs } = await import(
     "~/lib/authority-duplicates.server"
   );
+  const { readStoredPairs, resolveFacts } = await import(
+    "~/lib/duplicate-stored.server"
+  );
   const { listDecisionComments, pairKey, ruledPairKeys } = await import(
     "~/lib/pending-decisions.server"
   );
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
 
@@ -313,10 +477,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   // -- Open view --------------------------------------------------------
-  // Candidate records. Entities carry lifespan dates as a tie-signal,
-  // their type for the pane label, and their provenance prose; places
-  // have none of the three, so they pass the name and the shared TGN id.
-  const rows: ScanRecord[] =
+  // Entities read the pairs the scheduled recheck stored, with the facts
+  // that support each; places are still computed here from the
+  // federation's active records and the shared TGN id.
+  const placeRows: ScanRecord[] =
     kind === "places"
       ? await db
           .select({
@@ -333,26 +497,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
             ),
           )
           .all()
-      : await db
-          .select({
-            id: entities.id,
-            name: entities.displayName,
-            code: entities.entityCode,
-            dateStart: entities.dateStart,
-            dateEnd: entities.dateEnd,
-            dates: entities.datesOfExistence,
-            externalId: entities.wikidataId,
-            entityType: entities.entityType,
-            sources: entities.sources,
-          })
-          .from(entities)
-          .where(
-            and(
-              authorityScope(entities, tenant.federationId, tenant.id),
-              isNull(entities.mergedInto),
-            ),
-          )
-          .all();
+      : [];
 
   // Both dismissal stores, unioned into the one set the scan already
   // takes. Same key shape on both sides (sorted-id pair key).
@@ -362,11 +507,37 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   ]);
   for (const key of ruledKeys) separatePairs.add(key);
 
-  const { pairs: allPairs, truncated } = computeDuplicateCandidates(
-    rows,
-    separatePairs,
-  );
-  const visible = allPairs.slice(0, MAX_PAIRS);
+  type Visible = { a: CandidateRecord; b: CandidateRecord; signals: MatchSignal[]; facts?: PairFacts };
+  let visible: Visible[];
+  let totalPairs: number;
+  let truncated = false;
+  let rows: ScanRecord[] = placeRows;
+  if (kind === "places") {
+    const computed = computeDuplicateCandidates(placeRows, separatePairs);
+    visible = computed.pairs.slice(0, MAX_PAIRS);
+    totalPairs = computed.pairs.length;
+    truncated = computed.truncated;
+  } else {
+    const stored = await readStoredPairs(db, tenant, separatePairs, MAX_PAIRS);
+    const resolved = await resolveFacts(db, tenant, stored.pairs.map((p) => p.facts));
+    rows = [...stored.records.values()].map((r) => ({
+      id: r.id,
+      name: r.name,
+      code: r.code,
+      dateStart: r.dateStart,
+      dateEnd: r.dateEnd,
+      dates: r.dates,
+      entityType: r.entityType,
+      sources: r.sources,
+    }));
+    visible = stored.pairs.map((p, i) => ({
+      a: stored.records.get(p.idA)!,
+      b: stored.records.get(p.idB)!,
+      signals: [],
+      facts: resolved[i],
+    }));
+    totalPairs = stored.total;
+  }
 
   // Link counts for the records on the visible cards only, over this
   // tenant's descriptions: a merge ruled here moves only those.
@@ -445,6 +616,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const detail = new Map(rows.map((r) => [r.id, r] as const));
   const sideOf = (record: CandidateRecord): PairSide => {
     const full = detail.get(record.id);
+    const span = [full?.dateStart, full?.dateEnd].filter(Boolean).join("–");
     return {
       id: record.id,
       name: record.name,
@@ -452,6 +624,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       entityType: full?.entityType ?? null,
       provenance: firstProvenanceLine(full?.sources),
       descriptionCount: linkCounts.get(record.id) ?? 0,
+      dates: full?.dates || span || null,
     };
   };
 
@@ -461,6 +634,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       key,
       a: sideOf(p.a),
       b: sideOf(p.b),
+      signals: p.signals,
+      ...(p.facts ? { facts: p.facts } : {}),
       comments: commentsByPair[key] ?? [],
     };
   });
@@ -471,7 +646,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     status,
     pairs,
     ruled,
-    totalPairs: allPairs.length,
+    totalPairs,
     truncated,
   };
 }
@@ -482,15 +657,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const { authorityScope } = await import("~/lib/authority-ownership.server");
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, inArray, isNull } = await import("drizzle-orm");
   const { entities, places } = await import("~/db/schema");
   const { rulePairKeepBoth } = await import("~/lib/pending-decisions.server");
-  const { rulePairMerge } = await import("~/lib/pair-merge.server");
+  const { LinkCollisionError, rulePairMerge } = await import("~/lib/pair-merge.server");
+  const { evidenceFromForm, isEvidenceError } = await import("~/lib/merge-evidence.server");
 
   const user = context.get(userContext);
-  requireArea(user, "authorities");
+  requireAreaWork(user, "authorities");
   const tenant = context.get(tenantContext);
   requireCapability(tenant, "authorities");
   const db = drizzle(context.cloudflare.env.DB);
@@ -559,6 +735,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         reason,
         Date.now(),
         requestTimeZone(request),
+        evidenceFromForm(formData),
       );
     } else {
       await rulePairKeepBoth(
@@ -577,10 +754,28 @@ export async function action({ request, context }: Route.ActionArgs) {
     // admin can read. Anything else the ruling refused is reported in
     // the same register — never the thrown response's own text.
     if (err instanceof Response) {
+      // An entity merge refused for its evidence names the refusal, so the
+      // panel can say which part is missing or gone.
+      const body = err.status === 400 || err.status === 409 ? await err.clone().text() : "";
+      if (isEvidenceError(body)) {
+        // The refusal is worded by what the submitted records are, whatever dialog is open when it lands.
+        const types = await db
+          .select({ id: entities.id, entityType: entities.entityType })
+          .from(entities)
+          .where(inArray(entities.id, [first, second]))
+          .all();
+        const typeOf = (id: string) => types.find((r) => r.id === id)?.entityType ?? null;
+        return { ok: false as const, code: body, shape: evidenceShape(typeOf(first), typeOf(second)) };
+      }
       return {
         ok: false as const,
         code: err.status === 409 ? ("conflict" as const) : ("generic" as const),
       };
+    }
+    // A merge whose relation repoints would collide is refused before
+    // anything is written, naming the description, the entity and the role.
+    if (err instanceof LinkCollisionError) {
+      return { ok: false as const, code: "relation_collision" as const, collision: err.collision };
     }
     throw err;
   }
@@ -615,6 +810,27 @@ export default function DecisionDuplicatesPage({
   } | null>(null);
 
   const pending = fetcher.state !== "idle";
+  // The open dialog reads its pair from the loader's current data, so a
+  // revalidation after a refusal reaches its evidence options.
+  const open = dialog ? { kind: dialog.kind, pair: currentPair(pairs, dialog.pair) } : null;
+  // The open merge dialog's evidence options, loaded for its pair alone,
+  // through a fetcher of the pair's own: an answer for one pair never
+  // stands in for, or replaces, another's. React Router loads them again
+  // after each ruling is submitted.
+  const evidenceFor = open?.kind === "merge" && kind === "entities" ? open.pair : null;
+  const evidenceFetcher = useFetcher<EvidenceAnswer>({ key: `merge-evidence:${evidenceFor?.key ?? "none"}` });
+  const evidenceLoad = evidenceToLoad(evidenceFor, evidenceFetcher.data, evidenceFetcher.state);
+  // A pair the evidence route says has gone (merged, by this ruling or
+  // another's) is no longer open: its dialog closes.
+  const pairGone = evidenceGone(evidenceFor, evidenceFetcher.data);
+  useEffect(() => {
+    if (pairGone) setDialog(null);
+  }, [pairGone]);
+  useEffect(() => {
+    if (evidenceLoad) evidenceFetcher.load(evidenceLoad);
+    // `load` is stable across renders; the fetcher object is not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evidenceLoad]);
 
   // Translate the action's coded result into the shape the shared
   // banner reads. The action returns codes, not prose, so the copy
@@ -632,9 +848,20 @@ export default function DecisionDuplicatesPage({
       };
     return {
       ok: false,
-      error: data.code === "conflict" ? t("pairErrorConflict") : t("errorGeneric"),
+      error:
+        isEvidenceError(data.code)
+          ? ta(evidenceErrorKey(data.code, "shape" in data ? data.shape : "generic"))
+          : data.code === "conflict"
+          ? t("pairErrorConflict")
+          : data.code === "relation_collision"
+            ? t("pairErrorRelationCollision", {
+                description: data.collision.referenceCode,
+                entity: data.collision.entityCode,
+                role: data.collision.role ?? "",
+              })
+            : t("errorGeneric"),
     };
-  }, [fetcher.data, t, tc]);
+  }, [fetcher.data, t, ta, tc]);
 
   // The dialog belongs to a pair that leaves the queue the moment the
   // ruling lands; close it as soon as the submission comes back.
@@ -732,20 +959,27 @@ export default function DecisionDuplicatesPage({
   };
 
   /** The survivor the dialog chose, mapped back onto the two records. */
-  const submitMerge = (pair: PairView, survivorCode: string, reason: string) => {
+  const submitMerge = (pair: PairView, survivorCode: string, reason: string, evidence?: EvidenceValue) => {
     const survivor = survivorCode === pair.a.code ? pair.a : pair.b;
     const loser = survivor.id === pair.a.id ? pair.b : pair.a;
-    fetcher.submit(
-      {
-        _action: "merge",
-        recordKind: kind,
-        survivorId: survivor.id,
-        loserId: loser.id,
-        reason,
-      },
-      { method: "post" },
-    );
+    const form = new FormData();
+    form.set("_action", "merge");
+    form.set("recordKind", kind);
+    form.set("survivorId", survivor.id);
+    form.set("loserId", loser.id);
+    form.set("reason", reason);
+    // An entity merge carries the evidence its panel collected.
+    for (const [name, value] of evidence ? evidenceFormEntries(evidence) : []) form.append(name, value);
+    fetcher.submit(form, { method: "post" });
   };
+
+  /** The card's chips: what the scan found, never evidence. */
+  const signalsOf = (pair: PairView): string[] =>
+    pair.signals.map((signal) =>
+      signal === "dates"
+        ? ta("duplicates.signal.dates", { a: pair.a.dates ?? "—", b: pair.b.dates ?? "—" })
+        : ta(`duplicates.signal.${signal}`),
+    );
 
   const submitKeepBoth = (pair: PairView, reason: string) => {
     fetcher.submit(
@@ -831,25 +1065,7 @@ export default function DecisionDuplicatesPage({
         </div>
       ) : (
         <>
-          {/* Count line — the FULL candidate count; a trailing "+" when
-              the computation itself was capped, and an explicit
-              showing-of note when the render cap hides pairs */}
-          <p className="mt-6 text-13 nums text-stone-500">
-            <span className="font-semibold text-indigo">
-              {totalPairs}
-              {truncated ? "+" : ""}
-            </span>{" "}
-            {ta("dupCountLine")}
-            {(pairs.length < totalPairs || truncated) && (
-              <span className="text-stone-400">
-                {" · "}
-                {ta("dupShowing", {
-                  shown: pairs.length,
-                  total: `${totalPairs}${truncated ? "+" : ""}`,
-                })}
-              </span>
-            )}
-          </p>
+          <DuplicateCountLine totalPairs={totalPairs} truncated={truncated} shown={pairs.length} />
 
           <div className="mt-3 flex flex-col gap-3">
             {pairs.map((pair) => (
@@ -861,6 +1077,8 @@ export default function DecisionDuplicatesPage({
                 right={paneOf(pair.b)}
                 question={questions[flavourOf(pair)]}
                 directionNote={directionNote(pair)}
+                signals={signalsOf(pair)}
+                facts={pair.facts ? <DuplicateFacts facts={pair.facts} /> : undefined}
                 pending={pending}
                 onLookCloser={() =>
                   navigate(
@@ -881,45 +1099,60 @@ export default function DecisionDuplicatesPage({
 
       {/* Keep both — final, but nothing is destroyed, so the confirm
           takes the neutral tone rather than madder. */}
-      {dialog?.kind === "keep" && (
+      {open?.kind === "keep" && (
         <DismissDialog
           tone="neutral"
-          title={t("keepBothModalTitle", { name: objectOf(dialog.pair) })}
+          title={t("keepBothModalTitle", { name: objectOf(open.pair) })}
           body={t("keepBothModalBody")}
           confirmLabel={t("keepBoth")}
-          reasonPlaceholder={whyDifferent[flavourOf(dialog.pair)]}
+          reasonPlaceholder={whyDifferent[flavourOf(open.pair)]}
           pending={pending}
           onCancel={() => setDialog(null)}
-          onConfirm={(reason) => submitKeepBoth(dialog.pair, reason)}
+          onConfirm={(reason) => submitKeepBoth(open.pair, reason)}
         />
       )}
 
       {/* Merge — the direction is chosen here and nowhere else. */}
-      {dialog?.kind === "merge" && (
+      {open?.kind === "merge" && (
         <PairMergeDialog
-          title={t("mergeModalTitle", { name: objectOf(dialog.pair) })}
+          title={t("mergeModalTitle", { name: objectOf(open.pair) })}
           options={[
             {
-              code: dialog.pair.a.code,
-              loadLine: loadLine(dialog.pair.a.descriptionCount),
+              code: open.pair.a.code,
+              loadLine: loadLine(open.pair.a.descriptionCount),
             },
             {
-              code: dialog.pair.b.code,
-              loadLine: loadLine(dialog.pair.b.descriptionCount),
+              code: open.pair.b.code,
+              loadLine: loadLine(open.pair.b.descriptionCount),
             },
           ]}
           defaultSurvivorCode={
-            dialog.pair.a.descriptionCount === dialog.pair.b.descriptionCount
+            open.pair.a.descriptionCount === open.pair.b.descriptionCount
               ? null
-              : dialog.pair.a.descriptionCount > dialog.pair.b.descriptionCount
-                ? dialog.pair.a.code
-                : dialog.pair.b.code
+              : open.pair.a.descriptionCount > open.pair.b.descriptionCount
+                ? open.pair.a.code
+                : open.pair.b.code
           }
-          reasonPlaceholder={whySame[flavourOf(dialog.pair)]}
+          reasonPlaceholder={whySame[flavourOf(open.pair)]}
           pending={pending}
+          evidence={
+            kind === "entities"
+              ? (() => {
+                  const sides = evidenceSidesFor(open.pair, evidenceFetcher.data);
+                  return {
+                    sides: sides ?? [
+                      { entityId: open.pair.a.id, name: open.pair.a.name, code: open.pair.a.code, descriptions: [] },
+                      { entityId: open.pair.b.id, name: open.pair.b.name, code: open.pair.b.code, descriptions: [] },
+                    ],
+                    loading: sides === null,
+                    shape: evidenceShapeOf(open.pair),
+                  };
+                })()
+              : undefined
+          }
           onCancel={() => setDialog(null)}
-          onConfirm={(survivorCode, reason) =>
-            submitMerge(dialog.pair, survivorCode, reason)
+          onConfirm={(survivorCode, reason, evidence) =>
+            submitMerge(open.pair, survivorCode, reason, evidence)
           }
         />
       )}
@@ -996,4 +1229,4 @@ function RuledPairList({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */
