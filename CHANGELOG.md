@@ -6,6 +6,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-27
+
+### Added
+
+- **Command line for bulk changes.** Operators change people, places and descriptions from a reviewed spreadsheet, with `scripts/fisqua.ts`. Each file is first planned, which shows exactly what would change and writes nothing. It is then applied as one unit that either succeeds whole or changes nothing, and is read back. A file can create, update, merge, split and delete people and places; add, change and remove their links to documents; record relations; rename a function; and set a description's fields, images, former codes and digital flag. The report gives the code of every record a file creates. Operators can also export, publish to the public site and record capture decisions from it. Production needs explicit confirmation. Production reads run one at a time, at least 1 s apart, with at most 1,000 rows each and a 5-minute limit per read.
+- **Digitization list.** From the Descriptions screen or any search result, you mark the descriptions you want digitized. A Captua scanning station paired with the workspace receives the list, works through it, and reports any item it can't take, with the reason.
+- **Pairing a scanning station.** A workspace admin pairs a station by typing a short code shown on it. This replaces copying a link token by hand.
+- **Finding documents from the station.** The operator can look up a description by reference code, or search for it, and start capturing a document that isn't on the list.
+- **Openings and pages never captured.** A missing opening or page is marked at the station and reported to Fisqua. Fisqua holds the volume back from processing until that opening or page is captured, or closed with a reason.
+- **Calibration shots.** A station can send, with a volume, the color-card photographs each camera takes at the start and whenever the operator changes the exposure or zoom. Fisqua keeps them with the volume, checks each one on arrival, and never counts them as pages (exchange contract 1.12).
+- **Capture QC.** Each captured page pair can be approved, rejected for retake, or excluded, which keeps it out of the document without a retake. Fisqua records who decided what each time decisions are saved. The list of volumes to check shows whether each is ready, still being prepared or failed, and lists the ready ones first.
+- **Relations between people.** When a document says one person was another's widow, guarantor or attorney, you can record that relation on the link, with its certainty and details. A person can have a recorded gender, so that a relation reads correctly. Each federation defines its own kinds of relation. Relations are kept in Fisqua and are not yet shown on the public site.
+- **Possible duplicates backed by evidence.** The list of possible duplicate people shows a pair only when something besides the name supports it: an office both hold, a person both appear with, or a document that names both. Each pair lists those facts, with both records' dates and shared places. Pairs whose dates are more than five years apart, pairs a document relates to each other, and near spellings of two one-word names are left out. A scheduled job keeps the list current within minutes of any change, wherever it was made. The pair page shows, for each record, the descriptions that name it, the people and places those descriptions also name, and where the record came from.
+- **Merges need evidence.** Merging two people needs a fact besides the shared name (dates, an office, kin, a place or a matter) and a description on each side that shows it. Fisqua stores that evidence with the merge.
+- **Records of archives and their supporters.** Each archive's page holds its ISDIAH description and the institutions that supported its cataloguing, with their credit. The federation records who keeps the catalogue online. Fisqua writes one attribution line from these into every published METS, Dublin Core and IIIF manifest.
+- **Licence and citation.** Each archive's record holds its catalogue's licence. The federation holds Spanish and English citation templates, for the public site and for a single record.
+- **Interface language.** Each workspace sets a default language, Fisqua remembers the language you choose, and emails go out in the recipient's language.
+- **Platform admin.** A role for the people who run a Fisqua installation, with access to every live workspace.
+- **Following a publish.** The publish page lists every step from the start and ticks each one off. A fonds that hasn't changed since the last publish is skipped.
+- **Merged records keep their address.** The code of a record merged away leads to the one that remains.
+- **Each page has its own browser tab title.**
+
+### Changed
+
+- **The export to the public site** carries when each record was last changed and each person's functions. It counts only published children, and gives every published description the address of the METS file the public site writes for it. A record you unpublish is removed from the public site at its next update, and the next publish takes merges and splits to it.
+- **Publishing refreshes a description's own image manifest** when its title, scope or homepage label changed since the last publish. It leaves the rest of the manifest as it was.
+- **The descriptions index.** A publish of some fonds keeps every other published fonds in the index the public site builds from. It refuses to run when the stored index is incomplete.
+- **Document and place roles** come from each federation's own list, not a list fixed in Fisqua.
+- **One row per function.** A person's record holds each function once. Editing, merging, splitting or a bulk change no longer adds one it already has.
+- **The publish page** shows at once and loads its counts afterwards. It is now under Import and export.
+- **Publishing needs the right to publish.** A failed run no longer blocks the next one.
+- **Image processing** runs at most four review runs at a time.
+- **Federation staff can work in every area** of the federation's workspaces.
+- **The version number is shown in the sidebar.**
+- **Spanish wording:** the ISAD(G) names of description levels; «espacio de trabajo» and «fusionar»; «el equipo» for the scanning station; «par» for a pair of possible duplicates; curly quotes; and a plural form for exact millions.
+- **The Fisqua mark** uses the pomegranate ink drawings.
+
+### Removed
+
+- **Fisqua's own METS files.** The public site writes them; Fisqua still gives each published document its METS address.
+- **The one-off operator scripts for bulk changes,** which the command line replaces.
+
+### Fixed
+
+- Edit forms for people, places and descriptions could erase fields they don't show, such as a record's ids in earlier systems.
+- Saving a form, a split, a delete or a vocabulary change could overwrite a change someone else had made since you opened it; these are now refused.
+- Merging two people lost the functions of the one merged away.
+- The merge screen's search for the record to keep found nothing.
+- After a person was split into two records, each came back as a possible duplicate of the other.
+- The EAD3 export didn't always treat the top of a fonds as the top of the finding aid.
+- Retyping a function term kept the term chosen before.
+- Sign-in and workspace pages failed with an error while the database was briefly overloaded. Fisqua now retries the reads, and shows a page asking you to retry if it still can't answer.
+- Volumes partly checked, with retakes requested, dropped off the capture QC list.
+- A page file name or key with a control character passed delivery and aborted its volume in processing. It is now refused at delivery, and refusal messages escape such characters.
+- Links to World Historical Gazetteer and Getty TGN records led to a portal page and to linked data instead of the readable record.
+
+### Compatibility
+
+- A scanning station on Captua 0.3.0 needs Fisqua 0.9.0. Fisqua 0.8.0 refuses its deliveries that record a page never captured.
+- Migrations 0111 to 0129 are forward-only. Downgrading to 0.8.0 is unsupported.
+
 ## [0.8.0] - 2026-10-30
 
 ### Added
