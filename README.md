@@ -28,7 +28,7 @@ One feature at the heart of Fisqua distinguishes it from most archive-management
 - Places map explorer with coordinate editing, geocoding search, and a controlled coordinate-precision vocabulary
 - Entity, place, and repository administration with filterable worklists, linked-description context cards, and OCR-snippet evidence
 - Vocabularies hub with draft / review / approve flow for controlled terms
-- Publish pipeline that exports fonds-level JSON, METS, and manifests to R2 through a durable Cloudflare Workflow
+- Publish pipeline that exports fonds-level JSON and IIIF manifests to R2 through a durable Cloudflare Workflow
 - Role-dependent dashboards with progress tracking
 - Bilingual interface (English / Spanish)
 
@@ -76,8 +76,10 @@ npm run dev
 
 ## Deployment
 
+Apply migrations to production D1 first; the deploy script refuses to deploy while any migration is unapplied:
+
 ```bash
-npm run deploy
+npx wrangler d1 migrations apply DB --remote
 ```
 
 Set secrets for production:
@@ -86,10 +88,10 @@ Set secrets for production:
 npx wrangler secret put RESEND_API_KEY
 ```
 
-Apply migrations to production D1:
+Then deploy:
 
 ```bash
-npx wrangler d1 migrations apply DB --remote
+npm run deploy
 ```
 
 ## Architecture
