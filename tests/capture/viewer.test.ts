@@ -12,7 +12,8 @@
  *     who is neither a manager nor the volume's assigned reviewer,
  *     including the reviewer of another volume;
  *   - who gets through: the tenant's admins, a steward of its
- *     federation, and the volume's reviewer;
+ *     federation, a staff grant into it (who may decide), and the
+ *     volume's reviewer;
  *   - the shape of the data: the volume, its title and its reviewer; the
  *     current delivery's id, which handover it is and how many of its
  *     records are rejected; the openings in
@@ -40,7 +41,7 @@
  *
  * Every value here is a test value: no real tenant, volume or person.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -54,7 +55,7 @@ import {
   DEFAULT_TEST_TENANT_ID,
   SECOND_TEST_TENANT_ID,
 } from "../helpers/db";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import { insertRow, seedReceivedVolumes, type ReceivedVolume } from "../helpers/media-pipeline";
 import { tenantContext, userContext, type Tenant, type User } from "../../app/context";
@@ -303,6 +304,13 @@ describe("who may open the viewer", () => {
     expect(await status(load(world.steward, world.mine.id))).toBe(200);
     expect(await status(load(world.reviewer, world.mine.id))).toBe(200);
   });
+
+  it("lets in a federation staff grant on a volume not assigned to them, able to decide", async () => {
+    const staff = await createGrantUser("staff", { name: "Test Staff" });
+    const data = await load(staff, world.mine.id);
+    expect(data.volume.id).toBe(world.mine.id);
+    expect(data.canDecide).toBe(true);
+  });
 });
 
 describe("what the viewer reads", () => {
@@ -310,7 +318,13 @@ describe("what the viewer reads", () => {
     const data = await load(world.reviewer, world.mine.id);
     expect(data.volume).toEqual({ id: world.mine.id, referenceCode: world.mine.referenceCode, title: "Test unit" });
     expect(data.reviewer).toEqual({ id: world.reviewer.id, name: "Test Reviewer" });
-    expect(data.delivery).toEqual({ manifestId: world.current, handover: 2, receivedAt: T0 + 5, rejectedRecords: 1 });
+    expect(data.delivery).toEqual({
+      manifestId: world.current,
+      handover: 2,
+      receivedAt: T0 + 5,
+      rejectedRecords: 1,
+      calibration: { status: null, skippedReason: null, shots: 0 },
+    });
     expect(data.openings.map((o) => [o.captuaRecordId, o.sequence, o.scannerStatus])).toEqual([
       [101, 1, "in_review"],
       [102, 2, "approved"],
@@ -321,6 +335,20 @@ describe("what the viewer reads", () => {
       { captureId: "cap-a", role: "right", pageKey: "co-view-img_0002_c2" },
     ]);
     expect(data.openings[1].images).toEqual([{ captureId: "cap-b", role: "single", pageKey: "co-view-img_0003_c1" }]);
+  });
+
+  it("answers an excluded opening's decision and the set's excluded count", async () => {
+    await env.DB.prepare("DELETE FROM capture_qc_rotations WHERE captua_record_id = 101").run();
+    await env.DB.prepare(
+      "UPDATE capture_qc_decisions SET decision = 'excluded', note = 'Test shot' WHERE captua_record_id = 101",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE capture_qc_sets SET approved_count = 0, excluded_count = 1 WHERE delivery_id = ?",
+    ).bind(world.current).run();
+    const data = await load(world.admin, world.mine.id);
+    expect(data.openings[0].decision).toMatchObject({ decision: "excluded", reason: null, side: null, note: "Test shot" });
+    expect(data.openings[0].rotations).toEqual([]);
+    expect(data.counts).toEqual({ openings: 3, images: 5, approved: 0, rejected: 1, excluded: 1, decided: 2 });
   });
 
   it("answers each opening's decision and rotations, and the set's counts", async () => {
@@ -339,7 +367,7 @@ describe("what the viewer reads", () => {
     expect(second.decision).toBeNull();
     expect(second.rotations).toEqual([]);
     expect(third.decision).toMatchObject({ decision: "rejected", reason: "other", side: "right", note: "Torn" });
-    expect(data.counts).toEqual({ openings: 3, images: 5, approved: 1, rejected: 1, decided: 2 });
+    expect(data.counts).toEqual({ openings: 3, images: 5, approved: 1, rejected: 1, excluded: 0, decided: 2 });
     expect(data.revision).toBe(1);
     expect(data.canDecide).toBe(true);
     expect(data.locked).toBe(false);
@@ -659,4 +687,4 @@ describe("the review images", () => {
   }
 });
 
-// @version v0.8.0
+// @version v0.9.0

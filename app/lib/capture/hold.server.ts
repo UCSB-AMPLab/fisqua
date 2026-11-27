@@ -4,7 +4,7 @@
  * This module deals with the one rule capture QC imposes on the media
  * pipeline: a volume whose pages came from a Captua capture delivery
  * goes to processing only when every opening of its current delivery
- * is approved, as the Captua exchange contract has it. Dispatch asks it
+ * is approved or excluded, as the Captua exchange contract has it. Dispatch asks it
  * in two places, and both ask the same predicate,
  * `captureQcPendingSql`.
  *
@@ -24,7 +24,14 @@
  *     in turn;
  *   - it has at least one opening (its `openings`, the records
  *     `in_review` or `approved`) and its decision set is not `approved`,
- *     which it is only once every opening is approved.
+ *     which it is only once every opening is approved or excluded (not
+ *     a page: a test shot, a duplicate), and none is rejected.
+ *
+ * `SET_STATE_SQL` is that rule for a set, from its counts: any
+ * rejection asks for retakes (`retakes_requested`), every opening
+ * approved or excluded is `approved`, and anything else is
+ * `in_capture_qc`. Every write of a set (`qc.server.ts`) and every set
+ * carried across a retake (`carry.server.ts`) takes its state from it.
  *
  * Both counts are taken when the delivery is registered. A delivery
  * with no openings and no rejected record does not hold: only a staging
@@ -53,12 +60,19 @@
  * is: the condition reads the delivery, not its route. A volume with no
  * delivery is material digitised elsewhere and is not held.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { pipelineVolumes } from "../../db/schema";
+
+/**
+ * The state a decision set's counts give it (module header), as an SQL
+ * expression over the set's own columns.
+ */
+export const SET_STATE_SQL =
+  "CASE WHEN rejected_count > 0 THEN 'retakes_requested' WHEN approved_count + excluded_count = opening_count THEN 'approved' ELSE 'in_capture_qc' END";
 
 /** Ids per read statement, under D1's 100 bound parameters. */
 const READ_ID_CHUNK = 90;
@@ -102,4 +116,4 @@ export async function readCaptureQcPending(
   return ids.filter((id) => held.has(id));
 }
 
-// @version v0.8.0
+// @version v0.9.0

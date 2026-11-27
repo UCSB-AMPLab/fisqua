@@ -8,10 +8,10 @@
  * `assignReviewerAction`, and reads what the unit reads: the status call
  * and `GET /api/capture/v1/volumes/<ref>/decisions`. It pins:
  *
- *   - who decides: the assigned reviewer, the tenant's admins and the
- *     federation's stewards, and no one else; only admins and stewards
- *     assign, and only a user of the tenant or of its federation can be
- *     assigned;
+ *   - who decides: the assigned reviewer, the tenant's admins, the
+ *     federation's stewards and its staff grants, and no one else; only
+ *     admins, stewards and staff grants assign, and only a user of the
+ *     tenant or of its federation can be assigned;
  *   - the body's rules: a reason exactly for a rejection, a side exactly
  *     for a rejection of an opening with two images, a note for
  *     `other`, notes of 1 to 2,000 characters, quarter-turns 1 to 3, a
@@ -54,9 +54,22 @@
  *     the capture QC queue and viewer and saving a decision, where the
  *     same person before assignment is sent to `/no-access`.
  *
+ *   - an excluded opening: no reason, side or rotation, an optional
+ *     note, passed to the unit as it is, counted apart, asking for no
+ *     retake, and changed or cleared like any other decision;
+ *   - the audit row: one `capture_qc_decision` row per landed save,
+ *     clears included, naming the reviewer, their home tenant, the
+ *     tenant, the volume and the impersonation session, with the
+ *     delivery, the set's revision, the counts, the rejections and the
+ *     cleared openings, never a note or a rotation; none for a save
+ *     refused before the batch (permission, body, delivery, records,
+ *     revision, a fetched clear) or inside it (the notes cap, a run, a
+ *     retake, a fetch); and details held under 40,000 bytes, cleared
+ *     ids dropped before rejections, the counts exact;
+ *
  * Every value here is a test value: no real tenant, bucket, key or person.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -74,7 +87,7 @@ import {
 } from "../helpers/db";
 import { createTestDescription } from "../helpers/descriptions";
 import { createTestRepository } from "../helpers/repositories";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeUserContext } from "../helpers/context";
 import { fakeS3, type FakeS3 } from "../helpers/fake-s3";
 import {
@@ -90,6 +103,8 @@ import {
   buildDecisionStatements,
   handleVolumeDecisions,
   PAYLOAD_CHUNK_BYTES,
+  QC_AUDIT_DETAILS_BYTES,
+  qcAuditDetails,
   recordDecisionsAction,
 } from "../../app/lib/capture/qc.server";
 import { mintScannerToken } from "../../app/lib/capture/token";
@@ -466,7 +481,30 @@ describe("who decides", () => {
     expect((await decide(volumeId, one, world.outsider)).status).toBe(200);
   });
 
-  it("lets only admins and stewards assign, and only someone of the tenant or its federation", async () => {
+  it("lets a staff grant approve, reject, exclude, rotate and assign on a volume not assigned to them", async () => {
+    const staff = await createGrantUser("staff", { name: "Test Staff" });
+    const { volumeId } = await deliver(manifest([volume(CODE)]));
+    const turned = image(CODE, 1, 0, "single").captureId;
+    const body = {
+      records: [
+        { captuaRecordId: 11, decision: "approved", rotations: [{ captureId: turned, role: "single", quarterTurns: 1 }] },
+        { captuaRecordId: 12, decision: "rejected", reason: "blur", side: "left" },
+        { captuaRecordId: 14, decision: "excluded" },
+      ],
+    };
+    expect((await decide(volumeId, body, staff)).status).toBe(200);
+    expect(await sqlRows("SELECT captua_record_id, decision FROM capture_qc_decisions ORDER BY captua_record_id")).toEqual([
+      { captua_record_id: 11, decision: "approved" },
+      { captua_record_id: 12, decision: "rejected" },
+      { captua_record_id: 14, decision: "excluded" },
+    ]);
+    expect(await sqlRows("SELECT capture_id, quarter_turns FROM capture_qc_rotations")).toEqual([
+      { capture_id: turned, quarter_turns: 1 },
+    ]);
+    expect((await assign(volumeId, world.reviewer.id, staff)).json).toEqual({ reviewerId: world.reviewer.id });
+  });
+
+  it("lets only admins, stewards and staff grants assign, and only someone of the tenant or its federation", async () => {
     const { volumeId } = await deliver(manifest([volume(CODE)]));
     expect((await assign(volumeId, world.reviewer.id, world.reviewer)).status).toBe(403);
     expect((await assign(volumeId, world.reviewer.id, world.outsider)).status).toBe(403);
@@ -531,6 +569,10 @@ describe("the decisions body", () => {
     ["a cleared decision with a side", { captuaRecordId: 12, decision: null, side: "left" }, "records.0.side"],
     ["a cleared decision with a note", { captuaRecordId: 11, decision: null, note: "Gone" }, "records.0.note"],
     ["a cleared decision with rotations", { captuaRecordId: 11, decision: null, rotations: [{ captureId: "c", role: "single", quarterTurns: 1 }] }, "records.0.rotations"],
+    ["an exclusion with a reason", { captuaRecordId: 11, decision: "excluded", reason: "blur" }, "records.0.reason"],
+    ["an exclusion with a side", { captuaRecordId: 12, decision: "excluded", side: "left" }, "records.0.side"],
+    ["an exclusion with rotations", { captuaRecordId: 11, decision: "excluded", rotations: [{ captureId: "c", role: "single", quarterTurns: 1 }] }, "records.0.rotations"],
+    ["an exclusion with an empty note", { captuaRecordId: 11, decision: "excluded", note: "" }, "records.0.note"],
   ] as const;
   for (const [label, record, path] of invalid) {
     it(`refuses ${label} with invalid_request`, async () => {
@@ -997,6 +1039,92 @@ describe("clearing a decision", () => {
       11, 14,
     ]);
     expect(await sqlRows("SELECT revision FROM capture_qc_sets")).toEqual([{ revision: 2 }]);
+  });
+});
+
+describe("an excluded opening", () => {
+  const setRow = async () =>
+    (await sqlRows("SELECT decided_count, approved_count, rejected_count, excluded_count, state FROM capture_qc_sets"))[0];
+
+  it("is recorded with no reason or side and an optional note, and passed to the unit as it is", async () => {
+    const { volumeId } = await deliver(manifest([volume(CODE)]));
+    const res = await decide(volumeId, {
+      records: [
+        { captuaRecordId: 11, decision: "excluded", note: "Test shot of the rig" },
+        { captuaRecordId: 12, decision: "excluded" },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const answer = await decisions(CODE);
+    expect(answer.status).toBe(200);
+    const byId = (id: number) => answer.json!.records.find((r: Json) => r.captuaRecordId === id);
+    expect(byId(11)).toEqual({
+      captuaRecordId: 11,
+      decision: "excluded",
+      note: "Test shot of the rig",
+      decidedBy: "Test Admin",
+      decidedAt: new Date(T0).toISOString(),
+      rotations: [],
+    });
+    expect(Object.keys(byId(12)).sort()).toEqual(["captuaRecordId", "decidedAt", "decidedBy", "decision", "rotations"]);
+    expect(await setRow()).toEqual({
+      decided_count: 2,
+      approved_count: 0,
+      rejected_count: 0,
+      excluded_count: 2,
+      state: "in_capture_qc",
+    });
+  });
+
+  it("asks for no retake: a set of approved and excluded openings is approved", async () => {
+    const { volumeId } = await deliver(manifest([volume(CODE)]));
+    await decide(volumeId, {
+      records: [
+        { captuaRecordId: 11, decision: "approved" },
+        { captuaRecordId: 12, decision: "excluded" },
+        { captuaRecordId: 14, decision: "approved" },
+      ],
+    });
+    expect(await setRow()).toEqual({
+      decided_count: 3,
+      approved_count: 2,
+      rejected_count: 0,
+      excluded_count: 1,
+      state: "approved",
+    });
+  });
+
+  it("can be changed to a rejection or an approval, or cleared, and the set follows", async () => {
+    const { volumeId } = await deliver(manifest([volume(CODE)]));
+    await decide(volumeId, {
+      records: [
+        { captuaRecordId: 11, decision: "excluded" },
+        { captuaRecordId: 12, decision: "approved" },
+        { captuaRecordId: 14, decision: "approved" },
+      ],
+    });
+    expect((await setRow()).state).toBe("approved");
+
+    await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "rejected", reason: "blur" }] });
+    expect(await setRow()).toMatchObject({ rejected_count: 1, excluded_count: 0, state: "retakes_requested" });
+
+    await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "excluded" }] });
+    expect(await setRow()).toMatchObject({ rejected_count: 0, excluded_count: 1, state: "approved" });
+
+    await decide(volumeId, { records: [{ captuaRecordId: 11, decision: null }] });
+    expect(await setRow()).toEqual({
+      decided_count: 2,
+      approved_count: 2,
+      rejected_count: 0,
+      excluded_count: 0,
+      state: "in_capture_qc",
+    });
+
+    await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "excluded" }] });
+    await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "approved" }] });
+    expect(await setRow()).toMatchObject({ approved_count: 3, excluded_count: 0, state: "approved" });
+    const answer = await decisions(CODE);
+    expect(answer.json!.records.map((r: Json) => r.decision)).toEqual(["approved", "approved", "approved"]);
   });
 });
 
@@ -1607,4 +1735,278 @@ describe("an assigned reviewer with no role flag", () => {
   });
 });
 
-// @version v0.8.0
+// ---------------------------------------------------------------------------
+// The audit row
+// ---------------------------------------------------------------------------
+
+describe("the audit row", () => {
+  const auditRows = () =>
+    sqlRows("SELECT * FROM audit_log WHERE action = 'capture_qc_decision' ORDER BY created_at, rowid");
+  const detailsOf = (row: Record<string, any>) => JSON.parse(row.details as string);
+
+  /** A database whose batch first runs `before`, once. */
+  function racing(before: () => Promise<unknown>) {
+    const db = drizzle(env.DB);
+    let done = false;
+    return new Proxy(db, {
+      get(target, prop) {
+        if (prop === "batch") {
+          return async (statements: unknown) => {
+            if (!done) {
+              done = true;
+              await before();
+            }
+            return (target as any).batch(statements);
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as any;
+  }
+
+  async function secondVolume(code: string, v: Json) {
+    await createTestDescription({
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      repositoryId: world.repositoryId,
+      descriptionLevel: "volume",
+      referenceCode: code,
+    });
+    return deliver(manifest([v]));
+  }
+
+  it("writes one row per saved request, naming the reviewer, the tenant, the volume and each decision", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    const first = await decide(volumeId, {
+      records: [
+        { captuaRecordId: 11, decision: "approved", note: "a note stays out" },
+        { captuaRecordId: 12, decision: "rejected", reason: "glare", side: "left" },
+        { captuaRecordId: 14, decision: "excluded" },
+      ],
+    });
+    expect(first.status).toBe(200);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      created_at: T0,
+      actor_user_id: world.admin.id,
+      actor_user_id_text: world.admin.email,
+      actor_tenant_id: DEFAULT_TEST_TENANT_ID,
+      action: "capture_qc_decision",
+      target_tenant_id: DEFAULT_TEST_TENANT_ID,
+      target_object_kind: "pipeline_volume",
+      target_object_id: volumeId,
+      impersonation_session_id: null,
+    });
+    expect(detailsOf(rows[0])).toEqual({
+      manifestId,
+      revision: 1,
+      counts: { accepted: 1, rejected: 1, excluded: 1, cleared: 0 },
+      rejections: [{ captuaRecordId: 12, reason: "glare", side: "left" }],
+      cleared: [],
+    });
+
+    // A change is a save like any other: a second row, at the set's next revision.
+    world.clock.now = T0 + 1000;
+    expect((await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "rejected", reason: "blur" }] })).status).toBe(200);
+    const after = await auditRows();
+    expect(after).toHaveLength(2);
+    expect(after[1].created_at).toBe(T0 + 1000);
+    expect(detailsOf(after[1])).toEqual({
+      manifestId,
+      revision: 2,
+      counts: { accepted: 0, rejected: 1, excluded: 0, cleared: 0 },
+      rejections: [{ captuaRecordId: 11, reason: "blur" }],
+      cleared: [],
+    });
+  });
+
+  it("names the actor's home tenant and the impersonation session when the route gives them", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    const request = new Request(`${HOST}/admin/capture/volumes/${volumeId}/decisions`, {
+      method: "POST",
+      body: JSON.stringify({ manifestId, records: [{ captuaRecordId: 11, decision: "approved" }] }),
+    });
+    const res = await recordDecisionsAction(qcDeps(), request, volumeId, world.tenant, world.steward, {
+      homeTenantId: SECOND_TEST_TENANT_ID,
+      impersonationSessionId: "test-impersonation-1",
+    });
+    expect(res.status).toBe(200);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actor_user_id: world.steward.id,
+      actor_tenant_id: SECOND_TEST_TENANT_ID,
+      target_tenant_id: DEFAULT_TEST_TENANT_ID,
+      impersonation_session_id: "test-impersonation-1",
+    });
+  });
+
+  it("writes a row for a save that only clears decisions", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    await decide(volumeId, { records: APPROVE_ALL });
+    const res = await decide(volumeId, {
+      records: [
+        { captuaRecordId: 14, decision: null },
+        { captuaRecordId: 11, decision: null },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(2);
+    expect(detailsOf(rows[1])).toEqual({
+      manifestId,
+      revision: 2,
+      counts: { accepted: 0, rejected: 0, excluded: 0, cleared: 2 },
+      rejections: [],
+      cleared: [14, 11],
+    });
+  });
+
+  it("writes no row for a save refused before the batch, or by the notes cap inside it", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    const approve11 = { captuaRecordId: 11, decision: "approved" };
+
+    // Permission, then the request itself.
+    expect((await decide(volumeId, { records: [approve11] }, world.outsider)).status).toBe(403);
+    expect((await decide("no-such-volume", { manifestId, records: [approve11] })).status).toBe(404);
+    expect((await decide(volumeId, { records: [{ captuaRecordId: 11, decision: "rejected" }] })).status).toBe(400);
+    expect((await decide(volumeId, { manifestId: "an-older-delivery", records: [approve11] })).json!.error).toBe(
+      "delivery_changed",
+    );
+    expect((await decide(volumeId, { records: [{ captuaRecordId: 13, decision: "approved" }] })).json!.error).toBe(
+      "unknown_records",
+    );
+
+    // A landed save, then a revision conflict.
+    expect((await decide(volumeId, { records: [approve11], expectedRevision: 0 })).status).toBe(200);
+    expect((await decide(volumeId, { records: [approve11], expectedRevision: 0 })).json!.error).toBe("revision_changed");
+
+    // A clear of a decision the unit has fetched.
+    await decisions(CODE);
+    expect((await decide(volumeId, { records: [{ captuaRecordId: 11, decision: null }] })).json!.error).toBe("decision_sent");
+
+    // A run on the volume.
+    await runOn(volumeId);
+    expect((await decide(volumeId, { records: [{ captuaRecordId: 12, decision: "approved" }] })).json!.error).toBe(
+      "run_started",
+    );
+
+    // A set past its notes cap fails inside the batch.
+    const big = await secondVolume("co-test-notes", bigVolume("co-test-notes", 600));
+    const noted = (n: number) => ({ captuaRecordId: n, decision: "approved", note: "n".repeat(2000) });
+    const tooMuch = await decide(big.volumeId, { records: Array.from({ length: 501 }, (_, i) => noted(i + 1)) });
+    expect(tooMuch.status).toBe(413);
+
+    expect(await auditRows()).toHaveLength(1);
+  });
+
+  it("writes no row when a run claims the volume, or a retake supersedes the delivery, during the write", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    const claimed = await decide(
+      volumeId,
+      { manifestId, records: APPROVE_ALL },
+      world.admin,
+      world.tenant,
+      racing(() => runOn(volumeId)),
+    );
+    expect(claimed.json!.error).toBe("run_started");
+
+    const code = "co-test-retake";
+    const first = await secondVolume(code, volume(code));
+    const superseded = await decide(
+      first.volumeId,
+      { manifestId: first.manifestId, records: APPROVE_ALL },
+      world.admin,
+      world.tenant,
+      racing(() => deliver(manifest([volume(code)]))),
+    );
+    expect(superseded.json!.error).toBe("delivery_changed");
+    expect(await auditRows()).toEqual([]);
+  });
+
+  it("writes no row when the unit fetches a decision being cleared between the check and the batch", async () => {
+    const { volumeId, manifestId } = await deliver(manifest([volume(CODE)]));
+    await decide(volumeId, { records: [{ captuaRecordId: 14, decision: "approved" }] });
+    const fetchFirst = racing(() =>
+      env.DB.prepare(
+        `INSERT INTO capture_qc_fetches (tenant_id, delivery_id, decisions_id, set_revision, first_fetched_at, last_fetched_at)
+         SELECT tenant_id, delivery_id, decisions_id, revision, 1, 1 FROM capture_qc_sets WHERE delivery_id = ?`,
+      )
+        .bind(manifestId)
+        .run(),
+    );
+    const res = await decide(
+      volumeId,
+      { manifestId, records: [{ captuaRecordId: 14, decision: null }] },
+      world.admin,
+      world.tenant,
+      fetchFirst,
+    );
+    expect(res.json!.error).toBe("decision_sent");
+    expect(await auditRows()).toHaveLength(1);
+  });
+
+  it("bounds the details of a large save, dropping cleared ids first, with the counts exact", async () => {
+    const code = "co-test-audit";
+    const { volumeId } = await secondVolume(code, bigVolume(code, 1000));
+    await decide(volumeId, {
+      records: Array.from({ length: 200 }, (_, i) => ({ captuaRecordId: 801 + i, decision: "approved" })),
+    });
+    const records = [
+      ...Array.from({ length: 800 }, (_, i) => ({ captuaRecordId: i + 1, decision: "rejected", reason: "obstruction", side: "both" })),
+      ...Array.from({ length: 200 }, (_, i) => ({ captuaRecordId: 801 + i, decision: null })),
+    ];
+    expect((await decide(volumeId, { records })).status).toBe(200);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(2);
+    const text = rows[1].details as string;
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(QC_AUDIT_DETAILS_BYTES);
+    const details = JSON.parse(text);
+    expect(details.truncated).toBe(true);
+    expect(details.revision).toBe(2);
+    expect(details.counts).toEqual({ accepted: 0, rejected: 800, excluded: 0, cleared: 200 });
+    // Every cleared id went before any rejection did; the rejections kept are the first ones, in order.
+    expect(details.cleared).toEqual([]);
+    expect(details.rejections.length).toBeGreaterThan(0);
+    expect(details.rejections.length).toBeLessThan(800);
+    expect(details.rejections[0]).toEqual({ captuaRecordId: 1, reason: "obstruction", side: "both" });
+    expect(details.rejections.map((r: Json) => r.captuaRecordId)).toEqual(
+      Array.from({ length: details.rejections.length }, (_, i) => i + 1),
+    );
+  });
+
+  it("drops only as many cleared ids as the limit needs, and leaves small details whole", () => {
+    const reject = (n: number) => ({
+      captuaRecordId: n,
+      decision: "rejected" as const,
+      reason: "blur" as const,
+      side: null,
+      note: "not recorded",
+      rotations: [{ captureId: "cap-x", role: "single", quarterTurns: 1 }],
+    });
+    const clear = (n: number) => ({ captuaRecordId: n, decision: null, reason: null, side: null, note: null, rotations: [] });
+    const planned = [reject(1), reject(2), ...Array.from({ length: 10 }, (_, i) => clear(i + 3))];
+
+    const whole = qcAuditDetails("m-1", planned);
+    expect(whole).toEqual({
+      manifestId: "m-1",
+      revision: 0,
+      counts: { accepted: 0, rejected: 2, excluded: 0, cleared: 10 },
+      rejections: [
+        { captuaRecordId: 1, reason: "blur" },
+        { captuaRecordId: 2, reason: "blur" },
+      ],
+      cleared: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    });
+
+    // Measured with room for any revision the batch may write in; the whole details do not fit.
+    const size = (d: object) => new TextEncoder().encode(JSON.stringify({ ...d, revision: Number.MAX_SAFE_INTEGER })).length;
+    const limit = size({ ...whole, cleared: [3], truncated: true });
+    expect(size(whole)).toBeGreaterThan(limit);
+    expect(qcAuditDetails("m-1", planned, limit)).toEqual({ ...whole, cleared: [3], truncated: true });
+    expect(qcAuditDetails("m-1", planned, limit - 1)).toEqual({ ...whole, cleared: [], truncated: true });
+  });
+});
+
+// @version v0.9.0

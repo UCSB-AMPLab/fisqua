@@ -16,7 +16,7 @@
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -120,7 +120,7 @@ describe("Retakes, rendered", () => {
     expect(html).toContain(">Retakes</h1>");
     expect(html).toContain("Digitization");
     expect(html).toContain(
-      "Openings rejected in capture QC whose retakes have not yet been approved. A volume waits until all its retakes are back and approved.",
+      "Openings rejected in capture QC whose retakes have not yet been approved or excluded. A volume waits until all its retakes are back and approved or excluded.",
     );
     const legend = html.slice(html.indexOf('aria-label="Retake states"'), html.indexOf("</ol>"));
     expect(legend.indexOf("Requested")).toBeLessThan(legend.indexOf("Sent to scanner"));
@@ -168,7 +168,7 @@ describe("Retakes, rendered", () => {
   it("shows the empty state when no retake is outstanding", async () => {
     const html = await render("en", []);
     expect(html).toContain("No retakes outstanding");
-    expect(html).toContain("Openings rejected in capture QC appear here until their retakes are approved.");
+    expect(html).toContain("Openings rejected in capture QC appear here until their retakes are approved or excluded.");
     expect(html).not.toContain("<table");
   });
 
@@ -193,4 +193,4 @@ describe("Retakes, rendered", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

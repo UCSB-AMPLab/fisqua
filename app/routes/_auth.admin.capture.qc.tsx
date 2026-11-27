@@ -2,9 +2,14 @@
  * Digitization — Capture QC Queue
  *
  * This page lists the volumes waiting for capture review: handed over
- * and registered, with review images being prepared, or in capture QC.
+ * and registered, with review images being prepared, or in capture QC,
+ * and those with retakes requested whose current delivery still has
+ * openings undecided, since the unit is asked for the retakes as soon as
+ * an opening is rejected while review of the rest goes on. A volume with
+ * retakes requested and every opening decided is on Retakes only.
  * Each row shows the volume's reviewer, how many of its current
- * delivery's openings are approved, rejected and undecided, and how
+ * delivery's openings are approved, rejected, excluded (not pages) and
+ * undecided, and how
  * long it has waited, counted from when its current delivery was
  * received (the delivery's `received_at`, taken as the manifest is
  * registered), since that is when the openings became reviewable. A
@@ -14,8 +19,10 @@
  * place of the openings decided.
  *
  * The tenant must have the digitization capability (a bare 404
- * otherwise). The tenant's digitization admins and its federation's stewards see
- * every waiting volume and can assign or reassign its reviewer; a user
+ * otherwise). Those who work in capture (`captureAccess(...).worker`:
+ * the tenant's digitization admins, its federation's stewards and its
+ * federation's staff grants) see every waiting volume and can assign or
+ * reassign its reviewer; a user
  * assigned as reviewer on one of the tenant's volumes sees only their
  * own volumes and no assignment control; anyone else gets a bare 403.
  * Assignment posts `{ reviewerId }` as JSON to the existing reviewer
@@ -24,10 +31,18 @@
  * accepts: the tenant's own users, as archive staff, and the other
  * members of its federation, under the federation's name.
  *
- * Open leads to the volume in the capture QC viewer
- * (`/admin/capture/qc/:volumeId`).
+ * Each row says whether the volume can be reviewed now (`readiness`,
+ * from `loadCaptureQueue`): ready to review, preparing review images,
+ * review images not prepared yet, or review images failed, read from
+ * the current delivery's review images for a volume with retakes
+ * requested as for one in capture QC. The loader
+ * lists the ready volumes first. Only a ready volume has Open, which
+ * leads to it in the capture QC viewer (`/admin/capture/qc/:volumeId`);
+ * the others show that review opens when the images are ready.
+ * Preparing and retrying review images are steps on the Volumes page.
+ * Assigning a reviewer does not wait for the images.
  *
- * @version@version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -37,10 +52,23 @@ import { ChevronDown, ClipboardCheck } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { requireCapability } from "../lib/tenant";
 import { waitingDays } from "../lib/capture/screens";
-import type { CaptureVolumeRow, ReviewerCandidates } from "../lib/capture/screens.server";
+import type { CaptureQueueRow, ReviewerCandidates } from "../lib/capture/screens.server";
 import { BADGE_SHAPE } from "../components/workflow/status-badge";
-import { CaptureEmptyState, CapturePageHeader, DecisionBar } from "../components/capture/capture-parts";
+import {
+  CaptureEmptyState,
+  CapturePageHeader,
+  DecisionBar,
+  QueueReadinessBadge,
+} from "../components/capture/capture-parts";
 import type { Route } from "./+types/_auth.admin.capture.qc";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("capture:queue.title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const tenant = context.get(tenantContext);
@@ -52,12 +80,12 @@ export async function loader({ context }: Route.LoaderArgs) {
   );
   const db = drizzle(context.cloudflare.env.DB);
   const access = await captureAccess(db, tenant, user);
-  if (!access.manager && !access.reviewer) throw new Response(null, { status: 403 });
+  if (!access.worker && !access.reviewer) throw new Response(null, { status: 403 });
   const now = Date.now();
-  const volumes = await loadCaptureQueue(db, tenant.id, user, access.manager, now);
-  const candidates = access.manager ? await loadReviewerCandidates(db, tenant) : null;
+  const volumes = await loadCaptureQueue(db, tenant.id, user, access.worker, now);
+  const candidates = access.worker ? await loadReviewerCandidates(db, tenant) : null;
   const federationName = candidates ? candidates.federationName : await federationNameOf(db, tenant);
-  return { volumes, candidates, federationName: federationName ?? "", canAssign: access.manager, now };
+  return { volumes, candidates, federationName: federationName ?? "", canAssign: access.worker, now };
 }
 
 export default function CaptureQcQueuePage({ loaderData }: Route.ComponentProps) {
@@ -78,6 +106,7 @@ export default function CaptureQcQueuePage({ loaderData }: Route.ComponentProps)
                 <tr className="border-b border-stone-200 bg-stone-50 text-xs font-semibold text-stone-600">
                   <th scope="col" className="px-4 py-3">{t("columns.reference_code")}</th>
                   <th scope="col" className="px-4 py-3">{t("columns.title")}</th>
+                  <th scope="col" className="px-4 py-3">{t("columns.state")}</th>
                   <th scope="col" className="px-4 py-3">{t("columns.reviewer")}</th>
                   <th scope="col" className="w-[260px] px-4 py-3">{t("columns.progress")}</th>
                   <th scope="col" className="px-4 py-3">{t("columns.waiting")}</th>
@@ -97,6 +126,7 @@ export default function CaptureQcQueuePage({ loaderData }: Route.ComponentProps)
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-xs text-stone-600">
             <Legend swatch="bg-verdigris" label={t("queue.legend_approved")} />
             <Legend swatch="bg-madder" label={t("queue.legend_rejected")} />
+            <Legend swatch="bg-stone-500" label={t("queue.legend_excluded")} />
             <Legend swatch="bg-stone-200" label={t("queue.legend_undecided")} />
           </div>
         </>
@@ -120,16 +150,20 @@ function QueueRow({
   canAssign,
   now,
 }: {
-  row: CaptureVolumeRow;
+  row: CaptureQueueRow;
   candidates: ReviewerCandidates | null;
   canAssign: boolean;
   now: number;
 }) {
   const { t } = useTranslation("capture");
+  const ready = row.readiness === "ready";
   return (
     <tr className="border-b border-stone-100 last:border-b-0">
       <td className="px-4 py-3 font-mono text-[13px] text-indigo">{row.referenceCode}</td>
       <td className="px-4 py-3 font-serif text-[15px] text-stone-700">{row.title}</td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <QueueReadinessBadge readiness={row.readiness} />
+      </td>
       <td className="px-4 py-3">
         {row.reviewer ? (
           <span className="text-stone-700">{row.reviewer.name}</span>
@@ -141,7 +175,7 @@ function QueueRow({
         {row.hasEarlierDelivery ? (
           <span className={`${BADGE_SHAPE} mb-1.5 bg-saffron-tint text-saffron-deep`}>{t("queue.retakes_received")}</span>
         ) : null}
-        <DecisionBar approved={row.approved} rejected={row.rejected} total={row.openings} />
+        <DecisionBar approved={row.approved} rejected={row.rejected} excluded={row.excluded} total={row.openings} />
         <p className="mt-1 text-xs text-stone-600">
           {row.reviewAgain !== null
             ? t("queue.review_again", { count: row.reviewAgain })
@@ -156,13 +190,16 @@ function QueueRow({
           {canAssign && candidates && row.volumeId ? (
             <AssignControl volumeId={row.volumeId} current={row.reviewer?.id ?? null} candidates={candidates} />
           ) : null}
-          {row.volumeId ? (
+          {ready && row.volumeId ? (
             <Link
               to={`/admin/capture/qc/${row.volumeId}`}
               className="rounded-md bg-indigo px-4 py-2 text-sm font-semibold text-parchment hover:bg-indigo-deep"
             >
               {t("queue.open")}
             </Link>
+          ) : null}
+          {!ready ? (
+            <span className="max-w-[24ch] text-right text-xs text-stone-500">{t("next.review_opens")}</span>
           ) : null}
         </div>
       </td>
@@ -279,4 +316,4 @@ function AssignControl({
   );
 }
 
-// @version@version v0.8.0
+// @version v0.9.0

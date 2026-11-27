@@ -50,7 +50,8 @@
  *     decided as a link volume is; a delivery with a record `rejected`
  *     holds with every opening approved, and with no openings at all,
  *     until a newer delivery brings the record back retaken and that
- *     opening is approved; a delivery with no openings and no rejected
+ *     opening is approved; a delivery whose only record is an open
+ *     placeholder (contract 1.9), with no opening, holds; a delivery with no openings and no rejected
  *     record (every record still `captured`) does not hold, and one with
  *     openings and captured records holds until its openings are
  *     approved, records stored packed included, since the hold reads the
@@ -66,7 +67,7 @@
  * The run-size limits, lifetime constants, grouping target and presets
  * are passed in; the values here are test values.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
@@ -124,8 +125,16 @@ import {
   type ManifestResolver,
 } from "../../app/lib/pipeline/run-spec";
 import { manifestResolver } from "../../app/lib/pipeline/manifest-inputs";
+import { REVIEW_RUN_LIFETIME_CONSTANTS } from "../../app/lib/pipeline/run-config";
 import { recordDecisionsAction } from "../../app/lib/capture/qc.server";
-import { applyInventory, checkCaptureManifest, planVolumes } from "../../app/lib/capture/manifest";
+import {
+  applyInventory,
+  checkCaptureManifest,
+  isOpeningRecord,
+  planVolumes,
+  qcStatusOf,
+  type RecordStatusFields,
+} from "../../app/lib/capture/manifest";
 import { fileRegistrationSql } from "../../app/lib/capture/file-route.server";
 import { CARRY_GATE_PASSES_SQL, GATE_PASS_CARRY_NOTE } from "../../scripts/lib/gate-pass-carry";
 import type { Tenant, User } from "../../app/context";
@@ -158,6 +167,7 @@ const CONFIG: PipelineRunConfig = {
   maxSampleVolumes: 2000,
   targetImagesPerJob: 734,
   lifetime: LIFETIME,
+  reviewLifetime: REVIEW_RUN_LIFETIME_CONSTANTS,
   presets: {
     byOutputClass: { tonal: TONAL_DEFAULT_PRESET },
     acceptedKeys: { preprocess: [], render: [] },
@@ -836,12 +846,15 @@ describe("startPipelineRun", () => {
   it("abandons the run when a ledger batch fails, sends nothing, and frees the volumes", async () => {
     const s = await setup({ count: 700, pageCount: 1 });
     const { fetchImpl, sent } = stubFetch();
-    // Batch 1 is the claim; batches 2 and 3 write the run-volume rows.
-    const { binding, stats } = observedD1(env.DB, { failBatch: (n) => n === 3 });
+    // The capture QC read takes one batch per 90 volumes; the next batch
+    // is the claim, and the two after it write the run-volume rows.
+    const reads = Math.ceil(700 / 90);
+    const { binding, stats } = observedD1(env.DB, { failBatch: (n) => n === reads + 3 });
     await expect(startPipelineRun(deps({ fetchImpl, db: drizzle(binding) }), input(s))).rejects.toThrow(
       "injected batch failure",
     );
-    expect(stats.batches.slice(0, 3)).toEqual([expect.any(Number), 89, expect.any(Number)]);
+    expect(stats.batches.slice(0, reads)).toEqual(Array(reads).fill(3));
+    expect(stats.batches.slice(reads, reads + 3)).toEqual([expect.any(Number), 89, expect.any(Number)]);
     expect(sent).toHaveLength(0);
     const run = await first("SELECT * FROM pipeline_runs");
     expect(run.status).toBe("error");
@@ -1686,19 +1699,36 @@ describe("startPipelineRun", () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it("refuses a repository with an attribution in one language only, naming it", async () => {
-    const s = await setup();
+  it("composes the attribution the override lacks, with the federation's hosting statement", async () => {
+    const s = await setup({ count: 1 });
     await setRepository(s.seeded.repositoryId, {
       manifest_rights: "https://rights.example.test/",
       attribution_en: "English only",
+      city: "Tunja",
+      region: null,
+      country: null,
+      credit_statement_es: null,
+      credit_statement_en: null,
     });
-    const before = await snapshot();
-    const r = await refusal(
-      startPipelineRun(deps({ manifestResolverFor: manifestResolver }), input(s)),
-    );
-    expect(r.code).toBe("repository_attribution_incomplete");
-    expect(r.detail).toMatchObject({ repository_id: s.seeded.repositoryId });
-    expect(await snapshot()).toEqual(before);
+    await env.DB.prepare("UPDATE federations SET hosting_statement_es = ?, hosting_statement_en = ? WHERE id = ?")
+      .bind("Alojado en Zasqua (zasqua.org).", "Hosted on Zasqua (zasqua.org).", DEFAULT_TEST_FEDERATION_ID)
+      .run();
+    const name = (await env.DB.prepare("SELECT name FROM repositories WHERE id = ?")
+      .bind(s.seeded.repositoryId)
+      .first<{ name: string }>())!.name;
+    try {
+      const { runId } = await startPipelineRun(deps({ manifestResolverFor: manifestResolver }), input(s));
+      const { json } = await storedSpec(runId);
+      expect(json.volumes[0].manifest.required_statement.value).toEqual({
+        en: ["English only"],
+        es: [`${name}, Tunja. Alojado en Zasqua (zasqua.org).`],
+      });
+    } finally {
+      // Federation rows outlive a test; leave the statement as the seed has it.
+      await env.DB.prepare("UPDATE federations SET hosting_statement_es = NULL, hosting_statement_en = NULL WHERE id = ?")
+        .bind(DEFAULT_TEST_FEDERATION_ID)
+        .run();
+    }
   });
 
   it("dispatches with the real resolver once the repository has rights, and the spec carries them", async () => {
@@ -1775,8 +1805,8 @@ describe("startPipelineRun", () => {
       answer_status: 200,
       answer_body: "{}",
       records: JSON.stringify(records),
-      openings: records.filter((r) => r.status === "in_review" || r.status === "approved").length,
-      rejected_records: records.filter((r) => r.status === "rejected").length,
+      openings: records.filter((r) => isOpeningRecord(r as RecordStatusFields)).length,
+      rejected_records: records.filter((r) => qcStatusOf(r as RecordStatusFields) === "rejected").length,
       received_at: 1,
       seq: (await first<{ n: number }>("SELECT COUNT(*) AS n FROM capture_deliveries")).n + 1,
     });
@@ -1913,6 +1943,23 @@ describe("startPipelineRun", () => {
 
     // The volume from elsewhere beside it runs alone.
     await expect(startPipelineRun(deps(), input(s, { pipelineVolumeIds: [b.id] }))).resolves.toMatchObject({ chunkCount: 1 });
+  });
+
+  it("holds a volume whose delivery is only an open placeholder (contract 1.9), and gives it no page", async () => {
+    const s = await setup({ count: 1 });
+    const [a] = s.seeded.volumes;
+    await captureDelivery(a.id, a.referenceCode, [
+      { captuaRecordId: 1, sequence: 1, status: "missing", rejectionNote: null, missingSide: "left" },
+    ]);
+    expect(await first("SELECT openings, rejected_records FROM capture_deliveries WHERE pipeline_volume_id = ?", a.id)).toEqual({
+      openings: 0,
+      rejected_records: 1,
+    });
+    const before = await snapshot();
+    const r = await refusal(startPipelineRun(deps(), input(s)));
+    expect(r.code).toBe("capture_qc_pending");
+    expect(r.detail).toEqual({ volume_ids: [a.id] });
+    expect(await snapshot()).toEqual(before);
   });
 
   it("holds a volume whose delivery has rejected records and no openings", async () => {
@@ -2305,4 +2352,4 @@ describe("startPipelineRun", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

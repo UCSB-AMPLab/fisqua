@@ -6,11 +6,14 @@
  * records them, and telling the Captua unit what was decided. Capture
  * QC looks again, in Fisqua, at
  * the openings a unit handed over. Each opening, one Captua record, is
- * approved or rejected for retake with one reason, and a reviewer may
+ * approved, rejected for retake with one reason, or excluded as not a
+ * page (a test shot of the rig, a duplicate), and a reviewer may
  * correct the rotation of individual images. A rejection of an opening
  * with two images also names the side to retake, as `side`: `left`,
- * `right` or `both`. A volume goes to
- * processing only once every opening is approved (`hold.server.ts`).
+ * `right` or `both`. An exclusion asks for no retake; its images are
+ * left out of processing (`dispatch.server.ts`). A volume goes to
+ * processing only once every opening is approved or excluded
+ * (`hold.server.ts`).
  *
  * An image is named by its capture id and its role together. A capture
  * is one trigger of the rig: a dual-camera capture writes a left and a
@@ -35,11 +38,11 @@
  * `recordDecisionsAction` is the body of the signed-in route
  * `POST /admin/capture/volumes/:volumeId/decisions`. It reads the
  * volume in the request's tenant (404 `volume_not_found`), then lets
- * through the volume's assigned reviewer, whoever passes the
- * digitization area (`canAdministerArea`: a workspace admin, which a
- * federation steward's grant makes them, a super admin, or the
- * digitization admin) and the federation's stewards (`isFederationSteward`); anyone else gets a
- * bare 403. The JSON body is `{records: [{captuaRecordId, decision,
+ * through the volume's assigned reviewer, whoever works in the
+ * digitization area (`canWorkInArea`: a workspace admin, which a
+ * federation steward's grant makes them, a super admin, the
+ * digitization admin, or a federation staff grant) and the federation's
+ * stewards (`isFederationSteward`); anyone else gets a bare 403. The JSON body is `{records: [{captuaRecordId, decision,
  * reason?, side?, note?, rotations?: [{captureId, role, quarterTurns}]}],
  * manifestId, expectedRevision?}`, with `role` one of `left`, `right` and `single`,
  * and may decide some openings and leave the rest undecided. Each entry
@@ -59,7 +62,8 @@
  * otherwise approve images nobody saw (409 `delivery_changed`, naming
  * the current delivery). The checks, in order: the shape (400
  * `invalid_request`, naming each path: a rejection needs a reason, an
- * approval takes none and no side, `other` needs a note, a note is 1 to 2,000
+ * approval takes none and no side, an exclusion takes no reason, no side
+ * and no rotation, `other` needs a note, a note is 1 to 2,000
  * characters, quarter-turns are 1 to 3, every rotation has a role, no
  * opening twice and no image, a capture id with its role, twice); a
  * current delivery (409 `no_capture_delivery`); no run started on the
@@ -82,12 +86,28 @@
  * the delivery's set with its opening count if it has none, deletes the
  * rotations of the openings being decided and the decisions of those
  * being cleared, writes the other decisions and their rotations,
- * recounts the set (decided, approved, rejected, the bytes
- * of its notes) and gives it its state, a new `decisionsId`, `decidedAt`
+ * recounts the set (decided, approved, rejected, excluded, the bytes
+ * of its notes) and gives it its state (`retakes_requested` with any
+ * rejection, `approved` once every opening is approved or excluded,
+ * `in_capture_qc` otherwise), a new `decisionsId`, `decidedAt`
  * and `revision`, and this request's write id. The batch's last
  * statement reads the set back by that write id, inside the same
  * transaction, so the outcome is settled by the batch itself and a
  * concurrent writer that commits right after cannot change the answer.
+ * Just before that read, the batch writes the save's audit row, an
+ * `audit_log` row of action `capture_qc_decision` (migration 0124),
+ * selected from the set by this request's write id, so it exists only
+ * where the decisions landed; a refusal, before the batch or inside it,
+ * leaves none. The row names the decider and their home tenant as the
+ * actor, the tenant as the target, the volume as target kind
+ * `pipeline_volume`, and the impersonation session if any (`QcActor`,
+ * which the route gives). Its `details` (`qcAuditDetails`) are the
+ * delivery's `manifestId`, the set's new `revision`, the counts of
+ * openings accepted, rejected, excluded and cleared, each rejection's
+ * record id, reason and side, and the record ids cleared; no note and
+ * no rotation. Details are held to `QC_AUDIT_DETAILS_BYTES`: cleared
+ * ids are dropped from the end first, then rejections, and the row then
+ * says `truncated: true`; the counts are always exact.
  * The answer is 200 `{decisionsId, revision}` when that read finds the
  * set; otherwise the guard failed and the answer says why (`run_started`,
  * then `decision_sent` when the unit fetched a cleared decision after the
@@ -118,13 +138,14 @@
  *
  * `assignReviewerAction` is the body of
  * `POST /admin/capture/volumes/:volumeId/reviewer`, `{reviewerId}`, or
- * null to clear it. Only the tenant's admins and the federation's
- * stewards may assign. The reviewer must be a user of the tenant or hold
+ * null to clear it. Only those who work in capture (`isQcWorker`: the
+ * tenant's admins, its digitization admin, the federation's stewards
+ * and its staff grants) may assign. The reviewer must be a user of the tenant or hold
  * a membership in its federation (422 `reviewer_not_eligible`), and the
  * volume must have come from a capture delivery. One reviewer per
  * volume; the assignment holds across retakes. `readReviewerId` (the
- * volume's assigned reviewer) and `isQcManager` (the tenant's admins
- * and the federation's stewards) are exported so that the review tiles'
+ * volume's assigned reviewer) and `isQcWorker` (who may decide on and
+ * assign any volume) are exported so that the review tiles'
  * download authorisation (`review-access.server.ts`) lets through
  * exactly the people these actions do.
  *
@@ -133,7 +154,9 @@
  * delivery's set, in the Captua exchange contract's shape:
  * `{decisionsId, decidedAt, manifestId, records: [{captuaRecordId,
  * decision, reason, side, note, decidedBy, decidedAt, rotations:
- * [{captureId, role, quarterTurns}]}]}`, with
+ * [{captureId, role, quarterTurns}]}]}`, with `decision` one of
+ * `approved`, `rejected` and `excluded` (a unit that predates
+ * `excluded` skips a value it does not know),
  * `reason` only for a rejection, `side` only for a rejection that names
  * one, and `note` only where there is one. Every write gives the set a
  * new `decisionsId`, so a changed side or a cleared decision changes it
@@ -162,7 +185,7 @@
  * ids and names of at most 256 characters, and notes of at most
  * 1,000,000 bytes together.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, or, sql, type SQL } from "drizzle-orm";
@@ -182,11 +205,12 @@ import {
 } from "../../db/schema";
 import type { Tenant, User } from "../../context";
 import { isFederationSteward } from "../federation.server";
-import { canAdministerArea } from "../user-access.server";
+import { canWorkInArea } from "../user-access.server";
 import { rawBatchItem, readCappedBody } from "../pipeline/callback.server";
 import { CAPTURE_IMAGE_ROLES, CAPTURE_QC_DECISIONS, CAPTURE_QC_REASONS, CAPTURE_QC_SIDES } from "../validation/enums";
+import { SET_STATE_SQL } from "./hold.server";
 import { authenticate, MAX_NOTE_CHARS, unpackJson, volumeStillOpen, type CaptureLinkDeps } from "./link.server";
-import { isOpening, MAX_FIELD_CHARS, type CaptureProblem } from "./manifest";
+import { isOpeningRecord, MAX_FIELD_CHARS, type CaptureProblem, type RecordStatusFields } from "./manifest";
 
 /** The largest decisions request accepted, in bytes. */
 export const MAX_DECISIONS_BODY_BYTES = 4 * 1024 * 1024;
@@ -196,6 +220,8 @@ export const MAX_DECISIONS_PER_REQUEST = 10_000;
 export const PAYLOAD_CHUNK_BYTES = 60_000;
 /** The bytes every note of a set may take together (a CHECK in 0094). */
 export const MAX_SET_NOTES_BYTES = 1_000_000;
+/** The bytes a decisions save's audit `details` may take. */
+export const QC_AUDIT_DETAILS_BYTES = 40_000;
 /** Ids a refusal lists before it counts the rest. */
 const LISTED_IDS = 100;
 
@@ -267,9 +293,13 @@ export async function readReviewerId(db: DrizzleD1Database<any>, tenantId: strin
   return row?.reviewerId ?? null;
 }
 
-/** Whoever passes the digitization area, and the federation's stewards. */
-export async function isQcManager(db: DrizzleD1Database<any>, tenant: Tenant, user: User): Promise<boolean> {
-  return canAdministerArea(user, "digitization") || (await isFederationSteward(db, user, tenant));
+/**
+ * Who may decide on and assign any volume: whoever works in the
+ * digitization area (its admins and federation staff grants), and the
+ * federation's stewards.
+ */
+export async function isQcWorker(db: DrizzleD1Database<any>, tenant: Tenant, user: User): Promise<boolean> {
+  return canWorkInArea(user, "digitization") || (await isFederationSteward(db, user, tenant));
 }
 
 /** Whether no run has started on the volume, by the guard the write carries. */
@@ -328,6 +358,15 @@ const decisionSchema = z
     }
     if (d.decision === "approved" && d.side !== undefined) {
       ctx.addIssue({ code: "custom", path: ["side"], message: "an approval takes no side" });
+    }
+    // An excluded opening is not a page: nothing to retake, nothing to turn.
+    if (d.decision === "excluded") {
+      for (const key of ["reason", "side"] as const) {
+        if (d[key] !== undefined) ctx.addIssue({ code: "custom", path: [key], message: `an exclusion takes no ${key}` });
+      }
+      if ((d.rotations ?? []).length > 0) {
+        ctx.addIssue({ code: "custom", path: ["rotations"], message: "an exclusion takes no rotations" });
+      }
     }
     if (d.decision === null) {
       for (const key of ["reason", "side", "note"] as const) {
@@ -398,6 +437,80 @@ export interface DecisionWrite {
   clears?: number[];
   /** How the payloads are measured and capped; absent, `BOUND_PAYLOAD`. */
   payload?: PayloadBudget;
+  /** The save's audit row; absent, the batch writes none. */
+  audit?: DecisionAudit;
+}
+
+/** Who saved the decisions, beyond the user: the route reads both from the request's context. */
+export interface QcActor {
+  /** The actor's home tenant: the grant's for a steward or staff grant, the user's own otherwise. */
+  homeTenantId: string;
+  impersonationSessionId: string | null;
+}
+
+/** The audit row of a decisions save, as `buildDecisionStatements` inserts it. */
+export interface DecisionAudit {
+  id: string;
+  actorUserId: string;
+  actorEmail: string;
+  actorTenantId: string;
+  impersonationSessionId: string | null;
+  /** `qcAuditDetails`; its `revision` is replaced by the set's, inside the batch. */
+  details: QcAuditDetails;
+}
+
+export interface QcAuditDetails {
+  manifestId: string;
+  revision: number;
+  counts: { accepted: number; rejected: number; excluded: number; cleared: number };
+  rejections: Array<{ captuaRecordId: number; reason: string; side?: string }>;
+  cleared: number[];
+  truncated?: true;
+}
+
+/**
+ * The audit details of a decisions save, at most `limit` bytes of JSON
+ * whatever revision the batch writes into them: cleared ids are dropped
+ * from the end first, then rejections, and `truncated` is set. The
+ * counts stay exact; notes and rotations are never included.
+ */
+export function qcAuditDetails(
+  manifestId: string,
+  decisions: PlannedDecision[],
+  limit: number = QC_AUDIT_DETAILS_BYTES,
+): QcAuditDetails {
+  const counts = { accepted: 0, rejected: 0, excluded: 0, cleared: 0 };
+  const rejections: QcAuditDetails["rejections"] = [];
+  const cleared: number[] = [];
+  for (const d of decisions) {
+    if (d.decision === null) {
+      counts.cleared += 1;
+      cleared.push(d.captuaRecordId);
+    } else if (d.decision === "approved") counts.accepted += 1;
+    else if (d.decision === "excluded") counts.excluded += 1;
+    else {
+      counts.rejected += 1;
+      rejections.push({ captuaRecordId: d.captuaRecordId, reason: d.reason ?? "", ...(d.side ? { side: d.side } : {}) });
+    }
+  }
+  const details: QcAuditDetails = { manifestId, revision: 0, counts, rejections, cleared };
+  // Measured with the largest revision, so the one written in still fits.
+  const size = (d: QcAuditDetails) => byteLength(JSON.stringify({ ...d, revision: Number.MAX_SAFE_INTEGER }));
+  if (size(details) <= limit) return details;
+
+  // Each entry's bytes and its comma, against the details with both lists empty.
+  const base = size({ ...details, rejections: [], cleared: [], truncated: true });
+  const listBytes = (items: unknown[]) => items.reduce<number>((n, x, i) => n + byteLength(JSON.stringify(x)) + (i > 0 ? 1 : 0), 0);
+  let total = base + listBytes(rejections) + listBytes(cleared);
+  const drop = (items: unknown[]) => {
+    while (total > limit && items.length > 0) {
+      const last = items.pop();
+      total -= byteLength(JSON.stringify(last)) + (items.length > 0 ? 1 : 0);
+    }
+  };
+  drop(cleared);
+  drop(rejections);
+  return { ...details, truncated: true };
 }
 
 /**
@@ -476,10 +589,8 @@ function decisionGuard(
       AND ws.delivery_id = ${deliveryId} AND ws.write_id = ${revision.writeId}))`;
 }
 
-/** The state a set's counts give it. */
-const SET_STATE = sql.raw(
-  `CASE WHEN rejected_count > 0 THEN 'retakes_requested' WHEN approved_count = opening_count THEN 'approved' ELSE 'in_capture_qc' END`,
-);
+/** The state a set's counts give it (`SET_STATE_SQL`). */
+const SET_STATE = sql.raw(SET_STATE_SQL);
 
 /** The statements of a decisions write, in order. Pure: it builds, it does not run. */
 export function buildDecisionStatements(db: DrizzleD1Database<any>, w: DecisionWrite): BatchItem<"sqlite">[] {
@@ -584,6 +695,8 @@ export function buildDecisionStatements(db: DrizzleD1Database<any>, w: DecisionW
             AND x2.decision = 'approved'),
           rejected_count = (SELECT COUNT(*) FROM capture_qc_decisions x3 WHERE x3.tenant_id = ${t} AND x3.delivery_id = ${d}
             AND x3.decision = 'rejected'),
+          excluded_count = (SELECT COUNT(*) FROM capture_qc_decisions x5 WHERE x5.tenant_id = ${t} AND x5.delivery_id = ${d}
+            AND x5.decision = 'excluded'),
           notes_bytes = (SELECT COALESCE(SUM(length(CAST(x4.note AS BLOB))), 0) FROM capture_qc_decisions x4
             WHERE x4.tenant_id = ${t} AND x4.delivery_id = ${d})
         WHERE tenant_id = ${t} AND delivery_id = ${d} AND ${ok()}`,
@@ -604,6 +717,25 @@ export function buildDecisionStatements(db: DrizzleD1Database<any>, w: DecisionW
         WHERE tenant_id = ${t} AND delivery_id = ${d} AND ${ok()}`,
     ),
   );
+
+  // f2. The save's audit row, only where the set carries this request's
+  // write id, that is, where every statement above passed its guard. The
+  // revision is the set's own, written into the details here.
+  if (w.audit) {
+    const a = w.audit;
+    out.push(
+      rawBatchItem(
+        db,
+        sql`INSERT INTO audit_log (id, created_at, actor_user_id, actor_user_id_text, actor_tenant_id, action,
+            target_tenant_id, target_object_kind, target_object_id, impersonation_session_id, details)
+          SELECT ${a.id}, ${now}, ${a.actorUserId}, ${a.actorEmail}, ${a.actorTenantId}, 'capture_qc_decision',
+            ${t}, 'pipeline_volume', ${volumeId}, ${a.impersonationSessionId},
+            json_set(${JSON.stringify(a.details)}, '$.revision', s.revision)
+          FROM capture_qc_sets s
+          WHERE s.tenant_id = ${t} AND s.delivery_id = ${d} AND s.write_id = ${w.writeId}`,
+      ),
+    );
+  }
 
   // g. The outcome, read inside the batch: the set carries this request's
   // write id only if every statement above passed its guard. A later
@@ -676,14 +808,17 @@ function decisionSent(ids: number[]): Response {
   });
 }
 
-interface DeliveryRecord {
+interface DeliveryRecord extends RecordStatusFields {
   captuaRecordId: number;
-  status: string;
 }
 
-/** The delivery's openings: its records `in_review` or `approved`. */
+/**
+ * The delivery's openings: its records read as `in_review` or `approved`
+ * (`qcStatusOf`), a closed placeholder with an image among them and an
+ * open one never.
+ */
 export function openingsOf(records: DeliveryRecord[]): Set<number> {
-  return new Set(records.filter((r) => isOpening(r.status)).map((r) => r.captuaRecordId));
+  return new Set(records.filter(isOpeningRecord).map((r) => r.captuaRecordId));
 }
 
 /** What the unit is told for a decider without a name. */
@@ -701,6 +836,7 @@ export async function recordDecisionsAction(
   volumeId: string,
   tenant: Tenant,
   user: User,
+  actor: QcActor = { homeTenantId: user.tenantId, impersonationSessionId: null },
 ): Promise<Response> {
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
   const { db } = deps;
@@ -710,7 +846,7 @@ export async function recordDecisionsAction(
   const volume = await readVolume(db, t, volumeId);
   if (!volume) return refusal(404, "volume_not_found");
   const reviewerId = await readReviewerId(db, t, volumeId);
-  if (reviewerId !== user.id && !(await isQcManager(db, tenant, user))) {
+  if (reviewerId !== user.id && !(await isQcWorker(db, tenant, user))) {
     throw new Response(null, { status: 403 });
   }
 
@@ -809,6 +945,14 @@ export async function recordDecisionsAction(
     now,
     expectedRevision: body.expectedRevision,
     clears: clearing,
+    audit: {
+      id: deps.newId(),
+      actorUserId: user.id,
+      actorEmail: user.email,
+      actorTenantId: actor.homeTenantId,
+      impersonationSessionId: actor.impersonationSessionId,
+      details: qcAuditDetails(delivery.id, decisions),
+    },
   });
   let results: unknown[];
   try {
@@ -858,7 +1002,7 @@ export async function assignReviewerAction(
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
   const { db } = deps;
   const t = tenant.id;
-  if (!(await isQcManager(db, tenant, user))) throw new Response(null, { status: 403 });
+  if (!(await isQcWorker(db, tenant, user))) throw new Response(null, { status: 403 });
 
   const volume = await readVolume(db, t, volumeId);
   if (!volume) return refusal(404, "volume_not_found");
@@ -1019,4 +1163,4 @@ export async function handleVolumeDecisions(deps: CaptureLinkDeps, request: Requ
   return json(200, answer);
 }
 
-// @version v0.8.0
+// @version v0.9.0

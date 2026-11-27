@@ -5,16 +5,20 @@
  * column: its images, as a pair side by side (Spreads) or stacked
  * (Single pages), or a single image, with no card or frame round them.
  * Above them runs a line in the decision's colour, verdigris for
- * approved, madder for rejected for retake and stone for undecided,
- * thicker for the current opening; it carries the opening's number,
- * its page keys and, for a rejection, the reason and the image to
- * retake, when the rejection names one.
+ * approved, madder for rejected for retake, dark stone for excluded
+ * (not a page: a test shot, a duplicate) and light stone for
+ * undecided, thicker for the current opening; it carries the opening's
+ * number, its page keys and, for a rejection, the reason and the image
+ * to retake, when the rejection names one, and for an exclusion the
+ * Excluded badge.
  *
  * The controls sit in the margins as marginalia. The left margin holds
  * the opening's number (a button that makes it current), Approve (a
  * toggle, `aria-pressed`), Reject for retake, which opens the reject
- * form in the rail, and the turn of the left or single image; the right
- * margin holds the turn of the right image of a pair. A turned image's
+ * form in the rail, Exclude (a toggle, `aria-pressed`), and the turn of
+ * the left or single image; the right margin holds the turn of the
+ * right image of a pair. An excluded opening is never processed, so it
+ * offers no turn. A turned image's
  * button shows in saffron. Under them, Clear decision returns a decided
  * opening to undecided while the unit has not yet fetched its decision
  * (`sentAt` null); once it has, the control is not offered and the
@@ -34,11 +38,11 @@
  *
  * The opening is a `role="group"` named by its number and decision.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
-import { Check, Eraser, History, RotateCw, X } from "lucide-react";
+import { Ban, Check, Eraser, History, RotateCw, X } from "lucide-react";
 import { BADGE_SHAPE } from "../../workflow/status-badge";
 import {
   imageForSide,
@@ -61,6 +65,7 @@ import { ReviewImage, type ReviewImageProps } from "./review-image";
 export function decisionKey(decision: ViewerDecision | null): string {
   if (decision?.decision === "approved") return "viewer.decision_approved";
   if (decision?.decision === "rejected") return "viewer.decision_rejected";
+  if (decision?.decision === "excluded") return "viewer.decision_excluded";
   return "viewer.decision_undecided";
 }
 
@@ -71,7 +76,9 @@ export function ruleClass(decision: ViewerDecision | null, current: boolean): st
       ? "bg-verdigris"
       : decision?.decision === "rejected"
         ? "bg-madder"
-        : "bg-stone-300";
+        : decision?.decision === "excluded"
+          ? "bg-stone-500"
+          : "bg-stone-300";
   const weight = current ? "h-[3px]" : decision ? "h-0.5" : "h-px";
   return `${colour} ${weight}`;
 }
@@ -94,6 +101,8 @@ export interface OpeningRowProps {
   onCurrent: () => void;
   onApprove: () => void;
   onReject: () => void;
+  /** Excludes the opening as not a page; without it the control is not offered. */
+  onExclude?: () => void;
   onRotate: (side: "left" | "right") => void;
   /** Clears the opening's decision; without it the control is not offered. */
   onClear?: () => void;
@@ -116,6 +125,7 @@ export function OpeningRow({
   onCurrent,
   onApprove,
   onReject,
+  onExclude,
   onRotate,
   onClear,
   onCompare,
@@ -126,8 +136,10 @@ export function OpeningRow({
   const actions = showsActions(pw);
   const ph = pageHeight(pw);
   const pair = isPair(opening);
-  const leftImage = imageForSide(opening, "left");
-  const rightImage = pair ? imageForSide(opening, "right") : null;
+  const excluded = decision?.decision === "excluded";
+  // An excluded opening is not a page, so it has nothing to turn.
+  const leftImage = excluded ? null : imageForSide(opening, "left");
+  const rightImage = pair && !excluded ? imageForSide(opening, "right") : null;
   const turnsOf = (image: { captureId: string; role: string } | null) => (image ? state.turns[imageKey(image)] ?? 0 : 0);
 
   const roundButton =
@@ -213,6 +225,9 @@ export function OpeningRow({
         {!showEarlier && decision?.decision === "rejected" && decision.side ? (
           <span className={`${BADGE_SHAPE} shrink-0 bg-madder-tint text-madder-deep`}>{t(`side.${decision.side}`)}</span>
         ) : null}
+        {!showEarlier && excluded ? (
+          <span className={`${BADGE_SHAPE} shrink-0 bg-stone-200 text-stone-700`}>{t("viewer.decision_excluded")}</span>
+        ) : null}
         <span className={`min-w-4 flex-1 rounded-full ${ruleClass(decision, current)}`} aria-hidden="true" />
       </div>
 
@@ -261,6 +276,21 @@ export function OpeningRow({
                   >
                     <X className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
                   </button>
+                  {onExclude ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCurrent();
+                        onExclude();
+                      }}
+                      aria-pressed={excluded}
+                      aria-label={t("viewer.exclude_opening", { n })}
+                      title={t("viewer.exclude_hint")}
+                      className={`${roundButton} ${excluded ? "bg-stone-600 text-parchment ring-stone-600" : idle}`}
+                    >
+                      <Ban className="h-5 w-5" strokeWidth={1.5} aria-hidden="true" />
+                    </button>
+                  ) : null}
                   {rotateButton("left", leftImage)}
                   {clearable ? (
                     <button
@@ -330,4 +360,4 @@ export function OpeningRow({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

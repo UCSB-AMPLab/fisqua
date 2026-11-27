@@ -3,8 +3,14 @@
  *
  * This module holds the pieces the Volumes screen and the Capture QC
  * queue share: the page header (the section's eyebrow, the page title
- * and its introduction), the empty state, the state badge, and the
- * stacked bar of approved, rejected and undecided openings.
+ * and its introduction), the empty state, the state badge, the queue's
+ * readiness badge, and the stacked bar of approved, rejected, excluded
+ * and undecided openings. An excluded opening (not a page: a test shot,
+ * a duplicate) is drawn in dark stone, apart from the light track of the
+ * undecided ones. The readiness badge takes the colour pair of the
+ * screen state its readiness comes from: saffron for ready to review (in
+ * capture QC), indigo for preparing, stone for not prepared, madder for
+ * failed.
  *
  * The badge keeps the one badge shape of the design system
  * (`BADGE_SHAPE`, uppercase, no dot) and its status colour pairs: stone
@@ -15,14 +21,14 @@
  * images failed),
  * verdigris for approved, and sage for published.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import { BADGE_SHAPE } from "../workflow/status-badge";
-import type { ScreenState } from "../../lib/capture/screens";
+import type { QueueReadiness, ScreenState } from "../../lib/capture/screens";
 
 const STATE_STYLES: Record<ScreenState, string> = {
   received: "bg-stone-100 text-stone-600",
@@ -45,6 +51,28 @@ export function CaptureStateBadge({ state, rejected }: { state: ScreenState; rej
       ? t("state.retakes_requested_count", { count: rejected })
       : t(`state.${state}`);
   return <span className={`${BADGE_SHAPE} ${STATE_STYLES[state]}`}>{label}</span>;
+}
+
+/** Each readiness drawn as the screen state it comes from, so the queue and Volumes agree on colour. */
+const READINESS_STATE: Record<QueueReadiness, ScreenState> = {
+  ready: "in_capture_qc",
+  preparing: "preparing_review",
+  not_prepared: "received",
+  failed: "review_failed",
+};
+
+const READINESS_LABEL: Record<QueueReadiness, string> = {
+  ready: "queue.ready",
+  preparing: "state.preparing_review",
+  not_prepared: "queue.not_prepared",
+  failed: "state.review_failed",
+};
+
+export function QueueReadinessBadge({ readiness }: { readiness: QueueReadiness }) {
+  const { t } = useTranslation("capture");
+  return (
+    <span className={`${BADGE_SHAPE} ${STATE_STYLES[READINESS_STATE[readiness]]}`}>{t(READINESS_LABEL[readiness])}</span>
+  );
 }
 
 export function CapturePageHeader({ title, intro }: { title: string; intro: string }) {
@@ -78,12 +106,22 @@ export function CaptureEmptyState({ icon: Icon, title, body }: { icon: LucideIco
 
 /**
  * The openings of a delivery as one bar: approved, then rejected for
- * retake, then undecided (the empty track).
+ * retake, then excluded, then undecided (the empty track).
  */
-export function DecisionBar({ approved, rejected, total }: { approved: number; rejected: number; total: number }) {
+export function DecisionBar({
+  approved,
+  rejected,
+  excluded = 0,
+  total,
+}: {
+  approved: number;
+  rejected: number;
+  excluded?: number;
+  total: number;
+}) {
   const { t } = useTranslation("capture");
   const pct = (n: number) => (total > 0 ? `${(n / total) * 100}%` : "0%");
-  const none = approved + rejected === 0;
+  const none = approved + rejected + excluded === 0;
   return (
     <div
       role="img"
@@ -92,8 +130,9 @@ export function DecisionBar({ approved, rejected, total }: { approved: number; r
     >
       <div className="bg-verdigris" style={{ width: pct(approved) }} />
       <div className="bg-madder" style={{ width: pct(rejected) }} />
+      <div className="bg-stone-500" style={{ width: pct(excluded) }} />
     </div>
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -14,6 +14,9 @@
  * decision in the current delivery, or, when the current delivery has
  * not decided it, the latest earlier delivery's decision on it. Then:
  *
+ *   - the current manifest gives the record as `excluded` (not a page,
+ *     as the unit marked it): not a retake, whatever an earlier delivery
+ *     decided;
  *   - the opening is not among the current delivery's openings, and the
  *     latest earlier decision rejected it: `missing`;
  *   - the rejection is the current delivery's, or an earlier delivery's
@@ -25,8 +28,10 @@
  *   - the rejection is an earlier delivery's and the current delivery
  *     brought the opening back with new images: `replaced`, until it is
  *     decided there;
- *   - anything else (approved in the current delivery, never rejected,
- *     or approved by the latest earlier decision): not a retake.
+ *   - anything else (approved or excluded in the current delivery, never
+ *     rejected, or approved or excluded by the latest earlier decision):
+ *     not a retake. An excluded opening is not a page and is never
+ *     retaken.
  *
  * A fetch carries a rejection when the set it answered was at the
  * rejection's revision or later. Each write to a set raises its revision
@@ -37,8 +42,10 @@
  * after a fetch (another reason, a new note) carries a later revision and
  * is requested again until the unit fetches it.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
+
+import type { CaptureQcDecision } from "../validation/enums";
 
 export const RETAKE_STATES = ["requested", "sent", "replaced", "missing"] as const;
 export type RetakeState = (typeof RETAKE_STATES)[number];
@@ -54,7 +61,7 @@ export interface DecisionFetch {
 }
 
 export interface RetakeDecision {
-  decision: "approved" | "rejected";
+  decision: CaptureQcDecision;
   /** The set revision of the write that last wrote the decision. */
   setRevision: number;
 }
@@ -62,6 +69,8 @@ export interface RetakeDecision {
 export interface RetakeInput {
   /** Whether the opening is among the current delivery's openings. */
   inCurrent: boolean;
+  /** Whether the current manifest gives the record as `excluded`, not a page. */
+  excludedNow?: boolean;
   /** The opening's decision in the current delivery, if any. */
   current: RetakeDecision | null;
   /** The current delivery's fetches. */
@@ -101,6 +110,7 @@ function sending(revision: number, fetches: DecisionFetch[], fromEarlier: boolea
 
 export function retakeStateOf(input: RetakeInput): RetakeStanding | null {
   const { current, earlier } = input;
+  if (input.excludedNow) return null;
   if (!input.inCurrent) {
     return earlier?.decision === "rejected" ? { state: "missing", sentAt: null, fromEarlier: true } : null;
   }
@@ -112,4 +122,4 @@ export function retakeStateOf(input: RetakeInput): RetakeStanding | null {
   return { state: "replaced", sentAt: null, fromEarlier: true };
 }
 
-// @version v0.8.0
+// @version v0.9.0

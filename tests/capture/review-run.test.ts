@@ -23,6 +23,10 @@
  *     never gives it its rotation, in either row order, and a page two
  *     page images match is declined as the delivery's own spec problem
  *     (`page_image_ambiguous`);
+ *   - a review run's spec URL and token are timed by the review-run
+ *     lifetime constants, not the volume run's, so a small delivery gets
+ *     the review floors; a run those constants time past a presigned
+ *     URL's seven days is declined (`run_too_long`);
  *   - every reason a start is declined writes nothing, a page with
  *     `rotate_deg` on a runner older than v1.2.0 among them;
  *   - a dispatch GitHub refuses leaves a failed review run, which the
@@ -32,6 +36,13 @@
  *     a retake's carried approvals too; in capture QC once the tiles are
  *     ready; received with Prepare where the federation has a bucket and
  *     the delivery no run; in capture QC at once where it has no bucket;
+ *   - the capture QC queue marks each volume ready to review, preparing,
+ *     not prepared or failed from those states, and lists the ready ones
+ *     first; a volume with an opening rejected and others undecided stays
+ *     on it, ready, not prepared or failed from its review images (ready
+ *     where the federation has no review bucket), while the unit is told
+ *     `retakes_requested`; once every opening is decided it leaves the
+ *     queue; a user who is not a worker sees it only when assigned;
  *   - a dispatch that got no answer counts as open while its run holds,
  *     so Retry is refused, and tiles ready on any run of the delivery
  *     win over a later failure;
@@ -45,6 +56,17 @@
  *     tried again until a person retries it; below runner v1.2.0 a
  *     delivery with a page's `rotate_deg` is left pending, unrecorded,
  *     and starts once the runner reads the field;
+ *   - at most `REVIEW_ACTIVE_RUN_CAP` review runs are active at once,
+ *     across tenants: a start past the cap is declined as
+ *     `review_capacity_full` and writes and dispatches nothing; a run
+ *     whose token expired or was revoked, or whose row reported, does
+ *     not count, and the count agrees with the runs the screens hold
+ *     open; of two starts racing for the last place, and of a start
+ *     whose place another took after its checks, only one writes; the
+ *     sweep starts only the room the cap leaves, records nothing for a
+ *     start the cap declined, tries no more that tick, and starts it on
+ *     a later one, also when a run ends between the refused claim and
+ *     the reading of why; Prepare answers 409 `review_capacity_full`;
  *   - the action's permissions and refusals, and the route's refusal of
  *     a post from another origin before anything else;
  *   - the download address is `{downloadUrl}/file/{bucket}`, read with
@@ -53,7 +75,7 @@
  *
  * Every value here is a test value.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -73,7 +95,7 @@ import {
 } from "../helpers/db";
 import { createTestDescription } from "../helpers/descriptions";
 import { createTestRepository } from "../helpers/repositories";
-import { createTestUser } from "../helpers/auth";
+import { createGrantUser, createTestUser } from "../helpers/auth";
 import { makeUserContext } from "../helpers/context";
 import { fakeS3, type FakeS3 } from "../helpers/fake-s3";
 import {
@@ -92,6 +114,7 @@ import { handleManifestDelivery, handleVolumeStatus, type CaptureLinkDeps } from
 import { recordDecisionsAction } from "../../app/lib/capture/qc.server";
 import { clearReviewAccountCache } from "../../app/lib/capture/review-access.server";
 import {
+  countActiveReviewRuns,
   declineIsPerDelivery,
   readLatestReviewRuns,
   REVIEW_ATTEMPTS_PER_TICK,
@@ -102,9 +125,14 @@ import {
   startReviewRun,
   type ReviewRunDeps,
 } from "../../app/lib/capture/review-run.server";
-import { loadCaptureVolumes } from "../../app/lib/capture/screens.server";
+import { loadCaptureQueue, loadCaptureVolumes } from "../../app/lib/capture/screens.server";
 import { mintScannerToken } from "../../app/lib/capture/token";
 import { DEFAULT_RUN_CONFIG } from "../../app/lib/pipeline/dispatch.server";
+import {
+  REVIEW_ACTIVE_RUN_CAP,
+  REVIEW_RUN_LIFETIME_CONSTANTS,
+  RUN_LIFETIME_CONSTANTS,
+} from "../../app/lib/pipeline/run-config";
 import { getPipelineSpecStore, pipelineKey } from "../../app/lib/pipeline/store.server";
 import { validateAnyRunSpec } from "../../app/lib/pipeline/run-spec";
 import { tenantContext, userContext, type Tenant, type User } from "../../app/context";
@@ -301,6 +329,19 @@ async function unitState(ref: string): Promise<string> {
   });
   const res = await answer(await handleVolumeStatus(world.link, request));
   return res.json!.volumes[0].state;
+}
+
+/** Delivers `n` volumes, oldest first, each with its own description. */
+async function deliverMany(n: number): Promise<Array<{ manifestId: string; volumeId: string; code: string }>> {
+  const repo = await createTestRepository({ tenantId: DEFAULT_TEST_TENANT_ID, code: `repo-${crypto.randomUUID().slice(0, 6)}` });
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const code = `co-test-${pad(100 + i)}`;
+    await createTestDescription({ tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: repo.id, descriptionLevel: "volume", referenceCode: code });
+    out.push({ ...(await deliver(manifest(volume(code)))), code });
+    await env.DB.prepare("UPDATE capture_deliveries SET received_at = ? WHERE id = ?").bind(1000 + i, out[i].manifestId).run();
+  }
+  return out;
 }
 
 async function setReviewBucket(bucket: string | null): Promise<void> {
@@ -556,6 +597,34 @@ describe("starting a review run", () => {
     expect(await stored!.text()).not.toContain("rotate_deg");
   });
 
+  it("times the spec URL and the token by the review-run lifetime constants", async () => {
+    const { manifestId } = await deliver(manifest(volume(CODE)));
+    const now = Date.now();
+    const outcome = await startReviewRun(reviewDeps({ now: () => now }), world.tenant, manifestId, null);
+    expect(outcome.started).toBe(true);
+    const runId = (outcome as { runId: string }).runId;
+    const run = await first<{ spec_url_expires_at: number; token_expires_at: number }>(
+      "SELECT spec_url_expires_at, token_expires_at FROM pipeline_runs WHERE id = ?",
+      runId,
+    );
+    // Two pages: both lifetimes are the review floors, longer than the volume run's.
+    expect(run.spec_url_expires_at - now).toBe(REVIEW_RUN_LIFETIME_CONSTANTS.urlFloorSeconds * 1000);
+    expect(run.token_expires_at - now).toBe(REVIEW_RUN_LIFETIME_CONSTANTS.tokenFloorSeconds * 1000);
+    expect(run.spec_url_expires_at - now).toBeGreaterThan(RUN_LIFETIME_CONSTANTS.urlFloorSeconds * 1000);
+  });
+
+  it("reads the review-run lifetime from its own field, not the volume run's", async () => {
+    const { manifestId } = await deliver(manifest(volume(CODE)));
+    const now = Date.now();
+    // A volume-run lifetime too slow for any run leaves a review run untouched.
+    const config = { ...DEFAULT_RUN_CONFIG!, lifetime: { ...RUN_LIFETIME_CONSTANTS, secondsPerImage: 1_000_000 } };
+    const outcome = await startReviewRun(reviewDeps({ config, now: () => now }), world.tenant, manifestId, null);
+    expect(outcome.started).toBe(true);
+    const runId = (outcome as { runId: string }).runId;
+    const run = await first<{ spec_url_expires_at: number }>("SELECT spec_url_expires_at FROM pipeline_runs WHERE id = ?", runId);
+    expect(run.spec_url_expires_at - now).toBe(REVIEW_RUN_LIFETIME_CONSTANTS.urlFloorSeconds * 1000);
+  });
+
   it("records the person who asked", async () => {
     const { volumeId } = await deliver(manifest(volume(CODE)));
     const res = await retry(volumeId);
@@ -668,6 +737,19 @@ describe("declined starts write nothing", () => {
     declinedWith("restricted", async ({ volumeId }) => {
       await env.DB.prepare("UPDATE pipeline_volumes SET restricted = 1 WHERE id = ?").bind(volumeId).run();
     }));
+  it("for a run the review-run lifetime times past seven days", async () => {
+    const { manifestId } = await deliver(manifest(volume(CODE)));
+    const config = { ...DEFAULT_RUN_CONFIG!, reviewLifetime: { ...REVIEW_RUN_LIFETIME_CONSTANTS, secondsPerImage: 1_000_000 } };
+    const before = await counts();
+    const outcome = await startReviewRun(reviewDeps({ config }), world.tenant, manifestId, null);
+    expect(outcome).toEqual({
+      started: false,
+      reason: "spec_invalid",
+      detail: { problems: [{ path: "volumes.0.pages", rule: "run_too_long" }] },
+    });
+    expect(await counts()).toEqual(before);
+    expect(world.sent).toEqual([]);
+  });
   it("for a page without its digest", () =>
     declinedWith("pages_unready", async ({ volumeId }) => {
       await env.DB.prepare("UPDATE pipeline_volume_pages SET sha256 = NULL WHERE pipeline_volume_id = ? AND seq = 1").bind(volumeId).run();
@@ -854,6 +936,107 @@ describe("the states", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The capture QC queue: which volumes are ready to review
+// ---------------------------------------------------------------------------
+
+describe("the capture QC queue's readiness", () => {
+  it("marks each volume ready, preparing, not prepared or failed, and lists the ready ones first", async () => {
+    const repo = await createTestRepository({ tenantId: DEFAULT_TEST_TENANT_ID, code: `repo-${crypto.randomUUID().slice(0, 6)}` });
+    const codes = ["co-test-201", "co-test-202", "co-test-203", "co-test-204"];
+    const delivered: Array<{ manifestId: string; volumeId: string }> = [];
+    for (const [i, code] of codes.entries()) {
+      await createTestDescription({ tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: repo.id, descriptionLevel: "volume", referenceCode: code });
+      const d = await deliver(manifest(volume(code)));
+      // The ready volume is the oldest handover, so the newest-first order alone would list it last.
+      await env.DB.prepare("UPDATE capture_deliveries SET received_at = ? WHERE id = ?").bind(1000 + i, d.manifestId).run();
+      delivered.push(d);
+    }
+    const [ready, preparing, notPrepared, failed] = delivered;
+    const readyRun = (await startReviewRun(reviewDeps(), world.tenant, ready.manifestId, null)) as { runId: string };
+    await env.DB.prepare("UPDATE capture_review_runs SET status = 'review_ready', reported_at = ? WHERE run_id = ?")
+      .bind(Date.now(), readyRun.runId)
+      .run();
+    expect((await startReviewRun(reviewDeps(), world.tenant, preparing.manifestId, null)).started).toBe(true);
+    world.reply = () => 422;
+    expect((await startReviewRun(reviewDeps(), world.tenant, failed.manifestId, null)).started).toBe(true);
+    world.reply = () => 204;
+
+    const queue = await loadCaptureQueue(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, world.admin, true, Date.now());
+    expect(queue.map((r) => [r.volumeId, r.state, r.readiness])).toEqual([
+      [ready.volumeId, "in_capture_qc", "ready"],
+      [preparing.volumeId, "preparing_review", "preparing"],
+      [notPrepared.volumeId, "received", "not_prepared"],
+      [failed.volumeId, "review_failed", "failed"],
+    ]);
+  });
+
+  async function decideOn(d: { manifestId: string; volumeId: string }, records: Json[]): Promise<void> {
+    const request = new Request(`${HOST}/admin/capture/volumes/${d.volumeId}/decisions`, {
+      method: "POST",
+      body: JSON.stringify({ manifestId: d.manifestId, records }),
+    });
+    const res = await recordDecisionsAction(
+      { db: drizzle(env.DB), now: () => Date.now(), newId: () => crypto.randomUUID() },
+      request,
+      d.volumeId,
+      world.tenant,
+      world.admin,
+    );
+    expect(res.status).toBe(200);
+  }
+
+  it("keeps a volume with a rejection and undecided openings, ready from its review images", async () => {
+    const [withImages, withoutImages, failed] = await deliverMany(3);
+    const readyRun = (await startReviewRun(reviewDeps(), world.tenant, withImages.manifestId, null)) as { runId: string };
+    await env.DB.prepare("UPDATE capture_review_runs SET status = 'review_ready', reported_at = ? WHERE run_id = ?")
+      .bind(Date.now(), readyRun.runId)
+      .run();
+    world.reply = () => 422;
+    expect((await startReviewRun(reviewDeps(), world.tenant, failed.manifestId, null)).started).toBe(true);
+    world.reply = () => 204;
+    // One opening rejected, the other still undecided.
+    for (const d of [withImages, withoutImages, failed]) {
+      await decideOn(d, [{ captuaRecordId: 12, decision: "rejected", reason: "glare" }]);
+    }
+    // The unit is still asked for the retake at once.
+    expect(await unitState(withImages.code)).toBe("retakes_requested");
+
+    const queue = await loadCaptureQueue(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, world.admin, true, Date.now());
+    expect(queue.map((r) => [r.volumeId, r.linkState, r.readiness, r.decided, r.openings])).toEqual([
+      [withImages.volumeId, "retakes_requested", "ready", 1, 2],
+      [withoutImages.volumeId, "retakes_requested", "not_prepared", 1, 2],
+      [failed.volumeId, "retakes_requested", "failed", 1, 2],
+    ]);
+  });
+
+  it("keeps it ready where the federation has no review bucket, and drops it once every opening is decided", async () => {
+    await setReviewBucket(null);
+    const [partial, decided] = await deliverMany(2);
+    await decideOn(partial, [{ captuaRecordId: 12, decision: "rejected", reason: "glare" }]);
+    await decideOn(decided, [
+      { captuaRecordId: 11, decision: "approved" },
+      { captuaRecordId: 12, decision: "rejected", reason: "glare" },
+    ]);
+    const queue = await loadCaptureQueue(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, world.admin, true, Date.now());
+    expect(queue.map((r) => [r.volumeId, r.linkState, r.readiness])).toEqual([
+      [partial.volumeId, "retakes_requested", "ready"],
+    ]);
+    expect((await screenRow(decided.volumeId)).linkState).toBe("retakes_requested");
+    // The Volumes page agrees with the queue: review first, then the scanner.
+    expect((await screenRow(partial.volumeId)).nextStep).toBe("assign_reviewer");
+    expect((await screenRow(decided.volumeId)).nextStep).toBe("waiting_for_scanner");
+  });
+
+  it("shows such a volume to a user who is not a worker only when assigned to them", async () => {
+    await setReviewBucket(null);
+    const [d] = await deliverMany(1);
+    await decideOn(d, [{ captuaRecordId: 12, decision: "rejected", reason: "glare" }]);
+    const someone = { id: crypto.randomUUID() };
+    expect(await loadCaptureQueue(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, someone, false, Date.now())).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The hold
 // ---------------------------------------------------------------------------
 
@@ -894,19 +1077,6 @@ describe("the sweep's step", () => {
 
   const production = (overrides: Partial<ReviewRunDeps> = {}) =>
     reviewDeps({ envOverrides: { PIPELINE_ENVIRONMENT: "production" }, ...overrides });
-
-  /** Delivers `n` volumes, oldest first, each with its own description. */
-  async function deliverMany(n: number): Promise<Array<{ manifestId: string; volumeId: string; code: string }>> {
-    const repo = await createTestRepository({ tenantId: DEFAULT_TEST_TENANT_ID, code: `repo-${crypto.randomUUID().slice(0, 6)}` });
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const code = `co-test-${pad(100 + i)}`;
-      await createTestDescription({ tenantId: DEFAULT_TEST_TENANT_ID, repositoryId: repo.id, descriptionLevel: "volume", referenceCode: code });
-      out.push({ ...(await deliver(manifest(volume(code)))), code });
-      await env.DB.prepare("UPDATE capture_deliveries SET received_at = ? WHERE id = ?").bind(1000 + i, out[i].manifestId).run();
-    }
-    return out;
-  }
 
   it("looks past older deliveries a start would decline", async () => {
     const [unready, restricted, eligible] = await deliverMany(3);
@@ -1158,8 +1328,9 @@ describe("the sweep's step", () => {
     world.reply = () => 422;
     const counted = countedD1(env.DB);
     const tick = await startPendingReviewRuns(reviewDeps({ db: drizzle(counted.binding), envOverrides: { PIPELINE_ENVIRONMENT: "production" } }));
-    // A failed dispatch still counts as a start: its review row records the failure.
-    expect(tick).toEqual({ started: REVIEW_ATTEMPTS_PER_TICK, declined: 0 });
+    // A failed dispatch still counts as a start: its review row records
+    // the failure. The tick starts no more than the active-run cap.
+    expect(tick).toEqual({ started: REVIEW_ACTIVE_RUN_CAP, declined: 0 });
     expect(counted.count()).toBeLessThanOrEqual(REVIEW_SWEEP_QUERY_CEILING);
     expect(
       (await all("SELECT status FROM capture_review_runs")).every((r: Json) => r.status === "aborted"),
@@ -1206,13 +1377,228 @@ describe("the sweep's step", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The cap on active review runs
+// ---------------------------------------------------------------------------
+
+describe("the cap on active review runs", () => {
+  const production = (overrides: Partial<ReviewRunDeps> = {}) =>
+    reviewDeps({ envOverrides: { PIPELINE_ENVIRONMENT: "production" }, ...overrides });
+
+  /** Starts the review runs of `ds`, each by hand, and returns their run ids. */
+  async function startAll(ds: Array<{ manifestId: string }>): Promise<string[]> {
+    const ids: string[] = [];
+    for (const d of ds) {
+      const outcome = await startReviewRun(reviewDeps(), world.tenant, d.manifestId, null);
+      expect(outcome.started).toBe(true);
+      ids.push((outcome as { runId: string }).runId);
+    }
+    return ids;
+  }
+
+  const active = () => countActiveReviewRuns(drizzle(env.DB), Date.now());
+
+  /** Moves a run's token and spec URL lifetimes into the past. */
+  const expire = (runId: string) =>
+    env.DB.prepare("UPDATE pipeline_runs SET spec_url_expires_at = ?, token_expires_at = ? WHERE id = ?")
+      .bind(Date.now() - 2, Date.now() - 1, runId)
+      .run();
+
+  it("is four runs", () => {
+    expect(REVIEW_ACTIVE_RUN_CAP).toBe(4);
+  });
+
+  it("declines a start with review_capacity_full once the cap is reached, writing nothing and dispatching nothing", async () => {
+    const ds = await deliverMany(REVIEW_ACTIVE_RUN_CAP + 1);
+    await startAll(ds.slice(0, REVIEW_ACTIVE_RUN_CAP));
+    expect(await active()).toBe(REVIEW_ACTIVE_RUN_CAP);
+    world.sent = [];
+    const before = await counts();
+    const outcome = await startReviewRun(reviewDeps(), world.tenant, ds[REVIEW_ACTIVE_RUN_CAP].manifestId, null);
+    expect(outcome).toEqual({ started: false, reason: "review_capacity_full" });
+    expect(await counts()).toEqual(before);
+    expect(world.sent).toEqual([]);
+  });
+
+  it("does not count a run whose token expired or was revoked, or whose row reported, and agrees with the screens on which runs may still report", async () => {
+    const ds = await deliverMany(REVIEW_ACTIVE_RUN_CAP + 1);
+    const [expired, errored, ready, open] = await startAll(ds.slice(0, REVIEW_ACTIVE_RUN_CAP));
+    const now = Date.now();
+    await expire(expired);
+    await env.DB.prepare("UPDATE pipeline_runs SET status = 'error', token_revoked_at = ? WHERE id = ?").bind(now, errored).run();
+    await env.DB.prepare("UPDATE pipeline_run_chunks SET status = 'not_sent' WHERE run_id = ?").bind(errored).run();
+    await env.DB.prepare("UPDATE capture_review_runs SET status = 'aborted', reported_at = ? WHERE run_id = ?").bind(now, errored).run();
+    await env.DB.prepare("UPDATE capture_review_runs SET status = 'review_ready', reported_at = ? WHERE run_id = ?").bind(now, ready).run();
+    expect(await active()).toBe(1);
+
+    // A dispatch that got no answer may still run, so it counts.
+    const [unanswered] = await startAll([ds[REVIEW_ACTIVE_RUN_CAP]]);
+    await env.DB.prepare("UPDATE pipeline_run_chunks SET status = 'failed' WHERE run_id = ?").bind(unanswered).run();
+    await env.DB.prepare("UPDATE capture_review_runs SET status = 'aborted', reported_at = ? WHERE run_id = ?").bind(now, unanswered).run();
+    expect(await active()).toBe(2);
+
+    const latest = await readLatestReviewRuns(drizzle(env.DB), DEFAULT_TEST_TENANT_ID, ds.map((d) => d.manifestId), Date.now());
+    const openRuns = [...latest.values()].filter((r) => r.state === "open").map((r) => r.runId);
+    expect(openRuns.sort()).toEqual([open, unanswered].sort());
+    expect(await active()).toBe(openRuns.length);
+  });
+
+  it("lets only one of two starts racing for the last place write", async () => {
+    const ds = await deliverMany(REVIEW_ACTIVE_RUN_CAP + 1);
+    await startAll(ds.slice(0, REVIEW_ACTIVE_RUN_CAP - 1));
+    // Both starts pass every check before either claims.
+    let arrived = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const deps = reviewDeps({
+      reviewImageBaseUrl: async () => {
+        if (++arrived === 2) release();
+        await gate;
+        return IMAGE_BASE;
+      },
+    });
+    const outcomes = await Promise.all(
+      ds.slice(REVIEW_ACTIVE_RUN_CAP - 1).map((d) => startReviewRun(deps, world.tenant, d.manifestId, null)),
+    );
+    expect(arrived).toBe(2);
+    expect(outcomes.filter((o) => o.started)).toHaveLength(1);
+    expect(outcomes.find((o) => !o.started)).toEqual({ started: false, reason: "review_capacity_full" });
+    expect(await counts()).toEqual({ runs: REVIEW_ACTIVE_RUN_CAP, chunks: REVIEW_ACTIVE_RUN_CAP, reviews: REVIEW_ACTIVE_RUN_CAP });
+    expect(world.sent).toHaveLength(REVIEW_ACTIVE_RUN_CAP);
+  });
+
+  it("holds the cap in the claim itself when another start takes the last place after the checks", async () => {
+    const ds = await deliverMany(REVIEW_ACTIVE_RUN_CAP + 1);
+    await startAll(ds.slice(0, REVIEW_ACTIVE_RUN_CAP - 1));
+    const late = ds[REVIEW_ACTIVE_RUN_CAP - 1];
+    const other = ds[REVIEW_ACTIVE_RUN_CAP];
+    const deps = reviewDeps({
+      reviewImageBaseUrl: async () => {
+        expect((await startReviewRun(reviewDeps(), world.tenant, other.manifestId, null)).started).toBe(true);
+        return IMAGE_BASE;
+      },
+    });
+    expect(await startReviewRun(deps, world.tenant, late.manifestId, null)).toEqual({
+      started: false,
+      reason: "review_capacity_full",
+    });
+    expect(await counts()).toEqual({ runs: REVIEW_ACTIVE_RUN_CAP, chunks: REVIEW_ACTIVE_RUN_CAP, reviews: REVIEW_ACTIVE_RUN_CAP });
+    expect(await active()).toBe(REVIEW_ACTIVE_RUN_CAP);
+  });
+
+  it("has the sweep start only as many runs as the cap leaves, and more once a run ends", async () => {
+    const ds = await deliverMany(6);
+    const [firstRun] = await startAll(ds.slice(0, 2));
+    world.sent = [];
+    expect(await startPendingReviewRuns(production())).toEqual({ started: REVIEW_ACTIVE_RUN_CAP - 2, declined: 0 });
+    expect(world.sent).toHaveLength(REVIEW_ACTIVE_RUN_CAP - 2);
+    // The started ones are the oldest pending.
+    const started = await all<{ delivery_id: string }>("SELECT delivery_id FROM capture_review_runs");
+    expect(started.map((r) => r.delivery_id).sort()).toEqual(ds.slice(0, REVIEW_ACTIVE_RUN_CAP).map((d) => d.manifestId).sort());
+
+    // Full: the next tick starts nothing and dispatches nothing.
+    expect(await startPendingReviewRuns(production())).toEqual({ started: 0, declined: 0 });
+    expect(world.sent).toHaveLength(REVIEW_ACTIVE_RUN_CAP - 2);
+
+    // One run's token expires; the next tick starts one more.
+    await expire(firstRun);
+    expect(await startPendingReviewRuns(production())).toEqual({ started: 1, declined: 0 });
+    expect((await first("SELECT COUNT(*) AS n FROM capture_review_runs WHERE delivery_id = ?", ds[REVIEW_ACTIVE_RUN_CAP].manifestId)).n).toBe(1);
+  });
+
+  it("has the sweep record nothing for a start the cap declined, try no more that tick, and start it on a later tick", async () => {
+    const ds = await deliverMany(6);
+    const [firstRun] = await startAll(ds.slice(0, 2));
+    // The first start the sweep makes finds the cap taken by two hand
+    // starts made after the sweep read the active count.
+    let addresses = 0;
+    const deps = production({
+      reviewImageBaseUrl: async () => {
+        addresses++;
+        if (addresses === 2) {
+          for (const d of [ds[5], ds[4]]) {
+            expect((await startReviewRun(reviewDeps(), world.tenant, d.manifestId, null)).started).toBe(true);
+          }
+        }
+        return IMAGE_BASE;
+      },
+    });
+    expect(await startPendingReviewRuns(deps)).toEqual({ started: 0, declined: 1 });
+    // The federation's address once, then the one start: no other was tried.
+    expect(addresses).toBe(2);
+    expect(
+      await all("SELECT id FROM capture_deliveries WHERE review_declined_at IS NOT NULL"),
+    ).toEqual([]);
+    expect((await first("SELECT COUNT(*) AS n FROM capture_review_runs WHERE delivery_id IN (?, ?)", ds[2].manifestId, ds[3].manifestId)).n).toBe(0);
+
+    // A place comes free; the declined delivery starts on the next tick.
+    await expire(firstRun);
+    expect(await startPendingReviewRuns(production())).toEqual({ started: 1, declined: 0 });
+    expect((await first("SELECT COUNT(*) AS n FROM capture_review_runs WHERE delivery_id = ?", ds[2].manifestId)).n).toBe(1);
+  });
+
+  it("has the sweep record nothing when a run ends between a claim the cap refused and the reading of why", async () => {
+    const ds = await deliverMany(6);
+    const t0 = Date.now();
+    let clock = t0;
+    const [ending] = await startAll(ds.slice(0, 3));
+    // Active when the claim is made, at t0; expired by the time the
+    // refused claim's reason is read, at t0 + 10 s.
+    await env.DB.prepare("UPDATE pipeline_runs SET spec_url_expires_at = ?, token_expires_at = ? WHERE id = ?")
+      .bind(t0 + 4_000, t0 + 5_000, ending)
+      .run();
+    let addresses = 0;
+    const deps = production({
+      now: () => clock,
+      reviewImageBaseUrl: async () => {
+        addresses++;
+        if (addresses === 2) {
+          // A hand start takes the last place after the sweep read the count.
+          expect((await startReviewRun(reviewDeps(), world.tenant, ds[5].manifestId, null)).started).toBe(true);
+          clock = t0 + 10_000;
+        }
+        return IMAGE_BASE;
+      },
+    });
+    expect(await startPendingReviewRuns(deps)).toEqual({ started: 0, declined: 1 });
+    expect(addresses).toBe(2);
+    expect(await all("SELECT id FROM capture_deliveries WHERE review_declined_at IS NOT NULL")).toEqual([]);
+    expect((await first("SELECT COUNT(*) AS n FROM capture_review_runs WHERE delivery_id = ?", ds[3].manifestId)).n).toBe(0);
+
+    // The next tick finds the place the ended run left, and starts it.
+    expect(await startPendingReviewRuns(production({ now: () => clock }))).toEqual({ started: 1, declined: 0 });
+    expect((await first("SELECT COUNT(*) AS n FROM capture_review_runs WHERE delivery_id = ?", ds[3].manifestId)).n).toBe(1);
+  });
+
+  it("answers Prepare with 409 review_capacity_full while the cap is reached", async () => {
+    const ds = await deliverMany(REVIEW_ACTIVE_RUN_CAP + 1);
+    await startAll(ds.slice(0, REVIEW_ACTIVE_RUN_CAP));
+    const before = await counts();
+    expect(await retry(ds[REVIEW_ACTIVE_RUN_CAP].volumeId)).toEqual({ status: 409, json: { error: "review_capacity_full" } });
+    expect(await counts()).toEqual(before);
+  });
+
+  it("is not a reason of the delivery's own", () => {
+    expect(declineIsPerDelivery({ reason: "review_capacity_full" })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The Prepare and Retry action
 // ---------------------------------------------------------------------------
 
 describe("the Prepare and Retry action", () => {
-  it("lets admins and stewards start, and refuses anyone else with a bare 403", async () => {
+  it("lets admins, stewards and federation staff start, and refuses anyone else with a bare 403", async () => {
     const { volumeId } = await deliver(manifest(volume(CODE)));
     expect((await retry(volumeId, world.outsider)).status).toBe(403);
+    const cataloguer = { ...world.outsider, isCataloguer: true };
+    expect((await retry(volumeId, cataloguer)).status).toBe(403);
+    expect(await counts()).toEqual({ runs: 0, chunks: 0, reviews: 0 });
+    const staff = await createGrantUser("staff", { name: "Test Staff" });
+    expect((await retry(volumeId, staff)).status).toBe(200);
+  });
+
+  it("lets a steward start a run", async () => {
+    const { volumeId } = await deliver(manifest(volume(CODE)));
     expect(await counts()).toEqual({ runs: 0, chunks: 0, reviews: 0 });
     expect((await retry(volumeId, world.steward)).status).toBe(200);
   });
@@ -1370,4 +1756,4 @@ describe("the review bucket's download address", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

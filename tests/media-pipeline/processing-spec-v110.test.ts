@@ -1,12 +1,13 @@
 /**
  * Tests — processing specs for runner v1.1.0: rotations and the review purge
  *
- * From runner v1.1.0 a processing run's spec carries two things capture
- * QC recorded: each rotated page's `quarter_turns`, and, when the
- * federation has a review-tiles bucket, the review prefixes the runner
- * deletes once a volume's tiles are verified. This suite drives
- * `startPipelineRun` against the local D1 database and the spec bucket,
- * with a stub GitHub, and pins:
+ * This suite pins what the processing specs for runner v1.1.0 carry:
+ * rotations and the review purge. From runner v1.1.0 a processing run's
+ * spec carries two things capture QC recorded: each rotated page's
+ * `quarter_turns`, and, when the federation has a review-tiles bucket, the
+ * review prefixes the runner deletes once a volume's tiles are verified.
+ * The suite drives `startPipelineRun` against the local D1 database and
+ * the spec bucket, with a stub GitHub, and pins:
  *
  *   - below v1.1.0 nothing of either is read or written: a spec built
  *     while rotations, unpurged review runs and a review bucket exist is
@@ -52,9 +53,15 @@
  *     those fixtures; the rules are not changed;
  *   - the processing report of a volume whose spec named prefixes marks
  *     them purged or failed, after which no prefix of that volume is
- *     read for purging again.
+ *     read for purging again;
+ *   - at any runner version, the pages of an opening capture QC
+ *     excluded are left out of the spec, the rest renumbered from 1
+ *     and counted in `expected_count` and the run volume's count, with
+ *     the registered page list untouched; an opening approved again is
+ *     a page again; and a volume with every opening excluded is refused
+ *     as `invalid_page_list` (`no_pages`) with nothing claimed.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { env } from "cloudflare:test";
@@ -101,6 +108,7 @@ import {
 } from "../../app/lib/pipeline/dispatch.server";
 import { getPipelineSpecStore, pipelineKey } from "../../app/lib/pipeline/store.server";
 import { TONAL_DEFAULT_PRESET } from "../../app/lib/pipeline/recipe";
+import { REVIEW_RUN_LIFETIME_CONSTANTS } from "../../app/lib/pipeline/run-config";
 import { validateRunSpec, type ManifestResolver } from "../../app/lib/pipeline/run-spec";
 import { recordDecisionsAction } from "../../app/lib/capture/qc.server";
 import { buildCarryForwardStatements } from "../../app/lib/capture/carry.server";
@@ -132,6 +140,7 @@ const CONFIG: PipelineRunConfig = {
     urlFloorSeconds: 1800,
     callbackTailSeconds: 600,
   },
+  reviewLifetime: REVIEW_RUN_LIFETIME_CONSTANTS,
   presets: {
     byOutputClass: { tonal: TONAL_DEFAULT_PRESET },
     acceptedKeys: { preprocess: [], render: [] },
@@ -538,6 +547,79 @@ describe("processing specs for runner v1.1.0", () => {
 
   // --- rotate_deg -----------------------------------------------------------
 
+  // --- Excluded openings --------------------------------------------------
+
+  it("leaves an excluded opening's pages out of the spec at any runner version, renumbering the rest", async () => {
+    const s = await setup();
+    const [a] = s.seeded.volumes;
+    await delivery(a.id, a.referenceCode, SINGLE_AND_SPREAD);
+    expect(
+      await decide(s, a.id, [
+        { captuaRecordId: 1, decision: "excluded", note: "Test shot of the rig" },
+        { captuaRecordId: 2, decision: "approved" },
+      ]),
+    ).toBe(200);
+
+    const { runId } = await startPipelineRun(deps(), input(s));
+    const { json } = await storedSpec(runId);
+    const [volume] = json.volumes;
+    expect(volume.expected_count).toBe(2);
+    expect(volume.pages.map((p: Json) => [p.seq, p.page_key])).toEqual([
+      [1, "p00002"],
+      [2, "p00003"],
+    ]);
+    expect(() => validateRunSpec(json)).not.toThrow();
+    expect((await first("SELECT expected_count FROM pipeline_run_volumes WHERE run_id = ?", runId)).expected_count).toBe(2);
+    // The registered page list is not touched: the exclusion is read at each start.
+    expect((await first("SELECT COUNT(*) AS n FROM pipeline_volume_pages WHERE pipeline_volume_id = ?", a.id)).n).toBe(3);
+    expect((await first("SELECT expected_count FROM pipeline_volumes WHERE id = ?", a.id)).expected_count).toBe(3);
+  });
+
+  it("keeps the rotations of the pages left in, and gives back an opening no longer excluded", async () => {
+    const s = await setup();
+    const [a] = s.seeded.volumes;
+    await delivery(a.id, a.referenceCode, SINGLE_AND_SPREAD);
+    expect(
+      await decide(s, a.id, [
+        { captuaRecordId: 1, decision: "approved", rotations: [{ captureId: "cap-1", role: "single", quarterTurns: 2 }] },
+        { captuaRecordId: 2, decision: "excluded" },
+      ]),
+    ).toBe(200);
+    const excluded = await startPipelineRun(deps({ envOverrides: V110 }), input(s));
+    const [volume] = (await storedSpec(excluded.runId)).json.volumes;
+    expect(volume.pages).toEqual([expect.objectContaining({ seq: 1, page_key: "p00001", quarter_turns: 2 })]);
+    expect(volume.expected_count).toBe(1);
+
+    // Free the volume, approve the spread instead, and start again.
+    await env.DB.prepare("UPDATE pipeline_runs SET status = 'error', token_revoked_at = ? WHERE id = ?")
+      .bind(Date.now(), excluded.runId)
+      .run();
+    await env.DB.prepare("UPDATE pipeline_volumes SET held_by_run_id = NULL WHERE id = ?").bind(a.id).run();
+    await env.DB.prepare("DELETE FROM pipeline_run_volumes WHERE run_id = ?").bind(excluded.runId).run();
+    expect(await decide(s, a.id, [{ captuaRecordId: 2, decision: "approved" }])).toBe(200);
+    const restored = await startPipelineRun(deps({ envOverrides: V110 }), input(s));
+    const [all] = (await storedSpec(restored.runId)).json.volumes;
+    expect(all.expected_count).toBe(3);
+    expect(all.pages.map((p: Json) => p.page_key)).toEqual(["p00001", "p00002", "p00003"]);
+    expect(turnsOf(all)).toEqual([2, undefined, undefined]);
+  });
+
+  it("refuses a volume whose every opening is excluded, and claims nothing", async () => {
+    const s = await setup();
+    const [a] = s.seeded.volumes;
+    await delivery(a.id, a.referenceCode, SINGLE_AND_SPREAD);
+    expect(
+      await decide(s, a.id, [
+        { captuaRecordId: 1, decision: "excluded" },
+        { captuaRecordId: 2, decision: "excluded" },
+      ]),
+    ).toBe(200);
+    const refused = await refusal(startPipelineRun(deps(), input(s)));
+    expect(refused.code).toBe("invalid_page_list");
+    expect(refused.detail).toMatchObject({ volume_id: a.id, rules: ["no_pages"] });
+    expect((await first("SELECT COUNT(*) AS n FROM pipeline_runs")).n).toBe(0);
+  });
+
   it("fills rotate_deg from v1.2.0 from each page's image, 0 included, beside its quarter_turns", async () => {
     const s = await setup({ count: 2 });
     const [a, b] = s.seeded.volumes;
@@ -769,13 +851,13 @@ describe("processing specs for runner v1.1.0", () => {
       { captuaRecordId: 2, decision: "approved" },
     ]);
     // The rotation lands just before the claim batch, the first batch
-    // of more than the two statements the rotations read takes.
+    // of more than the three statements the capture QC read takes.
     let fired = false;
     const binding = new Proxy(env.DB, {
       get(target, prop) {
         if (prop === "batch") {
           return async (stmts: D1PreparedStatement[]) => {
-            if (!fired && stmts.length > 2) {
+            if (!fired && stmts.length > 3) {
               fired = true;
               await decide(s, a.id, [
                 { captuaRecordId: 2, decision: "approved", rotations: [{ captureId: "cap-2", role: "right", quarterTurns: 2 }] },
@@ -1031,4 +1113,4 @@ describe("processing specs for runner v1.1.0", () => {
   });
 });
 
-// @version v0.8.0
+// @version v0.9.0

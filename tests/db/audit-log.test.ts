@@ -2,7 +2,8 @@
  * Tests — audit_log table
  *
  * This suite verifies audit_log shape (12 columns + 3 indexes),
- * bounded action CHECK enum, and BEFORE UPDATE / BEFORE DELETE
+ * bounded action CHECK enum (every value of `AUDIT_LOG_ACTIONS`
+ * accepted, anything else refused), and BEFORE UPDATE / BEFORE DELETE
  * immutability triggers. Forensic-continuity test for actor_user_id_text
  * denormalisation.
  *
@@ -10,7 +11,7 @@
  * RAISE(ABORT) triggers, so all rejection paths exercise the exact
  * same trigger bodies that production runs.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
@@ -26,6 +27,7 @@ import {
   PLATFORM_TENANT_ID,
   NEOGRANADINA_TENANT_ID,
 } from "../../app/lib/tenant";
+import { AUDIT_LOG_ACTIONS } from "../../app/lib/audit-actions";
 
 describe("audit_log", () => {
   let db: ReturnType<typeof drizzle>;
@@ -132,17 +134,9 @@ describe("audit_log", () => {
         .run(),
     ).rejects.toThrow();
 
-    // Each of the seven bounded action values must succeed.
-    const validActions = [
-      "create_tenant",
-      "soft_disable_tenant",
-      "reset_superadmin",
-      "login_as",
-      "edit_on_behalf",
-      "set_capability",
-      "set_quota",
-    ] as const;
-    for (const action of validActions) {
+    // Every value of the action enum must succeed, so the enum and the
+    // CHECK cannot drift apart in either direction.
+    for (const action of AUDIT_LOG_ACTIONS) {
       await env.DB.prepare(
         "INSERT INTO audit_log (id, created_at, actor_user_id_text, actor_tenant_id, action) " +
           "VALUES (?,?,?,?,?)",
@@ -156,11 +150,12 @@ describe("audit_log", () => {
         )
         .run();
     }
-    // Read back the count -- 7 valid rows landed.
+    // Read back the count: one row for each value of the enum.
     const count = await env.DB.prepare(
       "SELECT COUNT(*) AS c FROM audit_log",
     ).first<{ c: number }>();
-    expect(count!.c).toBe(7);
+    expect(count!.c).toBe(AUDIT_LOG_ACTIONS.length);
+    expect(AUDIT_LOG_ACTIONS).toContain("capture_qc_decision");
   });
 
   it("no UPDATE — UPDATE on audit_log fails with RAISE(ABORT) 'audit_log is append-only'", async () => {
@@ -252,3 +247,5 @@ describe("audit_log", () => {
     expect(row!.actor_user_id_text).toBe(userId);
   });
 });
+
+// @version v0.9.0

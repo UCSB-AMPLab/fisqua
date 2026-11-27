@@ -3,14 +3,14 @@
  *
  * This module deals with the read behind the Retakes screen: for each
  * volume of the tenant still in capture QC, the openings rejected for
- * retake and not yet approved again, each with where its retake stands
+ * retake and not yet approved (or excluded) again, each with where its retake stands
  * (`retakeStateOf` in `retakes.ts`). Every read is scoped to the
  * request's tenant; nothing here writes.
  *
  * A volume is read when its current delivery (the one `registered`)
  * holds a rejection, or when an earlier delivery of it rejected an
  * opening; a volume a pipeline run has named is left out, since its
- * decisions are fixed. A user who is not a manager (`captureAccess`)
+ * decisions are fixed. A user who is not a worker (`captureAccess`)
  * sees only the volumes assigned to them for review.
  *
  * `readVolumeRetakes` reads one volume: the current delivery's records
@@ -23,6 +23,12 @@
  * (`record_status` `in_review` or `approved`), each by capture id, role,
  * capture digest and `rotate_deg`: unchanged, its rejection still
  * stands as that delivery's; changed, it was replaced.
+ *
+ * A record the current manifest gives as `excluded` (not a page, as the
+ * unit marked it), or as a placeholder closed with no image, which
+ * `qcStatusOf` reads as `excluded`, is never a retake, whatever an
+ * earlier delivery decided on it. A placeholder closed with an image is
+ * an opening, as `qcStatusOf` reads it.
  *
  * A row is a retake: its opening's sequence, the page keys of its images
  * (left, right, then a single) in the current delivery, or, for an
@@ -46,7 +52,7 @@
  * itself, while Retakes follows a rejection that still stands from an
  * older one.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -61,9 +67,9 @@ import {
   pipelineVolumes,
 } from "../../db/schema";
 import type { User } from "../../context";
-import type { CaptureQcReason, CaptureQcSide } from "../validation/enums";
+import type { CaptureQcDecision, CaptureQcReason, CaptureQcSide } from "../validation/enums";
 import { unpackJson } from "./link.server";
-import { isOpening } from "./manifest";
+import { isOpening, isOpeningRecord, qcStatusOf, type RecordStatusFields } from "./manifest";
 import { retakeStateOf, type DecisionFetch, type RetakeState } from "./retakes";
 import { waitingDays } from "./screens";
 
@@ -106,7 +112,7 @@ export interface RetakeVolume {
 
 interface Decision {
   captuaRecordId: number;
-  decision: "approved" | "rejected";
+  decision: CaptureQcDecision;
   reason: CaptureQcReason | null;
   side: CaptureQcSide | null;
   note: string | null;
@@ -131,7 +137,7 @@ export async function loadRetakes(
   db: DrizzleD1Database<any>,
   tenantId: string,
   user: Pick<User, "id">,
-  manager: boolean,
+  worker: boolean,
   now: number,
 ): Promise<RetakeVolume[]> {
   // The current deliveries of volumes with a rejection, now or earlier.
@@ -178,7 +184,7 @@ export async function loadRetakes(
 
   const out: RetakeVolume[] = [];
   for (const c of candidates) {
-    if (!manager && c.reviewerId !== user.id) continue;
+    if (!worker && c.reviewerId !== user.id) continue;
     const rows = await readVolumeRetakes(db, tenantId, c.deliveryId, c.volumeId, now);
     if (rows.length === 0) continue;
     let sent: number | null = null;
@@ -207,7 +213,7 @@ export async function countUnchangedRejections(
   return rows.filter((r) => r.fromEarlier && (r.state === "requested" || r.state === "sent")).length;
 }
 
-type RecordRow = { captuaRecordId: number; sequence: number; status: string };
+type RecordRow = RecordStatusFields & { captuaRecordId: number; sequence: number };
 
 async function readRecords(db: DrizzleD1Database<any>, tenantId: string, deliveryId: string): Promise<RecordRow[]> {
   const row = await db
@@ -335,7 +341,10 @@ export async function readVolumeRetakes(
   now: number,
 ): Promise<RetakeRow[]> {
   const records = await readRecords(db, tenantId, deliveryId);
-  const openings = new Map(records.filter((r) => isOpening(r.status)).map((r) => [r.captuaRecordId, r.sequence]));
+  const openings = new Map(records.filter(isOpeningRecord).map((r) => [r.captuaRecordId, r.sequence]));
+  // A record the current manifest gives as excluded, or as a placeholder
+  // closed with no image, is not a page, so no earlier rejection of it stands.
+  const excludedNow = new Set(records.filter((r) => qcStatusOf(r) === "excluded").map((r) => r.captuaRecordId));
   const sequenceOf = new Map(records.map((r) => [r.captuaRecordId, r.sequence]));
 
   const current = (await db
@@ -401,6 +410,7 @@ export async function readVolumeRetakes(
     const now_ = signature(currentImages.get(id));
     const standing = retakeStateOf({
       inCurrent,
+      excludedNow: excludedNow.has(id),
       current: cur,
       currentFetches: fetchesOf.get(deliveryId) ?? [],
       earlier: e && {
@@ -433,4 +443,4 @@ export async function readVolumeRetakes(
   return rows;
 }
 
-// @version v0.8.0
+// @version v0.9.0

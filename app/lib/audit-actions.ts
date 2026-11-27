@@ -1,7 +1,7 @@
 /**
  * Audit Log Action Enum
  *
- * This module deals with the twelve bounded action values that
+ * This module deals with the thirteen bounded action values that
  * `audit_log.action` accepts. The enum lives here, in a tiny
  * constants-only module, so it can be
  * imported from BOTH `app/db/schema.ts` (for the Drizzle column's
@@ -13,18 +13,18 @@
  * constant from `audit.server.ts`.
  *
  * The DB layer's CHECK constraint on `audit_log.action` (migrations
- * 0037, 0101 and 0108) is the structural source of truth; this constant is the
+ * 0037, 0101, 0108 and 0124) is the structural source of truth; this constant is the
  * TypeScript mirror that lets the `withAuditLog` wrapper's signature
  * reject typos at compile time. If the migration ever extends the
  * enum, this constant extends in lockstep — and the keystone
  * `tests/db/audit-log.test.ts` "action CHECK" assertion will catch
  * a drift in either direction.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 /**
- * The twelve bounded `audit_log.action` values.
+ * The thirteen bounded `audit_log.action` values.
  *
  *   - `create_tenant` — operator creates a new tenant. The
  *     bootstrap-superadmin user insert is part of this action's
@@ -46,7 +46,16 @@
  *   - `scanner_token` — a tenant admin or federation steward makes,
  *     replaces or revokes the tenant's Captua scanner token on the
  *     Scanner screen (migration 0101). `details.step` says which; the
- *     token and its hash are never recorded.
+ *     token and its hash are never recorded. A revoke's details carry
+ *     its `reason` (`replaced` or `compromised`). Pairing adds three
+ *     steps: `pair_approved`, with target kind `capture_pairing_code`
+ *     and the code's `unitName` and `deviceId`, when a manager approves
+ *     a code; `pair_collected`, on the scanner, when the unit collects
+ *     its token, with `unitName`, `deviceId` and, when the scanner was
+ *     renamed, `previousName`; and `keys_erased`, with target kind
+ *     `capture_scanner_keys`, when the stored keys are erased, with
+ *     `reason` `compromised` (a compromised revoke) or `manual` (Erase
+ *     stored keys).
  *
  * The last four record changes to a person's access, each with target
  * kind `user`, the person's id, the workspace acted in as the target
@@ -65,6 +74,17 @@
  *     `removed`.
  *   - `invite_user` — the person invited, recorded once the invitation
  *     email has gone; `details` is `{ role }`, the opening role chosen.
+ *
+ * The last records capture QC (migration 0124):
+ *
+ *   - `capture_qc_decision` — one saved request of decisions on a
+ *     volume's openings, written only where the decisions landed, with
+ *     target kind `pipeline_volume` and the volume's id; `details` is
+ *     `{ manifestId, revision, counts: { accepted, rejected, excluded,
+ *     cleared }, rejections: [{ captuaRecordId, reason, side? }],
+ *     cleared: [captuaRecordId], truncated? }`, at most 40,000 bytes,
+ *     cleared ids and then rejections dropped from the end to fit
+ *     (`qcAuditDetails` in `capture/qc.server.ts`).
  */
 export const AUDIT_LOG_ACTIONS = [
   "create_tenant",
@@ -79,14 +99,15 @@ export const AUDIT_LOG_ACTIONS = [
   "set_federation_role",
   "set_project_membership",
   "invite_user",
+  "capture_qc_decision",
 ] as const;
 
 /**
- * Compile-time narrowing of the twelve valid action values. Used by
+ * Compile-time narrowing of the thirteen valid action values. Used by
  * `withAuditLog`'s parameter type so a typo in a route handler is
  * a TypeScript error, not a runtime CHECK violation surfaced to the
  * operator as a 500.
  */
 export type AuditAction = (typeof AUDIT_LOG_ACTIONS)[number];
 
-// @version v0.8.0
+// @version v0.9.0

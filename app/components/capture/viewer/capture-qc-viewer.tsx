@@ -3,19 +3,23 @@
  *
  * This component is the capture QC viewer: the full-height page where
  * a reviewer looks at each opening of a volume's current handover and
- * approves it or rejects it for retake, correcting the rotation of an
- * image where the scanner got it wrong. It reads like a scrolling PDF,
+ * approves it, rejects it for retake, or excludes it as not a page (a
+ * test shot of the rig, a duplicate), correcting the rotation of an
+ * image where the scanner got it wrong. An exclusion clears the
+ * opening's rotations, since an excluded opening is never processed,
+ * and no rotation can be added to it while it stays excluded. It reads like a scrolling PDF,
  * in the manner of Diva.js and the segmentation viewer: the images fill
  * the column, an opening is a pair or a single image under a thin line
  * in its decision's colour, and its controls sit in the margins
  * (`OpeningRow`). The contact sheet is a mode of the same viewer
  * (`ContactSheet`), and the rail (`CaptureQcRail`) holds the opening's
- * details and the reject form.
+ * details and the reject form, and says when the handover's
+ * calibration shots were skipped.
  *
  * The page's state is in its search parameters where a link should
  * carry it: `opening` (the current opening's manifest sequence), `view`
- * (`spreads`, `pages` or `sheet`) and `show` (`all`, `undecided` or
- * `rejected`). Zoom stays in the page. A filter is taken when it is
+ * (`spreads`, `pages` or `sheet`) and `show` (`all`, `undecided`,
+ * `rejected` or `excluded`). Zoom stays in the page. A filter is taken when it is
  * chosen and kept while the reviewer works (`filterIds`), so an opening
  * decided under "Undecided" stays in place. Only the openings on screen
  * and two either side are mounted; the rest of the column is held open
@@ -84,7 +88,7 @@
  * learns from the route and which asks for a reload; and a filter that
  * matches nothing.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -588,6 +592,20 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
     setRejectOpen(false);
   };
 
+  // An excluded opening is not a page: its rotations go with the exclusion.
+  const exclude = (id: number | null) => {
+    if (id === null) return;
+    const state = statesRef.current.get(id);
+    if (!state || state.decision?.decision === "excluded") return;
+    commit([
+      {
+        id,
+        after: { decision: { decision: "excluded", reason: null, side: null, note: null, decidedBy: null, decidedAt: null }, turns: {} },
+      },
+    ]);
+    setRejectOpen(false);
+  };
+
   // Only a decision the unit has not fetched can be cleared; the
   // opening's rotations stay as held ones.
   const clear = (id: number | null) => {
@@ -603,7 +621,7 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
     const opening = byId.get(id);
     const state = statesRef.current.get(id);
     const image = opening ? imageForSide(opening, side) : null;
-    if (!opening || !state || !image) return;
+    if (!opening || !state || !image || state.decision?.decision === "excluded") return;
     const key = imageKey(image);
     commit([{ id, after: { decision: state.decision, turns: { ...state.turns, [key]: turnClockwise(state.turns[key] ?? 0) } } }]);
   };
@@ -697,6 +715,9 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
       case "reject":
         openReject();
         break;
+      case "exclude":
+        exclude(current);
+        break;
       case "rotate_left":
         rotate(current, "left");
         break;
@@ -735,11 +756,13 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
   const counts = useMemo(() => {
     let approved = 0;
     let rejected = 0;
+    let excluded = 0;
     for (const s of states.values()) {
       if (s.decision?.decision === "approved") approved += 1;
       else if (s.decision?.decision === "rejected") rejected += 1;
+      else if (s.decision?.decision === "excluded") excluded += 1;
     }
-    return { approved, rejected, undecided: total - approved - rejected };
+    return { approved, rejected, excluded, undecided: total - approved - rejected - excluded };
   }, [states, total]);
 
   const announcement =
@@ -788,6 +811,7 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
         <div role="group" aria-label={t("viewer.show_label")} className="flex items-center gap-1">
           <Toggle pressed={show === "undecided"} onClick={() => setParam("show", "undecided")} label={t("viewer.show_undecided")} />
           <Toggle pressed={show === "rejected"} onClick={() => setParam("show", "rejected")} label={t("viewer.show_rejected")} />
+          <Toggle pressed={show === "excluded"} onClick={() => setParam("show", "excluded")} label={t("viewer.show_excluded")} />
           <Toggle pressed={show === "all"} onClick={() => setParam("show", "all")} label={t("viewer.show_all")} />
         </div>
 
@@ -894,6 +918,7 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
                     onCurrent={() => makeCurrent(o.captuaRecordId)}
                     onApprove={() => approve(o.captuaRecordId)}
                     onReject={openReject}
+                    onExclude={() => exclude(o.captuaRecordId)}
                     onRotate={(side) => rotate(o.captuaRecordId, side)}
                     onClear={() => clear(o.captuaRecordId)}
                     onCompare={() => toggleCompare(o.captuaRecordId)}
@@ -912,12 +937,16 @@ export function CaptureQcViewer({ data, send }: CaptureQcViewerProps) {
           counts={counts}
           awaitingRetakes={
             !locked &&
-            awaitingRetakes({ openings: total, rejectedRecords: data.delivery.rejectedRecords }, counts.approved === total)
+            awaitingRetakes(
+              { openings: total, rejectedRecords: data.delivery.rejectedRecords },
+              counts.approved + counts.excluded === total,
+            )
           }
           opening={currentOpening}
           state={currentState}
           handover={data.delivery.handover}
           receivedAt={data.delivery.receivedAt}
+          calibration={data.delivery.calibration}
           canDecide={canDecide}
           rejectOpen={rejectOpen}
           onClear={() => clear(current)}
@@ -1110,4 +1139,4 @@ function IconButton({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

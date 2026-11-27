@@ -6,7 +6,7 @@
  * filter shows as a small tile, its pages side by side, over a line in
  * the decision's colour and a label with its number and, for a
  * rejection, the reason and the side to retake, when the rejection
- * names one. Clicking a tile makes the opening current and
+ * names one, or, for an excluded opening, Excluded. Clicking a tile makes the opening current and
  * returns to Spreads at it. Each tile has a checkbox, so a reviewer can
  * pick several openings and approve them together from the toolbar
  * ("Approve selected"); a selected tile is outlined in indigo.
@@ -23,7 +23,7 @@
  * without access shows. The image is contained in its box, turned by
  * the opening's quarter-turns, and loaded lazily.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -168,6 +168,9 @@ export function ContactSheet({ openings, states, currentId, zoom, selected, canD
               {decision?.decision === "rejected" && decision.side ? (
                 <span className="text-madder-deep">{t(`side.${decision.side}`)}</span>
               ) : null}
+              {decision?.decision === "excluded" ? (
+                <span className="text-stone-600">{t("viewer.decision_excluded")}</span>
+              ) : null}
             </span>
           </li>
         );
@@ -176,4 +179,4 @@ export function ContactSheet({ openings, states, currentId, zoom, selected, canD
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

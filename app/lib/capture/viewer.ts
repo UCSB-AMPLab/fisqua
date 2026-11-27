@@ -21,6 +21,13 @@
  * set carrying it, and an opening carries `earlier` (`ViewerEarlier`)
  * when an earlier handover rejected it and this one brought new images:
  * the rejected images, which the viewer can show in their place.
+ * `placeholders` lists the delivery's placeholders (contract 1.9: records
+ * `missing` a side or both, open or closed) in `sequence` order, so each
+ * can be drawn in its place among the openings; a closed one with an
+ * image is also among the openings (`opening`), and an open one never is.
+ * The delivery's `calibration` says what the handover states about its
+ * calibration shots (contract 1.12), which are never openings, so the
+ * rail can show a volume whose shots were skipped.
  *
  * The layout. The viewer reads like a scrolling PDF: images fill the
  * column, and an opening is a pair or a single image under a thin line
@@ -37,7 +44,7 @@
  * the rest of the column is held open by spacers.
  *
  * The shortcuts. `shortcutFor` maps a key event to an action: A
- * approve, R reject, `[` and `]` turn the left (or single) and right
+ * approve, R reject, X exclude, `[` and `]` turn the left (or single) and right
  * image a quarter clockwise, J and K next and previous, G the contact
  * sheet, Escape closes the reject form, Ctrl or Cmd with Z undoes and
  * with Shift and Z redoes. While focus is in an input, a select or a
@@ -46,12 +53,15 @@
  * dialog among them) every shortcut is ignored.
  *
  * The decisions. `OpeningState` is an opening as the reviewer has left
- * it: its decision, if any (a rejection of an opening with two images
- * names the side to retake, its `side`; one recorded without a side is
- * held and sent as `both`, the whole opening), and the quarter-turns of
- * each image.
+ * it: its decision, if any (approved; rejected for retake, where a
+ * rejection of an opening with two images names the side to retake, its
+ * `side`, and one recorded without a side is held and sent as `both`,
+ * the whole opening; or excluded as not a page, a test shot or a
+ * duplicate, which is never processed and takes no rotation), and the
+ * quarter-turns of each image.
  * `entryFor` turns it into one record of the decisions route's body,
  * which replaces the opening's decision and rotations whole; an
+ * exclusion is sent with no rotation; an
  * undecided opening gives none, so a rotation on it stays in the
  * browser until it is decided (`heldRotation`). A decision is cleared,
  * by the Clear decision control or by undo, with an entry whose
@@ -76,10 +86,10 @@
  * and reported (`conflictedOpenings`). `hasUnsavedWork` counts held rotations with the queue's own unsaved
  * changes, and `blocksNavigation` decides when leaving must ask first.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
-import type { CaptureQcReason, CaptureQcSide } from "../validation/enums";
+import type { CaptureQcDecision, CaptureQcReason, CaptureQcSide } from "../validation/enums";
 
 // ---------------------------------------------------------------------------
 // The data
@@ -100,7 +110,7 @@ export interface ViewerRotation {
 }
 
 export interface ViewerDecision {
-  decision: "approved" | "rejected";
+  decision: CaptureQcDecision;
   reason: CaptureQcReason | null;
   /** The image a rejection of a two-image opening asks to retake; null otherwise. */
   side: CaptureQcSide | null;
@@ -145,6 +155,27 @@ export interface ViewerOpening {
 }
 
 /**
+ * A record of the delivery that was not captured, or not wholly
+ * (contract 1.9, status `missing`), at its place in the volume.
+ */
+export interface ViewerPlaceholder {
+  captuaRecordId: number;
+  /** The record's `sequence` in the manifest, its place among the openings. */
+  sequence: number;
+  /** The side it lacks: `both` has no image. */
+  missingSide: "left" | "right" | "both";
+  /** Why the operator closed it without capturing; null while it is open. */
+  closedReason: string | null;
+  closedNote: string | null;
+  /** The Fisqua request it answers; null when the unit made it. */
+  requestId: string | null;
+  /** Whether it is also among the openings: closed, with the image of its other side. */
+  opening: boolean;
+  /** The image of the side it has, if any. */
+  images: ViewerImage[];
+}
+
+/**
  * The state of the current delivery's review images, from its review
  * runs: `none` without a review-tiles bucket or a review run,
  * `preparing` while a run can still report, `failed` when none can and
@@ -171,9 +202,18 @@ export interface CaptureQcVolume {
     receivedAt: number;
     /** Its records `rejected`: retakes the unit owes, which are not openings. */
     rejectedRecords: number;
+    /**
+     * What the handover says of its calibration shots (contract §13):
+     * `status` null when it says nothing, a skip's reason, and how many
+     * shots it carries. The loader always gives it; absent reads as no
+     * statement. Shots are never openings.
+     */
+    calibration?: { status: "present" | "skipped" | null; skippedReason: string | null; shots: number };
   };
   openings: ViewerOpening[];
-  counts: { openings: number; images: number; approved: number; rejected: number; decided: number };
+  /** The delivery's placeholders, in `sequence` order. The loader always gives it; absent reads as none. */
+  placeholders?: ViewerPlaceholder[];
+  counts: { openings: number; images: number; approved: number; rejected: number; excluded: number; decided: number };
   /** The decision set's revision, 0 before any decision: sent back as `expectedRevision`. */
   revision: number;
   canDecide: boolean;
@@ -189,7 +229,7 @@ export interface CaptureQcVolume {
 export const VIEW_MODES = ["spreads", "pages", "sheet"] as const;
 export type ViewMode = (typeof VIEW_MODES)[number];
 
-export const SHOW_FILTERS = ["all", "undecided", "rejected"] as const;
+export const SHOW_FILTERS = ["all", "undecided", "rejected", "excluded"] as const;
 export type ShowFilter = (typeof SHOW_FILTERS)[number];
 
 export function parseView(value: string | null): ViewMode {
@@ -288,7 +328,7 @@ export function blocksNavigation(unsaved: boolean, from: { pathname: string }, t
 /** One record of the decisions route's body; a null decision clears the opening's. */
 export interface DecisionEntry {
   captuaRecordId: number;
-  decision: "approved" | "rejected" | null;
+  decision: CaptureQcDecision | null;
   reason?: CaptureQcReason;
   side?: CaptureQcSide;
   note?: string;
@@ -305,8 +345,9 @@ export function entryFor(opening: ViewerOpening, state: OpeningState, from?: Ope
   if (state.decision === null) {
     return from?.decision ? { captuaRecordId: opening.captuaRecordId, decision: null, rotations: [] } : null;
   }
+  // An excluded opening is not a page: there is nothing to turn.
   const rotations: ViewerRotation[] = [];
-  for (const image of opening.images) {
+  for (const image of state.decision.decision === "excluded" ? [] : opening.images) {
     const turns = state.turns[imageKey(image)] ?? 0;
     if (turns > 0) rotations.push({ captureId: image.captureId, role: image.role, quarterTurns: turns });
   }
@@ -632,6 +673,7 @@ export function canSubmitReject(
 export function matchesShow(decision: ViewerDecision | null, show: ShowFilter): boolean {
   if (show === "undecided") return decision === null;
   if (show === "rejected") return decision?.decision === "rejected";
+  if (show === "excluded") return decision?.decision === "excluded";
   return true;
 }
 
@@ -820,6 +862,7 @@ export function topOf(layout: Layout, index: number): number {
 export type ShortcutAction =
   | "approve"
   | "reject"
+  | "exclude"
   | "rotate_left"
   | "rotate_right"
   | "next"
@@ -849,6 +892,7 @@ export function isTypingTarget(target: unknown): boolean {
 const PLAIN_KEYS: Record<string, ShortcutAction> = {
   a: "approve",
   r: "reject",
+  x: "exclude",
   "[": "rotate_left",
   "]": "rotate_right",
   j: "next",
@@ -867,4 +911,4 @@ export function shortcutFor(e: KeyLike, context: { modalOpen?: boolean } = {}): 
   return PLAIN_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key] ?? null;
 }
 
-// @version v0.8.0
+// @version v0.9.0
