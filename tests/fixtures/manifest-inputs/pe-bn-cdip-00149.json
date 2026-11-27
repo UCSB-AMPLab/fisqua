@@ -1,0 +1,156 @@
+{
+  "source": "Production D1 rows (descriptions, repositories) read 2026-10-16, and the manifest published at https://manifests.zasqua.org/iiif/pe-bn-cdip-00149/manifest.json without its items. The description's dateExpression is the Date the published manifest carries; storedDateExpression is the value D1 holds now.",
+  "storedDateExpression": "1811-04-03",
+  "description": {
+    "referenceCode": "pe-bn-cdip-00149",
+    "title": "Manifiesto de Juan José Castelli",
+    "dateExpression": "1811-04-03",
+    "extent": "",
+    "language": "173",
+    "accessConditions": "",
+    "scopeContent": "Manifiesto que Juan José Castelli, representante de la Junta Provisional Gubernativa dirige a los pueblos interiores del Perú, informándoles sobre la situación política del Río de la Plata y del Perú, al igual de lo que ocurría en España"
+  },
+  "repository": {
+    "id": "6a51f134-8fed-4ac8-932b-9ee3be2099a6",
+    "code": "pe-bn",
+    "name": "Biblioteca Nacional del Perú",
+    "city": "Lima",
+    "country": "Perú"
+  },
+  "published": {
+    "@context": "http://iiif.io/api/presentation/3/context.json",
+    "id": "https://manifests.zasqua.org/iiif/pe-bn-cdip-00149/manifest.json",
+    "type": "Manifest",
+    "label": {
+      "es": [
+        "Manifiesto de Juan José Castelli"
+      ]
+    },
+    "metadata": [
+      {
+        "label": {
+          "en": [
+            "Date"
+          ],
+          "es": [
+            "Fecha"
+          ]
+        },
+        "value": {
+          "es": [
+            "1811-04-03"
+          ]
+        }
+      },
+      {
+        "label": {
+          "en": [
+            "Reference"
+          ],
+          "es": [
+            "Signatura"
+          ]
+        },
+        "value": {
+          "es": [
+            "pe-bn-cdip-00149"
+          ]
+        }
+      },
+      {
+        "label": {
+          "en": [
+            "Repository"
+          ],
+          "es": [
+            "Repositorio"
+          ]
+        },
+        "value": {
+          "es": [
+            "Biblioteca Nacional del Perú, Lima"
+          ]
+        }
+      }
+    ],
+    "requiredStatement": {
+      "label": {
+        "en": [
+          "Attribution"
+        ],
+        "es": [
+          "Atribución"
+        ]
+      },
+      "value": {
+        "en": [
+          "Biblioteca Nacional del Perú, Lima, Peru. Processed by Neogranadina and hosted on Zasqua (zasqua.org)."
+        ],
+        "es": [
+          "Biblioteca Nacional del Perú, Lima, Perú. Procesado por Neogranadina y alojado en Zasqua (zasqua.org)."
+        ]
+      }
+    },
+    "rights": "http://creativecommons.org/licenses/by-nc/4.0/",
+    "provider": [
+      {
+        "id": "https://neogranadina.org/",
+        "type": "Agent",
+        "label": {
+          "en": [
+            "Neogranadina"
+          ],
+          "es": [
+            "Neogranadina"
+          ]
+        },
+        "homepage": [
+          {
+            "id": "https://zasqua.org/",
+            "type": "Text",
+            "label": {
+              "en": [
+                "Zasqua"
+              ],
+              "es": [
+                "Zasqua"
+              ]
+            },
+            "format": "text/html"
+          }
+        ]
+      }
+    ],
+    "seeAlso": [
+      {
+        "id": "https://manifests.zasqua.org/mets/pe-bn-cdip-00149.xml",
+        "type": "Dataset",
+        "label": {
+          "en": [
+            "METS metadata"
+          ],
+          "es": [
+            "Metadatos METS"
+          ]
+        },
+        "format": "application/xml",
+        "profile": "http://www.loc.gov/METS/"
+      }
+    ],
+    "homepage": [
+      {
+        "id": "https://zasqua.org/pe-bn-cdip-00149/",
+        "type": "Text",
+        "label": {
+          "es": [
+            "Manifiesto de Juan José Castelli"
+          ]
+        },
+        "format": "text/html"
+      }
+    ],
+    "behavior": [
+      "paged"
+    ]
+  }
+}
