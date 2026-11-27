@@ -9,8 +9,8 @@
  * at run time; this file holds only what neither has.
  *
  * Place-type external terms: the three Getty AAT concepts the engine's
- * Linked Places script maps (`zasqua-engine-dev scripts/generate-places.js`
- * @ff90b6c, lines 121–123), stored as concept URIs. Every other place
+ * Linked Places script maps (the Zasqua engine's
+ * `scripts/generate-places.js` of 2026-11-01, lines 121–123), stored as concept URIs. Every other place
  * type has none.
  *
  * Authority sources: the six production holds in every federation, in its
@@ -33,7 +33,7 @@ export interface ExternalTerm {
   source: string;
 }
 
-const AAT_SOURCE = "zasqua-engine-dev scripts/generate-places.js @ff90b6c";
+const AAT_SOURCE = "Zasqua engine, 2026-11-01, scripts/generate-places.js";
 
 export const PLACE_TYPE_TERMS: Record<string, ExternalTerm> = {
   city: { scheme: "aat", uri: "http://vocab.getty.edu/aat/300008347", label: "inhabited places", source: `${AAT_SOURCE}:121` },

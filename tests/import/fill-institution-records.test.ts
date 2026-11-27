@@ -305,11 +305,11 @@ describe("the dry run", () => {
   it("takes the regions of co-ahrb and co-cihjml from the home page's card categories", () => {
     expect(NEOGRANADINA.repositories["co-ahrb"].region).toEqual({
       value: "Boyacá",
-      source: 'zasqua-neogranadina-dev themes/neogranadina/layouts/index.html @3b98473:91 ("Tunja, Boyacá")',
+      source: 'Neogranadina instance, 2026-11-01, themes/neogranadina/layouts/index.html:91 ("Tunja, Boyacá")',
     });
     expect(NEOGRANADINA.repositories["co-cihjml"].region).toEqual({
       value: "Cauca",
-      source: 'zasqua-neogranadina-dev themes/neogranadina/layouts/index.html @3b98473:97 ("Popayán, Cauca")',
+      source: 'Neogranadina instance, 2026-11-01, themes/neogranadina/layouts/index.html:97 ("Popayán, Cauca")',
     });
     expect(NEOGRANADINA.repositories["pe-bn"].region).toBeUndefined();
   });
@@ -327,7 +327,7 @@ describe("the dry run", () => {
     expect(field("subtitle").proposed).toBe(NEOGRANADINA.repositories["co-ahjci"].subtitle.value);
     expect(field("region")).toMatchObject({ proposed: "Chocó", action: "set" });
     expect(field("home_order")).toMatchObject({ proposed: "2", action: "set" });
-    expect(field("home_order").source).toBe("zasqua-neogranadina-dev themes/neogranadina/layouts/index.html @3b98473:57");
+    expect(field("home_order").source).toBe("Neogranadina instance, 2026-11-01, themes/neogranadina/layouts/index.html:57");
     expect(field("reproduction_services_es")).toMatchObject({
       proposed:
         "Para obtener derechos de reproducción para publicaciones, por favor diríjase al Archivo Histórico del Juzgado del Circuito de Istmina.",
@@ -1665,7 +1665,7 @@ describe("sources", () => {
   });
 
   it("matches the hero files' size and digest where the instance is checked out", () => {
-    const root = path.resolve(__dirname, "../../../zasqua-neogranadina-dev");
+    const root = path.resolve(__dirname, "../../../zasqua-neogranadina");
     for (const r of Object.values(NEOGRANADINA.repositories)) {
       const file = path.join(root, r.hero.path);
       if (!fs.existsSync(file)) continue;

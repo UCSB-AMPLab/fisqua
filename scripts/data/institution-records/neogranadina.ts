@@ -7,18 +7,18 @@
  * `hugo.toml`, the name of its publisher. With them here,
  * `scripts/commands/fill-institution-records.ts` can write them into the
  * repository and federation records without reading the instance at run
- * time. Every value is verbatim and names its source: the file in
- * `juancobo/zasqua-neogranadina-dev`, the commit that last changed it, and
+ * time. Every value is verbatim and names its source: the file in the
+ * Neogranadina instance, the date of the version it was read from, and
  * the line.
  *
- *   - `themes/neogranadina/layouts/repository/single.html` at 56ebcd4:
+ *   - `themes/neogranadina/layouts/repository/single.html` of 2026-06-10:
  *     display titles, subtitles and hero images (lines 30–52);
- *   - `themes/neogranadina/static/img/` at 56ebcd4: the hero files, with
- *     their size and SHA-256 as read on 2026-11-02;
- *   - `themes/neogranadina/layouts/index.html` at 3b98473: the order of
+ *   - `themes/neogranadina/static/img/` of 2026-06-10: the hero files,
+ *     with their size and SHA-256 as read on 2026-11-02;
+ *   - `themes/neogranadina/layouts/index.html` of 2026-11-01: the order of
  *     the repository cards on the home page (line 57), as `homeOrder`,
  *     and the cards' "city, region" categories (lines 85–97);
- *   - `hugo.toml` at 9e607cb: the footer copyright and the METS and
+ *   - `hugo.toml` of 2026-10-31: the footer copyright and the METS and
  *     EAC-CPF publisher strings (lines 80–106).
  *
  * The publisher's contact email is a ruling of 2026-11-02; the funders,
@@ -218,11 +218,11 @@ export interface InstitutionSource {
   federationNotes: FederationNote[];
 }
 
-const TEMPLATE = "zasqua-neogranadina-dev themes/neogranadina/layouts/repository/single.html @56ebcd4";
+const TEMPLATE = "Neogranadina instance, 2026-06-10, themes/neogranadina/layouts/repository/single.html";
 const IMG = "themes/neogranadina/static/img";
-const INDEX = "zasqua-neogranadina-dev themes/neogranadina/layouts/index.html @3b98473";
+const INDEX = "Neogranadina instance, 2026-11-01, themes/neogranadina/layouts/index.html";
 const HOME = `${INDEX}:57`;
-const HUGO = "zasqua-neogranadina-dev hugo.toml @9e607cb";
+const HUGO = "Neogranadina instance, 2026-10-31, hugo.toml";
 const RULING = "ruling 2026-11-03";
 /** The wording rulings of 2026-11-03, on attribution. */
 const WORDING = `${RULING}, on attribution`;

@@ -115,7 +115,7 @@ export function renderHeroPlan(r: FillReport): string {
     "",
     "Nothing is uploaded by the command. Each file goes to the federation's manifests bucket under the key given; its public URL is written to hero_image_url by a later run with --with-heroes, which checks the object's size and SHA-256 first.",
     "",
-    "| Repository | Source (zasqua-neogranadina-dev) | Size | SHA-256 | Bucket | Key | Public URL |",
+    "| Repository | Source (Neogranadina instance) | Size | SHA-256 | Bucket | Key | Public URL |",
     "|---|---|---|---|---|---|---|",
     ...r.heroes.map((h) => `| ${h.code} | ${h.sourcePath} | ${h.size} | ${h.sha256} | ${cell(h.bucket)} | ${h.key} | ${cell(h.url)} |`),
     "",
