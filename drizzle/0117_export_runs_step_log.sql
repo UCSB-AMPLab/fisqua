@@ -1,0 +1,18 @@
+-- When each step of a publish run started and completed.
+--
+-- This migration adds `step_log` to `export_runs`: a JSON object keyed
+-- by the run's plan step ids (`publish-steps.ts`), each value
+-- `{startedAt, completedAt}` in unix ms. A fonds' METS batches share
+-- the entry `mets:<fonds>`, with the start of the first batch and the
+-- end of the last, and a link file's steps share theirs. The workflow
+-- writes it in the same UPDATE that records the step's start and end,
+-- merging with json_patch, so it adds no statement to a step and a
+-- step written again leaves the other steps' entries in place. The
+-- publish page's progress panel reads it to show how long each
+-- completed step took.
+--
+-- The column is nullable: runs before this migration have no log, and
+-- the panel shows no durations for them.
+--
+-- Version: v0.9.0
+ALTER TABLE export_runs ADD COLUMN step_log TEXT;

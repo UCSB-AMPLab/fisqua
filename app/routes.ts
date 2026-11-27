@@ -23,7 +23,9 @@
  * `/admin/descriptions`, `/admin/entities`, `/admin/places`,
  * `/admin/repositories`, and `/admin/vocabularies` host the archival
  * records admin. `/admin/publish` and `/admin/promote` are superadmin
- * only, gated in their own loaders. `/admin/decisions/*` is the
+ * only, gated in their own loaders; `/admin/publish/counts` is the
+ * publish page's pre-flight counts, a resource route the page fetches
+ * after it renders, with the same gates. `/admin/decisions/*` is the
  * cross-module Pending decisions surface; each of its tabs keeps the
  * capability gate the page carried before it moved there.
  *
@@ -66,10 +68,12 @@
  * is the pipeline runner rather than a signed-in person. They run no
  * session middleware, answer only on the configured callback origin,
  * authenticate with a run's bearer token and take their tenant from the
- * run row. The capture link's three machine routes under
+ * run row. The capture link's ten machine routes under
  * `/api/capture/v1/` sit there too: their caller is a Captua unit,
  * which authenticates with its scanner token on its tenant's own host,
- * and the tenant is the host's. `/admin/media/runs/start` is an action-only resource route
+ * and the tenant is the host's, except under `/api/capture/v1/pairing/`,
+ * where the unit asks for a pairing code and collects its link settings
+ * with no token on Fisqua's main address and no tenant is resolved. `/admin/media/runs/start` is an action-only resource route
  * under the auth layout that starts a pipeline run, and
  * `/admin/media/volumes/:volumeId/publish` another that publishes one
  * ready pipeline volume; neither has a page, and both are gated in
@@ -79,10 +83,14 @@
  * each gated in its action.
  * `/admin/capture/volumes/:volumeId/review-access` is loader-only: it
  * hands the capture QC viewer download tokens for the volume's review
- * tiles, gated in its loader. `/admin/capture/volumes`, `/admin/capture/qc` and
+ * tiles, gated in its loader. `/admin/decisions/evidence` is
+ * loader-only too: it hands a duplicates card's merge dialog the
+ * descriptions of the pair's two records, gated in its loader.
+ * `/admin/capture/volumes`, `/admin/capture/qc` and
  * `/admin/capture/retakes` and `/admin/capture/scanner` are the
  * Digitization section's pages, gated in their loaders (and the
- * scanner's in its action), with `/admin/capture/qc/:volumeId`, the
+ * scanner's in its action), as is `/admin/capture/queue`, whose action
+ * changes the queue; `/admin/capture/queue/add` is action-only, with `/admin/capture/qc/:volumeId`, the
  * capture QC viewer, gated in its loader. The viewers and the
  * description editor break out of the chrome via a path check in
  * `_auth.tsx`.
@@ -98,7 +106,7 @@
  * tenant subdomain falls through to React Router's no-match 404
  * because no `/operator/*` route is registered on `_auth`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import {
@@ -149,6 +157,15 @@ export default [
   route("api/capture/v1/manifests", "routes/api.capture.v1.manifests.tsx"),
   route("api/capture/v1/volumes/status", "routes/api.capture.v1.volumes.status.tsx"),
   route("api/capture/v1/volumes/:ref/decisions", "routes/api.capture.v1.volumes.$ref.decisions.tsx"),
+  route("api/capture/v1/operators", "routes/api.capture.v1.operators.tsx"),
+  route("api/capture/v1/queue", "routes/api.capture.v1.queue.tsx"),
+  route("api/capture/v1/queue/ack", "routes/api.capture.v1.queue.ack.tsx"),
+  route("api/capture/v1/descriptions", "routes/api.capture.v1.descriptions.tsx"),
+  route("api/capture/v1/descriptions/:referenceCode", "routes/api.capture.v1.descriptions.$referenceCode.tsx"),
+  // Pairing: answers on the main address only (a bare 404 on any other
+  // host), with no token and no tenant. The unit is not linked yet.
+  route("api/capture/v1/pairing/codes", "routes/api.capture.v1.pairing.codes.tsx"),
+  route("api/capture/v1/pairing/collect", "routes/api.capture.v1.pairing.collect.tsx"),
 
   // Authenticated routes
   layout("routes/_auth.tsx", [
@@ -225,6 +242,7 @@ export default [
     route("api/resegmentation", "routes/api.resegmentation.tsx"),
     route("api/qc-flags", "routes/api.qc-flags.tsx"),
     route("api/publish", "routes/api.publish.tsx"),
+    route("api/manifest-refresh", "routes/api.manifest-refresh.tsx"),
 
     // Admin routes — unified cataloguing admin panel
     layout("routes/_auth.admin.cataloguing.tsx", [
@@ -264,6 +282,7 @@ export default [
     route("admin/repositories/new", "routes/_auth.admin.repositories.new.tsx"),
     route("admin/repositories/:id", "routes/_auth.admin.repositories.$id.tsx"),
     route("admin/publish", "routes/_auth.admin.publish.tsx"),
+    route("admin/publish/counts", "routes/_auth.admin.publish.counts.tsx"),
     route("admin/publish/runs/:exportId", "routes/_auth.admin.publish.runs.$exportId.tsx"),
     route("admin/promote", "routes/_auth.admin.promote.tsx"),
     route("admin/imports", "routes/_auth.admin.imports.tsx"),
@@ -347,6 +366,12 @@ export default [
     // makes, replaces and revokes the token. Gated in the loader and the
     // action.
     route("admin/capture/scanner", "routes/_auth.admin.capture.scanner.tsx"),
+    // The digitization queue, gated in its loader and action by the
+    // digitization capability and capture management; `/add` is its
+    // action-only resource route, posted to from description pages,
+    // search and handlists.
+    route("admin/capture/queue", "routes/_auth.admin.capture.queue.tsx"),
+    route("admin/capture/queue/add", "routes/_auth.admin.capture.queue.add.tsx"),
     // Capture QC: records decisions on a volume's openings, assigns its
     // reviewer and starts its review run. All action-only, gated in the
     // action.
@@ -393,6 +418,9 @@ export default [
       "admin/decisions/pair",
       "routes/_auth.admin.decisions.pair.tsx",
     ),
+    // The descriptions a duplicate pair's merge may cite, loaded by the
+    // card's merge dialog when it opens. Loader-only, gated in the loader.
+    route("admin/decisions/evidence", "routes/_auth.admin.decisions.evidence.tsx"),
     route("admin/decisions/:id", "routes/_auth.admin.decisions.$id.tsx"),
 
     // Vocabulary management
@@ -418,4 +446,4 @@ export default [
   ]),
 ] satisfies RouteConfig;
 
-// @version v0.8.0
+// @version v0.9.0

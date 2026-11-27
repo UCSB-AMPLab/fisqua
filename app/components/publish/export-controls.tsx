@@ -4,9 +4,10 @@
  * This component is the fonds and data-type pickers plus the Publish
  * button on the dashboard. Holds selection state locally and routes the
  * Publish click through the `PublishWarningModal` so a careless click
- * never kicks off a multi-minute run.
+ * never kicks off a multi-minute run. `totalRecordCount` is null while
+ * the page's pre-flight counts are loading; the controls stay usable.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -18,7 +19,7 @@ const DATA_TYPES = ["descriptions", "repositories", "entities", "places"] as con
 interface ExportControlsProps {
   fondsList: string[];
   disabled?: boolean;
-  totalRecordCount: number;
+  totalRecordCount: number | null;
   onExport: (selectedFonds: string[], selectedTypes: string[]) => void;
 }
 

@@ -8,8 +8,13 @@
  *
  * The Worker has two entry points, not one. `fetch` is the request side
  * described above. `scheduled` is the clock side: Cloudflare invokes it on
- * the cron declared in `wrangler.jsonc` (every fifteen minutes) with no
- * request, no session, and no tenant, and it runs three steps in turn:
+ * the crons declared in `wrangler.jsonc` with no request, no session, and
+ * no tenant. The five-minute cron runs the duplicate recheck and nothing
+ * else (`app/lib/scheduled-dispatch.ts` maps each cron to its jobs): up
+ * to ten batches of marks a run, with one log line of totals; a failure
+ * there is logged by its cause, never its message, and swallowed. The
+ * fifteen-minute cron runs
+ * the sweeps and not the recheck, and runs three steps in turn:
  * the media pipeline sweep, the review run sweep and the notification
  * sweep. The media pipeline sweep goes first and always runs: it closes runs
  * whose callback token has expired, finishes review-flag ingests a
@@ -44,21 +49,24 @@
  * `ExecutionContext`) into React Router's typed `RouterContextProvider` so
  * loaders and actions can read `context.get(cloudflareContext).env.DB` to
  * reach D1, or `.MANIFESTS_BUCKET` to reach R2. Second, it re-exports the
- * `PublishExportWorkflow` class so Cloudflare's Workflows runtime can find
- * and instantiate it when a publish job is kicked off from the admin UI.
+ * workflow classes (`PublishExportWorkflow`, the import commit and revert
+ * workflows, and `ManifestRefreshWorkflow`) so Cloudflare's Workflows
+ * runtime can find and instantiate each when its job is started.
  *
  * The `virtual:react-router/server-build` import is a build-time virtual
  * module produced by the React Router Vite plugin — it contains the compiled
  * server build for the app and is resolved during the bundle step, not at
  * runtime.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { createRequestHandler, RouterContextProvider } from "react-router";
 import { drizzle } from "drizzle-orm/d1";
 import { Resend } from "resend";
 import { getAppConfig } from "../app/lib/config.server";
+import { formatRecheckResult, recheckFailureLine, runDuplicateRecheck } from "../app/lib/duplicate-recheck.server";
+import { scheduledJobs } from "../app/lib/scheduled-dispatch";
 import { runNotificationSweep } from "../app/lib/notification-sweep.server";
 import { runPipelineSweep } from "../app/lib/pipeline/sweep.server";
 import { getMediaObjectReader } from "../app/lib/pipeline/store.server";
@@ -90,10 +98,12 @@ const requestHandler = createRequestHandler(
 );
 
 // Re-export the workflow classes so the wrangler `workflows` bindings
-// (PUBLISH_EXPORT / IMPORT_COMMIT) can resolve them by class_name.
+// (PUBLISH_EXPORT / IMPORT_COMMIT / IMPORT_REVERT / MANIFEST_REFRESH)
+// can resolve them by class_name.
 export { PublishExportWorkflow } from "../app/workflows/publish-export";
 export { ImportCommitWorkflow } from "../app/workflows/import-commit";
 export { ImportRevertWorkflow } from "../app/workflows/import-revert";
+export { ManifestRefreshWorkflow } from "../app/workflows/manifest-refresh";
 
 // The public documentation site is a separate Jekyll build hosted on GitHub
 // Pages. It is surfaced under fisqua.org/docs (English) and /guia (Spanish) by
@@ -154,68 +164,95 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    // The pipeline sweep runs first and whatever the mail settings; a
-    // failure is logged and does not stop the notification sweep. The
-    // reader is built only when the sweep first reads through it.
-    try {
-      const counts = await runPipelineSweep({
-        db: drizzle(env.DB),
-        reader: { getText: (bucket, key) => getMediaObjectReader(env).getText(bucket, key) },
-        now: Date.now(),
-        workingBucket: env.PIPELINE_WORKING_BUCKET ?? "",
-        canonicalFor: (tenantId) => canonicalStoreForTenant(env, tenantId),
-      });
-      console.log(
-        `pipeline sweep: expired=${counts.expired} flags=${counts.flagsCompleted}/${counts.flagsAttempted} ` +
-          `publications=${counts.publicationsResolved} resolved, ${counts.publicationsUnresolved} unresolved`,
-      );
-    } catch (err) {
-      console.error(`pipeline sweep failed: ${err instanceof Error ? err.name : "error"}`);
-    }
-
-    // Review runs for deliveries that have none, in production only.
-    try {
-      const review = await startPendingReviewRuns(reviewRunDepsFor(env));
-      console.log(`review run sweep: started=${review.started} declined=${review.declined}`);
-    } catch (err) {
-      console.error(`review run sweep failed: ${err instanceof Error ? err.name : "error"}`);
-    }
-
-    // No key, no mail. Local and preview deploys run without a Resend
-    // credential; the sweep would then mark nothing and log a failure per
-    // recipient on every tick, so it does not start at all.
-    if (!env.RESEND_API_KEY) {
-      console.warn("notification sweep skipped: RESEND_API_KEY unset");
-      return;
-    }
-    const db = drizzle(env.DB);
-    const appConfig = getAppConfig(env);
-    const hostSuffix = env.PUBLIC_HOST_SUFFIX ?? ".fisqua.org";
-    const resend = new Resend(env.RESEND_API_KEY);
-
-    const counts = await runNotificationSweep(db, {
-      now: Date.now(),
-      hostSuffix,
-      appConfig,
-      sendEmail: async (to, subject, html) => {
-        // Resend's SDK resolves with { data, error } instead of throwing
-        // on API failures. The sweep's send-then-mark contract needs a
-        // throw here, or a rejected send would be marked as delivered.
-        const { error } = await resend.emails.send({
-          from: `${appConfig.appName} <${appConfig.senderEmail}>`,
-          to,
-          subject,
-          html,
-        });
-        if (error) {
-          throw new Error(`resend ${error.name}: ${error.message}`);
-        }
-      },
-    });
-    console.log(
-      `notification sweep: due=${counts.due} sent=${counts.sent} failed=${counts.failed}`,
-    );
+    const jobs = scheduledJobs(controller.cron);
+    if (jobs.includes("duplicates")) await runDuplicateRecheckTick(env);
+    if (jobs.includes("sweeps")) await runSweeps(env);
   },
 } satisfies ExportedHandler<Env>;
 
-// @version v0.8.0
+// The duplicate recheck, on the five-minute cron: up to ten batches of
+// 200 marks, a second apart, within about 120 seconds and 800 D1
+// statements. The log line gives totals across the batches, their
+// number, the statements sent and why the run stopped. A failure is logged
+// with `recheckFailureLine`, which unwraps the run's `RecheckStepError`: the
+// failed statement's error name when it is a plain identifier (else
+// `Error`), the step that failed (`other` for an unwrapped error), its D1
+// code and a category word, as in `duplicate recheck failed: Error
+// step=marks code=7500 kind=connection`; it is swallowed so a failing run
+// never takes down the handler. The message is not logged: a failed
+// query's message carries its SQL and bound values.
+async function runDuplicateRecheckTick(env: Env): Promise<void> {
+  try {
+    const r = await runDuplicateRecheck(drizzle(env.DB), { now: Date.now() });
+    console.log(formatRecheckResult(r));
+  } catch (err) {
+    console.error(recheckFailureLine(err));
+  }
+}
+
+// The sweeps, on the fifteen-minute cron.
+async function runSweeps(env: Env): Promise<void> {
+  // The pipeline sweep runs first and whatever the mail settings; a
+  // failure is logged and does not stop the notification sweep. The
+  // reader is built only when the sweep first reads through it.
+  try {
+    const counts = await runPipelineSweep({
+      db: drizzle(env.DB),
+      reader: { getText: (bucket, key) => getMediaObjectReader(env).getText(bucket, key) },
+      now: Date.now(),
+      workingBucket: env.PIPELINE_WORKING_BUCKET ?? "",
+      canonicalFor: (tenantId) => canonicalStoreForTenant(env, tenantId),
+    });
+    console.log(
+      `pipeline sweep: expired=${counts.expired} flags=${counts.flagsCompleted}/${counts.flagsAttempted} ` +
+        `publications=${counts.publicationsResolved} resolved, ${counts.publicationsUnresolved} unresolved`,
+    );
+  } catch (err) {
+    console.error(`pipeline sweep failed: ${err instanceof Error ? err.name : "error"}`);
+  }
+
+  // Review runs for deliveries that have none, in production only.
+  try {
+    const review = await startPendingReviewRuns(reviewRunDepsFor(env));
+    console.log(`review run sweep: started=${review.started} declined=${review.declined}`);
+  } catch (err) {
+    console.error(`review run sweep failed: ${err instanceof Error ? err.name : "error"}`);
+  }
+
+  // No key, no mail. Local and preview deploys run without a Resend
+  // credential; the sweep would then mark nothing and log a failure per
+  // recipient on every tick, so it does not start at all.
+  if (!env.RESEND_API_KEY) {
+    console.warn("notification sweep skipped: RESEND_API_KEY unset");
+    return;
+  }
+  const db = drizzle(env.DB);
+  const appConfig = getAppConfig(env);
+  const hostSuffix = env.PUBLIC_HOST_SUFFIX ?? ".fisqua.org";
+  const resend = new Resend(env.RESEND_API_KEY);
+
+  const counts = await runNotificationSweep(db, {
+    now: Date.now(),
+    hostSuffix,
+    appConfig,
+    sendEmail: async (to, subject, html) => {
+      // Resend's SDK resolves with { data, error } instead of throwing
+      // on API failures. The sweep's send-then-mark contract needs a
+      // throw here, or a rejected send would be marked as delivered.
+      const { error } = await resend.emails.send({
+        from: `${appConfig.appName} <${appConfig.senderEmail}>`,
+        to,
+        subject,
+        html,
+      });
+      if (error) {
+        throw new Error(`resend ${error.name}: ${error.message}`);
+      }
+    },
+  });
+  console.log(
+    `notification sweep: due=${counts.due} sent=${counts.sent} failed=${counts.failed}`,
+  );
+}
+
+// @version v0.9.0

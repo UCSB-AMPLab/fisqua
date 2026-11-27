@@ -27,7 +27,12 @@
  * finished or failed run, and another tenant's running publish do not
  * block.
  *
- * @version v0.8.0
+ * A request may carry `force: true`, which the action hands to the
+ * workflow in its parameters so that the run writes every per-fonds
+ * file whatever its recorded fingerprint; a `force` that is not a
+ * boolean is refused.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { z } from "zod";
@@ -45,6 +50,7 @@ import {
 import { makeTenantContext, makeUserContext } from "../helpers/context";
 import {
   action as publishAction,
+  loader as publishLoader,
   PUBLISH_STALE_AFTER_MS,
 } from "../../app/routes/api.publish";
 import { requireSuperAdmin } from "../../app/lib/superadmin.server";
@@ -151,16 +157,16 @@ describe("countPublishSteps", () => {
   const allTypes = [...VALID_TYPES];
 
   it("counts entities, places and both link files with authorities on", () => {
-    // 2 fonds x 5 + index, repositories, entities, places, two link files.
+    // 2 fonds x 4 + index, repositories, entities, places, two link files.
     expect(
       countPublishSteps({ selectedFonds, selectedTypes: allTypes, authoritiesEnabled: true })
-    ).toBe(11 + 1 + 2 + 2);
+    ).toBe(9 + 1 + 2 + 2);
   });
 
   it("leaves out entities, places and both link files with authorities off", () => {
     expect(
       countPublishSteps({ selectedFonds, selectedTypes: allTypes, authoritiesEnabled: false })
-    ).toBe(11 + 1);
+    ).toBe(9 + 1);
   });
 
   it("counts nothing for authority types alone with authorities off", () => {
@@ -253,6 +259,9 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
     await db.insert(schema.exportRuns).values({
       id,
       triggeredBy,
+      // The run's tenant is the one it was started in (migration 0115);
+      // each fixture user starts runs in their own tenant.
+      tenantId: triggeredBy === SECOND_USER ? SECOND_TEST_TENANT_ID : DEFAULT_TEST_TENANT_ID,
       status,
       selectedFonds: JSON.stringify(["co-neo-fonds"]),
       selectedTypes: JSON.stringify(["descriptions"]),
@@ -266,8 +275,8 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
   }
 
   /** Call the action as Neogranadina's superadmin; records workflow creates. */
-  async function postPublish() {
-    const created: Array<{ id: string }> = [];
+  async function postPublish(extra: Record<string, unknown> = {}) {
+    const created: Array<{ id: string; params?: Record<string, unknown> }> = [];
     const pending: Promise<unknown>[] = [];
     const ctx = new RouterContextProvider();
     ctx.set(
@@ -279,7 +288,7 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
       env: {
         DB: env.DB,
         PUBLISH_EXPORT: {
-          create: async (opts: { id: string }) => {
+          create: async (opts: { id: string; params?: Record<string, unknown> }) => {
             created.push(opts);
             return {};
           },
@@ -291,7 +300,7 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
       request: new Request("https://example.com/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedFonds: ["co-neo-fonds"], selectedTypes: ["descriptions"] }),
+        body: JSON.stringify({ selectedFonds: ["co-neo-fonds"], selectedTypes: ["descriptions"], ...extra }),
       }),
       context: ctx,
       params: {},
@@ -313,6 +322,24 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
     expect(row?.id).toBe(exportId);
     expect(row?.status).toBe("pending");
     expect(row?.triggeredBy).toBe(NEO_USER);
+  });
+
+  it("passes force: true to the workflow, and nothing when it is not asked for", async () => {
+    const forced = await postPublish({ force: true });
+    expect(forced.response.status).toBe(202);
+    const { exportId } = (await forced.response.json()) as { exportId: string };
+    expect(forced.created).toEqual([{ id: exportId, params: { exportId, force: true } }]);
+    // The first run has finished, so the second is not refused.
+    await env.DB.prepare("UPDATE export_runs SET status = 'complete'").run();
+    const plain = await postPublish();
+    const body = (await plain.response.json()) as { exportId: string };
+    expect(plain.created).toEqual([{ id: body.exportId, params: { exportId: body.exportId } }]);
+  });
+
+  it("refuses a force that is not a boolean", async () => {
+    const { response, created } = await postPublish({ force: "yes" });
+    expect(response.status).toBe(400);
+    expect(created).toEqual([]);
   });
 
   it("refuses a second publish with 409 while one is running", async () => {
@@ -371,3 +398,126 @@ describe("POST /api/publish: one publish in flight per tenant", () => {
     expect(created).toHaveLength(1);
   });
 });
+
+describe("POST and GET /api/publish: the publishing capability", () => {
+  const NEO_USER = "u-neo-0000-0000-0000-000000000001";
+  let db: ReturnType<typeof drizzle<typeof schema>>;
+
+  beforeAll(async () => {
+    await applyMigrations();
+  });
+
+  beforeEach(async () => {
+    await cleanDatabase();
+    db = drizzle(env.DB, { schema });
+    const now = Date.now();
+    await db.insert(schema.users).values({
+      id: NEO_USER,
+      tenantId: DEFAULT_TEST_TENANT_ID,
+      email: "neo-superadmin@example.com",
+      isAdmin: true,
+      isSuperAdmin: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  function makeContext(publishPipelineEnabled: boolean, created: unknown[]) {
+    const ctx = new RouterContextProvider();
+    ctx.set(
+      userContext,
+      makeUserContext({ id: NEO_USER, tenantId: DEFAULT_TEST_TENANT_ID, isSuperAdmin: true, isAdmin: true })
+    );
+    ctx.set(
+      tenantContext,
+      makeTenantContext({ id: DEFAULT_TEST_TENANT_ID, publishPipelineEnabled })
+    );
+    (ctx as any).cloudflare = {
+      env: {
+        DB: env.DB,
+        PUBLISH_EXPORT: {
+          create: async (opts: unknown) => {
+            created.push(opts);
+            return {};
+          },
+        },
+      },
+      ctx: { waitUntil: () => undefined },
+    };
+    return ctx;
+  }
+
+  async function refusal(call: () => Promise<unknown>): Promise<Response> {
+    try {
+      await call();
+    } catch (e) {
+      return e as Response;
+    }
+    throw new Error("the handler did not refuse");
+  }
+
+  const postArgs = (ctx: RouterContextProvider) =>
+    ({
+      request: new Request("https://example.com/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedFonds: ["x"], selectedTypes: ["descriptions"] }),
+      }),
+      context: ctx,
+      params: {},
+    }) as any;
+
+  it("refuses a super admin with the capability off, with the page's 404, and writes nothing", async () => {
+    const created: unknown[] = [];
+    const response = await refusal(() => publishAction(postArgs(makeContext(false, created))));
+    expect(response).toBeInstanceOf(Response);
+    expect(response.status).toBe(404);
+    expect((await db.select().from(schema.exportRuns).all()).length).toBe(0);
+    expect(created).toHaveLength(0);
+  });
+
+  it("refuses polling and listing with the capability off", async () => {
+    for (const query of ["", "?exportId=anything"]) {
+      const response = await refusal(() =>
+        publishLoader({
+          request: new Request(`https://example.com/api/publish${query}`),
+          context: makeContext(false, []),
+          params: {},
+        } as any)
+      );
+      expect(response.status).toBe(404);
+    }
+  });
+
+  it("checks the capability after authentication: a non-super-admin is still redirected first", async () => {
+    const ctx = makeContext(false, []);
+    ctx.set(userContext, makeUserContext({ id: NEO_USER, isSuperAdmin: false, isAdmin: true }));
+    const response = await refusal(() => publishAction(postArgs(ctx)));
+    expect(response.status).not.toBe(404);
+  });
+
+  it("refuses the run detail page with the capability off", async () => {
+    const { loader: runDetailLoader } = await import(
+      "../../app/routes/_auth.admin.publish.runs.$exportId"
+    );
+    const response = await refusal(() =>
+      runDetailLoader({
+        request: new Request("https://example.com/admin/publish/runs/any"),
+        context: makeContext(false, []),
+        params: { exportId: "any" },
+      } as any)
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("lists runs with the capability on", async () => {
+    const response = (await publishLoader({
+      request: new Request("https://example.com/api/publish"),
+      context: makeContext(true, []),
+      params: {},
+    } as any)) as Response;
+    expect(response.status).toBe(200);
+  });
+});
+
+// @version v0.9.0

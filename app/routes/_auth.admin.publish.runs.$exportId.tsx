@@ -9,7 +9,10 @@
  * by `workflowInstanceId`. Used to diagnose runs that stalled or
  * failed.
  *
- * @version v0.8.0
+ * A super admin on a workspace without the `publish_pipeline`
+ * capability is refused with a bare 404, as the publish page is.
+ *
+ * @version v0.9.0
  */
 
 import { Link } from "react-router";
@@ -18,6 +21,8 @@ import { ArrowLeft } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { useFormatters } from "~/lib/use-formatters";
 import type { Route } from "./+types/_auth.admin.publish.runs.$exportId";
+import { pageMeta, heading } from "../lib/page-title";
+import { requireCapability } from "../lib/tenant";
 
 /**
  * Publish run detail page.
@@ -51,6 +56,14 @@ interface RunDetailLoaderData {
   } | null;
 }
 
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("publish:detail.title"),
+    heading("publish:title"),
+  );
+}
+
 export async function loader({
   params,
   context,
@@ -60,6 +73,7 @@ export async function loader({
   if (!user.isSuperAdmin) {
     return { authorized: false, run: null };
   }
+  requireCapability(tenant, "publish_pipeline");
 
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq } = await import("drizzle-orm");
@@ -88,18 +102,15 @@ export async function loader({
       createdAt: exportRuns.createdAt,
     })
     .from(exportRuns)
-    // `export_runs` carries no tenant_id of its own, so the scope
-    // comes from the triggering user's row -- the same join
-    // `api.publish.tsx` uses, and for the same reason: without it a
-    // superadmin on one tenant reads any other tenant's run by id.
-    // innerJoin, not leftJoin: a run whose triggering user cannot be
-    // resolved inside this tenant must not fall through as a row with
-    // a null email.
+    // The scope is the run's own `tenant_id`, the tenant it was
+    // started in (migration 0115), as in `api.publish.tsx`: without it
+    // a superadmin on one tenant reads any other tenant's run by id.
+    // The join on `users` only reads the triggering user's email.
     .innerJoin(users, eq(exportRuns.triggeredBy, users.id))
     .where(
       and(
         eq(exportRuns.id, params.exportId),
-        eq(users.tenantId, tenant.id)
+        eq(exportRuns.tenantId, tenant.id)
       )
     )
     .get();
@@ -407,4 +418,4 @@ export default function PublishRunDetail({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

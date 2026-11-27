@@ -88,7 +88,7 @@
  * volume's entry and the destination block are kept from it, and
  * nothing from it is logged or returned except the canonical URL.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { and, asc, eq, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
@@ -114,6 +114,7 @@ import {
   type ReplaceMigrated,
 } from "../ocr/ingest.server";
 import { composeJournalEntry, computeDiff } from "../stewardship.server";
+import { nextVersionSql } from "../record-version.server";
 import { isRestricted } from "./restriction";
 import { validateRunSpec, type RunSpec, type RunSpecVolume } from "./run-spec";
 import {
@@ -124,6 +125,7 @@ import {
 } from "./store.server";
 import { requireMediaPipelineAccess } from "./access.server";
 import { rawBatchItem } from "./callback.server";
+import { firstDifference } from "./json-difference";
 import {
   CanonicalLocatorError,
   defaultCanonicalManifestLocator,
@@ -272,37 +274,6 @@ function isPlainObject(value: unknown): value is Record<string, any> {
 
 function hasBadSegment(key: string): boolean {
   return key.split("/").includes("..");
-}
-
-/**
- * The JSON path of the first place two JSON values differ, or null when
- * they are equal: the same keys at every level, arrays in the same order
- * and length, scalars strictly equal. Key order does not matter. Keys
- * are walked in the expected value's order, so the path is stable.
- */
-export function firstDifference(actual: unknown, expected: unknown, path = "$"): string | null {
-  if (Array.isArray(expected)) {
-    if (!Array.isArray(actual) || actual.length !== expected.length) return path;
-    for (let i = 0; i < expected.length; i++) {
-      const d = firstDifference(actual[i], expected[i], `${path}[${i}]`);
-      if (d !== null) return d;
-    }
-    return null;
-  }
-  if (isPlainObject(expected)) {
-    if (!isPlainObject(actual)) return path;
-    const extra = Object.keys(actual)
-      .filter((k) => !Object.prototype.hasOwnProperty.call(expected, k))
-      .sort();
-    if (extra.length > 0) return `${path}.${extra[0]}`;
-    for (const k of Object.keys(expected)) {
-      if (!Object.prototype.hasOwnProperty.call(actual, k)) return `${path}.${k}`;
-      const d = firstDifference(actual[k], expected[k], `${path}.${k}`);
-      if (d !== null) return d;
-    }
-    return null;
-  }
-  return actual === expected ? null : path;
 }
 
 /**
@@ -1402,7 +1373,9 @@ export function buildFinalStatements(
     statements.push(
       db
         .update(descriptions)
-        .set({ ...after, updatedAt: now, updatedBy: input.userId })
+        // Past the version the description holds, which the page ingest
+        // may already have moved beyond `now`.
+        .set({ ...after, updatedAt: nextVersionSql(descriptions.updatedAt, now), updatedBy: input.userId })
         .where(and(eq(descriptions.id, input.descriptionId), eq(descriptions.tenantId, input.tenantId))),
       composeJournalEntry(db, {
         recordId: input.descriptionId,
@@ -2123,4 +2096,4 @@ export async function publishVolumeAction(
   }
 }
 
-// @version v0.8.0
+// @version v0.9.0

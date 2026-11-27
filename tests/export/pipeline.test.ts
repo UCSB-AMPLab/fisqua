@@ -17,7 +17,15 @@
  * never reach the file. `readExportOcrText`, which the workspace JSON
  * and canonical CSV exports read through, is pinned the same way.
  *
- * @version v0.8.0
+ * The stub answers the queries in the order the steps make them: the
+ * descriptions step's outline carries each row's `updated_at` and OCR
+ * version, and the entities step reads each batch's function rows after
+ * its entities, and the exported entities' versions and the merged
+ * records again before it completes the file. The repositories step
+ * reads the roots' children after the tenants' METS bases, then the
+ * federation's row, then the repositories' funders.
+ *
+ * @version v0.9.0
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -53,15 +61,39 @@ const TEST_TENANT: ExportTenant = {
  * be configured per query.
  */
 
+/**
+ * A file under one multipart part arrives from `JsonArrayUpload` as one
+ * `putObjectBytes`; it is recorded as a `putObject` of its text, so
+ * every case reads every file from `putObject`'s calls.
+ */
 function mockStorage() {
+  const putObject = vi.fn().mockResolvedValue(undefined);
   return {
-    putObject: vi.fn().mockResolvedValue(undefined),
+    putObject,
+    putObjectBytes: vi.fn(async (key: string, body: Uint8Array) =>
+      putObject(key, new TextDecoder().decode(body))
+    ),
     deleteObject: vi.fn().mockResolvedValue(undefined),
     putObjectStream: vi.fn().mockResolvedValue(undefined),
     getObjectStream: vi.fn().mockResolvedValue(null),
     getObjectHead: vi.fn().mockResolvedValue(null),
   } as unknown as ExportStorage & {
     putObject: ReturnType<typeof vi.fn>;
+  };
+}
+
+/** The outline row the descriptions step reads for `row` before its batches. */
+function outlineOf(row: ReturnType<typeof makeDescRow>) {
+  return {
+    id: row.id,
+    parentId: row.parentId,
+    referenceCode: row.referenceCode,
+    descriptionLevel: row.descriptionLevel,
+    legacyIds: "[]",
+    updatedAt: row.updatedAt,
+    ocrChars: 0,
+    ocrPageCount: 0,
+    ocrCreatedAt: null,
   };
 }
 
@@ -136,6 +168,7 @@ function createMockDb(responses: unknown[]) {
       from: () => c,
       where: () => c,
       innerJoin: () => c,
+      leftJoin: () => c,
       orderBy: () => c,
       limit: () => c,
       groupBy: () => c,
@@ -160,6 +193,12 @@ function createMockDb(responses: unknown[]) {
     select: () => chain("select"),
     selectDistinct: () => chain("selectDistinct"),
     update: () => chain("update"),
+    // A D1 batch of updates (the descriptions step's export marks) reads
+    // no response; each statement is recorded as an update call.
+    batch: (statements: any[]) => {
+      for (const s of statements) updateCalls.push({ values: s._setValues });
+      return Promise.resolve([]);
+    },
     _updateCalls: updateCalls,
     _cursor: () => cursor,
   };
@@ -174,12 +213,16 @@ describe("exportFondsDescriptions", () => {
   });
 
   it("uploads descriptions-{fonds}.json with the formatted rows and returns recordCount + byteSize", async () => {
-    const desc = makeDescRow({ id: "d1", referenceCode: "co-ahr-gob-001" });
+    const desc = makeDescRow({ id: "d1", referenceCode: "co-ahr-gob-001", legacyIds: "[]" });
     const db = createMockDb([
-      { id: "root-1" }, // root lookup
-      [desc],          // fonds rows
-      [],              // migrated OCR page rows
+      { id: "root-1" },    // root lookup
+      [outlineOf(desc)],   // fonds outline
+      [],                  // the fonds' marked unpublished descriptions
+      null,                // tenant METS base
+      [desc],              // batch rows
+      [],                  // batch OCR page rows
       { code: "co-ahr", country: "Colombia" }, // repo lookup
+      [outlineOf(desc)],   // fonds outline read again, unchanged
     ]);
 
     const result = await exportFondsDescriptions(db, storage, "co-ahr-gob", TEST_TENANT);
@@ -210,9 +253,13 @@ describe("exportFondsDescriptions", () => {
     // Independence assertion: two separate calls to exportFondsDescriptions
     // must not share state — each call uploads exactly one per-fonds key
     // and never the combined descriptions.json key.
-    const desc = makeDescRow({ id: "d1" });
-    const db1 = createMockDb([{ id: "root-1" }, [desc], [], { code: "co-ahr", country: "Colombia" }]);
-    const db2 = createMockDb([{ id: "root-2" }, [desc], [], { code: "co-ahr", country: "Colombia" }]);
+    const desc = makeDescRow({ id: "d1", legacyIds: "[]" });
+    const responses = (rootId: string) => [
+      { id: rootId }, [outlineOf(desc)], [], null, [desc], [], { code: "co-ahr", country: "Colombia" },
+      [outlineOf(desc)],
+    ];
+    const db1 = createMockDb(responses("root-1"));
+    const db2 = createMockDb(responses("root-2"));
 
     await exportFondsDescriptions(db1, storage, "co-ahr-gob", TEST_TENANT);
     await exportFondsDescriptions(db2, storage, "co-ahr-jud", TEST_TENANT);
@@ -308,12 +355,20 @@ describe("exportRepositories", () => {
           city: "Rionegro",
           address: null,
           website: null,
+          createdAt: 1700000000000,
+          updatedAt: 1700000000000,
         },
       ],
       // 2) GROUP BY count
       [{ repositoryId: "repo-1", n: 12345 }],
       // 3) root descriptions (one per fonds — small set)
       [makeDescRow({ id: "root-1", referenceCode: "co-ahr-gob", parentId: null })],
+      // 4) the tenants' METS bases, 5) the roots' children
+      [],
+      [],
+      // 6) the federation's row, 7) the funders
+      { slug: "neogranadina", name: "Neogranadina", manifestBaseUrl: null },
+      [],
     ]);
 
     const result = await exportRepositories(db, storage, TEST_TENANT);
@@ -331,6 +386,9 @@ describe("exportRepositories", () => {
     // formatDescription was called only for the root set (1 row), not 12345
     expect(formatSpy).toHaveBeenCalledTimes(1);
     formatSpy.mockRestore();
+    // The federation's files are the institution step's, not this one's.
+    const keys = (storage.putObject as any).mock.calls.map((c: any[]) => c[0]);
+    expect(keys).toEqual(["neogranadina/repositories.json"]);
   });
 });
 
@@ -365,8 +423,13 @@ describe("exportEntities", () => {
           wikidataId: null,
           viafId: null,
           mergedInto: null,
+          updatedAt: 1700000000,
         },
       ],
+      [], // merged records
+      [], // the batch's entity_functions rows
+      [{ id: "ent-1", updatedAt: 1700000000 }], // versions read again before completing
+      [], // merged records read again
     ]);
 
     const result = await exportEntities(db, storage, TEST_TENANT);
@@ -569,3 +632,5 @@ describe("readExportOcrText", () => {
     expect(out.size).toBe(0);
   });
 });
+
+// @version v0.9.0

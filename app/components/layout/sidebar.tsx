@@ -17,7 +17,11 @@
  * were clipped by the layout's `overflow-hidden` row. The spacer keeps
  * the bottom items at the foot of the rail when everything fits; when
  * it does not, they come last in the scroll. The collapse toggle sits
- * outside the scrolling column and stays pinned. The same markup serves
+ * outside the scrolling column, in a pinned band at the very foot of
+ * the rail. On the expanded rail the band also carries the Fisqua
+ * version on the left and the partner logos on the right (`footer.tsx`),
+ * with the toggle centred between them; the collapsed rail is too
+ * narrow for them, so its band holds the toggle alone. The same markup serves
  * the collapsed and expanded rail, and the focused-surface overlay in
  * `_auth.tsx`, whose absolute layer gives the nav its height.
  *
@@ -40,13 +44,17 @@
  * guards an authority-typed one is enforced on the handlist itself.
  *
  * The module sections are gated by area as well as by capability. A
- * workspace admin (`isAdmin`) and a super admin pass every area; an
- * area admin passes their own: Records management needs the records
- * area, Authorities the authorities area, Imports the imports area,
- * and Digitization follows `isCaptureManager`, which the layout loader
- * computes from the digitization area and federation stewardship. The
- * rule is the one `canAdministerArea` (`user-access.server.ts`) holds,
- * restated here because this module renders in the browser.
+ * section shows to whoever works in its area: a workspace admin
+ * (`isAdmin`) and a super admin work in every area, an area admin in
+ * their own, and a federation staff grant (`worksInEveryArea`) in every
+ * area. Records management needs the records area, Authorities the
+ * authorities area, Imports the imports area, and Digitization follows
+ * `isCaptureWorker`, which the layout loader computes
+ * (`captureAccess(...).worker`). The rule is the one `canWorkInArea`
+ * (`user-access.server.ts`) holds, restated here because this module
+ * renders in the browser. Items that are administration keep their own
+ * gate inside a section: Publish, in Import and export, needs a super
+ * admin.
  * Pending decisions belongs to Authorities; someone who can open only
  * its vocabulary tab (the records area, without the authority tabs)
  * finds it in Records management instead, leading to that tab.
@@ -62,23 +70,25 @@
  *   - `crowdsourcingEnabled` → entire `Collaborative Cataloguing`
  *     section (My projects, All projects, Team, Promote)
  *   - `vocabularyHubEnabled` → `/admin/vocabularies`
- *   - `publishPipelineEnabled` → `/admin/publish`
+ *   - `publishPipelineEnabled` → `/admin/publish`, the last item of
+ *     the `Import and export` group, after Exports, for a super admin
  *   - `multiRepositoryEnabled` → `/admin/repositories`
  *   - `authoritiesEnabled` → the entire `Authorities` section
  *     (`/admin/entities`, `/admin/places`, and `/admin/decisions`),
  *     its own grouped section as of the 2026-07-10 module-section
  *     ruling
  *   - `digitizationEnabled` → the `Digitization` section (Volumes,
- *     Capture QC, Retakes, Scanner), placed after Authorities; within it
- *     Volumes and Scanner need `isCaptureManager`, and Capture QC and
- *     Retakes `isCaptureManager` or `isCaptureReviewer`, both computed
+ *     Capture QC, Retakes, Digitization queue, Scanner), placed after
+ *     Authorities; within it Volumes, Digitization queue and Scanner need
+ *     `isCaptureWorker`, and Capture QC and
+ *     Retakes `isCaptureWorker` or `isCaptureReviewer`, both computed
  *     by the layout loader
  *   - `importsEnabled` → the `Imports` ITEM inside the
  *     `Import and export` group (`/admin/imports`). The group itself
  *     is ungated: its other entry, Exports, carries no capability and
  *     no role, because portability is not a product tier (the
  *     2026-08-15 export ruling). A tenant with imports off sees the
- *     group holding Exports alone.
+ *     group holding Exports (and Publish, for a super admin).
  *
  * For a tenant with a capability off the corresponding surface is
  * omitted — the gating is invisible to tenants that carry every
@@ -100,7 +110,7 @@
  * the stateless rail; `readFoldedSections`, `writeFoldedSections` and
  * `sectionHoldsPath` are exported for testing.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useEffect, useState } from "react";
@@ -123,6 +133,7 @@ import {
   ClipboardCheck,
   Repeat,
   Camera,
+  ScanLine,
   GitCompare,
   Kanban,
   List,
@@ -134,6 +145,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { PartnerLogos, VersionLink } from "./footer";
 
 export interface NavItem {
   path: string;
@@ -159,13 +171,16 @@ export interface SidebarUser {
   isRecordsAdmin: boolean;
   isAuthoritiesAdmin: boolean;
   isImportsAdmin: boolean;
+  /** A federation staff grant: works in every area without administering one. */
+  worksInEveryArea?: boolean;
   hasAnyProjectMembership: boolean;
   /**
-   * Manages capture work on this tenant: a workspace admin, a super
-   * admin, the digitization admin, or a steward of its federation. Computed by the layout loader only on a tenant with
+   * Works in capture on this tenant: a workspace admin, a super admin,
+   * the digitization admin, a steward of its federation, or a staff
+   * grant into it. Computed by the layout loader only on a tenant with
    * the digitization capability; false elsewhere.
    */
-  isCaptureManager: boolean;
+  isCaptureWorker: boolean;
   /** Is the assigned capture QC reviewer of at least one of the tenant's volumes. */
   isCaptureReviewer: boolean;
   /**
@@ -308,8 +323,8 @@ export function getSidebarSections(
     });
   }
 
-  // Who passes each area (see the file header).
-  const anyArea = user.isAdmin || user.isSuperAdmin;
+  // Who works in each area (see the file header).
+  const anyArea = user.isAdmin || user.isSuperAdmin || !!user.worksInEveryArea;
   const recordsArea = anyArea || user.isRecordsAdmin;
   const authoritiesArea = anyArea || user.isAuthoritiesAdmin;
   const importsArea = anyArea || user.isImportsAdmin;
@@ -319,7 +334,7 @@ export function getSidebarSections(
 
   // Records management — archive admin side, for the records area.
   // Per-item gating for the capability-bound entries (repositories,
-  // vocabularies, publish); descriptions is always available in the
+  // vocabularies); descriptions is always available in the
   // area. Entities and places have their own Authorities section
   // (ruled 2026-07-10) — each module gets its own sidebar section.
   if (recordsArea) {
@@ -352,13 +367,6 @@ export function getSidebarSections(
         labelKey: "sidebar:pending_decisions",
       });
     }
-    if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
-      items.push({
-        path: "/admin/publish",
-        icon: Upload,
-        labelKey: "sidebar:publish",
-      });
-    }
     sections.push({ labelKey: "sidebar:records_management", items });
   }
 
@@ -386,22 +394,23 @@ export function getSidebarSections(
 
   // Digitization — the Captua module's section, gated on the
   // digitization capability and then by role. Volumes is for those who
-  // manage capture work (the digitization area and federation stewards); Capture
-  // QC and Retakes also for anyone assigned to review one of the
-  // tenant's volumes, who sees only their own volumes there. The section
-  // is omitted when no item remains.
+  // work in capture (the digitization area, federation stewards and staff
+  // grants); Capture QC and Retakes also for anyone assigned to review one
+  // of the tenant's volumes, who sees only their own volumes there. The
+  // section is omitted when no item remains.
   //
-  // Scanner (`Camera`) is the section's last item, for managers only.
+  // Digitization queue (`ScanLine`) and Scanner (`Camera`) are the
+  // section's last items, for workers only.
   if (tenant.digitizationEnabled) {
     const digitizationItems: NavItem[] = [];
-    if (user.isCaptureManager) {
+    if (user.isCaptureWorker) {
       digitizationItems.push({
         path: "/admin/capture/volumes",
         icon: BookOpen,
         labelKey: "sidebar:capture_volumes",
       });
     }
-    if (user.isCaptureManager || user.isCaptureReviewer) {
+    if (user.isCaptureWorker || user.isCaptureReviewer) {
       digitizationItems.push({
         path: "/admin/capture/qc",
         icon: ClipboardCheck,
@@ -413,7 +422,12 @@ export function getSidebarSections(
         labelKey: "sidebar:retakes",
       });
     }
-    if (user.isCaptureManager) {
+    if (user.isCaptureWorker) {
+      digitizationItems.push({
+        path: "/admin/capture/queue",
+        icon: ScanLine,
+        labelKey: "sidebar:capture_queue",
+      });
       digitizationItems.push({
         path: "/admin/capture/scanner",
         icon: Camera,
@@ -431,15 +445,16 @@ export function getSidebarSections(
   // Descriptions, and both act on the workspace as a whole rather than
   // on a module.
   //
-  // THE TWO ENTRIES CARRY DIFFERENT GATES, and the group carries
-  // neither. Imports needs the imports area plus the `imports`
-  // capability. Exports carries no gate at all:
+  // THE ENTRIES CARRY DIFFERENT GATES, and the group carries none.
+  // Imports needs the imports area plus the `imports` capability.
+  // Publish needs a super admin and the `publish_pipeline` capability.
+  // Exports carries no gate at all:
   // portability is not a product tier (ruling 2, re-ruled), so no
   // capability can take it away, and it is member-level because the
   // TIER decides what a person is offered on the page rather than
   // whether they may open it — a reader sees the PDF finding aid and
   // no evidence that anything else exists. The group therefore renders
-  // whenever either entry does, which — since Exports always does — is
+  // whenever any entry does, which — since Exports always does — is
   // always, on the same footing as Handlists and Search above.
   const importExportItems: NavItem[] = [];
   if (importsArea && tenant.importsEnabled) {
@@ -454,6 +469,16 @@ export function getSidebarSections(
     icon: Download,
     labelKey: "sidebar:exports",
   });
+  // Publish follows Exports: it writes the public site's export files.
+  // It keeps its own gates, the `publish_pipeline` capability and a
+  // super admin, the same ones its loader enforces.
+  if (user.isSuperAdmin && tenant.publishPipelineEnabled) {
+    importExportItems.push({
+      path: "/admin/publish",
+      icon: Upload,
+      labelKey: "sidebar:publish",
+    });
+  }
   sections.push({
     labelKey: "sidebar:import_and_export",
     items: importExportItems,
@@ -516,11 +541,10 @@ const SECTION_ROUTE_FAMILIES: Record<string, string[]> = {
     "/admin/descriptions",
     "/admin/repositories",
     "/admin/vocabularies",
-    "/admin/publish",
   ],
   "sidebar:authorities": ["/admin/entities", "/admin/places", "/admin/decisions"],
   "sidebar:digitization": ["/admin/capture", "/admin/media"],
-  "sidebar:import_and_export": ["/admin/imports", "/admin/exports"],
+  "sidebar:import_and_export": ["/admin/imports", "/admin/exports", "/admin/publish"],
 };
 
 function underPath(pathname: string, base: string): boolean {
@@ -664,19 +688,36 @@ export function SidebarView({
         )}
       </div>
 
-      {/* Collapse toggle */}
-      <button
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? t("expand") : t("collapse")}
-        className="flex justify-center border-t border-stone-200 py-3 text-stone-500 hover:text-indigo"
+      {/* Foot band: version, collapse toggle, partner logos */}
+      <div
+        data-testid="sidebar-footer"
+        className={`grid items-center border-t border-stone-200 py-2 ${
+          collapsed ? "grid-cols-1" : "grid-cols-[1fr_auto_1fr] px-3"
+        }`}
       >
-        {collapsed ? (
-          <ChevronRight className="h-5 w-5" />
-        ) : (
-          <ChevronLeft className="h-5 w-5" />
+        {!collapsed && (
+          <div className="justify-self-start">
+            <VersionLink />
+          </div>
         )}
-      </button>
+        <button
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t("expand") : t("collapse")}
+          className="justify-self-center rounded-md p-1 text-stone-500 hover:text-indigo"
+        >
+          {collapsed ? (
+            <ChevronRight className="h-5 w-5" />
+          ) : (
+            <ChevronLeft className="h-5 w-5" />
+          )}
+        </button>
+        {!collapsed && (
+          <div className="justify-self-end">
+            <PartnerLogos />
+          </div>
+        )}
+      </div>
     </nav>
   );
 }
@@ -729,4 +770,4 @@ function SidebarNavItem({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0
