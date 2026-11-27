@@ -47,7 +47,12 @@
  * reading the grant back afterwards fails. An invitation
  * whose email fails leaves neither the user row nor an audit row.
  *
- * @version v0.8.0
+ * The invitation email is written in the workspace's default language
+ * when it sets one, else in the inviter's request language
+ * (`requestLocale`, which the route reads off the i18next middleware),
+ * else in Spanish; the new account has no saved language yet.
+ *
+ * @version v0.9.0
  */
 
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -62,6 +67,7 @@ export type UsersActionDeps = {
     email: string;
     origin: string;
     env: any;
+    requestLocale: string | null;
   }) => Promise<{ success?: boolean; error?: string }>;
 };
 
@@ -103,7 +109,8 @@ export async function handleUsersAction(
   i18n: I18nLike,
   origin: string,
   actor: InviteActor,
-  deps: UsersActionDeps = {}
+  deps: UsersActionDeps = {},
+  requestLocale: string | null = null
 ): Promise<UsersActionResult> {
   const { eq } = await import("drizzle-orm");
   const { users, magicLinks, DEFAULT_DIGEST_FREQUENCY } =
@@ -194,19 +201,26 @@ export async function handleUsersAction(
       // Send magic-link invite. Allow tests to inject a stub.
       const sender =
         deps.sendInvite ??
-        (async ({ db: _db, email: _email, origin: _origin, env: _env }) => {
+        (async ({
+          db: _db,
+          email: _email,
+          origin: _origin,
+          env: _env,
+          requestLocale: _requestLocale,
+        }) => {
           return generateMagicLink(
             _db,
             _email,
             _origin,
             _env.RESEND_API_KEY,
-            _env
+            _env,
+            _requestLocale
           );
         });
 
       let result: { success?: boolean; error?: string };
       try {
-        result = await sender({ db, email, origin, env });
+        result = await sender({ db, email, origin, env, requestLocale });
       } catch (err) {
         result = { error: (err as Error).message || "send failed" };
       }
@@ -258,4 +272,4 @@ export async function handleUsersAction(
   }
 }
 
-// @version v0.8.0
+// @version v0.9.0

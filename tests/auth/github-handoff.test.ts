@@ -17,9 +17,12 @@
  *     different tenant -> 302 to /login?error=no-account.
  *   - Happy path: 302 to /dashboard with host-only Set-Cookie; user's
  *     github_id is bound when previously null.
+ *   - Saved language: a user with a saved `users.locale` also gets a
+ *     host-only `lang` cookie for it, unless the URL carries an
+ *     explicit `?lang=`, which the i18next middleware records instead.
  *   - Apex check: route on `fisqua.test` apex returns 404.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
@@ -125,6 +128,85 @@ describe("GitHub OAuth tenant handoff", () => {
       .where(eq(users.email, "scholar@example.com"))
       .all();
     expect(u.githubId).toBe("12345");
+  });
+
+  it("sets the lang cookie from the user's saved locale", async () => {
+    const user = await createTestUser({
+      email: "reader@example.com",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+    const db = getTestDb();
+    await db.update(users).set({ locale: "en" }).where(eq(users.id, user.id));
+    const id = "id-lang-1";
+    await insertHandoff(db, {
+      id,
+      email: "reader@example.com",
+      githubId: "67890",
+      githubLogin: "reader",
+      returnToSlug: "neogranadina",
+      now: Date.now(),
+    });
+
+    const r = await runLoader(
+      makeLoaderArgs(
+        `https://neogranadina.fisqua.test/auth/github/handoff?t=${id}`,
+      ),
+    );
+    expect(r.status).toBe(302);
+    const cookies = r.headers.getSetCookie();
+    expect(cookies.some((c) => c.startsWith("__session="))).toBe(true);
+    const lang = cookies.find((c) => c.startsWith("lang="));
+    expect(lang).toBeDefined();
+    expect(lang ?? "").not.toMatch(/Domain=/i);
+  });
+
+  it("records an explicit ?lang= instead of the saved locale", async () => {
+    const { RouterContextProvider } = await import("react-router");
+    const { i18nextMiddleware, getLocale } = await import(
+      "../../app/middleware/i18next"
+    );
+    const user = await createTestUser({
+      email: "explicit@example.com",
+      tenantId: DEFAULT_TEST_TENANT_ID,
+    });
+    const db = getTestDb();
+    await db.update(users).set({ locale: "en" }).where(eq(users.id, user.id));
+    const id = "id-lang-2";
+    await insertHandoff(db, {
+      id,
+      email: "explicit@example.com",
+      githubId: "24680",
+      githubLogin: "explicit",
+      returnToSlug: "neogranadina",
+      now: Date.now(),
+    });
+
+    const args = makeLoaderArgs(
+      `https://neogranadina.fisqua.test/auth/github/handoff?t=${id}&lang=es`,
+    );
+    const r = (await i18nextMiddleware(
+      { request: args.request, context: new RouterContextProvider(), params: {} } as any,
+      () => runLoader(args),
+    )) as Response;
+    expect(r.status).toBe(302);
+    const langCookies = r.headers
+      .getSetCookie()
+      .filter((c) => c.startsWith("lang="));
+    expect(langCookies).toHaveLength(1);
+
+    // That cookie sent back selects Spanish over an English browser.
+    const next = new RouterContextProvider();
+    await i18nextMiddleware(
+      {
+        request: new Request("https://neogranadina.fisqua.test/dashboard", {
+          headers: { Cookie: langCookies[0].split(";")[0], "Accept-Language": "en" },
+        }),
+        context: next,
+        params: {},
+      } as any,
+      async () => new Response("ok"),
+    );
+    expect(getLocale(next)).toBe("es");
   });
 
   it("replay: second consume of the same token returns 410", async () => {
@@ -279,3 +361,5 @@ describe("GitHub OAuth tenant handoff", () => {
     expect(r.status).toBe(410);
   });
 });
+
+// @version v0.9.0

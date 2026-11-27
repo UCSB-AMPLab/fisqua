@@ -13,7 +13,14 @@
  * argument from `context.get(tenantContext).id`, and newly-invited
  * users inherit the tenant of the inviting workspace.
  *
- * @version v0.8.0
+ * Both emails are written in the recipient's saved `users.locale` when
+ * they already have an account and have chosen one, else in the
+ * inviting workspace's default language, else in the language of the
+ * inviter's request (`requestLocale`), else in Spanish
+ * (`chooseEmailLocale`). A newly created account has no saved
+ * language, so its invitation goes straight to the workspace default.
+ *
+ * @version v0.9.0
  */
 
 import { eq, and, isNull } from "drizzle-orm";
@@ -30,6 +37,10 @@ import {
   sendExistingUserInviteEmail,
 } from "./email.server";
 import { getAppConfig } from "./config.server";
+import {
+  chooseEmailLocale,
+  workspaceDefaultLocale,
+} from "./email-locale.server";
 import type { ProjectRole } from "./validation/enums";
 
 type InviterUser = {
@@ -62,7 +73,8 @@ export async function createInvite(
   invitedByUser: InviterUser,
   origin: string,
   resendApiKey: string,
-  env: { APP_NAME?: string; SENDER_EMAIL?: string } = {}
+  env: { APP_NAME?: string; SENDER_EMAIL?: string } = {},
+  requestLocale?: string | null
 ): Promise<InviteResult> {
   const normalizedEmail = email.toLowerCase().trim();
 
@@ -87,6 +99,7 @@ export async function createInvite(
 
   const appConfig = getAppConfig(env);
   const inviterName = invitedByUser.name || invitedByUser.email;
+  const workspaceLocale = await workspaceDefaultLocale(db, tenantId);
 
   if (existingUser) {
     // User exists -- check current memberships
@@ -127,7 +140,12 @@ export async function createInvite(
           inviterName,
           project.name,
           projectUrl,
-          appConfig
+          appConfig,
+          chooseEmailLocale({
+            userLocale: existingUser.locale,
+            workspaceLocale,
+            requestLocale,
+          })
         );
       } catch {
         // Email failure is non-blocking
@@ -175,7 +193,8 @@ export async function createInvite(
       inviterName,
       project.name,
       acceptUrl,
-      appConfig
+      appConfig,
+      chooseEmailLocale({ workspaceLocale, requestLocale })
     );
   } catch {
     // Email failure is non-blocking
@@ -269,3 +288,5 @@ export async function acceptInvite(
     projectId: invite.projectId,
   };
 }
+
+// @version v0.9.0

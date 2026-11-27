@@ -12,9 +12,11 @@
  * enforcement (expired row returns null), and the unknown-token
  * shape (no information leak — same null return as expired). The
  * Resend mock keeps the side effect inert; the assertion is that
- * the helper was called once with the expected tokenised URL.
+ * the helper was called once with the expected tokenised URL, in
+ * Spanish when nothing names another language (the order itself is
+ * pinned in `tests/auth/email-language.test.ts`).
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 import {
   describe,
@@ -83,7 +85,8 @@ describe("magic link authentication", () => {
         "test-resend-key",
         "scholar@example.com",
         expect.stringContaining("/auth/verify?token="),
-        expect.objectContaining({ appName: "Fisqua", senderEmail: "noreply@example.com" })
+        expect.objectContaining({ appName: "Fisqua", senderEmail: "noreply@example.com" }),
+        "es"
       );
     });
 
@@ -199,3 +202,5 @@ describe("magic link authentication", () => {
     });
   });
 });
+
+// @version v0.9.0

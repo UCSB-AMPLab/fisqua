@@ -28,7 +28,7 @@
  * round-trip should use the integration scaffolding in
  * `tests/middleware/auth.test.ts` instead.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import type { User, Tenant } from "../../app/context";
 import { DEFAULT_TEST_TENANT_ID } from "./db";
@@ -92,6 +92,9 @@ export function makeTenantContext(overrides: Partial<Tenant> = {}): Tenant {
     digitizationEnabled: overrides.digitizationEnabled ?? false,
     quotaStorageBytes: overrides.quotaStorageBytes ?? null,
     disabledAt: overrides.disabledAt ?? null,
+    // No default interface language (migration 0113); a test of the
+    // workspace default sets it.
+    defaultLocale: overrides.defaultLocale ?? null,
     federationId: overrides.federationId ?? NEOGRANADINA_FEDERATION_ID,
     // Authority code prefixes (migration 0068) default to NULL, as they
     // do on the seeded Neogranadina TENANT row: Neogranadina's pair
@@ -111,3 +114,5 @@ export function makeTenantContext(overrides: Partial<Tenant> = {}): Tenant {
     metsBaseUrl: overrides.metsBaseUrl ?? null,
   };
 }
+
+// @version v0.9.0

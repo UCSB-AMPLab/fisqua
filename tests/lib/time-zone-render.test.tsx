@@ -34,7 +34,7 @@
  * tab rewrites it. Without that export the root would keep the zone of
  * the first page.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
@@ -119,7 +119,7 @@ describe("time zone from request to hydration", () => {
   it("returns the cookie's zone from the root loader", async () => {
     const { loaderData } = await renderOnServer("tz=Asia%2FTokyo");
     expect(loaderData).toEqual({
-      root: { timeZone: "Asia/Tokyo", now: expect.any(Number) },
+      root: { timeZone: "Asia/Tokyo", now: expect.any(Number), lang: expect.any(String) },
     });
   });
 
@@ -135,7 +135,7 @@ describe("time zone from request to hydration", () => {
     const server = await renderOnServer(null);
     const client = await renderOnClient(server.loaderData);
     expect(server.loaderData).toEqual({
-      root: { timeZone: "America/Los_Angeles", now: expect.any(Number) },
+      root: { timeZone: "America/Los_Angeles", now: expect.any(Number), lang: expect.any(String) },
     });
     expect(server.html).toContain("October 25, 2026 | 2026-10-25 21:46:08");
     expect(client).toBe(server.html);
@@ -144,7 +144,7 @@ describe("time zone from request to hydration", () => {
   it("falls back to America/Los_Angeles for a cookie Intl rejects", async () => {
     const server = await renderOnServer("tz=Mars%2FOlympus_Mons");
     expect(server.loaderData).toEqual({
-      root: { timeZone: "America/Los_Angeles", now: expect.any(Number) },
+      root: { timeZone: "America/Los_Angeles", now: expect.any(Number), lang: expect.any(String) },
     });
     expect(server.html).toContain("October 25, 2026");
   });
@@ -302,7 +302,7 @@ describe("relative time from request to hydration", () => {
     vi.setSystemTime(1792989968454);
     const { loaderData } = await renderAgeOnServer(1792989968454 - 1000);
     expect(loaderData).toEqual({
-      root: { timeZone: "America/Los_Angeles", now: 1792989968454 },
+      root: { timeZone: "America/Los_Angeles", now: 1792989968454, lang: expect.any(String) },
     });
   });
 
@@ -321,4 +321,4 @@ describe("relative time from request to hydration", () => {
   });
 });
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

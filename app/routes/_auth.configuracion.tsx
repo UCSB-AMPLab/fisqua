@@ -17,11 +17,18 @@
  * merges the result onto the context user rather than widening the
  * shared type for one route.
  *
- * The language buttons persist to `users.locale` in the background
- * via a fetcher, alongside their existing client-side
- * `i18n.changeLanguage` + localStorage write — the digest renderer
- * needs a server-known locale, but the on-page language switch stays
- * instant and does not wait on the round trip.
+ * The language buttons switch i18next in the browser at once, and in
+ * the background submit the choice through a fetcher. The action saves
+ * it to `users.locale`, which the digest renderer reads and the sign-in
+ * routes copy into the `lang` cookie, and answers with that cookie
+ * itself (`app/lib/language-cookie.server.ts`), which the i18next
+ * middleware reads on every later request, so the language survives a
+ * reload. Nothing is written to localStorage: the browser takes its
+ * language from the page the server rendered, never from its own
+ * storage. If the page was opened with `?lang=`, choosing a language
+ * replaces the URL without it and the fetcher posts to that URL, so
+ * the revalidation after the choice, and any reload, do not carry the
+ * old parameter, which the middleware would otherwise record again.
  *
  * Save feedback runs through the shared `SaveFeedbackBanner` /
  * `SaveButton` pair. Before that, this page confirmed a successful
@@ -36,14 +43,22 @@
  * `useActionData` so the feedback states can be rendered — and
  * asserted — without standing up a live submission.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
-import { Form, useFetcher, useNavigation } from "react-router";
+import {
+  data,
+  Form,
+  useFetcher,
+  useLocation,
+  useNavigate,
+  useNavigation,
+} from "react-router";
 import { useTranslation } from "react-i18next";
 import { Github } from "lucide-react";
 import { userContext } from "../context";
+import { withoutLanguageParam } from "~/lib/language-param";
 import {
   SaveButton,
   SaveFeedbackBanner,
@@ -59,6 +74,7 @@ import type { Route } from "./+types/_auth.configuracion";
 // string values. The type-only import below is erased at build time and
 // makes the compiler reject any entry that drifts from the schema enum.
 import type { DIGEST_FREQUENCIES } from "~/db/schema";
+import { pageMeta, heading } from "../lib/page-title";
 
 type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];
 
@@ -81,6 +97,13 @@ const FREQ_LABEL_KEYS: Record<DigestFrequency, string> = {
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("settings:title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -160,9 +183,12 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
 
     case "updateLocale": {
-      const locale = formData.get("locale") as string;
+      const { isSupportedLanguage, serializeLanguageCookie } = await import(
+        "~/lib/language-cookie.server"
+      );
+      const locale = formData.get("locale");
 
-      if (locale !== "en" && locale !== "es") {
+      if (!isSupportedLanguage(locale)) {
         return { ok: false };
       }
 
@@ -174,7 +200,14 @@ export async function action({ request, context }: Route.ActionArgs) {
         })
         .where(eq(users.id, user.id));
 
-      return { ok: true, intent: "updateLocale" };
+      return data(
+        { ok: true, intent: "updateLocale" },
+        {
+          headers: {
+            "Set-Cookie": await serializeLanguageCookie(locale, request),
+          },
+        },
+      );
     }
 
     default:
@@ -198,6 +231,8 @@ export default function ConfiguracionPage({
   const { t, i18n } = useTranslation("settings");
   const navigation = useNavigation();
   const localeFetcher = useFetcher();
+  const location = useLocation();
+  const navigate = useNavigate();
   const savingProfile = isPendingSubmission(
     navigation.state,
     navigation.formData ?? undefined,
@@ -213,14 +248,19 @@ export default function ConfiguracionPage({
   function handleLanguageChange(lang: string) {
     i18n.changeLanguage(lang);
     setActiveLang(lang);
-    try {
-      localStorage.setItem("i18nextLng", lang);
-    } catch {
-      // localStorage may not be available
+    const search = withoutLanguageParam(location.search);
+    if (search !== null) {
+      navigate(
+        { pathname: location.pathname, search, hash: location.hash },
+        { replace: true, preventScrollReset: true },
+      );
     }
     localeFetcher.submit(
       { _action: "updateLocale", locale: lang },
-      { method: "post" },
+      {
+        method: "post",
+        action: `${location.pathname}${search ?? location.search}`,
+      },
     );
   }
 
@@ -372,3 +412,5 @@ export default function ConfiguracionPage({
     </div>
   );
 }
+
+// @version v0.9.0

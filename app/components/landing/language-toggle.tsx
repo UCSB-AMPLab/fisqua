@@ -1,21 +1,23 @@
 /**
  * LanguageToggle
  *
- * This component is the server-rendered EN / ES anchor pair driving the
- * per-request language override via `?lang=en` / `?lang=es`. The active
- * locale carries `aria-current="true"` and an indigo fill; the inactive
- * locale stays transparent on white. No client-side state, no cookie, no
- * persistence.
+ * This component is the server-rendered EN / ES anchor pair that sets
+ * the language through `?lang=en` / `?lang=es`. The active locale
+ * carries `aria-current="true"` and an indigo fill; the inactive locale
+ * stays transparent on white. The component holds no client-side state:
+ * the i18next middleware renders the response in the requested
+ * language and sets the `lang` cookie, so the choice persists on this
+ * host after the link is followed.
  *
  * Visually a segmented control (bordered box, tight padding,
  * Bricolage 12px uppercase). Anchors carry the work so the toggle
  * still functions when JavaScript is disabled.
  *
  * The middleware that consumes the query param is
- * `app/middleware/i18next.ts` (it sets `searchParamKey: "lang"`
- * so this anchor pair functions as locked).
+ * `app/middleware/i18next.ts`; its `searchParamKey` is `"lang"` to
+ * match these links.
  *
- * @version v0.4.0
+ * @version v0.9.0
  */
 import { useTranslation } from "react-i18next";
 
@@ -56,4 +58,4 @@ export function LanguageToggle({ lang }: { lang: "en" | "es" }) {
   );
 }
 
-// @version v0.4.0
+// @version v0.9.0
