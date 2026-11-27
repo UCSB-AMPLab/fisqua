@@ -23,8 +23,9 @@
  *      NOT validate slug shape, does NOT call any tenant-existence
  *      helper. It trims and lowercases the input, returns a
  *      `Response.json({ error: "empty" }, 400)` on empty submit,
- *      or throws `redirect(`https://${slug}.fisqua.org/login`)`
- *      otherwise. Unknown slugs fall through to the resolver's
+ *      or throws `redirect(`https://${slug}.<apex>/login`)`
+ *      otherwise, with the apex taken from the request host when it is
+ *      a recognised one and `fisqua.org` when it is not. Unknown slugs fall through to the resolver's
  *      bare 404 on the next request -- externally indistinguishable
  *      from "valid slug, no tenant".
  *
@@ -45,7 +46,7 @@
  * string check against the existing `LEGACY_HOST_MAP` and
  * `SUBDOMAIN_HOST_SUFFIXES` constants in `app/lib/tenant.ts`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { redirect } from "react-router";
@@ -71,8 +72,8 @@ export function meta({ data: loaderData }: Route.MetaArgs) {
   const title = "Fisqua";
   const description =
     lang === "es"
-      ? "Plataforma de código abierto para la catalogación y gestión de archivos, desarrollada en el Laboratorio de Archivos, Memoria y Preservación (AMPL) de la Universidad de California, Santa Bárbara, y en Neogranadina."
-      : "An open-source platform for archival cataloguing and records management, developed at AMPL (UC Santa Barbara) and Neogranadina.";
+      ? "Fisqua reúne catalogación de archivos, gestión documental, digitalización y preservación digital en una plataforma colaborativa, modular y de código abierto."
+      : "Fisqua brings together archival cataloguing, records management, digitization, and preservation in one collaborative, modular, open-source platform.";
   return [
     { title },
     { name: "description", content: description },
@@ -107,14 +108,38 @@ function isTenantHost(request: Request): boolean {
   return false;
 }
 
+/**
+ * The login address of a workspace, built under the host the picker was
+ * posted to: `fisqua.org` gives `https://<slug>.fisqua.org/login`,
+ * `staging.fisqua.org` gives `https://<slug>.staging.fisqua.org/login`,
+ * and the local hosts `localhost` and `fisqua.test` give `<slug>.` under
+ * themselves with the request's own protocol and port, so the local
+ * server answers. Each of these suffixes is one the tenant resolver
+ * recognises (`SUBDOMAIN_HOST_SUFFIXES`). Only these literal hosts are
+ * accepted: any other host, a forged `Host` header included, gives the
+ * production address.
+ */
+const PRODUCTION_APEXES: ReadonlySet<string> = new Set(["fisqua.org", "staging.fisqua.org"]);
+const LOCAL_APEXES: ReadonlySet<string> = new Set(["localhost", "fisqua.test"]);
+
+function workspaceLoginUrl(request: Request, slug: string): string {
+  const url = new URL(request.url);
+  const host = url.hostname.toLowerCase();
+  if (PRODUCTION_APEXES.has(host)) return `https://${slug}.${host}/login`;
+  if (LOCAL_APEXES.has(host)) {
+    const port = url.port ? `:${url.port}` : "";
+    return `${url.protocol}//${slug}.${host}${port}/login`;
+  }
+  return `https://${slug}.fisqua.org/login`;
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   if (isTenantHost(request)) {
     throw redirect("/dashboard");
   }
   // Apex render. Read the resolved language from the i18next
-  // middleware; the `?lang=` searchParamKey override (set on the
-  // middleware in this same plan) lets the locked toggle URLs flip
-  // the response language without setting any cookie.
+  // middleware, which honours the toggle's `?lang=` and records it in
+  // the `lang` cookie for later requests.
   let lang: "en" | "es" = "en";
   try {
     const detected = getLocale(context);
@@ -149,8 +174,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
  *                   echoed back in the message so the user can see
  *                   what they typed.
  *
- * On success, the action 302s to `https://<slug>.fisqua.org/login`
- * exactly as before.
+ * On success, the action 302s to `https://<slug>.<apex>/login`, where
+ * `<apex>` is the host the picker was posted to when it is one of the
+ * recognised apexes (`workspaceLoginUrl`), and `fisqua.org` otherwise.
  */
 export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
@@ -171,7 +197,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       { status: 400 },
     );
   }
-  throw redirect(`https://${slug}.fisqua.org/login`);
+  throw redirect(workspaceLoginUrl(request, slug));
 }
 
 const eyebrowStyle = {
@@ -285,4 +311,4 @@ export default function LandingRoute({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

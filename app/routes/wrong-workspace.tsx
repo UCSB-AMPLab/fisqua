@@ -28,7 +28,7 @@
  *
  * Visual: sketch 001 Variant A.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -38,20 +38,17 @@ import {
   SlugSchema,
   buildTenantOriginUrl,
   findTenantBySlug,
-  getTenantFromRequest,
+  resolveRequestTenant,
 } from "../lib/tenant";
 import { getLocale } from "../middleware/i18next";
+import { pageMeta, heading } from "../lib/page-title";
+import { FisquaMark } from "../components/landing/landing-mark";
 
-export function meta({ data }: Route.MetaArgs) {
-  const lang = data?.lang === "es" ? "es" : "en";
-  return [
-    {
-      title:
-        lang === "es"
-          ? "Espacio de trabajo equivocado | Fisqua"
-          : "Wrong workspace | Fisqua",
-    },
-  ];
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("auth:wrong_workspace.page_title"),
+  );
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -64,7 +61,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   // up unchanged. A soft-disabled tenant 404s here (matches
   // `getTenantFromRequest`'s disabled-tenant carve-out, which only
   // excepts /operator/*).
-  const tenant = await getTenantFromRequest(db, request);
+  const tenant = await resolveRequestTenant(context, db, request);
 
   const url = new URL(request.url);
   const homeRaw = url.searchParams.get("home") ?? "";
@@ -115,11 +112,7 @@ export default function WrongWorkspacePage({ loaderData }: Route.ComponentProps)
       <div className="w-full max-w-lg overflow-hidden rounded-lg border-t-4 border-saffron bg-white shadow-lg">
         <div className="px-10 pb-8 pt-10 text-center">
           {/* Fisqua mark */}
-          <img
-            src="/brand/fisqua-mark.svg"
-            alt="Fisqua"
-            className="mx-auto mb-5 h-16 w-16"
-          />
+          <FisquaMark className="mx-auto mb-5 h-16 w-16" color="var(--verdigris)" label="Fisqua" />
 
           {/* Saffron-tint icon circle with CircleAlert */}
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-saffron-tint">
@@ -200,4 +193,4 @@ export default function WrongWorkspacePage({ loaderData }: Route.ComponentProps)
   );
 }
 
-// @version v0.4.2
+// @version v0.9.0

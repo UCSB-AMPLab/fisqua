@@ -1,6 +1,6 @@
 # Fisqua
 
-**Fisqua** is an open-source cataloguing platform for archives — describing materials, managing authority records and controlled vocabularies, and assembling the hierarchies that hold a collection together. It runs on Cloudflare Workers with D1 and R2, and is designed to scale from community-led initiatives to major libraries.
+**Fisqua** is an open-source, modular platform for collaborative archival cataloguing, records management, digitization, image processing, and preservation — describing materials, managing authority records and controlled vocabularies, assembling the hierarchies that hold a collection together, running digitization projects from creating digitization queues to capture review, and processing images for publication and long-term storage. It is built on Cloudflare Workers with D1 and R2, and is designed to scale from community-led initiatives to major libraries.
 
 Fisqua is one of four open-source primitives developed by [AMPL](https://ampl.clair.ucsb.edu) with its partners, alongside the [Digitization Toolkit](https://github.com/UCSB-AMPLab/digitization-toolkit-software) (which captures), [Zasqua](https://zasqua.org) (which publishes), and [Telar](https://telar.org) (which tells). The four are designed to work together as a full pipeline, but each can be used independently.
 
@@ -16,6 +16,9 @@ One feature at the heart of Fisqua distinguishes it from most archive-management
 
 ## Key features
 
+- Modules, chosen per workspace by an operator: collaborative cataloguing, the shared vocabulary hub, authorities, imports, multiple repositories, publishing, digitization, and the media pipeline
+- Digitization project management: a queue that the workspace shares with its Captua scanning station, which members fill from records, search results, containers, or handlists. Fisqua checks every delivered image against the masters bucket. In capture QC, reviewers approve, reject, or exclude each opening, and Fisqua sends the rejections to the station for retake
+- Media pipeline: a separate runner processes each volume by the recipe set for it. A recipe needs a gate pass on a sample run before it is used at scale. The runner checks the SHA-256 of every captured page, and Fisqua builds each IIIF manifest from the catalogue
 - Virtualised continuous-scroll IIIF viewer with OpenSeadragon tiles and zoom
 - Page and within-page boundary placement with click-to-place, drag-to-move, and autosave
 - Outline panel with tree structure, ISAD(G) metadata editing, QC flags, and region-anchored comments

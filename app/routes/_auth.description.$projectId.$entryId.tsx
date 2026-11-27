@@ -1,14 +1,14 @@
 /**
  * Entry Description Editor
  *
- * The full-page description editor for a single entry -- one of the
- * segmented documentary units a cataloguer carved out of a volume.
- * Renders a split-pane layout with the entry's IIIF image tiles on
- * one side and the standard-aware description form on the other, with
- * autosave and a review workflow (submit / approve / send back) built
- * in. Entity and place linker dialogs attach authority records to the
- * draft description, and the per-page QC-flag dialog lets cataloguers
- * raise digitisation problems without leaving the editor.
+ * This route is the full-page description editor for a single entry — one
+ * of the segmented documentary units a cataloguer carved out of a volume.
+ * It renders a split-pane layout with the entry's IIIF image tiles on one
+ * side and the standard-aware description form on the other, with autosave
+ * and a review workflow (submit / approve / send back) built in. Entity
+ * and place linker dialogs attach authority records to the draft
+ * description, and the per-page QC-flag dialog lets cataloguers raise
+ * digitization problems without leaving the editor.
  *
  * Breaks out of the sidebar chrome via a path check in `_auth.tsx` so
  * cataloguers have the full viewport for image and form.
@@ -109,7 +109,7 @@
  * the wire only (the failure mode behind the title-field incident).
  * Pinned by tests in `tests/description/autosave.test.ts`.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import {
@@ -133,6 +133,7 @@ import {
   type DescriptionStatus,
 } from "../lib/description-workflow";
 import { DescriptionForm } from "../components/description/description-form";
+import { FisquaMark } from "../components/landing/landing-mark";
 import { DescriptionImageViewer } from "../components/description/description-image-viewer";
 import { EntryNav } from "../components/description/entry-nav";
 import { SectionTOC } from "../components/description/section-toc";
@@ -155,6 +156,16 @@ import {
 } from "../lib/beacon-save";
 import type { Route } from "./+types/_auth.description.$projectId.$entryId";
 import { PROJECT_ROLES } from "../lib/validation/enums";
+import { pageMeta } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.entry?.title || data?.entry?.translatedTitle,
+    data?.volume?.name,
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -820,7 +831,7 @@ export default function DescriptionEditorRoute({
         {/* Left: logo + subtitle */}
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center">
-            <img src="/brand/fisqua-mark.svg" alt="" className="h-6 w-6" aria-hidden="true" />
+            <FisquaMark className="h-6 w-6 shrink-0" color="var(--verdigris)" />
           </Link>
           <span className="font-sans text-sm text-stone-500">
             {t("editor.subtitle")}
@@ -1261,3 +1272,5 @@ function ResegmentationDialogStub({
     </div>
   );
 }
+
+// @version v0.9.0
