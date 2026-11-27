@@ -45,7 +45,7 @@
  * MARK_SAVING / MARK_SAVED / MARK_ERROR transitions inside the
  * hook itself.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRevalidator, useBlocker } from "react-router";
@@ -78,6 +78,15 @@ import { partitionComments } from "../lib/comment-partition";
 import type { BoundaryAction } from "../lib/boundary-types";
 import type { Route } from "./+types/_auth.viewer.$projectId.$volumeId";
 import { PROJECT_ROLES } from "../lib/validation/enums";
+import { pageMeta } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.volume?.name,
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -1188,4 +1197,4 @@ export default function ViewerRoute({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

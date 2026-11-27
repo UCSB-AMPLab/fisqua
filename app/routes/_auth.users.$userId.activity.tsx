@@ -24,7 +24,7 @@
  * lead dashboard's team table, so the page carries the crowdsourcing
  * capability gate the rest of that surface carries.
  *
- * @version v0.7.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -34,14 +34,20 @@ import { requireCapability } from "../lib/tenant";
 import { useFormatters } from "~/lib/use-formatters";
 import { getLocale } from "../middleware/i18next";
 import { StatusBadge } from "../components/workflow/status-badge";
+import { heading, pageMeta, titleLang } from "../lib/page-title";
 import type { Route } from "./+types/_auth.users.$userId.activity";
 
-export function meta({ data }: Route.MetaArgs) {
-  const lang = data?.lang === "es" ? "es" : "en";
+export function meta(args: Route.MetaArgs) {
+  const lang = titleLang(args);
   const name =
-    data?.targetUser?.name ?? (lang === "es" ? "Usuario" : "User");
+    args.data?.targetUser?.name ?? (lang === "es" ? "Usuario" : "User");
   return [
-    { title: lang === "es" ? `${name} — Actividad` : `${name} — Activity` },
+    ...pageMeta(
+      args,
+      name,
+      heading("dashboard:activity.tab_activity"),
+      heading("sidebar:users"),
+    ),
     {
       name: "description",
       content:

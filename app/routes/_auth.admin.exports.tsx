@@ -46,7 +46,7 @@
  * cron behind the thirty-day promise — the same bargain the handlist
  * integrity read makes.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useFetcher, useNavigate, useSearchParams } from "react-router";
@@ -86,6 +86,7 @@ import type {
 import type { ExportRunView } from "~/lib/export/run.server";
 import type { ExportScopeDescriptor } from "~/lib/export/scopes.server";
 import type { Route } from "./+types/_auth.admin.exports";
+import { pageMeta, heading } from "../lib/page-title";
 
 const DOORS: ExportDoor[] = ["workspace", "branch", "carried", "handlist"];
 
@@ -126,6 +127,13 @@ function readFormat(value: string | null): ExportFormat | null {
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("exports:title"),
+  );
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -1330,4 +1338,4 @@ function EmptyNotice({ heading, body }: { heading: string; body: string }) {
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

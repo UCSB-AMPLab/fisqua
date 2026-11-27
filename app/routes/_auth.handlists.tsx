@@ -36,7 +36,7 @@
  * `handlists.server` — owner, sharee or workspace-visible, always
  * inside the tenant, in the same statement as the read.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 import { useEffect, useState } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
@@ -51,6 +51,7 @@ import type {
   HandlistSummary,
 } from "~/lib/handlists.server";
 import type { Route } from "./+types/_auth.handlists";
+import { pageMeta, heading } from "../lib/page-title";
 
 /** The three readings of the same list. */
 type Tab = "mine" | "shared" | "all";
@@ -97,6 +98,13 @@ function readTab(value: string | null): Tab {
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("handlists:title"),
+  );
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -374,4 +382,4 @@ function HandlistRow({
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

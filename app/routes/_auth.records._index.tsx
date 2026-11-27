@@ -15,7 +15,7 @@
  * the person. The read lives in `reader.server`
  * (`listPublishedEntryRecords`).
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
@@ -23,6 +23,14 @@ import { Library } from "lucide-react";
 import { tenantContext, userContext } from "../context";
 import { PublishedRecordList } from "../components/reader/published-record-list";
 import type { Route } from "./+types/_auth.records._index";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("reader:records_title"),
+  );
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -83,4 +91,4 @@ export default function RecordsPage({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

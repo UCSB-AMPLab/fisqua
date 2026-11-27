@@ -30,7 +30,7 @@
  * super-admin check: the layout's check runs in its loader, which
  * does not guard a POST to this route.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState, useRef, useCallback, useMemo } from "react";
@@ -44,10 +44,18 @@ import { PromotionTable } from "../components/promote/promotion-table";
 import { RefCodePattern } from "../components/promote/ref-code-pattern";
 import { PromotionSummary } from "../components/promote/promotion-summary";
 import type { Route } from "./+types/_auth.admin.cataloguing.promote";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("promote:heading.title"),
+  );
+}
 
 export async function loader({ context, request }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -565,4 +573,4 @@ export default function PromotePage({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

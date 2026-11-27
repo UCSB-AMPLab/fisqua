@@ -20,7 +20,7 @@
  * crowdsourcing capability itself: the layout's check runs in its
  * loader, which does not guard a POST to this route.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -41,6 +41,7 @@ import {
   isPendingSubmission,
 } from "~/components/admin/save-feedback";
 import type { Route } from "./+types/_auth.admin.cataloguing.projects";
+import { pageMeta, heading } from "../lib/page-title";
 
 interface ProjectMember {
   userId: string;
@@ -77,6 +78,13 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
   reviewed: "bg-verdigris-tint text-verdigris",
   approved: "bg-verdigris-tint text-verdigris",
 };
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("admin:heading.all_projects"),
+  );
+}
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -486,4 +494,4 @@ export default function AdminCataloguingProjects({
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -12,13 +12,21 @@
  * second middleware, which sends such a member's page requests here
  * from every other path except their settings.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useTranslation } from "react-i18next";
 import { ShieldAlert } from "lucide-react";
 import { userContext } from "../context";
 import type { Route } from "./+types/_auth.no-access";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("no_access:title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   // Landing page for members with no role, project membership or grant.
@@ -48,4 +56,4 @@ export default function NoAccessPage() {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

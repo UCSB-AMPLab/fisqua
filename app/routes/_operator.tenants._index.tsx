@@ -33,7 +33,7 @@
  * The [New tenant] button in the header points at
  * `/operator/tenants/new`.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { Link, useLoaderData } from "react-router";
@@ -43,6 +43,14 @@ import { useTranslation } from "react-i18next";
 import { tenants } from "../db/schema";
 import { PLATFORM_TENANT_ID } from "../lib/tenant";
 import type { Route } from "./+types/_operator.tenants._index";
+import { pageMeta, heading } from "../lib/page-title";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("operator:tenants_list.page_title"),
+  );
+}
 
 export async function loader({ context }: Route.LoaderArgs) {
   const env = (context as any).cloudflare.env;
@@ -179,4 +187,4 @@ export default function TenantsList() {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0

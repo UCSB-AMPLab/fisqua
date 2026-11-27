@@ -17,7 +17,7 @@
  * and the per-member stats — so the table never waterfalls when the
  * lead opens it.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { useState } from "react";
@@ -36,8 +36,17 @@ import {
 } from "../components/assignments/team-progress";
 import { DescriptionTabContent } from "../components/assignments/description-tab-content";
 import type { Route } from "./+types/_auth.projects.$id.assignments";
+import { pageMeta, heading, projectName } from "../lib/page-title";
 
 type SubTab = "segmentation" | "description";
+
+export function meta(args: Route.MetaArgs) {
+  return pageMeta(
+    args,
+    heading("project:tab.assignments"),
+    projectName(args),
+  );
+}
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const { drizzle } = await import("drizzle-orm/d1");
@@ -596,4 +605,4 @@ export default function AssignmentsRoute({ loaderData }: Route.ComponentProps) {
   );
 }
 
-// @version v0.8.0
+// @version v0.9.0
