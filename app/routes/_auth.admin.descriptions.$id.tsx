@@ -26,11 +26,27 @@
  * store; only the explicit save path crosses into `descriptions` and
  * only that path enforces the validator.
  *
+ * The update writes only the fields the request carries, and of those
+ * only the ones that change the stored row; the changelog records the
+ * same set. Each standard's form renders a subset of the description
+ * columns, so a save never touches the columns its standard leaves
+ * out. The digital-flag checkbox travels with a hidden input of the
+ * same name, so an unchecked box reads as false and a request without
+ * the name leaves the flag as stored.
+ *
  * The header's "Add to handlist" is the browse-time half of how a
  * handlist gets built: one record at a time, from its own page, through
  * the same type-matched picker the search page's selection bar opens.
  * It offers only handlists that hold records, and it reports the
  * resulting count rather than a bare "Added".
+ *
+ * Beside it, on a workspace with the digitization capability and for
+ * someone who works in capture (`canQueue`), "Add to digitization
+ * queue" adds the description, and "Add the N descriptions below this" adds
+ * the deepest volume or file on each branch below it (the rule the add
+ * route applies). The loader counts them with `countBelow`, which stops
+ * past 50, and the button shows only for 1 to 50 picks below the
+ * description.
  *
  * OCR text is not a form field. The transcript lives in OCR page rows,
  * read-only in Fisqua; the loader reports its page count and length
@@ -41,12 +57,49 @@
  * viewer at that canvas, so a transcript hit can link to the page it
  * was read from.
  *
- * @version v0.8.0
+ * A save's UPDATE runs only while the record holds the version the
+ * save read, so a save that another lands between the version check and
+ * the write changes nothing, logs nothing and gets the conflict
+ * response. A successful save returns the new version, and the form
+ * submits the version its field values were loaded from
+ * (`useFormVersion`), which a loader revalidation does not move.
+ *
+ * After an edit conflict, the overwrite resubmits the editor's fields
+ * with `_force=true`. A forced update that carries none of the editable
+ * fields is refused, and a save deletes the autosaved draft only when
+ * it carried fields.
+ *
+ * A parent publishes its children's level (`children_level`), read from
+ * its published children. Publishing or unpublishing a description, and
+ * a save that changes its level, move its parent's version in the same
+ * batch; deleting it moves the parent's version with its child count.
+ *
+ * The loader reads the federation's role lists once (`readRolePickers`)
+ * and hands the option groups and labels to the entity and place
+ * linkers, so the pickers offer the federation's codes and the links
+ * show its labels.
+ *
+ * The entity links carry their relation as read (`related_to` and the
+ * links naming each one). The link form sends it back with an edit or a
+ * removal, and the action writes only while the link's relation is the
+ * one read (`relation-sides.server.ts`), so a change to the relation that
+ * lands in between is refused, not overwritten. A relation side is
+ * refused with its own message, and so is a relation changed since the
+ * read (`relation_side_*`, `relation_changed_*`).
+ *
+ * A link's role is written only while the federation's list approves
+ * it, checked inside the INSERT or UPDATE (`link-roles.server.ts`); an
+ * edit may keep the link's current code even when the list has
+ * deprecated it. A refused role writes nothing and gets the generic
+ * refusal.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect } from "react";
 import {
   Form,
+  useFetcher,
   useLoaderData,
   useActionData,
   redirect,
@@ -65,17 +118,30 @@ import {
 import { DraftsBanner } from "~/components/admin/drafts-banner";
 import { ConflictDialog } from "~/components/admin/conflict-dialog";
 import { useAutosaveDraft } from "~/components/admin/use-autosave-draft";
-import { PublishToggle } from "~/components/descriptions/publish-toggle";
+import { useFormVersion, useRecordEditMode } from "~/lib/use-form-version";
+import { PublishToggle, publishToggleKey } from "~/components/descriptions/publish-toggle";
 import { TranscriptLine } from "~/components/descriptions/transcript-line";
 import { HandlistPicker } from "~/components/handlists/handlist-picker";
+import { AddToQueueButton } from "~/components/capture/add-to-queue";
+import { hasCapability } from "~/lib/tenant";
 import type { Route } from "./+types/_auth.admin.descriptions.$id";
+import { pageMeta, heading } from "../lib/page-title";
 
 // ---------------------------------------------------------------------------
 // Loader
 // ---------------------------------------------------------------------------
 
+export function meta(args: Route.MetaArgs) {
+  const data = args.data;
+  return pageMeta(
+    args,
+    data?.description?.title,
+    heading("descriptions_admin:page_title"),
+  );
+}
+
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { canAdministerArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { and, eq, sql } = await import("drizzle-orm");
   const {
@@ -89,9 +155,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { getAllowedChildLevels } = await import(
     "~/lib/description-levels"
   );
+  const { officeSql } = await import("~/lib/link-attributes.server");
+  const { namedBySql, relatedToSql } = await import("~/lib/relation-sides.server");
+  const { namedByList } = await import("~/lib/relation-as-read");
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
   // Schema-invariant guard — see action handler.
   if (tenant.descriptiveStandard == null) {
@@ -186,17 +255,22 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       roleNote: descriptionEntities.roleNote,
       sequence: descriptionEntities.sequence,
       honorific: descriptionEntities.honorific,
-      function: descriptionEntities.function,
+      function: officeSql(),
       nameAsRecorded: descriptionEntities.nameAsRecorded,
       createdAt: descriptionEntities.createdAt,
       entityDisplayName: entities.displayName,
       entityCode: entities.entityCode,
+      // The relation as read, which the link forms send back with an edit
+      // or a removal (`relation-as-read.ts`).
+      relatedTo: relatedToSql(),
+      namedByJoined: namedBySql(),
     })
     .from(descriptionEntities)
     .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
     .where(eq(descriptionEntities.descriptionId, id))
     .orderBy(descriptionEntities.sequence)
-    .all();
+    .all()
+    .then((rows) => rows.map(({ namedByJoined, ...l }) => ({ ...l, namedBy: namedByList(namedByJoined) })));
 
   // Fetch place links joined with place label
   const placeLinks = await db
@@ -218,6 +292,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
   const entityLinkCount = entityLinks.length;
   const placeLinkCount = placeLinks.length;
+
+  // The role pickers and labels come from the federation's lists; a
+  // workspace without authorities shows no linkers, and reads none.
+  const { readRolePickers } = await import("~/lib/vocabulary.server");
+  const { NO_ROLE_PICKERS } = await import("~/lib/role-options");
+  const roles = tenant.authoritiesEnabled
+    ? await readRolePickers(db, tenant.federationId, context)
+    : NO_ROLE_PICKERS;
 
   // Check for another user's draft on this record
   const { getConflictDraft } = await import("~/lib/drafts.server");
@@ -247,6 +329,20 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { countHoldingHandlists } = await import("~/lib/handlists.server");
   const holdingHandlists = await countHoldingHandlists(db, tenant, user, id);
 
+  // The digitization queue's add buttons: the capability, then capture management.
+  let canQueue = false;
+  if (hasCapability(tenant, "digitization")) {
+    const { captureAccess } = await import("~/lib/capture/screens.server");
+    canQueue = (await captureAccess(db, tenant, user)).worker;
+  }
+  // How many "add everything below this" would add: shown only from 1 to
+  // the limit, and only when it picks something below the description.
+  let queueBelow: number | null = null;
+  if (canQueue && (description.childCount ?? 0) > 0) {
+    const { countBelow } = await import("~/lib/capture/queue.server");
+    queueBelow = await countBelow(db, tenant.id, id);
+  }
+
   // The transcript is read-only here: its size, not its page text.
   const { transcriptSummary } = await import("~/lib/ocr/search.server");
   const transcript = await transcriptSummary(db, tenant.id, id);
@@ -261,11 +357,17 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     placeLinkCount,
     entityLinks,
     placeLinks,
+    roles,
     conflictDraft,
     // How many handlists this person can reach already hold this
     // record: the affordance states where it is rather than only
     // offering to put it somewhere.
     holdingHandlists,
+    canQueue,
+    queueBelow,
+    // Publishing and deleting are administration: offered to those who
+    // administer the records area, not to a staff grant.
+    canAdminister: canAdministerArea(user, "records"),
     transcript,
     // Hand the active standard down to <DescriptionForm> so the
     // renderer picks the correct StandardConfig.
@@ -281,13 +383,16 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 // ---------------------------------------------------------------------------
 
 export async function action({ params, request, context }: Route.ActionArgs) {
-  const { requireArea } = await import("~/lib/user-access.server");
+  const { requireArea, requireAreaWork } = await import("~/lib/user-access.server");
   const { drizzle } = await import("drizzle-orm/d1");
   const { eq, sql, and } = await import("drizzle-orm");
   const { descriptions, descriptionEntities, descriptionPlaces, entities, places } =
     await import("~/db/schema");
   const { authorityScope } = await import("~/lib/authority-ownership.server");
   const { isValidChildLevel } = await import("~/lib/description-levels");
+  const { attributesJson, withOfficeSql } = await import("~/lib/link-attributes.server");
+  const { deleteLinkAsRead, relationRefusal, updateLinkAsRead } = await import("~/lib/relation-sides.server");
+  const { OUTSIDE_RELATIONS, isRelationSide, relationAsReadFrom } = await import("~/lib/relation-as-read");
   const {
     DESCRIPTION_LEVELS,
     RESOURCE_TYPES,
@@ -302,12 +407,19 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     import("~/lib/standards/types").DescriptionLevel;
 
   const user = context.get(userContext);
-  requireArea(user, "records");
+  requireAreaWork(user, "records");
   const tenant = context.get(tenantContext);
 
   const env = context.cloudflare.env;
   const db = drizzle(env.DB);
   const id = params.id;
+
+  // The statement that moves the version of this description's parent
+  // after a write that changes what the parent publishes, in the same
+  // batch (`parentVersionFollows`).
+  const { parentVersionFollows } = await import("~/lib/description-versions.server");
+  const parentFollows = (childVersion: number) =>
+    parentVersionFollows(db, tenant.id, id, childVersion);
 
   const formData = await request.formData();
   const intent = formData.get("_action") as string;
@@ -341,8 +453,11 @@ export async function action({ params, request, context }: Route.ActionArgs) {
 
   switch (intent) {
     case "toggle_publish": {
+      // Publishing or unpublishing exposes or withdraws a record; it is
+      // administration, which a staff grant does not have.
+      requireArea(user, "records");
       const desc = await db
-        .select({ isPublished: descriptions.isPublished })
+        .select({ isPublished: descriptions.isPublished, updatedAt: descriptions.updatedAt })
         .from(descriptions)
         .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
         .get();
@@ -351,15 +466,35 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         throw new Response("Not found", { status: 404 });
       }
 
-      await db
-        .update(descriptions)
-        .set({
-          isPublished: !desc.isPublished,
-          updatedAt: Date.now(),
-        })
-        .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)));
+      // The toggle moves the version on (the publish finds changed
+      // records by it), only from the version it read: a save that lands
+      // in between leaves the toggle a no-op, and the page's reload shows
+      // the state as stored. It returns both versions, so an edit form
+      // open on the description takes the new one only when it held the
+      // one the toggle moved from.
+      // The parent's version moves with it, in the same batch: the
+      // child's publication changes the parent's `children_level`.
+      const { nextVersion } = await import("~/lib/record-version.server");
+      const to = nextVersion(desc.updatedAt);
+      const [result] = await db.batch([
+        db
+          .update(descriptions)
+          .set({
+            isPublished: !desc.isPublished,
+            updatedAt: to,
+          })
+          .where(
+            and(
+              eq(descriptions.tenantId, tenant.id),
+              eq(descriptions.id, id),
+              eq(descriptions.updatedAt, desc.updatedAt)
+            )
+          ),
+        parentFollows(to),
+      ]);
+      if ((result.meta?.changes ?? 0) === 0) return { ok: false as const };
 
-      return { ok: true as const };
+      return { ok: true as const, from: desc.updatedAt, to };
     }
 
     case "autosave": {
@@ -372,19 +507,21 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     }
 
     case "update": {
-      // Parse all fields from form
-      const getField = (name: string) =>
-        ((formData.get(name) as string)?.trim() || null) as string | null;
+      // A field is read only when the request carries it. Each
+      // standard's form renders a subset of the description columns,
+      // and a request may carry fewer still (a partial post, another
+      // client), so a field the request does not carry keeps its stored
+      // value; a carried, blank field clears its column.
+      const { submittedFields, fieldsToWrite } = await import(
+        "~/lib/validation/update-schema"
+      );
+      const { has, trimmed } = submittedFields(formData);
 
-      // The SINGLE registry of description columns the edit form
-      // carries. The validator payload and the DB write are both
-      // derived from this tuple, so a column cannot reach one and
-      // silently miss the other — previously the field list was
-      // declared three times in parallel (a getField const block,
-      // formObject, updatedFields) with nothing but inspection
-      // keeping them aligned. descriptionLevel (enum-parsed),
-      // hasDigital (checkbox), and referenceCode (read-only, taken
-      // from the record) are handled explicitly below.
+      // The registry of description columns the edit form carries as
+      // text. The validator payload and the DB write both derive from
+      // it. descriptionLevel (enum-parsed), hasDigital (checkbox) and
+      // referenceCode (read-only, taken from the record) are handled
+      // explicitly below.
       const UPDATE_FORM_FIELDS = [
         "title",
         "localIdentifier",
@@ -428,20 +565,21 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         "iiifManifestUrl",
       ] as const;
 
-      const raw = Object.fromEntries(
-        UPDATE_FORM_FIELDS.map((name) => [name, getField(name)]),
-      ) as Record<(typeof UPDATE_FORM_FIELDS)[number], string | null>;
+      const original = await db
+        .select()
+        .from(descriptions)
+        .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
+        .get();
+      if (!original) throw notFound();
+      const stored = original as unknown as Record<string, unknown>;
 
-      const descriptionLevel = getField("descriptionLevel");
-      const hasDigital = formData.get("hasDigital") === "on";
-
-      // Pre-validate the descriptionLevel against the closed enum.
-      // The standard-aware validator factory (below) trusts that the
-      // level is one of `DescriptionLevel`; if a malicious payload
-      // ships an arbitrary string, we want a clean field-level error
-      // here rather than an obscure config-lookup throw downstream.
-      const levelEnum = z.enum(DESCRIPTION_LEVELS);
-      const levelParse = levelEnum.safeParse(descriptionLevel);
+      // The level: the submitted one, enum-checked, or the stored one.
+      // A submitted value outside the closed enum gets a field-level
+      // error here rather than an obscure config-lookup throw in the
+      // validator factory below.
+      const levelParse = z
+        .enum(DESCRIPTION_LEVELS)
+        .safeParse(has("descriptionLevel") ? trimmed("descriptionLevel") : original.descriptionLevel);
       if (!levelParse.success) {
         return {
           ok: false as const,
@@ -449,24 +587,14 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
-      // Validate level constraint if parent exists
-      const desc = await db
-        .select({
-          parentId: descriptions.parentId,
-          referenceCode: descriptions.referenceCode,
-        })
-        .from(descriptions)
-        .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
-        .get();
-
-      if (desc?.parentId) {
+      if (original.parentId) {
         const parent = await db
           .select({ descriptionLevel: descriptions.descriptionLevel })
           .from(descriptions)
           .where(
             and(
               eq(descriptions.tenantId, tenant.id),
-              eq(descriptions.id, desc.parentId)
+              eq(descriptions.id, original.parentId)
             )
           )
           .get();
@@ -485,33 +613,34 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         }
       }
 
-      // Standard-aware validation. Build the full form payload as a
-      // column-keyed object and run it through the per-standard
-      // validator picked from `tenant.descriptiveStandard`. The
-      // factory enforces every mandatory field for the (standard,
-      // level) pair via Zod v4 `.check()` — collecting ALL
-      // required-field issues in a single pass so the form surfaces
-      // them together.
+      // The digital flag is a checkbox, which a browser does not submit
+      // when unchecked. The form posts a hidden `hasDigital` input
+      // before the checkbox, so a request that carries the name at all
+      // came from a rendered checkbox, and "on" among its values means
+      // checked. A request without the name leaves the flag as stored.
+      const hasDigital = has("hasDigital")
+        ? formData.getAll("hasDigital").includes("on")
+        : undefined;
+
+      // Standard-aware validation of the record as it will stand: each
+      // carried field's submitted value, each other field's stored
+      // value, run through the per-standard validator picked from
+      // `tenant.descriptiveStandard`, which collects every required-
+      // field issue in one pass. A blank input reaches the validator as
+      // absent, not null (the base schema's optional fields are not
+      // nullable); the required-field check still fires on it.
       const formObject: Record<string, unknown> = {
         // referenceCode is read-only in edit mode and never travels in
-        // the form, but every standard requires it — the validator must
-        // see the record's own value or NO update can ever pass
-        // validation (field_required on a field the form cannot carry).
-        // The null arm is unreachable in practice (the column is NOT
-        // NULL at creation); it exists to satisfy the missing-record
-        // narrowing, and would surface as a type error, not a crash.
-        referenceCode: desc?.referenceCode ?? null,
+        // the form, but every standard requires it, so the validator
+        // sees the record's own value.
+        referenceCode: original.referenceCode,
         descriptionLevel: levelParse.data,
-        hasDigital,
+        hasDigital: hasDigital ?? original.hasDigital,
       };
       for (const name of UPDATE_FORM_FIELDS) {
-        // Empty inputs arrive as null from getField, but the base
-        // schema's optional fields are optional, NOT nullable — a null
-        // fails them with a type error. The validator must see empty
-        // as absent; the mandatory-field check still fires on absent
-        // values (its test is `value == null`), and the DB write below
-        // keeps the null so clearing a field clears the column.
-        formObject[name] = raw[name] ?? undefined;
+        formObject[name] = has(name)
+          ? trimmed(name) || undefined
+          : (stored[name] ?? undefined);
       }
 
       // `tenants.descriptive_standard` is NOT NULL when
@@ -530,43 +659,61 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         tenant.descriptiveStandard,
         levelParse.data as DescriptionLevel,
       );
+      const errors: Record<string, string[]> = {};
+      // Required fields are checked here, over the record as it will
+      // stand, and not left to the validator: Zod skips the validator's
+      // required-field check whenever any field fails its own schema,
+      // and an untouched stored value (a legacy value outside an enum)
+      // can fail it.
+      const { getStandardConfig } = await import("~/lib/standards/registry");
+      const requiredColumns = getStandardConfig(tenant.descriptiveStandard)
+        .requiredFieldsForLevel(levelParse.data as DescriptionLevel);
+      for (const col of requiredColumns) {
+        const value = formObject[col];
+        if (value == null || value === "") errors[col] = ["field_required"];
+      }
+      // Format errors count only for the fields the request carries. A
+      // stored value in a field the request did not carry is not the
+      // request's to fix, and this write leaves it alone.
       const stdParsed = validator.safeParse(formObject);
       if (!stdParsed.success) {
-        return {
-          ok: false as const,
-          errors: z.flattenError(stdParsed.error).fieldErrors,
-        };
+        const fieldErrors = z.flattenError(stdParsed.error).fieldErrors as Record<
+          string,
+          string[] | undefined
+        >;
+        for (const [name, messages] of Object.entries(fieldErrors)) {
+          if (!messages?.length || !has(name) || errors[name]) continue;
+          errors[name] = messages;
+        }
       }
-
-      // Check referenceCode uniqueness would not apply on update since
-      // referenceCode is read-only in edit mode. But we keep the field
-      // consistent in the DB.
-
-      // Fetch original record before update for changelog diff
-      const original = await db
-        .select()
-        .from(descriptions)
-        .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
-        .get();
+      if (Object.keys(errors).length > 0) {
+        return { ok: false as const, errors };
+      }
 
       // Optimistic lock check: compare updatedAt from form vs DB
       const formUpdatedAt = formData.get("_updatedAt") as string;
       const forceOverwrite = formData.get("_force") === "true";
-      if (
-        !forceOverwrite &&
-        formUpdatedAt &&
-        original &&
-        String(original.updatedAt) !== formUpdatedAt
-      ) {
-        // Find who modified it
+      // Whether the request carries any field the editor submits. An
+      // overwrite after a conflict resubmits the editor's fields; a
+      // forced update without any would write nothing and report
+      // success while the user's edits stay unsaved, so it is refused.
+      const carriesFields =
+        UPDATE_FORM_FIELDS.some((name) => has(name)) ||
+        has("descriptionLevel") ||
+        has("hasDigital");
+      if (forceOverwrite && !carriesFields) {
+        return { ok: false as const, error: "generic" };
+      }
+      // The conflict response names who last saved the record and when.
+      const conflict = async (current: { updatedAt: number; updatedBy: string | null }) => {
         const { users } = await import("~/db/schema");
         let modifiedBy = "Unknown";
-        if (original.updatedBy) {
+        if (current.updatedBy) {
           const modifier = await db
             .select({ name: users.name })
             .from(users)
             .where(
-              and(eq(users.tenantId, tenant.id), eq(users.id, original.updatedBy))
+              and(eq(users.tenantId, tenant.id), eq(users.id, current.updatedBy))
             )
             .get();
           if (modifier?.name) modifiedBy = modifier.name;
@@ -575,79 +722,131 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           ok: false as const,
           error: "conflict" as const,
           modifiedBy,
-          modifiedAt: original.updatedAt,
+          modifiedAt: current.updatedAt,
         };
+      };
+      if (
+        !forceOverwrite &&
+        formUpdatedAt &&
+        String(original.updatedAt) !== formUpdatedAt
+      ) {
+        return conflict(original);
       }
 
-      // The DB write derives from the same registry as the validator
-      // payload. The named overrides after the spread are the ONLY
-      // deliberate divergences from raw passthrough: NOT NULL columns
-      // coalesce to their column defaults, resourceType is enum-gated
-      // (belt-and-braces — the validator already rejects invalid
-      // values), and descriptionLevel carries the parsed enum.
-      const updatedFields = {
-        ...raw,
-        title: raw.title ?? "",
-        descriptionLevel: levelParse.data,
-        repositoryId: raw.repositoryId ?? "",
-        resourceType:
-          raw.resourceType &&
-          RESOURCE_TYPES.includes(
-            raw.resourceType as (typeof RESOURCE_TYPES)[number]
-          )
-            ? (raw.resourceType as (typeof RESOURCE_TYPES)[number])
-            : null,
-        genre: raw.genre ?? "[]",
-        hasDigital,
-      };
+      // The values the request carried, keyed by column; an absent
+      // field stays undefined and is not written. title and
+      // repositoryId are NOT NULL: a blank one (which the validator has
+      // already refused when the standard requires it) stays as stored.
+      // genre is a JSON list whose empty value is "[]".
+      // resourceType is enum-gated (the validator already rejects
+      // other values).
+      const updates: Record<string, unknown> = {};
+      for (const name of UPDATE_FORM_FIELDS) {
+        if (has(name)) updates[name] = trimmed(name) || null;
+      }
+      if (has("title")) updates.title = trimmed("title") || undefined;
+      if (has("repositoryId")) {
+        updates.repositoryId = trimmed("repositoryId") || undefined;
+      }
+      if (has("genre")) updates.genre = trimmed("genre") || "[]";
+      if (has("resourceType")) {
+        const rt = trimmed("resourceType");
+        updates.resourceType = RESOURCE_TYPES.includes(
+          rt as (typeof RESOURCE_TYPES)[number]
+        )
+          ? rt
+          : null;
+      }
+      if (has("descriptionLevel")) updates.descriptionLevel = levelParse.data;
+      if (hasDigital !== undefined) updates.hasDigital = hasDigital;
 
+      // Of those, only the ones that change the stored row are written
+      // and logged: an unchanged value, or a blank over a stored blank
+      // ("" or NULL, and an empty genre list over NULL), is left out.
+      const changed: Record<string, unknown> = {};
+      for (const [name, value] of Object.entries(fieldsToWrite(updates, stored))) {
+        if (name === "genre" && value === "[]" && stored.genre == null) continue;
+        if (JSON.stringify(stored[name]) === JSON.stringify(value)) continue;
+        changed[name] = value;
+      }
+
+      // The write runs only while the description holds the version
+      // read above (the one the form's version was checked against, or
+      // that a forced overwrite applies to): a save that another lands
+      // before changes nothing, and its changes count says so.
+      // A change of level changes the parent's `children_level`, so the
+      // parent's version moves with it, in the same batch.
+      const { nextVersion } = await import("~/lib/record-version.server");
+      const savedVersion = nextVersion(original.updatedAt);
       try {
-        await db
-          .update(descriptions)
-          .set({
-            ...updatedFields,
-            updatedBy: user.id,
-            updatedAt: Date.now(),
-          })
-          .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)));
+        const [result] = await db.batch([
+          db
+            .update(descriptions)
+            .set({
+              ...(changed as Partial<typeof descriptions.$inferInsert>),
+              updatedBy: user.id,
+              updatedAt: savedVersion,
+            })
+            .where(
+              and(
+                eq(descriptions.tenantId, tenant.id),
+                eq(descriptions.id, id),
+                eq(descriptions.updatedAt, original.updatedAt)
+              )
+            ),
+          ...("descriptionLevel" in changed ? [parentFollows(savedVersion)] : []),
+        ]);
+        if ((result.meta?.changes ?? 0) === 0) {
+          const current = await db
+            .select({ updatedAt: descriptions.updatedAt, updatedBy: descriptions.updatedBy })
+            .from(descriptions)
+            .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
+            .get();
+          return conflict(current ?? original);
+        }
       } catch {
         return { ok: false as const, error: "generic" };
       }
 
-      // Compute diff and create changelog entry
-      if (original) {
-        const { computeDiff, createChangelogEntry } = await import(
-          "~/lib/changelog.server"
+      // Changelog entry for the fields that changed.
+      const { computeDiff, createChangelogEntry } = await import(
+        "~/lib/changelog.server"
+      );
+      const diff = computeDiff(stored, changed);
+      if (diff) {
+        const commitNote =
+          (formData.get("commitNote") as string)?.trim() || undefined;
+        await createChangelogEntry(
+          db,
+          id,
+          "description",
+          user.id,
+          diff,
+          commitNote
         );
-        const diff = computeDiff(
-          original as unknown as Record<string, unknown>,
-          updatedFields as unknown as Record<string, unknown>
-        );
-        if (diff) {
-          const commitNote =
-            (formData.get("commitNote") as string)?.trim() || undefined;
-          await createChangelogEntry(
-            db,
-            id,
-            "description",
-            user.id,
-            diff,
-            commitNote
-          );
-        }
       }
 
-      // Delete draft after successful save
-      const { deleteDraft } = await import("~/lib/drafts.server");
-      await deleteDraft(db, tenant.id, id, "description");
+      // The saved fields supersede the autosaved draft. A request that
+      // carried none of them saved nothing, and the draft is kept.
+      if (carriesFields) {
+        const { deleteDraft } = await import("~/lib/drafts.server");
+        await deleteDraft(db, tenant.id, id, "description");
+      }
 
-      return { ok: true as const, message: "updated" };
+      // The new version, which the form submits with its next save.
+      return { ok: true as const, message: "updated", updatedAt: savedVersion };
     }
 
     case "delete": {
+      // Deleting a record is administration, as publishing is.
+      requireArea(user, "records");
       // Check childCount > 0
       const desc = await db
-        .select({ childCount: descriptions.childCount, parentId: descriptions.parentId })
+        .select({
+          childCount: descriptions.childCount,
+          parentId: descriptions.parentId,
+          referenceCode: descriptions.referenceCode,
+        })
         .from(descriptions)
         .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)))
         .get();
@@ -664,10 +863,18 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         };
       }
 
-      // Delete description (entity/place links cascade per schema)
-      await db
-        .delete(descriptions)
-        .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id)));
+      // Delete description (entity/place links cascade per schema). The
+      // descriptions that record its code as a former one publish it
+      // again once the code is free, so their versions move in the same
+      // batch (`formerCodeHoldersFollow`).
+      const { formerCodeHoldersFollow } = await import("~/lib/export/former-codes.server");
+      const holders = formerCodeHoldersFollow(db, tenant.id, [desc.referenceCode]);
+      await db.batch([
+        db
+          .delete(descriptions)
+          .where(and(eq(descriptions.tenantId, tenant.id), eq(descriptions.id, id))),
+        ...(holders ? [holders] : []),
+      ] as any);
 
       // Decrement parent's childCount if parentId exists
       if (desc.parentId) {
@@ -683,9 +890,15 @@ export async function action({ params, request, context }: Route.ActionArgs) {
           .get();
 
         if (parent) {
+          // The count is part of the parent's published record: its
+          // version moves with it, past the version it holds.
+          const { nextVersionSql } = await import("~/lib/record-version.server");
           await db
             .update(descriptions)
-            .set({ childCount: Math.max(0, parent.childCount - 1) })
+            .set({
+              childCount: Math.max(0, parent.childCount - 1),
+              updatedAt: nextVersionSql(descriptions.updatedAt),
+            })
             .where(
               and(
                 eq(descriptions.tenantId, tenant.id),
@@ -706,7 +919,8 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const linkSchema = z.object({
         descriptionId: z.string().uuid(),
         entityId: z.string().uuid(),
-        role: z.enum(ENTITY_ROLES),
+        // Any code; the federation's list decides at write time.
+        role: z.string().trim().min(1),
         sequence: z.coerce.number().int().min(0).default(0),
         honorific: z.string().max(100).optional(),
         function: z.string().max(300).optional(),
@@ -739,18 +953,22 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         )
         .get();
       if (!entity) throw notFound();
+      // The role is checked inside the INSERT: a code the federation's
+      // list does not approve, at the moment of the write, writes nothing.
+      const { insertEntityLink } = await import("~/lib/link-roles.server");
       try {
-        await db.insert(descriptionEntities).values({
+        const written = await insertEntityLink(db, tenant.federationId, {
           id: crypto.randomUUID(),
           descriptionId: parsed.data.descriptionId,
           entityId: parsed.data.entityId,
           role: parsed.data.role,
           sequence: parsed.data.sequence,
           honorific: parsed.data.honorific ?? null,
-          function: parsed.data.function ?? null,
+          attributes: attributesJson(parsed.data.function),
           nameAsRecorded: parsed.data.nameAsRecorded ?? null,
           createdAt: Date.now(),
         });
+        if (!written) return { ok: false as const, error: "generic" };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "";
         if (msg.includes("UNIQUE constraint")) {
@@ -764,7 +982,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     case "update_entity_link": {
       const entityLinkSchema = z.object({
         linkId: z.string().uuid(),
-        role: z.enum(ENTITY_ROLES),
+        role: z.string().trim().min(1),
         honorific: z.string().max(100).optional(),
         function: z.string().max(300).optional(),
         nameAsRecorded: z.string().max(500).optional(),
@@ -790,15 +1008,27 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(entityLinkHere)
         .get();
       if (!entityLink) throw notFound();
-      await db
-        .update(descriptionEntities)
-        .set({
-          role: parsed.data.role,
-          honorific: parsed.data.honorific ?? null,
-          function: parsed.data.function ?? null,
-          nameAsRecorded: parsed.data.nameAsRecorded ?? null,
-        })
-        .where(entityLinkHere);
+      // A relation side is not edited from this form. The UPDATE carries
+      // the relation the form read, outside every relation, so a change to
+      // it that lands in between is refused, not overwritten
+      // (relation-sides.server.ts).
+      const asRead = relationAsReadFrom(formData);
+      if (asRead && isRelationSide(asRead)) return { ok: false as const, error: "relation_side_save" as const };
+      // The role is checked inside the UPDATE: the link's current code, or
+      // one the federation's list approves at the moment of the write.
+      const { roleKeptOrApprovedSql } = await import("~/lib/link-roles.server");
+      const roleAllowed = roleKeptOrApprovedSql(descriptionEntities.role, tenant.federationId, "entity_role", parsed.data.role);
+      const updated = await updateLinkAsRead(db, parsed.data.linkId, and(entityLinkHere, roleAllowed), asRead ?? OUTSIDE_RELATIONS, {
+        role: parsed.data.role as (typeof ENTITY_ROLES)[number],
+        honorific: parsed.data.honorific ?? null,
+        attributes: withOfficeSql(parsed.data.function),
+        nameAsRecorded: parsed.data.nameAsRecorded ?? null,
+      });
+      if (!updated) {
+        const refusal = await relationRefusal(db, parsed.data.linkId, entityLinkHere, asRead, "save");
+        if (refusal === null) throw notFound();
+        return { ok: false as const, error: refusal };
+      }
       return { ok: true as const, message: "updated" };
     }
 
@@ -815,11 +1045,24 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(entityLinkHere)
         .get();
       if (!entityLink) throw notFound();
-      await db.delete(descriptionEntities).where(entityLinkHere);
+      // Removing a relation side would leave its partner naming a link
+      // that is gone, with no kept link to repoint it to. The DELETE
+      // carries the relation the form read, outside every relation, so a
+      // change to it that lands in between is refused.
+      const asRead = relationAsReadFrom(formData);
+      if (asRead && isRelationSide(asRead)) return { ok: false as const, error: "relation_side_remove" as const };
+      if (!(await deleteLinkAsRead(db, linkId, entityLinkHere, asRead ?? OUTSIDE_RELATIONS))) {
+        const refusal = await relationRefusal(db, linkId, entityLinkHere, asRead, "remove");
+        if (refusal === null) throw notFound();
+        return { ok: false as const, error: refusal };
+      }
       return { ok: true as const, message: "link_removed" };
     }
 
     case "reorder_entity_link": {
+      // `sequence` is document order, not relation data: a relation side
+      // reordered here keeps its role, `related_to` and partner, so the
+      // relation is unharmed and this path needs no relation check.
       const linkId = formData.get("linkId") as string;
       const direction = formData.get("direction") as string;
       if (!linkId || !["up", "down"].includes(direction)) {
@@ -874,7 +1117,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
       const linkSchema = z.object({
         descriptionId: z.string().uuid(),
         placeId: z.string().uuid(),
-        role: z.enum(PLACE_ROLES),
+        role: z.string().trim().min(1),
       });
       const parsed = linkSchema.safeParse({
         descriptionId: formData.get("descriptionId"),
@@ -898,14 +1141,16 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         )
         .get();
       if (!place) throw notFound();
+      const { insertPlaceLink } = await import("~/lib/link-roles.server");
       try {
-        await db.insert(descriptionPlaces).values({
+        const written = await insertPlaceLink(db, tenant.federationId, {
           id: crypto.randomUUID(),
           descriptionId: parsed.data.descriptionId,
           placeId: parsed.data.placeId,
           role: parsed.data.role,
           createdAt: Date.now(),
         });
+        if (!written) return { ok: false as const, error: "generic" };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "";
         if (msg.includes("UNIQUE constraint")) {
@@ -919,7 +1164,7 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     case "update_place_link": {
       const placeLinkSchema = z.object({
         linkId: z.string().uuid(),
-        role: z.enum(PLACE_ROLES),
+        role: z.string().trim().min(1),
       });
       const parsed = placeLinkSchema.safeParse({
         linkId: formData.get("linkId"),
@@ -938,10 +1183,13 @@ export async function action({ params, request, context }: Route.ActionArgs) {
         .where(placeLinkHere)
         .get();
       if (!placeLink) throw notFound();
-      await db
+      const { roleKeptOrApprovedSql } = await import("~/lib/link-roles.server");
+      const placeUpdated = await db
         .update(descriptionPlaces)
-        .set({ role: parsed.data.role })
-        .where(placeLinkHere);
+        .set({ role: parsed.data.role as (typeof PLACE_ROLES)[number] })
+        .where(and(placeLinkHere, roleKeptOrApprovedSql(descriptionPlaces.role, tenant.federationId, "place_role", parsed.data.role)))
+        .returning({ id: descriptionPlaces.id });
+      if (placeUpdated.length === 0) return { ok: false as const, error: "generic" };
       return { ok: true as const, message: "updated" };
     }
 
@@ -983,8 +1231,12 @@ export default function DescriptionDetailPage({
     placeLinkCount,
     entityLinks,
     placeLinks,
+    roles,
     conflictDraft,
     holdingHandlists,
+    canQueue,
+    queueBelow,
+    canAdminister,
     transcript,
     descriptiveStandard,
     authoritiesEnabled,
@@ -994,8 +1246,12 @@ export default function DescriptionDetailPage({
   // The handlists namespace owns every string the picker says,
   // including the label on the control that opens it.
   const { t: th } = useTranslation("handlists");
+  const { t: tq } = useTranslation("capture");
 
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit mode belongs to the record it was opened on: following a link
+  // to another description leaves it, so the form's inputs and its version
+  // always come from the same load.
+  const [isEditing, setIsEditing] = useRecordEditMode(description.id);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
 
@@ -1019,6 +1275,17 @@ export default function DescriptionDetailPage({
 
   // Autosave via shared debounced-draft hook
   const { formRef, handleFormChange, draftStatus } = useAutosaveDraft(isEditing);
+  // The version the form's field values were loaded from, which it
+  // submits; a loader revalidation does not move it.
+  // The publish toggle's fetcher, read by its key for the versions a
+  // toggle moved the description from and to.
+  const publishFetcher = useFetcher({ key: publishToggleKey(description.id) });
+  const formVersion = useFormVersion(
+    `${description.id}:${isEditing}`,
+    description.updatedAt,
+    actionData,
+    publishFetcher.data
+  );
 
   const [searchParams] = useSearchParams();
   const initialCanvas = parsePageParam(searchParams.get("page"));
@@ -1104,7 +1371,7 @@ export default function DescriptionDetailPage({
         </h1>
 
         {!isEditing && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-start justify-end gap-2">
             {/* One record at a time, into a handlist that holds
                 records. First in the row because it is the only action
                 here that neither edits nor deletes anything. */}
@@ -1114,6 +1381,12 @@ export default function DescriptionDetailPage({
               triggerLabel={th("pickerAddTitle")}
               holdingCount={holdingHandlists}
             />
+            {canQueue ? (
+              <AddToQueueButton target={{ descriptionIds: [description.id] }} label={tq("dqueue.add")} />
+            ) : null}
+            {canQueue && queueBelow !== null ? (
+              <AddToQueueButton target={{ below: description.id }} label={tq("dqueue.add_below", { count: queueBelow })} />
+            ) : null}
             <Link
               to={`/admin/descriptions/new?parentId=${description.id}`}
               className="inline-flex items-center gap-2 rounded-md border border-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-50"
@@ -1129,6 +1402,7 @@ export default function DescriptionDetailPage({
               <Pencil className="h-4 w-4" />
               {t("edit")}
             </button>
+            {canAdminister && (
             <button
               type="button"
               onClick={() => !hasChildren && setShowDeleteModal(true)}
@@ -1150,6 +1424,7 @@ export default function DescriptionDetailPage({
               <Trash2 className="h-4 w-4" />
               {t("delete_description")}
             </button>
+            )}
           </div>
         )}
       </div>
@@ -1167,6 +1442,7 @@ export default function DescriptionDetailPage({
           isPublished={description.isPublished ?? false}
           lastExportedAt={description.lastExportedAt}
           updatedAt={description.updatedAt}
+          canChange={canAdminister}
         />
       </div>
 
@@ -1225,7 +1501,7 @@ export default function DescriptionDetailPage({
               <input
                 type="hidden"
                 name="_updatedAt"
-                value={String(description.updatedAt)}
+                value={String(formVersion)}
               />
               <DescriptionForm
                 description={description}
@@ -1235,6 +1511,7 @@ export default function DescriptionDetailPage({
                 errors={errors as Record<string, string[]> | undefined}
                 entityLinks={entityLinks}
                 placeLinks={placeLinks}
+                roles={roles}
                 standard={descriptiveStandard}
                 authoritiesEnabled={authoritiesEnabled}
               />
@@ -1297,7 +1574,7 @@ export default function DescriptionDetailPage({
                 ? (actionData.modifiedAt as number)
                 : null
             }
-            recordUpdatedAt={description.updatedAt}
+            formRef={formRef}
             onCancel={() => setShowConflictDialog(false)}
             t={t}
           />
@@ -1305,3 +1582,5 @@ export default function DescriptionDetailPage({
     </div>
   );
 }
+
+// @version v0.9.0

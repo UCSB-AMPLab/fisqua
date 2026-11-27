@@ -18,13 +18,14 @@
  * `_admin.descriptions.*` route tests. This file is the substrate
  * regression net.
  *
- * @version v0.3.0
+ * @version v0.9.0
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, asc } from "drizzle-orm";
 import * as schema from "../../app/db/schema";
+import { attributesJson, officeOf, officeSql, withOfficeSql } from "../../app/lib/link-attributes.server";
 import { applyMigrations, cleanDatabase } from "../helpers/db";
 import { createTestRepository } from "../helpers/repositories";
 import { createTestDescription } from "../helpers/descriptions";
@@ -60,7 +61,7 @@ describe("description entity links", () => {
       role: "creator",
       sequence: 0,
       honorific: "Don",
-      function: "Gobernador",
+      attributes: attributesJson("Gobernador"),
       nameAsRecorded: "Juan de Borja y Armendia",
       createdAt: Date.now(),
     });
@@ -76,7 +77,7 @@ describe("description entity links", () => {
     expect(link!.entityId).toBe(entity.id);
     expect(link!.role).toBe("creator");
     expect(link!.honorific).toBe("Don");
-    expect(link!.function).toBe("Gobernador");
+    expect(officeOf(link!.attributes)).toBe("Gobernador");
     expect(link!.nameAsRecorded).toBe("Juan de Borja y Armendia");
     expect(link!.sequence).toBe(0);
   });
@@ -144,7 +145,7 @@ describe("description entity links", () => {
       .set({
         role: "witness",
         honorific: "Capitan",
-        function: "Testigo",
+        attributes: withOfficeSql("Testigo"),
         nameAsRecorded: "Juan de Borja",
       })
       .where(eq(schema.descriptionEntities.id, linkId));
@@ -157,7 +158,7 @@ describe("description entity links", () => {
 
     expect(updated!.role).toBe("witness");
     expect(updated!.honorific).toBe("Capitan");
-    expect(updated!.function).toBe("Testigo");
+    expect(officeOf(updated!.attributes)).toBe("Testigo");
     expect(updated!.nameAsRecorded).toBe("Juan de Borja");
   });
 
@@ -298,7 +299,7 @@ describe("description entity links", () => {
       role: "subject",
       sequence: 0,
       honorific: "Dona",
-      function: "Otorgante",
+      attributes: attributesJson("Otorgante"),
       nameAsRecorded: "Catalina de Azero",
       createdAt: Date.now(),
     });
@@ -311,7 +312,7 @@ describe("description entity links", () => {
         roleNote: schema.descriptionEntities.roleNote,
         sequence: schema.descriptionEntities.sequence,
         honorific: schema.descriptionEntities.honorific,
-        function: schema.descriptionEntities.function,
+        function: officeSql(),
         nameAsRecorded: schema.descriptionEntities.nameAsRecorded,
         entityDisplayName: schema.entities.displayName,
         entityCode: schema.entities.entityCode,

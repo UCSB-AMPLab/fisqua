@@ -1,9 +1,10 @@
 /**
  * Admin — linked-descriptions worklist (shared by entity + place detail)
  *
- * The right column of the authority record page (spec §5, worklist round
- * 3, mockup 2026-07-12). The record's linked descriptions arrive as ONE
- * server-filtered page — never the whole set (Tunja: 13,237). Anatomy:
+ * This component is the right column of the authority record page, shared
+ * by the entity and place detail pages. The server sends the record's
+ * linked descriptions as ONE filtered page — never the whole set (Tunja:
+ * 13,237). Anatomy:
  *
  *   - Header: a small-caps section title + count badge matching the left
  *     column's card-title register, and "+ Link a description" as a
@@ -27,7 +28,19 @@
  * On a superseded record the whole worklist dims and goes inert, and the
  * heading count reads redirected.
  *
- * @version v0.4.3
+ * An entity link carries its relation as the loader read it (`relatedTo`,
+ * `namedBy`); an unlink and an edit send it back (`relationAsReadFields`),
+ * and a refusal the action gives because of a relation is shown under its
+ * own message (`link_error_<code>` in the record type's namespace).
+ *
+ * The roles come from the federation's lists, through the page's
+ * loader: `roleOptions` are the approved roles the link dialogs offer,
+ * in order, and `roleLabel` gives a code its label. A row that is a
+ * relation side asks for its relation role's label, and so does a role
+ * pill whose links are all relation sides (`relationSide` on its count). The edit dialog
+ * also offers the link's current code when the list does not.
+ *
+ * @version v0.9.0
  */
 
 import { useState, useEffect } from "react";
@@ -43,6 +56,8 @@ import { LinkDescriptionDialog } from "~/components/admin/link-description-dialo
 import { EditDescriptionLinkDialog } from "~/components/admin/edit-description-link-dialog";
 import { LinkedDescriptionUnfold } from "~/components/admin/linked-description-unfold";
 import type { LinkedDescriptionCardData } from "~/lib/authority-linked-context.server";
+import { isRelationRefusal, isRelationSide, relationAsReadFields } from "~/lib/relation-as-read";
+import { withCurrentOption, type RoleOption } from "~/lib/role-options";
 
 export interface WorklistLink {
   id: string;
@@ -63,6 +78,9 @@ export interface WorklistLink {
    * compactly on the collapsed row, never a join. */
   creatorDisplay?: string | null;
   placeDisplay?: string | null;
+  /** An entity link's relation as read: the link it names, and the links naming it, sorted. */
+  relatedTo?: string | null;
+  namedBy?: string[];
 }
 
 /** The row's exact date label (row TOOLTIP + no other use): the
@@ -138,7 +156,7 @@ export function LinkedDescriptionsWorklist({
   size,
   page,
   isMerged,
-  roles,
+  roleOptions,
   recordId,
   recordType,
   showEntityFields,
@@ -157,7 +175,7 @@ export function LinkedDescriptionsWorklist({
    * count and the progressive-disclosure threshold. */
   recordTotal: number;
   /** Real GROUP BY counts per role, computed under search + repo. */
-  roleCounts: { role: string; count: number }[];
+  roleCounts: { role: string; count: number; relationSide?: boolean }[];
   /** Real GROUP BY counts per repository (keyed by id, labelled
    * short_name → code → name), computed under search + role. */
   repoCounts: { repositoryId: string; label: string; count: number }[];
@@ -171,11 +189,13 @@ export function LinkedDescriptionsWorklist({
   size: number;
   page: number;
   isMerged: boolean;
-  roles: readonly string[];
+  /** The federation's approved roles for this record type, in order. */
+  roleOptions: RoleOption[];
   recordId: string;
   recordType: "entity" | "place";
   showEntityFields: boolean;
-  roleLabel: (role: string) => string;
+  /** A role's label; a relation side asks for its relation role's label. */
+  roleLabel: (role: string, relationSide?: boolean) => string;
   /** Place-role label for the context card's metadata strip (an entity
    * card can list places under their own roles). Place records pass the
    * same function as `roleLabel`. */
@@ -254,11 +274,15 @@ export function LinkedDescriptionsWorklist({
     });
   };
 
+  const unlinkRefusal = (unlinkFetcher.data as { error?: unknown } | undefined)?.error;
   const pages = Math.max(1, Math.ceil(total / size));
   const hasFilters = !!dq || !!role || !!repo;
   const editLink = editingLinkId
     ? links.find((l) => l.id === editingLinkId)
     : undefined;
+  // Only an entity link can be a relation side.
+  const sideOf = (l: WorklistLink) =>
+    recordType === "entity" && isRelationSide({ relatedTo: l.relatedTo ?? null, namedBy: l.namedBy ?? [] });
 
   // Progressive disclosure (spec §5.2): controls surface only when they
   // can act on the record's own scale — role/repo pills gate with search
@@ -354,7 +378,7 @@ export function LinkedDescriptionsWorklist({
             onClick={() => setParam("role", role === rc.role ? null : rc.role)}
             className={pillClass(role === rc.role)}
           >
-            {roleLabel(rc.role)}
+            {roleLabel(rc.role, rc.relationSide)}
             <span className="font-mono text-11 nums text-stone-400">
               {rc.count}
             </span>
@@ -395,6 +419,13 @@ export function LinkedDescriptionsWorklist({
       </div>
       )}
 
+      {/* A refusal of an unlink because of the link's relation */}
+      {isRelationRefusal(unlinkRefusal) && unlinkFetcher.state === "idle" && (
+        <p role="alert" className="mt-2 rounded border border-madder-soft bg-madder-tint px-3 py-2 text-sm text-madder-deep">
+          {t(`link_error_${unlinkRefusal}`)}
+        </p>
+      )}
+
       {/* Honest count line */}
       <p className="mt-2 text-12 nums text-stone-500">
         {ta("wlShowing", { shown: links.length, total })}
@@ -420,7 +451,11 @@ export function LinkedDescriptionsWorklist({
                   type="button"
                   onClick={() => {
                     unlinkFetcher.submit(
-                      { _action: "unlink_description", linkId: link.id },
+                      {
+                        _action: "unlink_description",
+                        linkId: link.id,
+                        ...(recordType === "entity" ? relationAsReadFields(link) : {}),
+                      },
                       { method: "post" },
                     );
                     setConfirmRemoveLinkId(null);
@@ -486,7 +521,7 @@ export function LinkedDescriptionsWorklist({
                       onClick={() => setEditingLinkId(link.id)}
                       className="group inline-flex items-center gap-1.5 rounded-full border border-stone-300 bg-indigo-wash py-0.5 pl-2.5 pr-1 text-11 font-semibold text-stone-500 hover:border-stone-400"
                     >
-                      {roleLabel(link.role)}
+                      {roleLabel(link.role, sideOf(link))}
                       <span className="flex h-4 w-4 items-center justify-center rounded-full text-stone-400 group-hover:bg-white group-hover:text-indigo">
                         <Pencil className="h-3 w-3" />
                       </span>
@@ -566,7 +601,7 @@ export function LinkedDescriptionsWorklist({
       <LinkDescriptionDialog
         isOpen={showLinkDialog}
         onClose={() => setShowLinkDialog(false)}
-        roles={roles}
+        roleOptions={roleOptions}
         entityOrPlaceId={recordId}
         recordType={recordType}
         t={t}
@@ -586,7 +621,8 @@ export function LinkedDescriptionsWorklist({
             function: editLink.function,
             nameAsRecorded: editLink.nameAsRecorded,
           }}
-          roles={roles}
+          relationAsRead={recordType === "entity" ? relationAsReadFields(editLink) : undefined}
+          roleOptions={withCurrentOption(roleOptions, editLink.role, roleLabel(editLink.role, sideOf(editLink)))}
           showEntityFields={showEntityFields}
           t={t}
         />
@@ -612,3 +648,5 @@ function repoPillClass(active: boolean): string {
       : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
   }`;
 }
+
+/* @version v0.9.0 */

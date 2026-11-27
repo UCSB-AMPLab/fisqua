@@ -29,7 +29,16 @@
  * query filters by the member tenants' ids and every R2 key is prefixed
  * with `${tenant.slug}/`.
  *
- * @version v0.8.0
+ * An entity link also carries what the document records on it (the name
+ * and honorific as written, the cataloguer's note, the sequence, the
+ * link attributes) and, on a relation side, the other side and the
+ * relation's certainty. Fisqua stores the other side as a link id; the
+ * file names the other person by entity code instead, read in the same
+ * query through a LEFT JOIN on the other link and its entity, and
+ * writes null when that entity is one `exportEntities` would not export.
+ * No link id reaches the file.
+ *
+ * @version v0.9.0
  */
 
 import {
@@ -43,6 +52,7 @@ import {
   sql,
   type SQLWrapper,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { authorityScope } from "../authority-ownership.server";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
@@ -109,7 +119,10 @@ export interface LinkExportOptions {
   partSize?: number;
 }
 
-/** One `entity_links.json` row, in the field order zasqua.org reads today. */
+/**
+ * One `entity_links.json` row: the fields zasqua.org reads today, in
+ * their order, then what the link records and its relation.
+ */
 export interface ExportEntityLink {
   reference_code: string;
   title: string;
@@ -119,6 +132,40 @@ export interface ExportEntityLink {
   entity_code: string;
   role: string;
   role_raw: string;
+  name_as_recorded: string;
+  honorific: string;
+  role_note: string;
+  sequence: number | null;
+  /** Attribute key to the value as written; `{}` when the link has none. */
+  attributes: Record<string, unknown>;
+  /** The entity code of the other side's person, or null. Never a link id. */
+  related_to: string | null;
+  relation_certainty: string | null;
+}
+
+/**
+ * Thrown when a link's stored `attributes` is not a JSON object. The
+ * step fails rather than export the link without them.
+ */
+export class LinkAttributesInvalidError extends Error {
+  constructor(linkId: string) {
+    super(`Link ${linkId}: the stored attributes are not a JSON object`);
+    this.name = "LinkAttributesInvalidError";
+  }
+}
+
+/** A link's stored `attributes` as an object, or `LinkAttributesInvalidError`. */
+export function linkAttributes(stored: string, linkId: string): Record<string, unknown> {
+  let value: unknown;
+  try {
+    value = JSON.parse(stored);
+  } catch {
+    throw new LinkAttributesInvalidError(linkId);
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new LinkAttributesInvalidError(linkId);
+  }
+  return value as Record<string, unknown>;
 }
 
 /** One `place_links.json` row, in the field order zasqua.org reads today. */
@@ -310,6 +357,17 @@ function linkPagePredicate(
  * `fiador`, `apoderado`, `albacea`, ...), `role_raw` the source wording
  * or "" when none was recorded, `date_expression` "" when the
  * description has none: the shapes the retired backend wrote.
+ * `name_as_recorded`, `honorific` and `role_note` follow the rule of
+ * `role_raw`; `sequence` and `relation_certainty` are as stored;
+ * `attributes` is the stored object parsed, and a value that is not an
+ * object fails the step with the link's id.
+ *
+ * `related_to` is the entity code of the person on the link the stored
+ * `related_to` names, read by a LEFT JOIN on that link's primary key and
+ * then its entity's, with the entity predicates this query applies to
+ * its own entity (and the same description) in the join condition: null
+ * when the link is not a relation side, or when the other person is
+ * merged, has no code or is outside the authority scope.
  *
  * Call once with no `state`, then again with each returned state until
  * `done` is true. Rows are ordered by member tenant id, then
@@ -323,6 +381,9 @@ export async function exportEntityLinks(
   options: LinkExportOptions = {}
 ): Promise<LinkExportState> {
   const tenantIds = [...(memberTenantIds ?? [tenant.id])].sort();
+  // The other side of a relation and its person, under their own names.
+  const relatedLink = alias(descriptionEntities, "related_link");
+  const relatedEntity = alias(entities, "related_entity");
   const sortKey: [SQLWrapper, SQLWrapper, SQLWrapper, SQLWrapper] = [
     descriptions.referenceCode,
     entities.entityCode,
@@ -340,12 +401,39 @@ export async function exportEntityLinks(
         entityCode: entities.entityCode,
         role: descriptionEntities.role,
         roleRaw: descriptionEntities.roleRaw,
+        nameAsRecorded: descriptionEntities.nameAsRecorded,
+        honorific: descriptionEntities.honorific,
+        roleNote: descriptionEntities.roleNote,
+        sequence: descriptionEntities.sequence,
+        attributes: descriptionEntities.attributes,
+        relatedTo: relatedEntity.entityCode,
+        relationCertainty: descriptionEntities.relationCertainty,
         linkId: descriptionEntities.id,
       })
       .from(descriptionEntities)
       .innerJoin(descriptions, eq(descriptionEntities.descriptionId, descriptions.id))
       .innerJoin(entities, eq(descriptionEntities.entityId, entities.id))
       .leftJoin(repositories, eq(repositories.id, descriptions.repositoryId))
+      // The other side of a relation, by primary key, and its person.
+      .leftJoin(
+        relatedLink,
+        and(
+          eq(relatedLink.id, descriptionEntities.relatedTo),
+          eq(relatedLink.descriptionId, descriptionEntities.descriptionId)
+        )
+      )
+      .leftJoin(
+        relatedEntity,
+        and(
+          eq(relatedEntity.id, relatedLink.entityId),
+          // Same entity predicates as exportEntities.
+          // The alias has the table's columns under its own name;
+          // `authorityScope` reads only those columns.
+          authorityScope(relatedEntity as unknown as typeof entities, tenant.federationId, tenantIds),
+          isNull(relatedEntity.mergedInto),
+          isNotNull(relatedEntity.entityCode)
+        )
+      )
       .where(
         and(
           linkPagePredicate(tenantId, afterRef, upToRef, sortKey, cursor),
@@ -375,6 +463,13 @@ export async function exportEntityLinks(
           entity_code: r.entityCode as string,
           role: r.role,
           role_raw: r.roleRaw ?? "",
+          name_as_recorded: r.nameAsRecorded ?? "",
+          honorific: r.honorific ?? "",
+          role_note: r.roleNote ?? "",
+          sequence: r.sequence ?? null,
+          attributes: linkAttributes(r.attributes, r.linkId),
+          related_to: r.relatedTo ?? null,
+          relation_certainty: r.relationCertainty ?? null,
         })
       ),
       last: tail
@@ -495,4 +590,4 @@ export async function abandonLinkExports(
   }
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -71,7 +71,12 @@
  * published run's pages), one read per chunk and only when the form
  * lists the column.
  *
- * @version v0.8.0
+ * An entity's `entityFunctions` cell is its `entity_functions` rows, one
+ * per line in the order they were entered, read once per chunk of
+ * entities (`readFunctionsTextByEntity`); the `entities.functions`
+ * column is not read.
+ *
+ * @version v0.9.0
  */
 
 import { and, eq, inArray } from "drizzle-orm";
@@ -83,6 +88,7 @@ import {
   entities,
   places,
 } from "../../db/schema";
+import { officeSql } from "../link-attributes.server";
 import { authorityScope } from "../authority-ownership.server";
 import { generateCanonicalHeaders } from "../import/canonical-template";
 import type { Standard } from "../standards/types";
@@ -90,6 +96,7 @@ import type { Tenant } from "../../context";
 import { ID_CHUNK } from "./scopes.server";
 import type { ResolvedExportScope } from "./scopes.server";
 import { readExportOcrText } from "./rows.server";
+import { readFunctionsTextByEntity } from "../entity-functions.server";
 
 /** The discriminator column, present only in the multi-table layout. */
 export const ROW_TYPE_COLUMN = "rowType";
@@ -333,9 +340,10 @@ export async function emitCanonicalCsv(
 
     for (const part of chunk(scope.entityIds)) {
       const rows = await readEntities(db, tenant, part);
+      const functions = await readFunctionsTextByEntity(db, part);
       for (const id of part) {
         const row = rows.find((r) => r.id === id);
-        if (row) write("entity", entityRow(row));
+        if (row) write("entity", entityRow(row, functions.get(id) ?? null));
       }
       done += part.length;
       await ctx.checkpoint("authorities", done, total);
@@ -411,7 +419,8 @@ function descriptionRow(
   return out;
 }
 
-function entityRow(row: typeof entities.$inferSelect): Record<string, unknown> {
+/** `functions`: the entity's `entity_functions` rows, one per line (never the column). */
+function entityRow(row: typeof entities.$inferSelect, functions: string | null): Record<string, unknown> {
   return {
     entityCode: row.entityCode,
     entityDisplayName: row.displayName,
@@ -426,7 +435,7 @@ function entityRow(row: typeof entities.$inferSelect): Record<string, unknown> {
     entityDateStart: row.dateStart,
     entityDateEnd: row.dateEnd,
     entityHistory: row.history,
-    entityFunctions: row.functions,
+    entityFunctions: functions,
     entitySources: row.sources,
     entityWikidataId: row.wikidataId,
     entityViafId: row.viafId,
@@ -578,7 +587,7 @@ async function readEntityLinksByDescription(
         roleRaw: descriptionEntities.roleRaw,
         sequence: descriptionEntities.sequence,
         honorific: descriptionEntities.honorific,
-        fn: descriptionEntities.function,
+        fn: officeSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
       })
       .from(descriptionEntities)
@@ -615,7 +624,7 @@ async function readEntityLinksByAuthority(
         roleRaw: descriptionEntities.roleRaw,
         sequence: descriptionEntities.sequence,
         honorific: descriptionEntities.honorific,
-        fn: descriptionEntities.function,
+        fn: officeSql(),
         nameAsRecorded: descriptionEntities.nameAsRecorded,
       })
       .from(descriptionEntities)
@@ -764,4 +773,4 @@ function sortLinks(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   });
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */
