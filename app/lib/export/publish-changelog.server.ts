@@ -11,8 +11,8 @@
  * them from the `/admin/publish/counts` resource route, which calls
  * `getPublishChangelog` once its own gates have passed.
  *
- * The caller resolves the export scope (`resolveExportScope`, federation
- * spec §9 step 8) and passes its `memberTenantIds`; every count here
+ * The caller resolves the export scope (`resolveExportScope`) and
+ * passes its `memberTenantIds`; every count here
  * filters by that set. The reference point is the last completed export
  * of the publishing tenant itself (`publishTenantId`), read from the
  * run's own `tenant_id` (migration 0115). A member that publishes on
