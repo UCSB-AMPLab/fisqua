@@ -1,17 +1,20 @@
 /**
  * Scripts — SQL helpers
  *
- * This module deals with the escape + chunked-INSERT helpers the import
- * bus speaks to. `generateInserts` accepts a `BATCH_SIZE` environment variable
- * override; when set to a positive integer, the override beats both
- * the caller-supplied batchSize and the function's default 100. The
- * scenario this exists for is the operator hitting D1's per-statement
- * 100KB limit mid-apply on a production round; setting `BATCH_SIZE=20`
- * on the next attempt halves the chunk and the failed statement
+ * This module deals with the escape + chunked-INSERT helpers the
+ * SQL-writing scripts share. `generateInserts` accepts a `BATCH_SIZE`
+ * environment variable override; when set to a positive integer, the
+ * override beats both the caller-supplied batchSize and the function's
+ * default 100. The scenario this exists for is the operator hitting
+ * D1's per-statement 100KB limit mid-apply; setting `BATCH_SIZE=20` on
+ * the next attempt halves the chunk and the failed statement
  * re-applies. The override prints a one-line confirmation to stdout
  * so the operator sees it took effect.
  *
- * @version v0.4.0
+ * The Django round import is retired, and `writeSqlFileUnits`, which
+ * only its entity-functions step used, was removed with it.
+ *
+ * @version v0.9.0
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -156,4 +159,4 @@ export async function writeSqlFiles(
   return files;
 }
 
-// Version: v0.4.0
+// @version v0.9.0
