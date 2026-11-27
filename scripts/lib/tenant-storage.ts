@@ -176,13 +176,14 @@
  * The request shapes follow the providers' public API documentation;
  * they are exercised here only against fakes.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { execFileSync } from "node:child_process";
 import { hostname, userInfo } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { escapeSql } from "./sql";
+import { runD1 } from "./d1-cli";
 import { runnerKeyStoreName } from "../../app/lib/pipeline/key-store";
 
 export type Target = "local" | "staging" | "production";
@@ -2493,10 +2494,13 @@ export function pendingWorkStatement(scope: PendingScope, now: number): string {
   );
 }
 
-/** The tenant and federation rows through `wrangler d1 execute`. */
+/**
+ * The tenant and federation rows through `wrangler d1 execute`, run by
+ * `runD1`: a read is run again when D1 is overloaded, a write never is.
+ */
 export function wranglerD1(target: Target, run: CommandRunner): D1Api {
   const query = <T>(sql: string): T[] => {
-    const out = run("npx", [...d1Args(target), "--json", "--command", sql], {});
+    const out = runD1([...d1Args(target), "--json", "--command", sql], { exec: run });
     const parsed = JSON.parse(out) as Array<{ results: T[] }>;
     return parsed[0]?.results ?? [];
   };
@@ -2543,19 +2547,19 @@ export function wranglerD1(target: Target, run: CommandRunner): D1Api {
     },
     async takeLock(scope, holder, token, now, expiresAt) {
       // One command, three statements; the last one's rows are the lock.
-      const out = run("npx", [...d1Args(target), "--json", "--command", takeLockStatements(scope, holder, token, now, expiresAt)], {});
+      const out = runD1([...d1Args(target), "--json", "--command", takeLockStatements(scope, holder, token, now, expiresAt)], { exec: run });
       const parsed = JSON.parse(out) as Array<{ results: Array<{ holder: string; token: string; started_at: number }> }>;
       const row = parsed.at(-1)?.results?.[0];
       if (!row) throw new ProvisionStop(`The provisioning lock on ${scope} could not be read back`);
       return { holder: row.holder, token: row.token, startedAt: Number(row.started_at) };
     },
     async renewLock(scope, token, now, expiresAt) {
-      const out = run("npx", [...d1Args(target), "--json", "--command", renewLockStatements(scope, token, now, expiresAt)], {});
+      const out = runD1([...d1Args(target), "--json", "--command", renewLockStatements(scope, token, now, expiresAt)], { exec: run });
       const parsed = JSON.parse(out) as Array<{ results: unknown[] }>;
       return (parsed.at(-1)?.results?.length ?? 0) > 0;
     },
     async releaseLock(scope, token) {
-      run("npx", [...d1Args(target), "--command", releaseLockStatement(scope, token)], {});
+      runD1([...d1Args(target), "--command", releaseLockStatement(scope, token)], { exec: run });
     },
     async pendingPairs(scope) {
       return query<{ pair: string }>(`SELECT pair FROM provisioning_pending_pairs WHERE scope = ${escapeSql(scope)} ORDER BY pair`).map(
@@ -2577,4 +2581,4 @@ export function wranglerD1(target: Target, run: CommandRunner): D1Api {
   };
 }
 
-// @version v0.8.0
+// @version v0.9.0

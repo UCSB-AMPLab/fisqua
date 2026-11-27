@@ -24,11 +24,12 @@
  *   npx tsx scripts/commands/carry-gate-passes.ts --target staging --apply
  *   npx tsx scripts/commands/carry-gate-passes.ts --target production --apply --confirm-production
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { pathToFileURL } from "node:url";
 import { d1Args, execCommand } from "../lib/tenant-storage";
+import { runD1 } from "../lib/d1-cli";
 import { CARRY_GATE_PASSES_SQL, CARRY_TO_VERSION, PENDING_CARRY_SQL } from "../lib/gate-pass-carry";
 
 export interface CarryGatePassesOptions {
@@ -79,7 +80,7 @@ export async function runCarryGatePasses(
 
 function wranglerQuery(target: CarryGatePassesOptions["target"]): D1Query {
   return (sql) => {
-    const out = execCommand("npx", [...d1Args(target), "--json", "--command", sql], {});
+    const out = runD1([...d1Args(target), "--json", "--command", sql], { exec: execCommand });
     const parsed = JSON.parse(out) as Array<{ results: Array<Record<string, unknown>> }>;
     return parsed[0]?.results ?? [];
   };
@@ -97,4 +98,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-// @version v0.8.0
+// @version v0.9.0

@@ -30,12 +30,13 @@
  * production UUID. Edge metadata (names, source, reasoning) is retained
  * so the row builder can enrich `detail` without re-reading the files.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { HeadResolution, MergeEdge } from "./types";
+import { appendAll } from "../lib/arrays";
 
 /** The per-pass audit files that carry entity-to-entity merge edges. */
 const MERGE_AUDIT_FILES = [
@@ -148,7 +149,7 @@ export function readMergeEdges(outputDir: string): MergeEdge[] {
     const p = path.join(outputDir, file);
     if (!fs.existsSync(p)) continue;
     const parsed = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-    edges.push(...extractEdges(parsed, path.basename(file, ".json")));
+    appendAll(edges, extractEdges(parsed, path.basename(file, ".json")));
   }
   return edges;
 }
@@ -191,4 +192,4 @@ export function resolveHead(id: string, graph: MergeGraph): HeadResolution {
   return { head: current, path, absorbed };
 }
 
-// Version: v0.4.2
+// @version v0.9.0

@@ -40,11 +40,12 @@
  * ≥ 90% of P required, ties narrowed by evidence filters, anything
  * unresolved returned as tied/weak/rejected — never guessed.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { DatabaseSync } from "node:sqlite";
 import type { PipelineEntity } from "./types";
+import { maxOf } from "../lib/arrays";
 
 /** Production-side fields used by the tie-break filters. */
 export interface ProductionEntityFields {
@@ -288,7 +289,7 @@ export function fingerprintEntity(
       };
     }
     pool = corroborated.map((s) => s.c);
-    bestCorroboration = Math.max(...corroborated.map((s) => s.score));
+    bestCorroboration = maxOf(corroborated.map((s) => s.score));
   }
 
   type MatchMethod = "unique" | "exact-set" | "variant" | "type" | "unclaimed";
@@ -403,4 +404,4 @@ export function nameCorroboration(
   return bestScore;
 }
 
-// Version: v0.8.0
+// @version v0.9.0

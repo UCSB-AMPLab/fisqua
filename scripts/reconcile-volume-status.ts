@@ -41,10 +41,10 @@
  * grep over this file should not show any DML keywords outside
  * comments or string literals that document the contract.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
-import { execSync } from "node:child_process";
+import { runD1 } from "./lib/d1-cli";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -170,25 +170,19 @@ function runQuery<T>(env: "prod" | "staging", sql: string): T[] {
   // no --env flag is needed. Staging is selected with --env=staging
   // and gets the fisqua-staging-db database name resolved by wrangler.
   const dbName = env === "prod" ? "fisqua-db" : "fisqua-staging-db";
-  const envFlag = env === "prod" ? "" : " --env=staging";
+  const envFlag = env === "prod" ? [] : ["--env=staging"];
 
-  // Collapse the SQL onto one line so shell escaping is trivial: no
-  // newlines means no `\n` round-trip artefacts when JSON.stringify
-  // wraps the value for the shell. We pass via --command rather than
-  // --file because --file in current wrangler prints a status banner
-  // to stdout (file-upload progress) AND returns aggregate metadata
-  // instead of the SELECT's rows.
+  // The SQL is collapsed onto one line and passed as one argument, with
+  // no shell in between. It goes through --command rather than --file
+  // because --file in current wrangler prints a status banner to stdout
+  // (file-upload progress) AND returns aggregate metadata instead of the
+  // SELECT's rows.
   const oneLineSql = sql.replace(/\s+/g, " ").trim();
 
-  const cmd =
-    `npx wrangler d1 execute ${dbName} --remote --json` +
-    envFlag +
-    ` --command=${JSON.stringify(oneLineSql)}`;
-
-  const stdout = execSync(cmd, {
-    encoding: "utf-8",
-    maxBuffer: 50 * 1024 * 1024,
-  });
+  const stdout = runD1(
+    ["wrangler", "d1", "execute", dbName, "--remote", "--json", ...envFlag, `--command=${oneLineSql}`],
+    { maxBuffer: 50 * 1024 * 1024 },
+  );
 
   // wrangler --json prints either a single object or an array of result
   // sets depending on the call shape; for a single --command we

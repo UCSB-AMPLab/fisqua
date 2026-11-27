@@ -19,6 +19,21 @@
  *     rejected by structural shape, not by lookup, to avoid host
  *     spoofing via DNS games.
  *
+ *   - `resolveRequestTenant(context, db, request)` -- the same
+ *     resolution, made once per request and held in
+ *     `requestTenantContext`, so the i18next middleware, the auth
+ *     middleware and the public routes that resolve the tenant
+ *     (sign-in, magic-link verify, the two handoffs, the
+ *     wrong-workspace page) share one tenant read. The tenant-by-slug
+ *     read is retried while D1 refuses it as overloaded
+ *     (`retryD1Read`); a refusal that outlasts the retries is rethrown,
+ *     and when it fails the request the root `serviceBusyMiddleware`
+ *     answers 503 instead of the router's 500. Each refusal writes a
+ *     `d1_overload` log line named `tenant_by_slug`.
+ *
+ *   - `tenantSlugFromHost(hostname)` -- the slug a host names, without
+ *     a database read, for log lines only.
+ *
  *   - `hasCapability(tenant, cap)` / `requireCapability(tenant, cap)`
  *     -- the route-loader gates for the capability flags
  *     (`crowdsourcing`, `vocabulary_hub`, `publish_pipeline`,
@@ -47,7 +62,9 @@
  *     `requireTenantUser` is default-deny: even operators get 403 on
  *     a tenant subdomain unless a route explicitly opts into the
  *     operator carve-out (`user.tenantId === PLATFORM_TENANT_ID &&
- *     route.allowsOperator`).
+ *     route.allowsOperator`). The auth middleware also passes a
+ *     federation grant and the platform-admin flag it read from the
+ *     user row; the function's JSDoc lists the admit paths.
  *
  *   - `SlugSchema` -- Zod refinement for tenant-creation forms. The
  *     schema CHECK on `tenants.slug` already enforces the GLOB
@@ -71,14 +88,16 @@
  *     for operator actions touching tenant data; URL hits on
  *     disabled capabilities are not operator actions.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { z } from "zod";
 import { tenants } from "../db/schema";
-import type { User, Tenant } from "../context";
+import type { RouterContextProvider } from "react-router";
+import { requestTenantContext, type User, type Tenant } from "../context";
+import { retryD1Read, type D1Site } from "./d1-overload";
 
 export const PLATFORM_TENANT_ID = "0391baa2-0bab-44ae-ac08-9fa7eb7c6145" as const;
 export const NEOGRANADINA_TENANT_ID = "c50bfa92-1223-4f00-ba15-d50c39ae3c0b" as const;
@@ -395,10 +414,11 @@ export function assertOperator(tenant: Tenant): void {
 
 /**
  * Asserts that the user may act in the resolved tenant. Default-deny:
- * any mismatch throws 403 unless one of the two cross-tenant carve-outs
- * applies -- a federation grant, or the operator impersonation opt-in.
+ * any mismatch throws 403 unless one of the three cross-tenant carve-outs
+ * applies -- a federation grant, the operator impersonation opt-in, or
+ * a platform admin on a live workspace.
  *
- * Three admit paths, in order:
+ * Four admit paths, in order:
  *   (a) HOME access: `user.tenantId === tenant.id` (unchanged).
  *   (b) GRANT access: the caller passes a `grant` (resolved from
  *       `federation_memberships` by `app/lib/federation.server.ts`) whose
@@ -415,6 +435,13 @@ export function assertOperator(tenant: Tenant): void {
  *       admits exactly `user.tenantId === PLATFORM_TENANT_ID &&
  *       tenant.kind === "tenant"` -- never an ordinary tenant user
  *       mismatching tenants.
+ *   (d) PLATFORM ADMIN: the caller sets `platformAdmin: true` only when
+ *       the user row it read this request has `is_platform_admin` set
+ *       (`app/lib/platform-admin.server.ts`), passing the stored user.
+ *       It admits exactly a user not stored on the platform tenant into
+ *       a tenant whose kind is `tenant` and whose `disabledAt` is
+ *       null; operators, the platform tenant and disabled tenants stay
+ *       closed.
  *
  * This helper is the SINGLE chokepoint for cross-tenant access. Do not
  * duplicate the check elsewhere; the auth middleware resolves the grant
@@ -427,6 +454,7 @@ export function requireTenantUser(
   options?: {
     allowImpersonation?: boolean;
     grant?: { federationId: string } | null;
+    platformAdmin?: boolean;
   },
 ): void {
   // (a) Home access.
@@ -446,6 +474,15 @@ export function requireTenantUser(
     options?.allowImpersonation === true &&
     user.tenantId === PLATFORM_TENANT_ID &&
     tenant.kind === "tenant"
+  ) {
+    return;
+  }
+  // (d) Platform admin, at home in every live workspace.
+  if (
+    options?.platformAdmin === true &&
+    user.tenantId !== PLATFORM_TENANT_ID &&
+    tenant.kind === "tenant" &&
+    tenant.disabledAt === null
   ) {
     return;
   }
@@ -476,13 +513,14 @@ export function requireTenantUser(
 export async function getTenantFromRequest(
   db: DrizzleD1Database<any>,
   request: Request,
+  context?: D1Site["context"],
 ): Promise<Tenant> {
   const host = new URL(request.url).hostname.toLowerCase();
 
   // Branch 1: legacy host map (exact-match lookup, never substring).
   const legacySlug = LEGACY_HOST_MAP[host];
   if (legacySlug) {
-    return loadTenantBySlug(db, legacySlug, request);
+    return loadTenantBySlug(db, legacySlug, request, context);
   }
 
   // Branch 1.5: reserved infrastructure subdomains. `staging.fisqua.org`
@@ -507,7 +545,7 @@ export async function getTenantFromRequest(
       if (slug.length === 0 || slug.includes(".")) {
         throw new Response(null, { status: 404 });
       }
-      return loadTenantBySlug(db, slug, request);
+      return loadTenantBySlug(db, slug, request, context);
     }
   }
 
@@ -515,12 +553,51 @@ export async function getTenantFromRequest(
   throw new Response(null, { status: 404 });
 }
 
+/**
+ * The request's tenant, resolved once per request. Returns the lookup
+ * already held in `requestTenantContext` when there is one (the i18next
+ * middleware starts it when it needs the tenant's default language);
+ * otherwise starts `getTenantFromRequest` and holds it there for later
+ * callers. A failed lookup stays failed for the rest of the request:
+ * every caller gets the same bare 404, as `getTenantFromRequest` would
+ * have thrown to each of them. A lookup D1 refused as overloaded, after
+ * the retries in `loadTenantBySlug`, stays failed the same way; a
+ * caller that absorbs it (the i18next middleware) leaves the request
+ * as it was.
+ */
+export function resolveRequestTenant(
+  context: Pick<RouterContextProvider, "get" | "set">,
+  db: DrizzleD1Database<any>,
+  request: Request,
+): Promise<Tenant> {
+  // Every request served by the app carries a RouterContextProvider. A
+  // loader called directly with a plain object (some tests do) has
+  // nowhere to hold the lookup, and resolves the tenant on its own.
+  if (typeof (context as Partial<RouterContextProvider>)?.get !== "function") {
+    return getTenantFromRequest(db, request);
+  }
+  const held = context.get(requestTenantContext);
+  if (held) return held;
+  const lookup = getTenantFromRequest(db, request, context);
+  context.set(requestTenantContext, lookup);
+  return lookup;
+}
+
 async function loadTenantBySlug(
   db: DrizzleD1Database<any>,
   slug: string,
   request: Request,
+  context?: D1Site["context"],
 ): Promise<Tenant> {
-  const row = await findTenantBySlug(db, slug);
+  // Every request to a workspace host waits on this read, so a D1
+  // overload refusal is retried with the sign-in reads' waits before
+  // it fails the request.
+  const row = await retryD1Read(() => findTenantBySlug(db, slug), undefined, undefined, {
+    read: "tenant_by_slug",
+    request,
+    context,
+    tenant: slug,
+  });
   if (!row) {
     throw new Response(null, { status: 404 });
   }
@@ -581,6 +658,27 @@ export async function findTenantById(
 }
 
 /**
+ * The workspace slug a host names, for log lines only: the legacy host
+ * map, then the subdomain suffixes, as `getTenantFromRequest` reads
+ * them, without a database read. Null for the apex, a reserved
+ * subdomain, a multi-level subdomain or an unknown host. It decides
+ * nothing; tenant resolution stays with `getTenantFromRequest`.
+ */
+export function tenantSlugFromHost(hostname: string): string | null {
+  const host = hostname.toLowerCase();
+  const legacySlug = LEGACY_HOST_MAP[host];
+  if (legacySlug) return legacySlug;
+  if (RESERVED_NON_TENANT_SUBDOMAINS.has(host)) return null;
+  for (const suffix of SUBDOMAIN_HOST_SUFFIXES) {
+    if (host.endsWith(suffix)) {
+      const slug = host.slice(0, host.length - suffix.length);
+      return slug.length === 0 || slug.includes(".") ? null : slug;
+    }
+  }
+  return null;
+}
+
+/**
  * Build a fully-qualified tenant subdomain origin string from a
  * request URL and a target slug. The wrong-workspace interstitial
  * uses this to construct the "go to your <Name> workspace" CTA URL.
@@ -610,4 +708,4 @@ export function buildTenantOriginUrl(
   return null;
 }
 
-// @version v0.8.0
+// @version v0.9.0

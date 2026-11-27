@@ -21,13 +21,14 @@
  * proposed-term INSERTs and one with the entity UPDATEs, applied in that
  * order so the FK targets exist before the entity rows reference them.
  *
- * @version v0.4.2
+ * @version v0.9.0
  */
 import * as fs from "node:fs/promises";
 import * as crypto from "node:crypto";
 import type { ImportResult } from "../lib/types";
 import { escapeSql, generateInserts, writeSqlFiles } from "../lib/sql";
 import { NEOGRANADINA_FEDERATION_ID } from "../../app/lib/tenant";
+import { appendAll } from "../lib/arrays";
 
 /**
  * Shape of each entity in the entity data export.
@@ -134,7 +135,7 @@ export async function migrateEntityFunctions(
       ]);
     }
     const insertStatements = generateInserts("vocabulary_terms", termColumns, termRows, 100);
-    allStatements.push(...insertStatements);
+    appendAll(allStatements, insertStatements);
   }
 
   // 2. Batch UPDATE statements in groups of 100
@@ -154,3 +155,5 @@ export async function migrateEntityFunctions(
     sqlFiles,
   };
 }
+
+// @version v0.9.0

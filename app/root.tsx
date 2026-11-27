@@ -21,7 +21,9 @@
  * `useFormatters().relativeTime` measures from. The server render and
  * the hydrating browser both read it from the loader data, so
  * "hace 59 min" cannot be rendered on one side and "hace 1 hora" on
- * the other.
+ * the other. And it returns `lang`, the request's language, which each
+ * route's `meta()` reads through `app/lib/page-title.ts` to title the
+ * browser tab.
  *
  * After hydration `App` records the browser's IANA zone in the `tz`
  * cookie (readable by script because script writes it; it carries
@@ -34,7 +36,15 @@
  * loader only reads a cookie, so re-running it costs nothing that
  * matters.
  *
- * @version v0.8.0
+ * Its middleware runs `serviceBusyMiddleware` first, around the
+ * i18next middleware and everything under it, so a request that fails
+ * because D1 refused a read it depends on as overloaded is answered
+ * with a static 503 page instead of this file's error boundary. A
+ * client navigation refused the same way reaches this boundary as a 503
+ * carrying `SERVICE_BUSY_MARKER`, and the boundary shows the same busy
+ * title and detail, from the bundled strings, with no database read.
+ *
+ * @version v0.9.0
  */
 
 import { useEffect } from "react";
@@ -50,14 +60,27 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { Route } from "./+types/root";
-import { i18nextMiddleware } from "./middleware/i18next";
+import { getLocale, i18nextMiddleware } from "./middleware/i18next";
+import { serviceBusyMiddleware } from "./middleware/service-busy";
+import { isServiceBusyError } from "./lib/service-busy-marker";
 import { requestTimeZone } from "./lib/format";
+import { pageTitle } from "./lib/page-title";
 import "./app.css";
 
-export const middleware = [i18nextMiddleware];
+export const middleware = [serviceBusyMiddleware, i18nextMiddleware];
 
-export function loader({ request }: Route.LoaderArgs) {
-  return { timeZone: requestTimeZone(request), now: Date.now() };
+export function loader({ request, context }: Route.LoaderArgs) {
+  // The language the request was rendered in, for every route's
+  // `meta()` (see `app/lib/page-title.ts`). `getLocale` throws when
+  // the i18next middleware did not run, so a request that skipped it
+  // is titled in English.
+  let lang: "en" | "es" = "en";
+  try {
+    lang = getLocale(context) === "es" ? "es" : "en";
+  } catch {
+    lang = "en";
+  }
+  return { timeZone: requestTimeZone(request), now: Date.now(), lang };
 }
 
 export function shouldRevalidate() {
@@ -179,6 +202,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         "error.forbidden",
         "Your role in this workspace doesn't allow this action. If you need it, ask a workspace administrator.",
       );
+    } else if (isServiceBusyError(error)) {
+      // A client navigation refused because D1 was overloaded
+      // (`serviceBusyMiddleware`); the same words as the static page.
+      title = tr("error.busy_title", "Fisqua is busy right now");
+      detail = tr("error.busy_detail", "Try again in a few seconds.");
     } else {
       title = tr("error.server_error_title", "Something went wrong on our side");
       detail = tr(
@@ -198,6 +226,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-stone-50 px-6 py-16">
+      {/* The failed route's own `meta()` is not run for an error, so the
+          tab is titled here: the error heading, then the product name. */}
+      <title>{pageTitle(status === null ? title : `${status} ${title}`)}</title>
       <div className="w-full max-w-md">
         <p className="font-serif text-15 font-semibold text-stone-400">
           Fisqua
@@ -238,4 +269,4 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   );
 }
 
-/* @version v0.8.0 */
+/* @version v0.9.0 */

@@ -63,7 +63,7 @@
  * source. `--dump-dir` is the integrator's Django dump verification
  * directory (no default — supplied per run). No `--remote`, ever.
  *
- * @version v0.8.0
+ * @version v0.9.0
  */
 
 import * as fs from "node:fs";
@@ -109,6 +109,7 @@ import type {
   PipelineEntity,
   RunReport,
 } from "./types";
+import { appendAll } from "../lib/arrays";
 
 const DEFAULT_SOURCE = process.env.BACKFILL_SOURCE ?? "";
 const DEFAULT_DATA_DIR = process.env.BACKFILL_DATA_DIR ?? "";
@@ -507,7 +508,7 @@ async function runGenerate(args: Args): Promise<void> {
       enrichment.fpIndex.pkToUuid,
       args.federation,
     );
-    allRows.push(...redirect.rows);
+    appendAll(allRows, redirect.rows);
     redirects = {
       entityRowsBuilt: redirect.rows.length,
       placeMergesNotBuilt: redirect.placeMergesNotBuilt,
@@ -948,4 +949,4 @@ if (isMain) {
   });
 }
 
-// Version: v0.8.0
+// @version v0.9.0
